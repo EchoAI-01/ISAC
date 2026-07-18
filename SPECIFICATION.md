@@ -1,0 +1,838 @@
+# ISAC 技术规范
+
+> 数据模型、接口契约、配置规范、协议定义
+
+---
+
+## 目录
+
+- [一、核心数据模型](#一核心数据模型)
+- [二、接口契约](#二接口契约)
+- [三、配置规范](#三配置规范)
+- [四、协议定义](#四协议定义)
+- [五、错误处理规范](#五错误处理规范)
+
+---
+
+## 一、核心数据模型
+
+### 1.1 ISACMessage — 统一消息模型
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class ISACMessage:
+    """跨平台统一消息模型"""
+
+    # 基础信息
+    msg_id: str                              # 消息 ID
+    platform: str                            # 平台标识 ("qq", "telegram", ...)
+    timestamp: int                           # 消息时间戳 (Unix)
+
+    # 用户信息
+    user_id: str                             # 平台内用户 ID
+    user_name: str                           # 用户昵称 (可读)
+    group_id: Optional[str] = None           # 群聊 ID (私聊为 None)
+    group_name: Optional[str] = None         # 群聊名称
+
+    # 内容
+    content: str                             # 纯文本内容
+    segments: list[MessageSegment] = field(default_factory=list)  # 富媒体分段
+
+    # 会话
+    session_id: str = ""                     # 全局统一会话 ID (由 SessionManager 分配)
+    reply_to: Optional[str] = None           # 回复的目标消息 ID
+
+    # 元数据
+    metadata: dict = field(default_factory=dict)  # 平台特定元数据
+
+
+@dataclass
+class MessageSegment:
+    """消息分段 (用于富媒体)"""
+    type: str                                # "text" | "image" | "at" | "reply" | "emoji" | "voice"
+    data: dict                               # 分段内容
+```
+
+### 1.2 Session — 会话
+
+```python
+@dataclass
+class Session:
+    """ISAC 会话"""
+
+    session_id: str                          # 全局唯一会话 ID
+    user_id: str                             # 主用户 ID (跨平台统一)
+    user_ids: dict[str, str] = field(default_factory=dict)  # 各平台 user_id 映射
+    platform: str = ""                       # 当前交互平台
+    group_id: Optional[str] = None           # 群聊 ID
+    is_group: bool = False                   # 是否群聊
+
+    created_at: int = 0                      # 创建时间
+    last_active: int = 0                     # 最后活跃时间
+    state: str = "active"                    # "active" | "idle" | "closed"
+
+    # 运行时状态 (不持久化)
+    context: Optional[SessionContext] = None
+
+
+@dataclass
+class SessionContext:
+    """会话运行时上下文"""
+
+    budget: Budget                           # LLM 调用预算
+    interrupt_requested: bool = False        # 是否请求中断
+    iteration: int = 0                       # 当前迭代次数
+    reasoning_content: str = ""              # 推理内容
+    pending_messages: list[ISACMessage] = field(default_factory=list)
+
+
+@dataclass
+class Budget:
+    """LLM 调用预算（同时跟踪迭代次数和 Token）"""
+    max_iterations: int = 10                 # 最大迭代次数
+    max_tokens: int = 8000                   # 最大 token 数
+    remaining_iterations: int = 10           # 剩余迭代次数
+    used_tokens: int = 0                     # 已用 token 数
+
+    @property
+    def remaining_tokens(self) -> int:
+        return max(0, self.max_tokens - self.used_tokens)
+
+    @property
+    def remaining(self) -> int:
+        """是否还有预算（迭代和 Token 都要有余量）"""
+        return self.remaining_iterations > 0 and self.remaining_tokens > 0
+
+    def consume(self, usage: TokenUsage) -> None:
+        """消费一次调用，同时更新迭代次数和 Token 数"""
+        self.remaining_iterations -= 1
+        self.used_tokens += usage.total_tokens
+```
+
+### 1.3 UserProfile — 用户画像
+
+```python
+@dataclass
+class UserProfile:
+    """用户画像 (跨平台统一)"""
+
+    user_id: str                             # 主用户 ID
+    platform_ids: dict[str, str]             # 各平台 ID 映射
+
+    nickname: str = ""                       # 昵称
+    relationship_depth: float = 0.0          # 关系深度 0.0~1.0
+    interaction_count: int = 0               # 交互次数
+    first_seen: int = 0
+    last_seen: int = 0
+
+    # 行为特征
+    expression_style: dict = field(default_factory=dict)  # 表达风格偏好
+    preferences: dict = field(default_factory=dict)       # 话题/回复偏好
+    behavior_patterns: list[dict] = field(default_factory=list)
+
+    # 内容特征
+    jargon_set: list[str] = field(default_factory=list)   # 用户常用行话
+    topics_of_interest: list[str] = field(default_factory=list)
+
+    # 嵌入
+    embedding: Optional[list[float]] = None   # 用户画像向量
+```
+
+### 1.4 MemoryHit — 记忆命中
+
+```python
+@dataclass
+class MemoryHit:
+    """记忆检索结果"""
+
+    id: str                                  # 记忆 ID
+    content: str                             # 记忆内容
+    source: str                              # 来源 (session_id)
+    hit_type: str                            # "episode" | "paragraph" | "person_fact"
+    score: float                             # 匹配分数
+    metadata: dict = field(default_factory=dict)
+    embedding: Optional[list[float]] = None
+```
+
+### 1.5 消息流状态
+
+```python
+from enum import Enum
+
+class MessageStatus(Enum):
+    """消息处理状态"""
+    RECEIVED = "received"            # 已接收
+    ROUTED = "routed"                # 已路由到会话
+    GATED = "gated"                  # 门控决策完成
+    PROCESSING = "processing"        # Agent 处理中
+    RESPONDING = "responding"        # 发送回复中
+    COMPLETED = "completed"          # 完成
+    DROPPED = "dropped"              # 被丢弃 (门控拒绝)
+    ERROR = "error"                  # 处理出错
+```
+
+---
+
+## 二、接口契约
+
+### 2.1 PlatformAdapter — 平台适配器
+
+```python
+from abc import ABC, abstractmethod
+
+class PlatformAdapter(ABC):
+    """平台适配器抽象基类。所有平台适配器必须实现此接口。"""
+
+    @property
+    @abstractmethod
+    def platform_name(self) -> str:
+        """平台唯一标识"""
+        ...
+
+    @abstractmethod
+    async def start(self) -> None:
+        """启动平台连接，开始接收消息"""
+        ...
+
+    @abstractmethod
+    async def stop(self) -> None:
+        """停止平台连接，清理资源"""
+        ...
+
+    @abstractmethod
+    async def send(self, message: ISACMessage) -> bool:
+        """发送消息到平台。返回是否成功。"""
+        ...
+
+    # 框架注册的回调 (由 Gateway 调用)
+    on_message: Callable[[ISACMessage], Awaitable[None]] | None = None
+    on_error: Callable[[Exception], Awaitable[None]] | None = None
+```
+
+### 2.2 PromptInjector — Prompt 注入器
+
+```python
+from typing import Protocol
+
+class PromptInjector(Protocol):
+    """Prompt 注入器协议。每个子系统实现此协议来注入 Prompt 块。"""
+
+    @property
+    def key(self) -> str:
+        """注入器唯一标识"""
+        ...
+
+    @property
+    def priority(self) -> int:
+        """注入优先级 (数字越大越先注入)"""
+        ...
+
+    @property
+    def max_frequency_seconds(self) -> float:
+        """最小触发间隔 (秒)。0 = 每次"""
+        ...
+
+    @property
+    def max_new_messages(self) -> int:
+        """最小新消息数。0 = 不限制"""
+        ...
+
+    @property
+    def enabled(self) -> bool:
+        """是否启用"""
+        ...
+
+    @property
+    def tokens_estimate(self) -> int:
+        """预估 token 数 (用于预算管理)"""
+        ...
+
+    async def build(self, context: InjectionContext) -> str:
+        """构建注入文本。返回空字符串表示不注入。"""
+        ...
+```
+
+### 2.3 LLMProvider — LLM 提供商
+
+```python
+from abc import ABC, abstractmethod
+from typing import AsyncIterator
+
+class LLMProvider(ABC):
+    """LLM 提供商抽象基类"""
+
+    @abstractmethod
+    async def chat(
+        self,
+        system: str,
+        messages: list[Message],
+        tools: list[ToolDefinition] | None = None,
+        **kwargs,
+    ) -> LLMResponse:
+        """非流式聊天请求"""
+        ...
+
+    @abstractmethod
+    def chat_stream(
+        self,
+        system: str,
+        messages: list[Message],
+        tools: list[ToolDefinition] | None = None,
+        **kwargs,
+    ) -> AsyncIterator[LLMChunk]:
+        """流式聊天请求，返回 chunk 迭代器"""
+        ...
+
+    @abstractmethod
+    def get_model_name(self) -> str:
+        """返回当前使用的模型名称"""
+        ...
+
+    @abstractmethod
+    def get_capabilities(self) -> ModelCapabilities:
+        """返回模型能力"""
+        ...
+
+
+@dataclass
+class LLMChunk:
+    """流式响应的单个块"""
+    delta_content: str = ""                     # 增量文本
+    delta_reasoning: str = ""                   # 增量推理内容
+    tool_call: ToolCall | None = None           # 完整的工具调用（只在 finish_reason=tool_calls 时出现）
+    finish_reason: str | None = None            # "stop" | "tool_calls" | "length"
+    usage: TokenUsage = field(default_factory=lambda: TokenUsage())
+
+
+@dataclass
+class LLMResponse:
+    """LLM 响应"""
+    content: str                            # 文本内容
+    reasoning: str = ""                     # 推理内容 (如 o1/o3 模型)
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: TokenUsage = field(default_factory=TokenUsage)
+    model: str = ""
+
+
+@dataclass
+class ToolCall:
+    """工具调用"""
+    id: str
+    name: str
+    arguments: dict
+
+
+@dataclass
+class TokenUsage:
+    """Token 使用情况"""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+```
+
+### 2.4 MemoryRetrievalPipeline — 记忆检索
+
+```python
+class MemoryRetrievalPipeline:
+    """记忆检索流水线契约"""
+
+    async def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        filters: dict | None = None,
+        user_id: str = "",
+        group_id: str = "",
+    ) -> list[MemoryHit]:
+        """
+        检索记忆。
+
+        Args:
+            query: 查询文本
+            top_k: 返回结果数
+            filters: 元数据过滤条件
+            user_id: 用户 ID (用于权限过滤)
+            group_id: 群组 ID (用于权限过滤)
+
+        Returns:
+            按相关性排序的记忆列表
+        """
+        ...
+
+    async def store_episode(
+        self,
+        content: str,
+        session_id: str,
+        user_id: str,
+        metadata: dict | None = None,
+    ) -> str:
+        """存储一条情景记忆。返回记忆 ID。"""
+        ...
+
+
+class EmbeddingProvider(ABC):
+    """嵌入模型提供商契约"""
+
+    @abstractmethod
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        """批量文本向量化"""
+        ...
+
+    @abstractmethod
+    async def embed_query(self, query: str) -> list[float]:
+        """查询文本向量化"""
+        ...
+
+    @abstractmethod
+    def dimension(self) -> int:
+        """返回向量维度"""
+        ...
+
+
+class RerankerProvider(ABC):
+    """重排序模型提供商契约"""
+
+    @abstractmethod
+    async def rerank(
+        self,
+        query: str,
+        candidates: list[str],
+    ) -> list[float]:
+        """对候选文本重排序，返回相关性分数列表"""
+        ...
+```
+
+### 2.5 并发控制
+
+```python
+class SessionLockManager:
+    """会话级锁管理器。同一会话的消息串行处理，避免状态冲突。"""
+
+    _locks: dict[str, asyncio.Lock] = {}
+    _agent_running: dict[str, bool] = {}
+
+    async def acquire(self, session_id: str) -> asyncio.Lock:
+        """获取会话锁"""
+        if session_id not in self._locks:
+            self._locks[session_id] = asyncio.Lock()
+        return self._locks[session_id]
+
+    def is_agent_running(self, session_id: str) -> bool:
+        """检查该会话是否有 Agent 在运行"""
+        return self._agent_running.get(session_id, False)
+
+    def set_agent_running(self, session_id: str, running: bool) -> None:
+        self._agent_running[session_id] = running
+
+    async def handle_message(self, message: ISACMessage, handler: Callable):
+        """统一消息处理入口，保证同一会话串行"""
+        lock = await self.acquire(message.session_id)
+        async with lock:
+            if self.is_agent_running(message.session_id):
+                # 选项 A: 排队等待（推荐，MaiBot 做法）
+                await self._queue_message(message)
+                return
+            self.set_agent_running(message.session_id, True)
+            try:
+                await handler(message)
+            finally:
+                self.set_agent_running(message.session_id, False)
+                await self._process_queued(message.session_id)
+```
+
+### 2.6 Plugin Manifest
+
+ISAC 原生插件的 manifest 格式 (JSONC):
+
+```jsonc
+{
+    "name": "my_plugin",
+    "version": "1.0.0",
+    "description": "插件描述",
+    "author": "作者名",
+    "isac_version": ">=1.0.0",      // 兼容的 ISAC 版本范围 (PEP 440)
+    "entry": "plugin.py",           // 入口文件
+    "hooks": ["pre_llm", "post_tool"],   // 声明使用的 Agent hooks
+    "tools": ["my_tool"],           // 声明提供的工具
+    "injectors": ["my_injector"],   // 声明提供的注入器
+    "permissions": [                 // 声明申请的权限
+        "filesystem:read:data/",
+        "network:https",
+    ],
+    "config_schema": {               // 配置 Schema (用于自动生成配置界面)
+        "type": "object",
+        "properties": {
+            "api_key": {"type": "string", "description": "API Key"},
+        },
+    },
+}
+```
+
+### 2.7 AstrBot 兼容接口
+
+```python
+# AstrBot Star 兼容
+class Star:
+    """兼容 astrbot.api.star.Star"""
+
+    def __init__(self, context: StarContext):
+        self.context = context
+
+    async def terminate(self):
+        """插件卸载时调用"""
+
+
+class StarContext:
+    """兼容 AstrBot Context 对象"""
+
+    async def send_message(self, message: str, platform: str | None = None):
+        """发送消息 (映射到 ISAC Channel)"""
+
+    def get_platform(self, platform_name: str) -> PlatformAdapter | None:
+        """获取平台适配器"""
+
+    def get_provider(self, provider_name: str | None = None) -> LLMProvider | None:
+        """获取 LLM Provider"""
+
+
+# AstrBot EventType 兼容 (映射到 EventBus 事件)
+class EventType:
+    """AstrBot 事件类型枚举 → ISAC EventBus 映射
+
+    注意: AstrBot 的 LLM 事件 (OnLLMRequestEvent 等) 映射到 ISAC
+    AgentHooks (非 EventBus)，通过 Agent 循环内部的 hook 触发。
+    """
+
+    # 消息事件 (映射到 EventBus)
+    OnMessageEvent = "on_message"
+    OnAstrBotLoadedEvent = "on_astrbot_loaded"
+    OnDecoratingResultEvent = "on_decorating_result"
+    OnAfterSendMessage = "on_after_send"
+    OnBeforeMessageEvent = "on_before_message"
+    OnAfterMessageEvent = "on_after_message"
+
+    # LLM 事件 (映射到 AgentHooks，不经过 EventBus)
+    OnLLMRequestEvent = "on_llm_request"        # → AgentHooks.PRE_LLM
+    OnAfterLLMResponseEvent = "on_after_llm_response"  # → AgentHooks.POST_LLM
+```
+
+---
+
+## 三、配置规范
+
+### 3.1 配置格式
+
+使用 **JSONC** (JSON with Comments)，支持注释：
+
+```jsonc
+// ISAC 主配置
+{
+    // 基础配置
+    "debug": false,
+    "log_level": "info",        // "debug" | "info" | "warning" | "error"
+
+    // 平台配置
+    "platforms": {
+        "qq": {
+            "enabled": true,
+            "app_id": "...",
+            "app_secret": "...",
+        },
+        "telegram": {
+            "enabled": false,
+            "bot_token": "...",
+        },
+    },
+
+    // LLM 配置
+    "llm": {
+        "provider": "openai",           // "openai" | "anthropic" | "google" | ...
+        "model": "gpt-4o",
+        "fallback_model": "gpt-4o-mini",
+        "api_key": "...",
+        "base_url": "...",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+    },
+
+    // 门控配置
+    "gating": {
+        "reply_necessity_threshold": 80,     // 回复必要性阈值
+        "trigger_threshold": 3,              // 触发阈值 (消息数)
+        "idle_backoff_base_seconds": 30,     // 空闲退避基础时间
+        "idle_backoff_cap_seconds": 300,     // 空闲退避上限
+    },
+
+    // 记忆配置
+    "memory": {
+        "enabled": true,
+        "embedding": {
+            "provider": "fastembed",         // "fastembed" | "sentence_transformers" | "openai"
+            "model": "bge-small-zh-v1.5",
+            "dimension": 512,
+        },
+        "reranker": {
+            "enabled": true,
+            "provider": "bge-reranker-v2-m3", // 或 "cohere" | "jina" | "none"
+        },
+        "heuristic": {
+            "enabled": true,
+            "frequency_seconds": 180,         // 3 分钟
+            "min_new_messages": 60,
+            "limit": 3,
+        },
+        "person_profile": {
+            "enabled": true,
+            "max_profiles": 3,
+        },
+        "jargon": {
+            "enabled": true,
+        },
+    },
+
+    // 人格配置
+    "persona": {
+        "attention_drift": {
+            "enabled": true,
+            "level": "subtle",              // "subtle" | "active" | "scattered" | "wild"
+            "anchor_policy": "balanced",    // "strict" | "balanced" | "loose"
+            "reaction_style": "natural",    // "reserved" | "natural" | "lively"
+        },
+        "expression_style": {
+            "formality": 0.5,               // 0.0=随意 ~ 1.0=正式
+            "verbosity": 0.5,               // 0.0=简洁 ~ 1.0=详尽
+            "humor": 0.5,                   // 0.0=严肃 ~ 1.0=幽默
+            "empathy": 0.7,                 // 0.0=理性 ~ 1.0=感性
+        },
+    },
+
+    // 插件配置
+    "plugins": {
+        "enabled": true,
+        "dir": "plugins/",
+        "auto_load": true,
+        "compat_astrbot": true,             // 启用 AstrBot 兼容
+    },
+}
+```
+
+### 3.2 配置加载规则
+
+**加载顺序** (后面的覆盖前面的):
+
+1. 内置默认值
+2. `data/config.jsonc` (用户配置)
+3. 环境变量覆盖 (`ISAC_LLM_API_KEY`, `ISAC_DEBUG`, ...)
+4. CLI 参数覆盖 (`--debug`, `--model gpt-4o`, ...)
+
+**环境变量映射**:
+```
+ISAC_LLM_PROVIDER → llm.provider
+ISAC_LLM_API_KEY → llm.api_key
+ISAC_DEBUG → debug
+ISAC_LOG_LEVEL → log_level
+ISAC_MEMORY_ENABLED → memory.enabled
+```
+
+---
+
+## 四、协议定义
+
+### 4.1 EventBus 事件类型
+
+```python
+from enum import Enum
+
+class EventType(Enum):
+    """ISAC 事件类型"""
+
+    # 生命周期
+    ON_START = "on_start"                       # 系统启动
+    ON_STOP = "on_stop"                         # 系统停止
+    ON_SESSION_CREATE = "on_session_create"     # 会话创建
+    ON_SESSION_CLOSE = "on_session_close"       # 会话关闭
+
+    # 消息事件
+    ON_MESSAGE_PRE = "on_message_pre"           # 消息预处理 (Intercept)
+    ON_MESSAGE = "on_message"                   # 消息到达 (Intercept)
+    POST_MESSAGE = "post_message"               # 消息处理完成 (Async)
+
+# 消息流事件 (EventBus 处理)
+    ON_START = "on_start"                       # 系统启动
+    ON_STOP = "on_stop"                         # 系统停止
+    ON_SESSION_CREATE = "on_session_create"     # 会话创建
+    ON_SESSION_CLOSE = "on_session_close"       # 会话关闭
+
+    # 消息事件
+    ON_MESSAGE_PRE = "on_message_pre"           # 消息预处理 (Intercept)
+    ON_MESSAGE = "on_message"                   # 消息到达 (Intercept)
+    POST_MESSAGE = "post_message"               # 消息处理完成 (Async)
+
+    # 发送事件
+    POST_SEND_PRE = "post_send_pre"             # 发送前预处理 (Intercept)
+    POST_SEND = "post_send"                     # 发送完成 (Async)
+
+    # 记忆事件
+    ON_MEMORY_RETRIEVE = "on_memory_retrieve"   # 记忆检索
+    ON_MEMORY_STORE = "on_memory_store"         # 记忆存储
+
+
+# ──────────────────────────────────────────────────────────
+# AgentHooks 事件 (Agent Loop 内部，与 EventBus 分离)
+# 这些事件不经过 EventBus，直接在 Agent Loop 内部触发
+# ──────────────────────────────────────────────────────────
+
+class AgentHookPoint(Enum):
+    """Agent Loop 内部钩子点（不经过 EventBus）"""
+    PRE_LLM = "pre_llm"                         # LLM 调用前
+    POST_LLM = "post_llm"                       # LLM 响应后
+    PRE_TOOL = "pre_tool"                       # 工具调用前
+    POST_TOOL = "post_tool"                     # 工具调用后
+    COMPRESS = "compress"                       # 上下文压缩
+    FINAL_RESPONSE = "final_response"           # 最终回复
+
+    # 发送事件
+    POST_SEND_PRE = "post_send_pre"             # 发送前预处理 (Intercept)
+    POST_SEND = "post_send"                     # 发送完成 (Async)
+
+    # 记忆事件
+    ON_MEMORY_RETRIEVE = "on_memory_retrieve"   # 记忆检索
+    ON_MEMORY_STORE = "on_memory_store"         # 记忆存储
+```
+
+### 4.2 WebSocket 协议 (内置 WebChat 适配器)
+
+```python
+# 客户端 → 服务端
+{
+    "type": "message",
+    "data": {
+        "content": "你好",
+        "user_id": "user_001",
+        "user_name": "小明",
+        "platform": "webchat",
+        "timestamp": 1721234567,
+    }
+}
+
+# 服务端 → 客户端
+{
+    "type": "response",
+    "data": {
+        "msg_id": "msg_001",
+        "content": "你好！有什么可以帮你的？",
+        "timestamp": 1721234568,
+    }
+}
+
+# 服务端 → 客户端 (流式)
+{
+    "type": "stream",
+    "data": {
+        "msg_id": "msg_001",
+        "chunk": "你好！",
+        "done": false,
+    }
+}
+{
+    "type": "stream",
+    "data": {
+        "msg_id": "msg_001",
+        "chunk": "有什么可以帮你的？",
+        "done": true,
+    }
+}
+```
+
+---
+
+## 五、错误处理规范
+
+### 5.1 错误分类
+
+| 类型 | 处理方式 | 示例 |
+|------|---------|------|
+| **平台连接错误** | 重连 + 日志 | Telegram API 超时 |
+| **LLM 调用错误** | 重试 (3次) → 回退模型 → 降级回复 | OpenAI API 限流 |
+| **记忆存储错误** | 日志记录，不阻塞消息流 | SQLite 写入失败 |
+| **记忆检索错误** | 跳过本次注入，继续流程 | 向量搜索超时 |
+| **工具执行错误** | 返回错误信息给 LLM | Bash 命令失败 |
+| **插件错误** | 隔离插件，不影响其他插件 | 插件抛异常 |
+| **门控错误** | 默认不回复 | 评分计算失败 |
+
+### 5.2 错误处理模式
+
+```python
+# 1. LLM 调用: 重试 + 回退
+async def chat_with_retry(self, **kwargs) -> LLMResponse:
+    for attempt in range(3):
+        try:
+            return await self.provider.chat(**kwargs)
+        except RateLimitError:
+            if attempt < 2:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            # 回退到备选模型
+            return await self.fallback_provider.chat(**kwargs)
+
+# 2. 记忆检索: 失败时返回空，不影响流程
+async def safe_search(self, query: str) -> list[MemoryHit]:
+    try:
+        return await self.pipeline.search(query)
+    except Exception as exc:
+        logger.warning("记忆检索失败", error=str(exc))
+        return []
+
+# 3. 插件错误: 隔离
+async def safe_call_plugin(self, plugin, method, *args):
+    try:
+        return await getattr(plugin, method)(*args)
+    except Exception as exc:
+        logger.error("插件执行失败", plugin=plugin.name, error=str(exc))
+        # 不影响其他插件
+
+# 4. Injector: 失败时返回空字符串
+async def safe_build(self, context) -> str:
+    try:
+        return await self.build(context)
+    except Exception as exc:
+        logger.warning("Injector 失败", injector=self.key, error=str(exc))
+        return ""
+```
+
+### 5.3 结构化错误
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class ISACError(Exception):
+    """ISAC 基础错误"""
+    message: str
+    code: str
+    retriable: bool = False
+    context: dict | None = None
+
+class PlatformError(ISACError):
+    """平台连接错误"""
+    code = "PLATFORM_ERROR"
+    retriable = True
+
+class LLMError(ISACError):
+    """LLM 调用错误"""
+    code = "LLM_ERROR"
+    retriable = True
+
+class MemoryError(ISACError):
+    """记忆系统错误"""
+    code = "MEMORY_ERROR"
+    retriable = False
+
+class ToolError(ISACError):
+    """工具执行错误"""
+    code = "TOOL_ERROR"
+    retriable = False
+```
