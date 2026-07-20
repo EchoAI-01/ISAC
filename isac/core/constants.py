@@ -1,0 +1,22 @@
+"""ISAC 全局常量。
+
+可调参数应放入配置文件 (SPECIFICATION.md 3.1)，此处只放框架级常量。
+"""
+
+# 门控 (ARCHITECTURE.md 3.7)
+REPLY_NECESSITY_THRESHOLD = 80
+
+# Prompt 预算 (ARCHITECTURE.md 3.4)
+DEFAULT_PROMPT_TOKEN_BUDGET = 8000
+
+# 记忆 (ARCHITECTURE.md 3.6)
+SHARED_MEMORY_NAMESPACE = "shared"  # 跨 Agent 共享记忆命名空间保留值
+HEURISTIC_MEMORY_COOLDOWN_SECONDS = 180  # 启发式记忆冷却 (3 分钟)
+HEURISTIC_MEMORY_MIN_NEW_MESSAGES = 60  # 启发式记忆最小新消息数
+
+# 多 Agent (ARCHITECTURE.md 3.1)
+DEFAULT_AGENT_ID = "default"  # 单 Agent 兼容模式使用的默认 ID
+
+# 控制面 (ARCHITECTURE.md 3.9)
+DEFAULT_CONTROL_HOST = "127.0.0.1"
+DEFAULT_CONTROL_PORT = 8765

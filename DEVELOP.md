@@ -11,8 +11,10 @@
 - [三、模块开发流程](#三模块开发流程)
 - [四、核心模块开发规范](#四核心模块开发规范)
 - [五、测试规范](#五测试规范)
-- [六、Git 规范](#六git-规范)
-- [七、调试指南](#七调试指南)
+- [六、日志规范](#六日志规范)
+- [七、安全规范](#七安全规范)
+- [八、Git 规范](#八git-规范)
+- [九、调试指南](#九调试指南)
 
 ---
 
@@ -24,8 +26,12 @@
 
 | 目录 | 职责 | 禁止做 |
 |------|------|--------|
-| `channel/` | 平台适配：消息收发、平台协议 | 不处理 Agent 逻辑 |
+| `channel/` | 平台适配：消息收发、平台协议 | 不处理 Agent 逻辑、不感知 Agent 归属 |
 | `gateway/` | 消息路由：会话管理、事件总线、用户映射 | 不处理 LLM 调用 |
+| `router/` | Agent 路由：决定消息归属哪个 Agent | 不处理 LLM 调用、不操作记忆 |
+| `runtime/` | 多 Agent 运行时：实例组装、生命周期、Agent 互联总线 | 不实现具体业务逻辑 |
+| `commands/` | 命令系统：用户/管理命令注册与执行 | 不处理 Agent 循环 |
+| `control/` | 控制面：Admin API、MCP Server、Webhook | 不处理消息数据面逻辑 |
 | `gating/` | 门控决策：是否回复、何时回复 | 不处理记忆存储 |
 | `agent/` | Agent 循环：LLM 调用、工具执行、Prompt 组装 | 不直接操作记忆存储 |
 | `memory/` | 记忆管理：存储、检索、注入策略 | 不直接调用 LLM (除非通过注入策略) |
@@ -56,11 +62,19 @@ agent (依赖 utils, provider, memory, persona)
   ↑
 gating (依赖 utils)
   ↑
-gateway (依赖 utils, gating)
+router (依赖 utils)
+  ↑
+gateway (依赖 utils, router)
   ↑
 channel (依赖 utils, gateway)
   ↑
-plugin (依赖 utils, agent)
+commands (依赖 utils, agent)
+  ↑
+plugin (依赖 utils, agent, commands)
+  ↑
+runtime (依赖 utils, provider, memory, persona, agent, gating)
+  ↑
+control (依赖 utils, runtime)
   ↑
 main.py (依赖所有，负责组装)
 ```
@@ -70,10 +84,14 @@ main.py (依赖所有，负责组装)
 - `provider/` 只依赖 `utils/`
 - `memory/` 只依赖 `utils/` 和 `provider/` (嵌入模型)
 - `agent/` 依赖 `utils/`、`provider/`、`memory/` (通过注入器实例)、`persona/`
-- `gating/` 只依赖 `utils/` (不依赖 agent)
-- `gateway/` 依赖 `utils/`、`gating/` (不直接调 agent，通过依赖注入)
+- `gating/` 只依赖 `utils/` (不依赖 agent)，在 AgentInstance 内按 Agent 独立实例化
+- `router/` 只依赖 `utils/` (路由规则是纯数据 + 匹配逻辑)
+- `gateway/` 依赖 `utils/`、`router/` (不直接调 agent，通过依赖注入)
 - `channel/` 依赖 `utils/`、`gateway/`
-- `plugin/` 依赖 `utils/`、`agent/` (通过 hooks 注册)
+- `commands/` 依赖 `utils/`、`agent/` (命令在 Agent 上下文执行)
+- `plugin/` 依赖 `utils/`、`agent/`、`commands/` (通过 hooks 注册)
+- `runtime/` 依赖 `utils/`、`provider/`、`memory/`、`persona/`、`agent/`、`gating/` (组装 AgentInstance；不 import gateway/channel/router，由 main.py 注入)
+- `control/` 依赖 `utils/`、`runtime/` (复用 Manager 公开方法，不复制业务逻辑)
 - `main.py` 依赖所有模块，负责组装和依赖注入
 
 **禁止的导入**:
@@ -81,6 +99,9 @@ main.py (依赖所有，负责组装)
 - `gating/` 导入 `agent/`、`channel/`、`plugin/`
 - `memory/` 导入 `agent/`、`gating/`、`channel/`
 - `gateway/` 导入 `agent/`、`channel/` (通过注入调用)
+- `router/` 导入 `agent/`、`runtime/`、`control/`
+- `runtime/` 导入 `gateway/`、`channel/`、`control/` (通过注入调用)
+- `control/` 导入 `gateway/`、`channel/`、`agent/` (通过 runtime 管理接口操作)
 - `provider/` 导入任何业务模块
 - `utils/` 导入任何业务模块
 
@@ -155,6 +176,7 @@ from .models import LocalModel
 - 所有公共函数/方法必须有完整的类型注解
 - 复杂函数 (> 10 行) 必须有类型注解
 - 使用 `from __future__ import annotations` 避免前向引用问题
+- CI 流水线运行 `mypy isac/` 做静态类型检查
 
 **异步规范**:
 - 所有 I/O 操作必须使用 `async/await`
@@ -198,9 +220,9 @@ logger.error("LLM 调用失败", error=str(exc), exc_info=True)
 - **行内注释**: 解释"为什么"而不是"是什么"
 
 ```python
-"""Maisaka 启发式长期记忆自然拉起服务。
+"""ISAC 启发式长期记忆自然拉起服务。
 
-根据当前聊天流印象自然拉起长期记忆，注入到 Planner 上下文中。
+根据当前聊天流印象自然拉起长期记忆，注入到 Agent 上下文中。
 """
 
 class HeuristicMemoryInjector:
@@ -215,7 +237,7 @@ class HeuristicMemoryInjector:
     """
 
     async def build_injection_message(self, session_id: str) -> str:
-        """构造给 Planner/Replyer 共享的一次性启发式记忆参考。
+        """构造注入到 System Prompt 的一次性启发式记忆参考。
 
         Args:
             session_id: 聊天流 ID
@@ -244,9 +266,9 @@ class HeuristicMemoryInjector:
 
 | 注入器数据源 | 放置目录 | 示例 |
 |-------------|---------|------|
-| 与 Agent 自身行为相关 | `agent/injectors/` | 人格、技能、工具说明 |
+| 与 Agent 自身行为相关 | `agent/injectors/` | 人格注入（注意力漂移/表达风格/情绪）、技能、工具说明 |
 | 与记忆数据相关 | `memory/injector/` | 启发式记忆、画像、行话、中期记忆 |
-| 与人格配置相关 | `persona/injectors/` | 动态人格配置注入（如有） |
+| 人格配置与状态数据 | `persona/`（不放注入器） | drift/style/mood 配置与状态模型，由 `agent/injectors/` 读取 |
 
 ```python
 # 1. 根据数据源选择目录
@@ -366,6 +388,14 @@ class MyTool(Tool):
         result = await self._do_something(context.args["target"])
         return ToolResult(content=result)
 ```
+
+### 3.5 多 Agent 环境下的组件开发规则
+
+1. **禁止模块级单例保存 Agent 状态**: 所有按 Agent 隔离的状态（门控计数、画像缓存、冷却时间）必须挂在 AgentInstance 或其子系统实例上
+2. **组件从 context 获取 agent_id**: 通过 `RuntimeContext` / `AgentConfig` 获取，不得读取全局"当前 Agent"
+3. **记忆访问必须带命名空间**: 通过 `MemoryRetrievalPipeline`（已绑定 agent_id），禁止跨命名空间裸查存储层
+4. **Channel 适配器不感知 Agent**: 适配器只产出 ISACMessage，归属由 MessageRouter 决定
+5. **新增管理操作先加到 Manager**: AgentManager / Router / Bus 的公开方法会自动暴露给 Admin API 与 MCP Server，不要在 `control/` 里复制业务逻辑
 
 ---
 
@@ -564,7 +594,7 @@ async def test_full_message_flow(mock_llm, mock_channel, mock_memory):
     assert memory_count > 0
 ```
 
-### 5.2 测试 Fixtures 内容
+### 5.4 测试 Fixtures 内容
 
 **messages.py** — 各类测试消息:
 ```python
@@ -704,11 +734,19 @@ logger.error("LLM 调用失败", error=str(exc), exc_info=True)
 | `bash` | ❌ 默认禁用 | 需要在配置中显式启用 |
 | `task` (子Agent) | ⚠️ 受限 | 限制递归深度和预算 |
 
+### 7.4 控制面安全
+
+- Admin API / MCP Server 默认仅监听 `127.0.0.1`；对外开放必须配置反向代理 + TLS
+- 所有控制面请求必须携带 `api_token` (Bearer 认证)
+- 通过自动化触发器 (`/automation/trigger`) 创建的 Agent 使用受限默认配置 (deny-by-default 工具策略)
+- Inter-Agent Link 默认拒绝，需显式配置后才可通信
+- 控制面操作必须记录审计日志 (操作者 / 动作 / 参数 / 结果)
+
 ---
 
 ## 八、Git 规范
 
-### 6.1 Commit 规范
+### 8.1 Commit 规范
 
 使用 [Conventional Commits](https://www.conventionalcommits.org/):
 
@@ -739,7 +777,7 @@ feat(agent): 添加 HeuristicMemoryInjector 支持
 Closes #123
 ```
 
-### 6.2 分支策略
+### 8.2 分支策略
 
 ```
 main (生产分支)
@@ -757,7 +795,7 @@ main (生产分支)
 
 ## 九、调试指南
 
-### 7.1 日志级别
+### 9.1 日志级别
 
 | 级别 | 用途 | 示例 |
 |------|------|------|
@@ -766,7 +804,7 @@ main (生产分支)
 | `WARNING` | 可恢复的错误 | 记忆检索失败、Injector 超时 |
 | `ERROR` | 严重错误 | LLM 调用失败、数据库错误 |
 
-### 7.2 调试 Agent Loop
+### 9.2 调试 Agent Loop
 
 开启 debug 日志后，关键信息包括:
 
@@ -788,7 +826,7 @@ INFO ToolRegistry: 执行 tool=send_emoji, args={"emoji": "👍"}
 INFO ToolResult: 执行成功, content_length=10
 ```
 
-### 7.3 常见问题排查
+### 9.3 常见问题排查
 
 | 问题 | 排查方向 |
 |------|---------|
