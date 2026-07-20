@@ -1,7 +1,8 @@
 # ISAC — 生产级架构设计文档
 
-> Intelligent Social AI Companion v2.1
+> Intelligent Social AI Companion v3.0
 > 状态: 生产就绪设计
+> v3.0: 多 Agent 架构 (多实例 / 共享 Channel + 路由 / Agent 互联 / 控制面)
 
 ---
 
@@ -10,10 +11,11 @@
 - [一、设计原则](#一设计原则)
 - [二、系统架构](#二系统架构)
 - [三、核心组件设计](#三核心组件设计)
-- [四、消息生命周期](#四消息生命周期)
-- [五、目录结构](#五目录结构)
-- [六、设计决策记录](#六设计决策记录)
-- [七、非功能性需求](#七非功能性需求)
+- [四、配置版本化](#四配置版本化)
+- [五、消息生命周期](#五消息生命周期)
+- [六、目录结构](#六目录结构)
+- [七、设计决策记录](#七设计决策记录)
+- [八、非功能性需求](#八非功能性需求)
 
 ---
 
@@ -26,7 +28,12 @@
 | **门控先于 Agent** | 是否回复、何时回复的决定先于 Agent 调用 |
 | **记忆是检索流水线** | 嵌入模型 + 双路径搜索 + 重排序，不是简单 K-V |
 | **事件驱动** | 消息处理通过 EventBus 双层事件 (Intercept + Async) 解耦 |
-| **兼容 AstrBot** | 不发明新插件协议，桥接 AstrBot Star 系统 |
+| **多 Agent 原生** | 单进程运行多个 Agent 实例，配置/记忆/人格/工具各自隔离 |
+| **连接与路由分离** | Channel 连接是共享资源，由 Router 决定消息归属哪个 Agent |
+| **Agent 互联显式化** | Agent 间通信通过 InterAgentBus + 显式 Link (ACL)，默认不互通 |
+| **控制面/数据面分离** | 消息处理 (数据面) 与管理自动化 (Admin API / MCP Server 控制面) 解耦 |
+| **兼容 AstrBot / MaiBot** | 不发明新插件协议，桥接 AstrBot Star 与 MaiBot 插件系统 |
+| **原生 SDK 面向扩展** | ISAC Native SDK 承载兼容层无法覆盖的独有能力 |
 | **简洁优先** | 不引入不必要的外部依赖，单机可运行 |
 
 ---
@@ -35,13 +42,19 @@
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│                         ISAC System Architecture                           │
+│                      ISAC System Architecture (v3.0)                       │
 ├───────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
+│   ┌────────────────────── CONTROL PLANE (控制面) ───────────────────┐    │
+│   │  Admin REST API  │  ISAC MCP Server  │  Webhooks / Automation  │    │
+│   │  管理 Agent/路由/绑定/插件矩阵 (默认 127.0.0.1 + Token 认证)     │    │
+│   └───────────────────────────┬─────────────────────────────────────┘    │
+│                               │ (管理操作复用各层公开方法，商业化预留)    │
 │   ┌────────────────────── CHANNEL LAYER ────────────────────────────┐    │
 │   │                                                                 │    │
 │   │   QQ  Telegram  Discord  WeChat  Slack  KOOK  WebSocket ...   │    │
 │   │          AstrBot Platform Adapters (18+)                       │    │
+│   │   连接是共享资源: 一个 IM 连接可服务多个 Agent                  │    │
 │   │                   统一消息模型: ISACMessage                     │    │
 │   │                                                                 │    │
 │   └───────────────────────────┬─────────────────────────────────────┘    │
@@ -56,7 +69,19 @@
 │   │                                                               │    │
 │   └───────────────────────────┬─────────────────────────────────────┘    │
 │                               │                                          │
-│   ┌─────────────────── GATING SYSTEM (门控) ──────────────────────┐    │
+│   ┌────────────────── MESSAGE ROUTER (路由) ──────────────────────┐    │
+│   │  决定消息归属哪个 Agent:                                      │    │
+│   │  1. 显式绑定 (platform + group/user → agent_id)               │    │
+│   │  2. 触发词匹配 (AgentConfig.trigger_words, 匹配后剥离)         │    │
+│   │  3. Channel 默认 Agent (default_agent_id, 无需触发词)          │    │
+│   │  4. 无匹配 → DROP                                             │    │
+│   └───────────────────────────┬─────────────────────────────────────┘    │
+│                               │ (agent_id + 剥离触发词后的消息)           │
+│   ┌═══════════════ AGENT RUNTIME (多 Agent 实例) ═══════════════┐    │
+│   │  AgentManager: 创建/启动/停止/销毁, 按 AgentConfig 独立组装  │    │
+│   │  以下各层在每个 AgentInstance 内独立实例化, 互不共享可变状态 │    │
+│   │                                                              │    │
+│   │  ┌─────────────────── GATING SYSTEM (门控) ────────────────┐ │    │
 │   │                                                               │    │
 │   │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │    │
 │   │  │ReplyNecessity│  │TurnScheduler │  │  IdleBackoff      │  │    │
@@ -92,7 +117,7 @@
 │   ┌──────────────── ISAC AGENT LOOP ────────────────────────────┐    │
 │   │                                                               │    │
 │   │  class ISACAgentLoop:                                        │    │
-│   │      while budget.remaining > 0:                             │    │
+│   │      while budget.remaining:                             │    │
 │   │          hook: pre_llm → LLM.chat → hook: post_llm          │    │
 │   │          if tool_calls:                                      │    │
 │   │              hook: pre_tool → exec_tool → hook: post_tool    │    │
@@ -128,7 +153,12 @@
 │   │  │VectorStore│ │Metadata  │ │GraphStore│                     │    │
 │   │  │(sqlite-vec)│ │Store     │ │(关系图)  │                     │    │
 │   │  └──────────┘ └──────────┘ └──────────┘                     │    │
-│   └───────────────────────────┬─────────────────────────────────────┘    │
+│   │  └───────────────────────────┬───────────────────────────────┘ │    │
+│   │                              │                                 │    │
+│   │  ┌──────────────── INTER-AGENT BUS (Agent 互联) ────────────┐ │    │
+│   │  │  显式 Link (ACL, 默认不互通): ask_agent / notify / handoff │ │    │
+│   │  └──────────────────────────────────────────────────────────┘ │    │
+│   └═══════════════════════════╪══════════════════════════════════╝    │
 │                               │                                          │
 │   ┌────────────────── PLUGIN SYSTEM ────────────────────────────┐    │
 │   │                                                               │    │
@@ -137,14 +167,21 @@
 │   │  │  Star / Context / EventType / FunctionTool            │  │    │
 │   │  └───────────────────────────────────────────────────────┘  │    │
 │   │  ┌───────────────────────────────────────────────────────┐  │    │
-│   │  │  ISAC Native Plugin SDK                               │  │    │
-│   │  │  Hooks / Injectors / Tools / MCP                      │  │    │
+│   │  │  MaiBot Compatibility Layer                           │  │    │
+│   │  │  Plugin / Action / Command 映射                       │  │    │
 │   │  └───────────────────────────────────────────────────────┘  │    │
+│   │  ┌───────────────────────────────────────────────────────┐  │    │
+│   │  │  ISAC Native SDK v2 (专用拓展系统)                     │  │    │
+│   │  │  Hooks / Injectors / Tools / Commands /               │  │    │
+│   │  │  InterAgent Hooks / Admin Routes (预留) / MCP         │  │    │
+│   │  └───────────────────────────────────────────────────────┘  │    │
+│   │  启用矩阵: Agent × Plugin, Channel × Plugin 独立配置      │    │
 │   └───────────────────────────┬─────────────────────────────────────┘    │
 │                               │                                          │
 │   ┌────────────────── PROVIDER LAYER ───────────────────────────┐    │
 │   │                                                               │    │
 │   │  LLM / Embedding / Reranker / STT / TTS / ImageGen          │    │
+│   │  ProviderManager: 共享池, 可按 Agent 配置独立实例            │    │
 │   │  来源: AstrBot (42 providers) + opencode LLM                │    │
 │   │                                                               │    │
 │   └───────────────────────────────────────────────────────────┘    │
@@ -156,7 +193,126 @@
 
 ## 三、核心组件设计
 
-### 3.1 System Prompt Builder — 所有子系统的集成枢纽
+### 3.1 Agent Runtime — 多 Agent 实例管理
+
+**核心职责**: 在单进程内运行多个相互隔离的 Agent 实例。
+
+```python
+@dataclass
+class AgentInstance:
+    """一个运行中的 Agent。所有子系统按实例独立组装，不共享可变状态。"""
+    agent_id: str
+    config: AgentConfig                 # 独立配置 (人格/门控/记忆/工具/插件/MCP/命令)
+    gating: GatingSystem
+    prompt_builder: SystemPromptBuilder
+    hooks: AgentHooks
+    loop: ISACAgentLoop
+    memory: MemoryRetrievalPipeline     # 绑定 agent_id 记忆命名空间
+    persona: PersonaManager
+    status: str = "stopped"             # "running" | "stopped" | "error"
+
+
+class AgentManager:
+    """Agent 生命周期管理。所有公开方法同时暴露给控制面 (Admin API / MCP)。"""
+
+    async def create(self, config: AgentConfig) -> AgentInstance: ...
+    async def start(self, agent_id: str) -> None: ...
+    async def stop(self, agent_id: str) -> None: ...
+    async def destroy(self, agent_id: str, *, keep_memory: bool = True) -> None: ...
+    async def get(self, agent_id: str) -> AgentInstance | None: ...
+    async def list(self) -> list[AgentInstance]: ...
+    async def reload_config(self, agent_id: str, config: AgentConfig) -> None: ...
+```
+
+**设计要点**:
+- 每个 AgentInstance 的 Gating / PromptBuilder / Hooks / Memory / Persona 独立实例化
+- Provider 由 ProviderManager 池化共享；AgentConfig.llm 非空时为该 Agent 创建独立实例
+- 配置来源: `data/agents/<agent_id>/config.jsonc`（只写相对全局配置的覆盖项）
+- 注册表持久化: `data/agents/registry.jsonc`，重启后自动恢复 running 状态的 Agent
+- 向后兼容: 无 `data/agents/` 时自动创建默认 Agent，行为同单 Agent 模式
+
+---
+
+### 3.2 Message Router — 消息路由
+
+**核心职责**: Channel 连接与 Agent 解耦的关键——决定每条消息归属哪个 Agent。
+
+```python
+@dataclass
+class RoutingDecision:
+    agent_id: str
+    matched_by: str                     # "binding" | "trigger_word" | "default"
+    content: str                        # 剥离触发词后的内容
+
+
+class MessageRouter:
+    """消息路由器。规则可热更新 (控制面写入 data/routing.jsonc)。"""
+
+    async def route(self, message: ISACMessage) -> RoutingDecision | None:
+        """
+        优先级 (先匹配先生效):
+        1. 显式绑定: (platform, group_id/user_id) → agent_id
+        2. 触发词: 消息以某 Agent 的 trigger_word 开头 (专用/特定触发词)
+        3. 默认 Agent: 该 platform 配置 default_agent_id (无需任何触发词)
+        4. 无匹配 → None (DROP + 记录日志)
+        """
+
+    def set_rules(self, rules: RoutingRules) -> None: ...
+    def get_rules(self) -> RoutingRules: ...
+```
+
+**设计要点**:
+- 触发词命中后从消息内容中剥离，再进入目标 Agent 的 Gating
+- 一个 IM 连接可服务多个 Agent（绑定 + 触发词 + 默认 Agent 决定归属）
+- 一个 Agent 可同时绑定多个 IM（多 platform 的规则指向同一 agent_id）
+- **预留接口**: Native SDK `register_router_hook(fn)` 注册自定义路由函数（如按自动化流程分配），在优先级 1 之前执行
+
+---
+
+### 3.3 Inter-Agent Bus — Agent 互联
+
+**核心职责**: Agent 间通信总线。默认不互通，必须显式配置 Link (ACL)。
+
+```python
+@dataclass
+class InterAgentLink:
+    from_agent: str
+    to_agent: str
+    direction: str = "both"             # "both" | "oneway"
+    enabled: bool = True
+
+
+@dataclass
+class InterAgentMessage:
+    from_agent: str
+    to_agent: str
+    type: str                           # "request" | "response" | "notify" | "handoff"
+    content: str
+    context: dict = field(default_factory=dict)  # 会话摘要等附带信息
+
+
+class InterAgentBus:
+    """Agent 间通信总线。所有互联消息经过总线，天然是审计/拦截点。"""
+
+    async def send(self, message: InterAgentMessage) -> InterAgentMessage | None:
+        """检查 Link ACL → 投递到目标 Agent (经其 Gating/AgentLoop) → 返回响应"""
+
+    def add_link(self, link: InterAgentLink) -> None: ...
+    def remove_link(self, from_agent: str, to_agent: str) -> None: ...
+    def can_talk(self, from_agent: str, to_agent: str) -> bool: ...
+    def list_links(self) -> list[InterAgentLink]: ...
+```
+
+**设计要点**:
+- Agent 通过内置工具 `ask_agent(target_agent, question)` 发起通信
+- `handoff` 类型用于会话移交（Agent A 把当前对话连同摘要转给 Agent B）
+- 接收方将互联消息作为特殊消息进入自己的 Agent Loop，System Prompt 标注来源 Agent
+- Link 配置持久化: `data/links.jsonc`，控制面可热更新
+- Native SDK 可注册 `on_inter_agent_message` 钩子参与互联流程
+
+---
+
+### 3.4 System Prompt Builder — 所有子系统的集成枢纽
 
 **核心职责**: 把各子系统的 Prompt 注入块组装成最终的 System Prompt。
 
@@ -264,7 +420,7 @@ class SystemPromptBuilder:
 
 ---
 
-### 3.2 Agent Loop — 开放注入点
+### 3.5 Agent Loop — 开放注入点
 
 **核心职责**: 执行 LLM 对话循环，通过 hooks 让各子系统参与。
 
@@ -280,7 +436,7 @@ class AgentHookPoint(Enum):
     PRE_TOOL = "pre_tool"         # 工具调用前，返回 False 可阻止
     POST_TOOL = "post_tool"       # 工具调用后，可触发副作用
     COMPRESS = "compress"         # 上下文过大时触发
-    FINAL_RESPONSE = "final"      # 最终回复前
+    FINAL_RESPONSE = "final_response"  # 最终回复前
 
 
 class AgentHooks:
@@ -297,7 +453,7 @@ class ISACAgentLoop:
     async def run(self, messages: list[Message], context: AgentContext) -> AgentResult:
         iteration = 0
 
-        while context.budget.remaining > 0:
+        while context.budget.remaining:
             iteration += 1
             context.iteration = iteration
 
@@ -393,7 +549,7 @@ class ISACAgentLoop:
 
 ---
 
-### 3.3 Memory System — 检索流水线
+### 3.6 Memory System — 检索流水线
 
 **核心职责**: 跨会话的记忆存储、检索、注入。
 
@@ -449,6 +605,7 @@ class ISACAgentLoop:
 
 CREATE TABLE episodes (
     id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,     -- 记忆命名空间 ("shared" = 跨 Agent 共享)
     session_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     content TEXT NOT NULL,
@@ -460,6 +617,7 @@ CREATE TABLE episodes (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
+CREATE INDEX idx_episodes_agent ON episodes(agent_id);
 CREATE INDEX idx_episodes_user ON episodes(user_id);
 CREATE INDEX idx_episodes_time ON episodes(created_at);
 
@@ -469,7 +627,8 @@ CREATE VIRTUAL TABLE episodes_fts USING fts5(
 );
 
 CREATE TABLE person_profiles (
-    person_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    person_id TEXT NOT NULL,
     name TEXT NOT NULL,
     profile_text TEXT,
     traits TEXT,            -- JSON array
@@ -477,15 +636,18 @@ CREATE TABLE person_profiles (
     interaction_count INTEGER DEFAULT 0,
     first_seen INTEGER,
     last_seen INTEGER,
-    embedding_hash TEXT     -- 用于向量关联
+    embedding_hash TEXT,    -- 用于向量关联
+    PRIMARY KEY (agent_id, person_id)
 );
 
 CREATE TABLE jargon_entries (
-    word TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    word TEXT NOT NULL,
     meaning TEXT NOT NULL,
     context TEXT,
     usage_count INTEGER DEFAULT 0,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (agent_id, word)
 );
 
 -- VectorStore (sqlite-vec)
@@ -494,6 +656,7 @@ CREATE VIRTUAL TABLE vectors USING vec0(
     id TEXT PRIMARY KEY,
     embedding FLOAT[1024]    -- 维度可配置
 );
+-- 注: vectors 通过 id 关联 MetadataStore，按 agent_id 过滤在查询层完成
 ```
 
 **嵌入模型管理**:
@@ -537,7 +700,7 @@ class Reranker:
 
 ---
 
-### 3.4 Gating System — 门控
+### 3.7 Gating System — 门控
 
 **核心职责**: 决定"要不要说话、什么时候说"。
 
@@ -583,7 +746,7 @@ class GatingSystem:
             return GateDecision.TRIGGER
 
         # 2. 强制触发
-        if context.has_at or context.is_private_with_mention:
+        if context.has_at or (context.is_private and context.has_mention):
             return GateDecision.TRIGGER
 
         # 3. 回复必要性评分
@@ -619,7 +782,7 @@ class FocusMode:
 
 ---
 
-### 3.5 Plugin System — AstrBot 兼容 + 原生 SDK
+### 3.8 Plugin System — AstrBot / MaiBot 兼容 + 原生 SDK
 
 **兼容层架构**:
 
@@ -705,6 +868,72 @@ sys.meta_path.insert(0, AstrBotImportFinder())
 
 **局限性**: 深层 import (如 `from astrbot.core.xxx import yyy`) 需要为每个子模块建立映射。建议 P2 阶段先实现常用模块的映射，其他按需扩展。
 
+**MaiBot 兼容层**:
+
+与 AstrBot 兼容层同构，将 MaiBot 插件能力映射到 ISAC：
+
+| MaiBot 概念 | ISAC 映射 |
+|-------------|-----------|
+| Plugin 基类 | `ISACPlugin` 包装 (`plugin/compatibility/maibot/plugin.py`) |
+| Action (动作) | Agent Tool / AgentHooks |
+| Command (命令) | ISAC Command (`commands/`) |
+| 事件处理器 | EventBus / AgentHooks |
+| 插件配置 | Plugin Manifest `config_schema` |
+
+- 加载器自动识别 `plugins/` 下的 AstrBot / MaiBot / ISAC 原生三种格式
+- **锁定兼容的 MaiBot 版本**，API 细节以锁定版本为准，版本变动只改适配器
+- 与 AstrBot 兼容层共用沙箱与权限体系
+
+**ISAC Native SDK v2 (专用拓展系统)**:
+
+超越兼容层的能力，面向更强的扩展：
+
+- Hooks / Injectors / Tools（与兼容层相同的基础能力）
+- **Commands** — 用户斜杠命令，可按 Agent / Channel 独立启停
+- **Inter-Agent Hooks** — `on_inter_agent_message` 等互联钩子
+- **Admin Routes**（预留）— 插件向 Admin API 注册管理端点
+- **自定义扩展点**（预留）— Memory Backend / Provider / Router Hook
+
+**插件启用矩阵**:
+
+插件可用性按两级矩阵控制，配置即可生效，无需改代码：
+
+- Agent 级: `AgentConfig.plugins_allow / plugins_deny`
+- Channel 级: 全局配置 `plugins.channel_matrix`
+- 有效权限 = Agent 允许 ∩ Channel 允许 ∩ 工具权限策略（DEVELOP.md 7.3）
+
+---
+
+### 3.9 Control Plane — 管理自动化 (商业化预留)
+
+**核心职责**: 独立于数据面的管理面。不参与消息处理，只管理配置与生命周期，所有操作复用 AgentManager / Router / Bus / PluginManager 的公开方法。
+
+```
+┌────────────────────────────────────────────────────────────┐
+│  Admin REST API (FastAPI, 默认 127.0.0.1 + Token 认证)      │
+│  - Agent CRUD / 启停 / 配置读写                             │
+│  - Channel 绑定 / 路由规则 / 默认 Agent                     │
+│  - Inter-Agent Link 管理                                    │
+│  - 插件启用矩阵 / MCP Server 配置                           │
+├────────────────────────────────────────────────────────────┤
+│  ISAC MCP Server (ISAC 作为 MCP 服务端)                     │
+│  - 暴露管理工具: agent_create / agent_bind /                │
+│    route_set_default / link_create / config_set ...         │
+│  - 外部系统可用任意 MCP 客户端自动化管理 ISAC               │
+├────────────────────────────────────────────────────────────┤
+│  Webhooks / Automation                                      │
+│  - 事件推送: message.received / agent.created / ...         │
+│  - 自动化触发器: 外部事件 → 创建 Agent → 绑定 IM            │
+│  - 预留: 自定义 Workflow 编排接口                           │
+└────────────────────────────────────────────────────────────┘
+```
+
+**设计要点**:
+- 自动化示例: Webhook 收到事件 → `POST /agents` 创建 Agent → `POST /channels/{platform}/agents/{id}` 绑定 → 设置默认 Agent
+- 认证: `Authorization: Bearer <api_token>`，默认仅监听 127.0.0.1
+- 通过自动化创建的 Agent 使用受限默认配置（deny-by-default 工具策略）
+- 详细端点与 MCP 工具清单见 SPECIFICATION.md 4.4 / 4.5
+
 ---
 
 ## 四、配置版本化
@@ -766,7 +995,15 @@ User 发送消息
     │  加载 UserProfile                                       │
     │                                                        │
     ▼                                                        │
-[🚪 GatingSystem]  ⬅ 是否进入 Agent?                        │
+[🧭 MessageRouter]  ⬅ 消息归属哪个 Agent?                    │
+    │  显式绑定 → 触发词 → 默认 Agent                        │
+    │  剥离触发词，附带 agent_id                              │
+    │                                                        │
+    ▼                                                        │
+[AgentInstance]  进入该 Agent 的独立流水线                    │
+    │                                                        │
+    ▼                                                        │
+[🚪 GatingSystem]  ⬅ 是否进入 Agent Loop?                   │
     │  Reply Necessity Score ≥ 80?                          │
     │  Idle Backoff 未生效?                                 │
     │  → TRIGGER                                             │
@@ -826,6 +1063,7 @@ ISAC/
 │   │   ├── __init__.py
 │   │   ├── events.py               # EventType 枚举
 │   │   ├── types.py                # 核心类型定义
+│   │   ├── exceptions.py           # ISACError 错误体系
 │   │   └── constants.py            # 常量
 │   │
 │   ├── locales/                    # 多语言支持 (i18n)
@@ -857,6 +1095,12 @@ ISAC/
 │   │   ├── session.py              # SessionManager
 │   │   ├── user_mapper.py          # 跨平台用户映射
 │   │   └── models.py               # Session/Profile 数据模型
+│   │
+│   ├── router/                     # 消息路由 (Agent 归属)
+│   │   ├── __init__.py
+│   │   ├── router.py               # MessageRouter
+│   │   ├── rules.py                # RoutingRules 持久化 + 热更新
+│   │   └── types.py                # RoutingDecision / ChannelBinding
 │   │
 │   ├── gating/                     # 门控系统
 │   │   ├── __init__.py
@@ -903,6 +1147,20 @@ ISAC/
 │   │           ├── __init__.py
 │   │           └── client.py
 │   │
+│   ├── commands/                   # 命令系统 (用户/管理命令)
+│   │   ├── __init__.py
+│   │   ├── base.py                 # Command 基类
+│   │   ├── registry.py             # CommandRegistry (按 Agent/Channel 启停)
+│   │   └── builtin/                # 内置命令 (/focus /agents /mute ...)
+│   │
+│   ├── runtime/                    # 多 Agent 运行时
+│   │   ├── __init__.py
+│   │   ├── instance.py             # AgentInstance
+│   │   ├── manager.py              # AgentManager (生命周期)
+│   │   ├── assembly.py             # 按 AgentConfig 组装子系统
+│   │   ├── config.py               # AgentConfig / 配置分层加载
+│   │   └── bus.py                  # InterAgentBus (Agent 互联)
+│   │
 │   ├── memory/                     # Memory System
 │   │   ├── __init__.py
 │   │   ├── pipeline.py             # MemoryRetrievalPipeline
@@ -927,17 +1185,25 @@ ISAC/
 │   │   ├── manager.py              # PersonaManager
 │   │   ├── drift_profiles.py       # 注意力漂移配置
 │   │   ├── style_profiles.py       # 表达风格配置
-│   │   └── mood.py                 # 情绪状态
+│   │   ├── mood.py                 # 情绪状态模型 (由 agent/injectors/mood.py 读取)
+│   │   └── behavior_learner.py     # BehaviorLearner (注册 FINAL_RESPONSE hook)
 │   │
 │   ├── plugin/                     # Plugin System
 │   │   ├── __init__.py
-│   │   ├── compatibility/          # AstrBot 兼容层
+│   │   ├── compatibility/          # 插件兼容层
 │   │   │   ├── __init__.py
-│   │   │   ├── star.py             # Star 基类
-│   │   │   ├── context.py          # Context API 模拟
-│   │   │   ├── events.py           # EventType 映射
-│   │   │   ├── tools.py            # FunctionTool 桥接
-│   │   │   └── sandbox.py          # Import 重定向
+│   │   │   ├── astrbot/            # AstrBot 兼容
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── star.py         # Star 基类
+│   │   │   │   ├── context.py      # Context API 模拟
+│   │   │   │   ├── events.py       # EventType 映射
+│   │   │   │   ├── tools.py        # FunctionTool 桥接
+│   │   │   │   └── sandbox.py      # Import 重定向
+│   │   │   └── maibot/             # MaiBot 兼容
+│   │   │       ├── __init__.py
+│   │   │       ├── plugin.py       # Plugin 基类映射
+│   │   │       ├── actions.py      # Action → Tool / Hook
+│   │   │       └── commands.py     # Command → ISAC Command
 │   │   ├── native/                 # ISAC 原生 SDK
 │   │   │   ├── __init__.py
 │   │   │   ├── plugin.py           # ISACPlugin 基类
@@ -962,6 +1228,18 @@ ISAC/
 │   │   ├── rerank/                 # Reranking Providers
 │   │   └── stt_tts/                # STT/TTS Providers
 │   │
+│   ├── control/                    # 控制面 (管理自动化，商业化预留)
+│   │   ├── __init__.py
+│   │   ├── api/                    # Admin REST API (FastAPI)
+│   │   │   ├── __init__.py
+│   │   │   ├── server.py
+│   │   │   ├── routes_agents.py
+│   │   │   ├── routes_routing.py
+│   │   │   └── routes_plugins.py
+│   │   ├── mcp_server.py           # ISAC 作为 MCP 服务端
+│   │   ├── webhooks.py             # 事件推送 / 自动化触发
+│   │   └── auth.py                 # Token 认证
+│   │
 │   └── utils/                      # 工具
 │       ├── __init__.py
 │       ├── logger.py               # 日志
@@ -973,8 +1251,15 @@ ISAC/
 │   └── README.md
 │
 ├── data/                           # 运行数据 (gitignored)
-│   ├── config.jsonc
-│   ├── memory/
+│   ├── config.jsonc                # 全局配置
+│   ├── agents/                     # 多 Agent
+│   │   ├── registry.jsonc          # Agent 注册表
+│   │   └── <agent_id>/
+│   │       ├── config.jsonc        # 该 Agent 独立配置
+│   │       └── memory/             # 该 Agent 记忆数据
+│   ├── routing.jsonc               # 路由规则 (绑定 / 默认 Agent)
+│   ├── links.jsonc                 # Agent 互联 Link
+│   ├── memory/                     # 共享记忆命名空间 ("shared", 可选)
 │   │   ├── metadata.db
 │   │   └── vectors/
 │   └── sessions/
@@ -1077,6 +1362,64 @@ drift_rule = load_text("attention_drift.subtle", locale="zh_CN")
 # 返回: "漂移档位：轻微漂移。只在最近消息里出现非常自然的触发点时..."
 ```
 
+### ADR-007: 为什么单进程多 Agent 而不是多进程？
+
+**上下文**: 多 Agent 可以用每个 Agent 一个进程实现。
+
+**决策**: 单进程内运行多个 AgentInstance。
+
+**原因**:
+- 共享 Channel 连接（一个 QQ 账号服务多个 Agent）在多进程下需要额外 IPC
+- Provider 连接池 / 嵌入模型可在进程内共享，降低内存与成本
+- 单机部署保持简单（简洁优先）
+- 隔离性通过实例级组装（无共享可变状态）保证；需要更强隔离时可按 agent_id 拆分部署
+
+### ADR-008: 为什么 Channel 连接与 Agent 解耦？
+
+**上下文**: 一个 IM 连接（如一个 QQ Bot）要服务多个 Agent；一个 Agent 也要连接多个 IM。
+
+**决策**: Channel 连接是共享资源，MessageRouter 按规则把消息路由到 Agent。
+
+**原因**:
+- IM 账号是稀缺资源（QQ 需要独立账号 / 手机验证）
+- 路由规则（绑定 / 触发词 / 默认 Agent）可热更新，无需重启连接
+- Agent 与 IM 的绑定关系成为纯配置，可被控制面自动化管理
+
+### ADR-009: 为什么 Agent 互联用显式 Link + 总线？
+
+**上下文**: Agent 间通信可以互相直接调用方法。
+
+**决策**: InterAgentBus 统一转发，必须配置 Link (ACL) 才能通信。
+
+**原因**:
+- 默认不互通，避免 Agent 间意外串话 / Prompt 污染
+- 总线是天然审计点：所有互联消息可记录、可拦截、可挂钩子
+- Link 配置可热更新，配合控制面实现自动化编排
+
+### ADR-010: 为什么同时兼容 AstrBot 和 MaiBot，还要原生 SDK？
+
+**上下文**: AstrBot 与 MaiBot 都有成熟插件生态，但能力模型不同。
+
+**决策**: 双兼容层 + ISAC Native SDK v2 并存。
+
+**原因**:
+- 兼容层最大化复用存量生态，降低用户迁移成本
+- MaiBot 插件（Action / Command 模型）与 AstrBot（Star / Event 模型）互补
+- 兼容层只能覆盖共性能力；互联钩子、命令、管理面扩展等 ISAC 独有能力由原生 SDK 承载
+- 三种格式在同一沙箱 / 权限体系下运行
+
+### ADR-011: 为什么控制面独立于数据面？
+
+**上下文**: 商业化需要通过 API 触发自动化（创建 Agent、绑定 IM、修改参数）。
+
+**决策**: Admin REST API + ISAC MCP Server + Webhooks 组成独立控制面。
+
+**原因**:
+- 控制面操作全部复用 AgentManager / Router / Bus 的公开方法，不与消息处理耦合
+- MCP Server 让外部 Agent 系统也能管理 ISAC（顺应 MCP 生态）
+- 默认 127.0.0.1 + Token，攻击面可控
+- 预留 Workflow 编排与插件 Admin Routes，支撑未来商业化功能
+
 ---
 
 ## 八、非功能性需求
@@ -1090,3 +1433,6 @@ drift_rule = load_text("attention_drift.subtle", locale="zh_CN")
 | **可维护性** | 每个子系统可独立测试；模块间通过明确接口通信 |
 | **安全性** | 插件沙箱隔离；敏感信息 (API Key) 加密存储 |
 | **可观测性** | 结构化日志 (structlog)；关键事件带上下文信息 |
+| **多实例** | 单进程 10+ Agent 实例，互不影响 |
+| **隔离性** | Agent 间记忆/配置/工具权限隔离；共享命名空间需显式启用 |
+| **自动化** | 核心管理操作 100% 可通过 Admin API / MCP 完成 |

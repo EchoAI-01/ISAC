@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# 工具缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 运行数据 (保留目录占位)
+data/*
+!data/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+
+# 日志
+*.log

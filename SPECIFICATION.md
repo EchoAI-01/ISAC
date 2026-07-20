@@ -66,6 +66,7 @@ class Session:
     session_id: str                          # 全局唯一会话 ID
     user_id: str                             # 主用户 ID (跨平台统一)
     user_ids: dict[str, str] = field(default_factory=dict)  # 各平台 user_id 映射
+    agent_id: str = ""                       # 所属 Agent (多 Agent 架构)
     platform: str = ""                       # 当前交互平台
     group_id: Optional[str] = None           # 群聊 ID
     is_group: bool = False                   # 是否群聊
@@ -102,7 +103,7 @@ class Budget:
         return max(0, self.max_tokens - self.used_tokens)
 
     @property
-    def remaining(self) -> int:
+    def remaining(self) -> bool:
         """是否还有预算（迭代和 Token 都要有余量）"""
         return self.remaining_iterations > 0 and self.remaining_tokens > 0
 
@@ -174,6 +175,96 @@ class MessageStatus(Enum):
     ERROR = "error"                  # 处理出错
 ```
 
+### 1.6 AgentConfig / AgentInstance — Agent 配置与实例
+
+```python
+@dataclass
+class AgentConfig:
+    """单个 Agent 的独立配置 (data/agents/<agent_id>/config.jsonc)"""
+
+    agent_id: str
+    display_name: str = ""
+    enabled: bool = True
+
+    # 人格 / 门控: 覆盖全局配置的子集
+    persona: dict = field(default_factory=dict)
+    gating: dict = field(default_factory=dict)
+
+    # 记忆命名空间: 默认 = agent_id; "shared" 表示跨 Agent 共享
+    memory_namespace: str = ""
+
+    # LLM: None = 使用全局默认 Provider; 否则该 Agent 独立 Provider 配置
+    llm: dict | None = None
+
+    # 路由触发词: 消息以这些词开头时路由到本 Agent
+    trigger_words: list[str] = field(default_factory=list)
+
+    # 能力开关: 插件 / 工具 / 命令 / MCP, 按 Agent 独立配置
+    plugins_allow: list[str] = field(default_factory=lambda: ["*"])
+    plugins_deny: list[str] = field(default_factory=list)
+    tools_policy: dict = field(default_factory=dict)      # 覆盖全局工具权限
+    commands_allow: list[str] = field(default_factory=lambda: ["*"])
+    mcp_servers: list[str] = field(default_factory=list)  # 允许使用的 MCP Server 名
+
+
+@dataclass
+class AgentInstance:
+    """运行中的 Agent (组装细节见 ARCHITECTURE.md 3.1)"""
+    agent_id: str
+    config: AgentConfig
+    status: str = "stopped"           # "running" | "stopped" | "error"
+```
+
+### 1.7 RoutingRule / ChannelBinding — 路由
+
+```python
+@dataclass
+class ChannelBinding:
+    """显式绑定: 某平台某会话固定归属某 Agent (路由优先级最高)"""
+    platform: str
+    agent_id: str
+    group_id: str | None = None       # 与 user_id 都为 None 表示整个平台
+    user_id: str | None = None
+
+
+@dataclass
+class RoutingRules:
+    """路由规则集 (data/routing.jsonc, 控制面可热更新)"""
+    bindings: list[ChannelBinding] = field(default_factory=list)
+    default_agents: dict[str, str] = field(default_factory=dict)  # platform -> agent_id
+    # trigger_words 在各 AgentConfig 中定义
+
+
+@dataclass
+class RoutingDecision:
+    """路由结果"""
+    agent_id: str
+    matched_by: str                   # "binding" | "trigger_word" | "default"
+    content: str                      # 剥离触发词后的内容
+```
+
+### 1.8 InterAgentLink / InterAgentMessage — Agent 互联
+
+```python
+@dataclass
+class InterAgentLink:
+    """Agent 互联链路 (data/links.jsonc, ACL)"""
+    from_agent: str
+    to_agent: str
+    direction: str = "both"           # "both" | "oneway"
+    enabled: bool = True
+
+
+@dataclass
+class InterAgentMessage:
+    """Agent 间消息"""
+    from_agent: str
+    to_agent: str
+    type: str                         # "request" | "response" | "notify" | "handoff"
+    content: str
+    context: dict = field(default_factory=dict)
+```
+
 ---
 
 ## 二、接口契约
@@ -215,10 +306,14 @@ class PlatformAdapter(ABC):
 ### 2.2 PromptInjector — Prompt 注入器
 
 ```python
-from typing import Protocol
+from abc import ABC
 
-class PromptInjector(Protocol):
-    """Prompt 注入器协议。每个子系统实现此协议来注入 Prompt 块。"""
+class PromptInjector(ABC):
+    """Prompt 注入器抽象基类（与 ARCHITECTURE.md 3.4 一致）。
+
+    除 `key` 与 `build()` 外，各属性均提供默认实现，子类按需覆写。
+    每个子系统实现此基类来注入 Prompt 块。
+    """
 
     @property
     def key(self) -> str:
@@ -344,6 +439,7 @@ class MemoryRetrievalPipeline:
         query: str,
         top_k: int = 5,
         filters: dict | None = None,
+        agent_id: str = "",
         user_id: str = "",
         group_id: str = "",
     ) -> list[MemoryHit]:
@@ -354,6 +450,7 @@ class MemoryRetrievalPipeline:
             query: 查询文本
             top_k: 返回结果数
             filters: 元数据过滤条件
+            agent_id: 记忆命名空间 (默认当前 Agent; "shared" = 跨 Agent 共享)
             user_id: 用户 ID (用于权限过滤)
             group_id: 群组 ID (用于权限过滤)
 
@@ -367,9 +464,10 @@ class MemoryRetrievalPipeline:
         content: str,
         session_id: str,
         user_id: str,
+        agent_id: str = "",
         metadata: dict | None = None,
     ) -> str:
-        """存储一条情景记忆。返回记忆 ID。"""
+        """存储一条情景记忆 (写入 agent_id 命名空间)。返回记忆 ID。"""
         ...
 
 
@@ -458,6 +556,9 @@ ISAC 原生插件的 manifest 格式 (JSONC):
     "hooks": ["pre_llm", "post_tool"],   // 声明使用的 Agent hooks
     "tools": ["my_tool"],           // 声明提供的工具
     "injectors": ["my_injector"],   // 声明提供的注入器
+    "commands": ["my_command"],     // 声明提供的命令 (原生 SDK)
+    "inter_agent_hooks": ["on_inter_agent_message"],  // 互联钩子 (原生 SDK)
+    "admin_routes": ["/my_plugin/status"],            // 预留: 管理端点 (原生 SDK)
     "permissions": [                 // 声明申请的权限
         "filesystem:read:data/",
         "network:https",
@@ -517,6 +618,86 @@ class EventType:
     # LLM 事件 (映射到 AgentHooks，不经过 EventBus)
     OnLLMRequestEvent = "on_llm_request"        # → AgentHooks.PRE_LLM
     OnAfterLLMResponseEvent = "on_after_llm_response"  # → AgentHooks.POST_LLM
+```
+
+### 2.8 AgentManager — Agent 生命周期
+
+```python
+class AgentManager:
+    """Agent 生命周期管理契约。
+
+    所有公开方法同时暴露给 Admin API 与 ISAC MCP Server (控制面)，
+    control/ 不得复制业务逻辑。
+    """
+
+    async def create(self, config: AgentConfig) -> AgentInstance: ...
+    async def start(self, agent_id: str) -> None: ...
+    async def stop(self, agent_id: str) -> None: ...
+    async def destroy(self, agent_id: str, *, keep_memory: bool = True) -> None: ...
+    async def get(self, agent_id: str) -> AgentInstance | None: ...
+    async def list(self) -> list[AgentInstance]: ...
+    async def reload_config(self, agent_id: str, config: AgentConfig) -> None: ...
+```
+
+### 2.9 MessageRouter — 消息路由
+
+```python
+class MessageRouter:
+    """消息路由契约 (路由优先级见 ARCHITECTURE.md 3.2)"""
+
+    async def route(self, message: ISACMessage) -> RoutingDecision | None:
+        """返回目标 Agent; None 表示 DROP"""
+
+    def set_rules(self, rules: RoutingRules) -> None:
+        """热更新路由规则 (持久化到 data/routing.jsonc)"""
+
+    def get_rules(self) -> RoutingRules: ...
+
+    def register_router_hook(self, fn: Callable) -> None:
+        """预留: 自定义路由函数 (Native SDK)，在显式绑定之前执行"""
+```
+
+### 2.10 InterAgentBus — Agent 互联
+
+```python
+class InterAgentBus:
+    """Agent 互联总线契约。默认不互通，必须显式配置 Link。"""
+
+    async def send(self, message: InterAgentMessage) -> InterAgentMessage | None:
+        """检查 Link ACL → 投递到目标 Agent → 返回响应 (notify 类型返回 None)"""
+
+    def add_link(self, link: InterAgentLink) -> None: ...
+    def remove_link(self, from_agent: str, to_agent: str) -> None: ...
+    def can_talk(self, from_agent: str, to_agent: str) -> bool: ...
+    def list_links(self) -> list[InterAgentLink]: ...
+```
+
+### 2.11 CommandRegistry — 命令系统
+
+```python
+class Command(ABC):
+    """命令基类 (用户斜杠命令 / 管理命令)"""
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def description(self) -> str: ...
+    @property
+    def usage(self) -> str: ...
+
+    async def execute(self, message: ISACMessage, args: str, context: AgentContext) -> str:
+        """执行命令，返回回复文本"""
+
+
+class CommandRegistry:
+    """命令注册表。命令可按 Agent / Channel 独立启停。"""
+
+    def register(self, command: Command) -> None: ...
+    async def try_execute(self, message: ISACMessage, agent_id: str) -> str | None:
+        """消息以 '/' 开头时尝试执行; 未命中或已禁用返回 None"""
+    def is_enabled(self, name: str, agent_id: str, platform: str) -> bool: ...
+
+# 内置命令: /focus /agents /use <agent_id> /mute /unmute
 ```
 
 ---
@@ -637,6 +818,77 @@ ISAC_LOG_LEVEL → log_level
 ISAC_MEMORY_ENABLED → memory.enabled
 ```
 
+### 3.3 多 Agent 配置
+
+**配置层次** (后者覆盖前者):
+
+1. 全局 `data/config.jsonc`
+2. Agent 级 `data/agents/<agent_id>/config.jsonc` (只写覆盖项)
+3. 环境变量 / CLI 参数
+
+**全局配置新增**:
+
+```jsonc
+{
+    // 控制面
+    "control": {
+        "enabled": true,
+        "host": "127.0.0.1",            // 默认仅本机
+        "port": 8765,
+        "api_token": "...",             // Admin API / MCP Server 认证
+        "mcp_server_enabled": false,
+    },
+
+    // 路由
+    "router": {
+        "rules_file": "data/routing.jsonc",
+    },
+
+    // 插件 Channel 级启用矩阵
+    "plugins": {
+        "channel_matrix": {
+            "qq": {"deny": ["bash_tool"]},
+        },
+    },
+}
+```
+
+**Agent 配置示例** (`data/agents/alice/config.jsonc`):
+
+```jsonc
+{
+    "agent_id": "alice",
+    "display_name": "爱丽丝",
+    "trigger_words": ["爱丽丝", "@alice"],
+    "persona": {"expression_style": {"humor": 0.8}},
+    "gating": {"reply_necessity_threshold": 70},
+    "plugins_allow": ["weather", "search"],
+    "mcp_servers": ["filesystem"],
+    "commands_allow": ["focus", "mute"],
+}
+```
+
+**路由规则示例** (`data/routing.jsonc`):
+
+```jsonc
+{
+    "bindings": [
+        {"platform": "qq", "group_id": "123456", "agent_id": "alice"},
+    ],
+    "default_agents": {"qq": "bob", "telegram": "alice"},
+}
+```
+
+**互联 Link 示例** (`data/links.jsonc`):
+
+```jsonc
+{
+    "links": [
+        {"from": "alice", "to": "bob", "direction": "both", "enabled": true},
+    ],
+}
+```
+
 ---
 
 ## 四、协议定义
@@ -647,20 +899,9 @@ ISAC_MEMORY_ENABLED → memory.enabled
 from enum import Enum
 
 class EventType(Enum):
-    """ISAC 事件类型"""
+    """ISAC 事件类型（由 EventBus 处理）"""
 
     # 生命周期
-    ON_START = "on_start"                       # 系统启动
-    ON_STOP = "on_stop"                         # 系统停止
-    ON_SESSION_CREATE = "on_session_create"     # 会话创建
-    ON_SESSION_CLOSE = "on_session_close"       # 会话关闭
-
-    # 消息事件
-    ON_MESSAGE_PRE = "on_message_pre"           # 消息预处理 (Intercept)
-    ON_MESSAGE = "on_message"                   # 消息到达 (Intercept)
-    POST_MESSAGE = "post_message"               # 消息处理完成 (Async)
-
-# 消息流事件 (EventBus 处理)
     ON_START = "on_start"                       # 系统启动
     ON_STOP = "on_stop"                         # 系统停止
     ON_SESSION_CREATE = "on_session_create"     # 会话创建
@@ -693,14 +934,6 @@ class AgentHookPoint(Enum):
     POST_TOOL = "post_tool"                     # 工具调用后
     COMPRESS = "compress"                       # 上下文压缩
     FINAL_RESPONSE = "final_response"           # 最终回复
-
-    # 发送事件
-    POST_SEND_PRE = "post_send_pre"             # 发送前预处理 (Intercept)
-    POST_SEND = "post_send"                     # 发送完成 (Async)
-
-    # 记忆事件
-    ON_MEMORY_RETRIEVE = "on_memory_retrieve"   # 记忆检索
-    ON_MEMORY_STORE = "on_memory_store"         # 记忆存储
 ```
 
 ### 4.2 WebSocket 协议 (内置 WebChat 适配器)
@@ -746,6 +979,75 @@ class AgentHookPoint(Enum):
     }
 }
 ```
+
+### 4.3 Inter-Agent 消息协议
+
+总线内部消息格式（Webhook 可订阅 `inter_agent.sent` 事件）:
+
+```json
+{
+    "type": "inter_agent",
+    "from_agent": "alice",
+    "to_agent": "bob",
+    "msg_type": "request",
+    "content": "用户问到了你擅长的领域...",
+    "context": {"session_id": "sess_001", "summary": "..."},
+    "timestamp": 1721234567
+}
+```
+
+### 4.4 Admin REST API (控制面)
+
+基础地址: `http://127.0.0.1:8765/api/v1`
+认证: `Authorization: Bearer <control.api_token>`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /agents | 创建 Agent (body: AgentConfig) |
+| GET | /agents | 列出 Agent |
+| GET / PATCH / DELETE | /agents/{id} | 读取 / 改配置 / 销毁 |
+| POST | /agents/{id}/start | 启动 |
+| POST | /agents/{id}/stop | 停止 |
+| GET / PUT | /routing/rules | 路由规则读写 (含默认 Agent) |
+| GET / POST / DELETE | /links | 互联 Link 管理 |
+| GET | /channels | 列出 Channel 连接 |
+| POST / DELETE | /channels/{platform}/agents/{agent_id} | 绑定 / 解绑 |
+| GET / PUT | /agents/{id}/plugins | 插件启用矩阵 |
+| POST | /automation/trigger | 自动化触发器 (预留) |
+| GET / POST / DELETE | /webhooks | Webhook 订阅管理 |
+
+统一错误格式:
+
+```json
+{"error": {"code": "AGENT_NOT_FOUND", "message": "...", "retriable": false}}
+```
+
+Webhook 事件推送格式:
+
+```json
+{
+    "event": "message.received",
+    "timestamp": 1721234567,
+    "data": {"agent_id": "alice", "platform": "qq", "...": "..."}
+}
+```
+
+事件类型: `message.received` / `message.responded` / `agent.created` / `agent.stopped` / `inter_agent.sent`
+
+### 4.5 ISAC MCP Server (控制面)
+
+ISAC 可作为 MCP 服务端（`control.mcp_server_enabled: true`），让外部系统用 MCP 协议管理，与 Admin API 共用认证:
+
+| 工具 | 说明 |
+|------|------|
+| agent_create | 创建 Agent |
+| agent_update_config | 修改 Agent 参数 |
+| agent_start / agent_stop | 生命周期 |
+| channel_bind_agent / channel_unbind_agent | Channel ↔ Agent 绑定 |
+| route_set_default | 设置平台默认 Agent |
+| link_create / link_delete | 互联 Link 管理 |
+| plugin_set_enabled | 插件启用矩阵 |
+| message_send | 以某 Agent 身份发送消息 (自动化流程入口) |
 
 ---
 
@@ -806,15 +1108,18 @@ async def safe_build(self, context) -> str:
 ### 5.3 结构化错误
 
 ```python
-from dataclasses import dataclass
+# 位于 isac/core/exceptions.py
 
-@dataclass
 class ISACError(Exception):
     """ISAC 基础错误"""
-    message: str
-    code: str
+
+    code: str = "ISAC_ERROR"
     retriable: bool = False
-    context: dict | None = None
+
+    def __init__(self, message: str, *, context: dict | None = None):
+        super().__init__(message)
+        self.message = message
+        self.context = context
 
 class PlatformError(ISACError):
     """平台连接错误"""
