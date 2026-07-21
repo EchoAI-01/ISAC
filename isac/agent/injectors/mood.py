@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isac.agent.injector import PromptInjector
+from isac.core.injector import PromptInjector
 from isac.core.types import InjectionContext
 
 if TYPE_CHECKING:

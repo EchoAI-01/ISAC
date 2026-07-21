@@ -47,3 +47,13 @@ class ISACMessage:
     def has_at(self, bot_id: str) -> bool:
         """消息中是否 @ 了指定用户 (通常传 bot 自身 ID)。"""
         return any(seg.type == "at" and seg.data.get("user_id") == bot_id for seg in self.segments)
+
+    def has_mention(self, names: list[str]) -> bool:
+        """消息文本中是否以纯文本形式提及指定名称（不含 @）。
+
+        用于私聊场景下的门控强制触发：用户直接叫 Bot 名字也算 "提及"。
+        """
+        if not self.content or not names:
+            return False
+        lower = self.content.lower()
+        return any(name.lower() in lower for name in names if name)

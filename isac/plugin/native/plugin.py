@@ -16,9 +16,9 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from isac.agent.hooks import AgentHooks
-    from isac.agent.injector import PromptInjector
     from isac.agent.tools.base import Tool
     from isac.commands.base import Command
+    from isac.core.injector import PromptInjector
     from isac.gateway.event_bus import EventBus
     from isac.router.router import MessageRouter
 

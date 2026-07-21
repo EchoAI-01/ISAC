@@ -100,7 +100,7 @@ async def main() -> None:
 
     # ── Channel ─────────────────────────────────────────────
     channel_registry = ChannelRegistry()
-    # TODO(Day 3-5): 按配置注册 OneBotAdapter，并注入 on_message = handle_message
+    # TODO(C1): 按配置注册 OneBotAdapter，并注入 on_message = handle_message
 
     # ── Control Plane (可选) ─────────────────────────────────
     control_config = global_config.get("control", {})

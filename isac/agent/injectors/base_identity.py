@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from isac.agent.injector import PromptInjector
+from isac.core.injector import PromptInjector
 from isac.core.types import InjectionContext
 from isac.locales import load_text
 

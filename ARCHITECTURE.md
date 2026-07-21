@@ -355,14 +355,16 @@ class AgentContext(RuntimeContext):
     interrupt_requested: bool = False
     reasoning_content: str = ""
     available_prompt_tokens: int = 8000
+    streaming: bool = False                              # 是否以流式模式调用 LLM
+    on_chunk: Callable[[LLMChunk], Awaitable[None]] | None = None  # 流式回调
 
 
 @dataclass
 class GatingContext(RuntimeContext):
     """门控决策上下文"""
     pending_count: int = 0
-    has_at: bool = False
-    has_mention: bool = False
+    has_at: bool = False          # 消息中是否 @ Bot（由消息平台元数据/segment 判定）
+    has_mention: bool = False     # 消息文本是否提及 Bot 名字（不含 @）；由 AgentManager 按 Agent display_name 填充
     is_private: bool = False
     idle_seconds: float = 0.0
     effective_frequency: float = 1.0
@@ -372,7 +374,12 @@ class GatingContext(RuntimeContext):
 
 
 class PromptInjector(ABC):
-    """Prompt 注入器抽象基类。所有注入器必须继承此类。"""
+    """Prompt 注入器抽象基类。所有注入器必须继承此类。
+
+    位置: `isac/core/injector.py`。
+    放在 core 而非 agent，是为了让 `memory/injector/` 与 `agent/injectors/`
+    都能单向依赖 core，避免 memory → agent 的导入环。
+    """
 
     @property
     def key(self) -> str:
@@ -826,41 +833,49 @@ class FocusMode:
 ```python
 # 方案: sys.meta_path 自定义查找器
 # 拦截 astrbot.* 的 import，重定向到 ISAC 兼容层
+# 使用 Python 3.12 兼容的 find_spec / exec_module 协议
 
 import importlib
 import sys
+from importlib.abc import Loader, MetaPathFinder
+from importlib.machinery import ModuleSpec
 
-class AstrBotImportFinder:
+
+class AstrBotImportFinder(MetaPathFinder):
     """拦截 astrbot.* 的 import"""
 
     # 兼容层覆盖的 astrbot 模块清单
     MAPPING = {
-        "astrbot.api.star": "isac.plugin.compatibility.star",
-        "astrbot.api.event": "isac.plugin.compatibility.events",
-        "astrbot.api.provider": "isac.plugin.compatibility.provider",
-        "astrbot.api.platform": "isac.plugin.compatibility.platform",
+        "astrbot.api.star": "isac.plugin.compatibility.astrbot.star",
+        "astrbot.api.event": "isac.plugin.compatibility.astrbot.events",
+        "astrbot.api.provider": "isac.plugin.compatibility.astrbot.context",
+        "astrbot.api.platform": "isac.plugin.compatibility.astrbot.context",
     }
 
-    def find_module(self, name: str, path=None):
-        if name.startswith("astrbot."):
-            if name in self.MAPPING:
-                return AstrBotModuleLoader(self.MAPPING[name])
-            # 未映射的 astrbot 模块 → 抛出 ImportError
-            # 开发者需要为深层 import 添加映射
-            raise ImportError(
-                f"不支持的 astrbot 模块: {name}。"
-                f"兼容层仅覆盖: {list(self.MAPPING.keys())}"
-            )
-        return None
+    def find_spec(self, name: str, path=None, target=None):
+        if not name.startswith("astrbot."):
+            return None
+        if name in self.MAPPING:
+            target_module = self.MAPPING[name]
+            importlib.import_module(target_module)  # 预加载目标模块
+            return ModuleSpec(name, AstrBotModuleLoader(target_module), origin=target_module)
+        raise ImportError(
+            f"不支持的 astrbot 模块: {name}。"
+            f"兼容层仅覆盖: {list(self.MAPPING.keys())}"
+        )
 
-class AstrBotModuleLoader:
+
+class AstrBotModuleLoader(Loader):
     def __init__(self, target_module: str):
         self.target = target_module
 
-    def load_module(self, name: str):
-        module = importlib.import_module(self.target)
-        sys.modules[name] = module
-        return module
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        target = importlib.import_module(self.target)
+        sys.modules[module.__name__] = target
+
 
 # 安装沙箱 (在插件加载前)
 sys.meta_path.insert(0, AstrBotImportFinder())
@@ -955,12 +970,15 @@ class ConfigMigrator:
     """配置迁移器"""
 
     MIGRATIONS: dict[str, Callable] = {
+        # 从缺省/未声明版本迁移到 1.0.0
+        "0.0.0": migrate_from_0_0_to_1_0,
         "0.9.0": migrate_from_0_9_to_1_0,
         "1.0.0": migrate_from_1_0_to_1_1,
     }
 
     def migrate(self, config: dict) -> dict:
         """从当前版本迁移到最新版本"""
+        # 配置文件缺失 config_version 时视为 "0.0.0"，触发迁移
         current_version = config.get("config_version", "0.0.0")
         target_version = self._get_latest_version()
 
@@ -990,14 +1008,15 @@ User 发送消息
 [EventBus.InterceptChain]  插件可拦截/修改 (ON_MESSAGE)      │
     │                                                        │
     ▼                                                        │
-[SessionManager]  查找/创建 Session                          │
-    │  跨平台用户识别 (UserMapper)                            │
-    │  加载 UserProfile                                       │
-    │                                                        │
-    ▼                                                        │
 [🧭 MessageRouter]  ⬅ 消息归属哪个 Agent?                    │
     │  显式绑定 → 触发词 → 默认 Agent                        │
     │  剥离触发词，附带 agent_id                              │
+    │                                                        │
+    ▼                                                        │
+[SessionManager]  查找/创建 Session                          │
+    │  Session 的 key 包含 agent_id，因此先路由后建会话       │
+    │  跨平台用户识别 (UserMapper)                            │
+    │  加载 UserProfile                                       │
     │                                                        │
     ▼                                                        │
 [AgentInstance]  进入该 Agent 的独立流水线                    │
@@ -1063,14 +1082,14 @@ ISAC/
 │   │   ├── __init__.py
 │   │   ├── events.py               # EventType 枚举
 │   │   ├── types.py                # 核心类型定义
+│   │   ├── injector.py             # PromptInjector 基类
 │   │   ├── exceptions.py           # ISACError 错误体系
 │   │   └── constants.py            # 常量
 │   │
 │   ├── locales/                    # 多语言支持 (i18n)
 │   │   ├── __init__.py             # load_text() 工具函数
 │   │   ├── zh_CN.py                # 中文 (默认)
-│   │   ├── en_US.py                # 英文
-│   │   └── ja_JP.py                # 日文
+│   │   └── en_US.py                # 英文
 │   │
 │   ├── channel/                    # Channel Layer
 │   │   ├── __init__.py
@@ -1117,14 +1136,15 @@ ISAC/
 │   │   ├── loop.py                 # ISACAgentLoop
 │   │   ├── hooks.py                # AgentHooks / HookRegistry
 │   │   ├── prompt_builder.py       # SystemPromptBuilder
-│   │   ├── injector.py             # PromptInjector 基类
+│   │   ├── injector.py             # PromptInjector 兼容 re-export（新代码从 core.injector 导入）
 │   │   ├── injectors/              # 内置注入器
 │   │   │   ├── __init__.py
-│   │   │   ├── base.py
+│   │   │   ├── base_identity.py    # Bot 基础身份
 │   │   │   ├── attention_drift.py
 │   │   │   ├── expression_style.py
 │   │   │   ├── mood.py
-│   │   │   └── skill_selector.py
+│   │   │   ├── skill_selector.py
+│   │   │   └── tools_available.py
 │   │   └── tools/                  # 工具系统
 │   │       ├── __init__.py
 │   │       ├── registry.py         # AST 自动发现
@@ -1428,7 +1448,7 @@ drift_rule = load_text("attention_drift.subtle", locale="zh_CN")
 
 | 维度 | 要求 |
 |------|------|
-| **性能** | 消息处理延迟 < 5s (不含 LLM 推理) |
+| **性能** | 消息处理延迟 < 5s（不含 LLM 推理与门控主动 DELAY；DELAY 是框架有意推迟，不计入处理延迟） |
 | **并发** | 支持多平台同时连接，单实例 100+ 并发会话 |
 | **可靠性** | 单会话故障不影响其他会话；记忆写入失败不阻塞消息流 |
 | **可扩展性** | 新平台适配器只需实现 `PlatformAdapter` 接口 |
