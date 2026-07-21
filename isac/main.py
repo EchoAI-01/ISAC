@@ -12,7 +12,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from isac.channel.adapters.onebot.adapter import OneBotAdapter
 from isac.channel.model import ISACMessage
 from isac.channel.registry import ChannelRegistry
 from isac.core.events import EventType
@@ -20,6 +19,8 @@ from isac.gateway.event_bus import EventBus
 from isac.gateway.lock import SessionLockManager
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
+from isac.memory.pipeline import NoOpMemoryPipeline
+from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
 from isac.router.router import MessageRouter
 from isac.router.rules import load_rules
@@ -71,8 +72,9 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     provider_manager = ProviderManager(global_config.get("llm", {}))
 
     def memory_factory(namespace: str) -> Any:
-        # TODO(Day 32): 按命名空间创建 MemoryRetrievalPipeline
-        raise NotImplementedError(f"TODO(Day 32): memory_factory 未实现 (namespace={namespace})")
+        # TODO(D5-D7): 替换为真实 MemoryRetrievalPipeline
+        # 当前使用 NoOp 实现，保证主链路可启动，记忆注入器返回空字符串
+        return NoOpMemoryPipeline(namespace)
 
     return {
         "global_config": global_config,
@@ -89,7 +91,14 @@ async def main() -> None:
 
     # ── Provider ────────────────────────────────────────────
     services = build_services(global_config)
-    # TODO(Day 8): 注册 OpenAICompatProvider 到 ProviderManager
+    # TODO(D8): 当配置合法时注册 OpenAICompatProvider，否则使用 StubProvider 保证可启动
+    provider_manager = services["provider_manager"]
+    llm_config = global_config.get("llm", {})
+    if llm_config.get("provider") and llm_config.get("api_key"):
+        # TODO(D8): 注册 OpenAICompatProvider
+        provider_manager.register(StubProvider())
+    else:
+        provider_manager.register(StubProvider())
 
     # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
     agent_manager = AgentManager(services)
@@ -104,6 +113,9 @@ async def main() -> None:
     channel_registry = ChannelRegistry()
     onebot_config = global_config.get("channels", {}).get("onebot")
     if onebot_config and onebot_config.get("enabled"):
+        # 惰性导入 OneBot 适配器，避免 aiocqhttp 成为强制依赖
+        from isac.channel.adapters.onebot.adapter import OneBotAdapter
+
         onebot_adapter = OneBotAdapter(onebot_config)
         channel_registry.register(onebot_adapter)
 
@@ -114,8 +126,15 @@ async def main() -> None:
     session_lock = SessionLockManager()
 
     async def handle_message(message: ISACMessage) -> None:
-        """入口: 会话锁保证同一会话串行 (SPECIFICATION.md 2.5)。"""
-        await session_lock.handle_message(message, process_message)
+        """入口: 会话锁保证同一会话串行 (SPECIFICATION.md 2.5)。
+
+        注意: 此时 message.session_id 尚未赋值，因此锁键使用 platform:user_id:group_id，
+        避免退化为全局串行。
+        """
+        lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
+        lock = await session_lock.acquire(lock_key)
+        async with lock:
+            await process_message(message)
 
     async def process_message(message: ISACMessage) -> None:
         """消息主链路: EventBus → Router → Agent (DEVELOP.md 1.2 依赖注入)。"""

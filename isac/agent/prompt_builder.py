@@ -28,6 +28,8 @@ class SystemPromptBuilder:
     def register(self, injector: PromptInjector) -> None:
         """注册注入器。"""
         self._injectors.append(injector)
+        # 初始化频率计数器，避免 max_new_messages 首次触发前键不存在导致死锁
+        self._messages_since_trigger[injector.key] = 0
 
     async def build(self, context: InjectionContext) -> str:
         """按优先级组装各注入器的 Prompt 块。"""
