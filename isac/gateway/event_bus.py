@@ -45,10 +45,10 @@ class EventBus:
             try:
                 result = await handler(payload)
             except Exception as exc:
-                logger.error("Intercept 处理器异常，已跳过", event=event.value, error=str(exc), exc_info=True)
+                logger.error("Intercept 处理器异常，已跳过", event_type=event.value, error=str(exc), exc_info=True)
                 continue
             if result is None:
-                logger.debug("事件被拦截", event=event.value)
+                logger.debug("事件被拦截", event_type=event.value)
                 return None
             payload = result
         return payload
@@ -61,4 +61,4 @@ class EventBus:
         results = await asyncio.gather(*(h(payload) for h in handlers), return_exceptions=True)
         for result in results:
             if isinstance(result, Exception):
-                logger.error("Async 处理器异常", event=event.value, error=str(result), exc_info=result)
+                logger.error("Async 处理器异常", event_type=event.value, error=str(result), exc_info=result)

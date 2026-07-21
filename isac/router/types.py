@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -45,5 +45,5 @@ class AgentRoutingInfo(Protocol):
     def trigger_words(self) -> list[str]: ...
 
 
-# 返回所有可路由 Agent 的路由信息
-AgentsProvider = Callable[[], list[AgentRoutingInfo]]
+# 返回所有可路由 Agent 的路由信息 (Iterable 以避免泛型不变性问题)
+AgentsProvider = Callable[[], Iterable[AgentRoutingInfo]]

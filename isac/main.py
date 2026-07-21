@@ -1,0 +1,148 @@
+"""ISAC 应用入口: 组装所有组件 + 依赖注入 (DEVELOP.md 1.2)。
+
+组装顺序遵循导入依赖链:
+utils → provider → memory → persona → agent → gating → router
+→ gateway → channel → commands → plugin → runtime → control
+
+TODO(Day 9): data/config.jsonc 端到端联调 (QQ 消息 → LLM → 回复)。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from isac.channel.model import ISACMessage
+from isac.channel.registry import ChannelRegistry
+from isac.core.events import EventType
+from isac.gateway.event_bus import EventBus
+from isac.gateway.lock import SessionLockManager
+from isac.gateway.session import SessionManager
+from isac.gateway.user_mapper import UserMapper
+from isac.provider.manager import ProviderManager
+from isac.router.router import MessageRouter
+from isac.router.rules import load_rules
+from isac.runtime.bus import InterAgentBus
+from isac.runtime.manager import AgentManager, ensure_default_agent
+from isac.utils.config import load_config
+from isac.utils.logger import get_logger, setup_logger
+
+logger = get_logger(__name__)
+
+DATA_DIR = Path("data")
+
+
+def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
+    """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。
+
+    TODO(Day 19-22): memory_factory 返回真实 MemoryRetrievalPipeline
+    (MetadataStore + VectorStore + SparseBM25Index + GraphStore + EmbeddingManager)。
+    """
+    provider_manager = ProviderManager(global_config.get("llm", {}))
+
+    def memory_factory(namespace: str) -> Any:
+        # TODO(Day 32): 按命名空间创建 MemoryRetrievalPipeline
+        raise NotImplementedError(f"TODO(Day 32): memory_factory 未实现 (namespace={namespace})")
+
+    return {
+        "global_config": global_config,
+        "provider_manager": provider_manager,
+        "memory_factory": memory_factory,
+    }
+
+
+async def main() -> None:
+    """应用主入口。"""
+    global_config = load_config(DATA_DIR / "config.jsonc")
+    setup_logger(debug=bool(global_config.get("debug", False)))
+    logger.info("ISAC 启动中", version=_get_version())
+
+    # ── Provider ────────────────────────────────────────────
+    services = build_services(global_config)
+    # TODO(Day 8): 注册 OpenAICompatProvider 到 ProviderManager
+
+    # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
+    agent_manager = AgentManager(services)
+    bus = InterAgentBus()
+    # TODO(Day 41): bus.set_deliver(...) 投递到目标 Agent 的 Agent Loop
+
+    # ── Router (Channel 与 Agent 解耦) ──────────────────────
+    rules = load_rules(global_config.get("router", {}).get("rules_file", DATA_DIR / "routing.jsonc"))
+    router = MessageRouter(rules, agents_provider=agent_manager.routing_infos)
+
+    # ── Gateway ─────────────────────────────────────────────
+    event_bus = EventBus()
+    session_mgr = SessionManager(global_config)
+    user_mapper = UserMapper()
+    session_lock = SessionLockManager()
+
+    async def handle_message(message: ISACMessage) -> None:
+        """入口: 会话锁保证同一会话串行 (SPECIFICATION.md 2.5)。"""
+        await session_lock.handle_message(message, process_message)
+
+    async def process_message(message: ISACMessage) -> None:
+        """消息主链路: EventBus → Router → Agent (DEVELOP.md 1.2 依赖注入)。"""
+        payload = await event_bus.fire_intercept(EventType.ON_MESSAGE, message)
+        if payload is None:
+            return  # 被插件拦截
+
+        decision = await router.route(message)
+        if decision is None:
+            return  # 路由无匹配 → DROP
+
+        session = await session_mgr.get_or_create(message, agent_id=decision.agent_id)
+        profile = await user_mapper.resolve(message.platform, message.user_id, message.user_name)
+        reply = await agent_manager.handle_message(decision.agent_id, message, session, profile)
+        if reply:
+            # TODO(Day 9): 经 Channel 适配器发送回复 (构造回复 ISACMessage)
+            logger.info("Agent 回复", agent_id=decision.agent_id, length=len(reply))
+        await event_bus.fire_async(EventType.POST_MESSAGE, message)
+
+    # ── Channel ─────────────────────────────────────────────
+    channel_registry = ChannelRegistry()
+    # TODO(Day 3-5): 按配置注册 OneBotAdapter，并注入 on_message = handle_message
+
+    # ── Control Plane (可选) ─────────────────────────────────
+    control_config = global_config.get("control", {})
+    if control_config.get("enabled"):
+        await _start_control_plane(control_config, agent_manager, router, bus)
+
+    # ── 启动 ────────────────────────────────────────────────
+    await ensure_default_agent(agent_manager, global_config)
+    await event_bus.fire_async(EventType.ON_START, {"config": global_config})
+    logger.info("ISAC 启动完成")
+    await channel_registry.start_all()
+
+
+async def _start_control_plane(
+    control_config: dict[str, Any],
+    agent_manager: AgentManager,
+    router: MessageRouter,
+    bus: InterAgentBus,
+) -> None:
+    """启动控制面 (Admin API)。失败不阻塞数据面 (DEVELOP.md 7.4)。"""
+    try:
+        import uvicorn
+
+        from isac.control.api.server import create_control_app
+        from isac.plugin.runtime.manager import PluginManager
+
+        app = create_control_app(agent_manager, router, bus, PluginManager({}), control_config)
+        config = uvicorn.Config(
+            app,
+            host=control_config.get("host", "127.0.0.1"),
+            port=int(control_config.get("port", 8765)),
+            log_level="warning",
+        )
+        import asyncio
+
+        asyncio.get_running_loop().create_task(uvicorn.Server(config).serve())
+        logger.info("控制面已启动", host=control_config.get("host"), port=control_config.get("port"))
+    except Exception as exc:
+        logger.error("控制面启动失败 (不阻塞数据面)", error=str(exc), exc_info=True)
+
+
+def _get_version() -> str:
+    from isac import __version__
+
+    return __version__

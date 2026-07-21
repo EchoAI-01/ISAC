@@ -1,0 +1,150 @@
+"""AgentManager: Agent 生命周期管理 (ARCHITECTURE.md 3.1 / SPECIFICATION.md 2.8)。
+
+所有公开方法同时暴露给控制面 (Admin API / MCP Server)，control/ 不复制业务逻辑。
+"""
+
+from __future__ import annotations
+
+import builtins
+from typing import TYPE_CHECKING, Any
+
+from isac.core.constants import DEFAULT_AGENT_ID
+from isac.core.exceptions import AgentNotFoundError
+from isac.core.types import AgentContext
+from isac.gating.types import GateKind
+from isac.runtime.assembly import assemble_agent
+from isac.runtime.config import AgentConfig
+from isac.runtime.instance import AgentInstance
+from isac.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from isac.channel.model import ISACMessage
+    from isac.gateway.models import Session, UserProfile
+
+logger = get_logger(__name__)
+
+
+class AgentManager:
+    """Agent 生命周期管理器。
+
+    TODO(Day 34-35): registry.jsonc 持久化 + 重启恢复 running 状态的 Agent。
+    """
+
+    def __init__(self, services: dict[str, Any]):
+        """
+        Args:
+            services: 共享服务 (provider_manager / memory_factory / global_config / ...)
+        """
+        self._agents: dict[str, AgentInstance] = {}
+        self._services = services
+
+    # ── 生命周期 (控制面暴露) ──────────────────────────────
+
+    async def create(self, config: AgentConfig) -> AgentInstance:
+        """创建并组装 Agent (默认 stopped，需 start 后才处理消息)。"""
+        if config.agent_id in self._agents:
+            raise ValueError(f"Agent 已存在: {config.agent_id}")
+        instance = await assemble_agent(config, self._services)
+        self._agents[config.agent_id] = instance
+        logger.info("Agent 已创建", agent_id=config.agent_id)
+        return instance
+
+    async def start(self, agent_id: str) -> None:
+        instance = self._require(agent_id)
+        instance.status = "running"
+        logger.info("Agent 已启动", agent_id=agent_id)
+
+    async def stop(self, agent_id: str) -> None:
+        instance = self._require(agent_id)
+        instance.status = "stopped"
+        logger.info("Agent 已停止", agent_id=agent_id)
+
+    async def destroy(self, agent_id: str, *, keep_memory: bool = True) -> None:
+        """销毁 Agent。keep_memory=True 时保留记忆数据。"""
+        self._require(agent_id)
+        del self._agents[agent_id]
+        # TODO(Day 34): keep_memory=False 时清理 data/agents/<id>/memory/
+        logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
+
+    async def get(self, agent_id: str) -> AgentInstance | None:
+        return self._agents.get(agent_id)
+
+    async def list(self) -> list[AgentInstance]:
+        return list(self._agents.values())
+
+    async def reload_config(self, agent_id: str, config: AgentConfig) -> None:
+        """热更新配置 (重建子系统中受配置影响的部分)。
+
+        TODO(Day 35): 差量更新 gating/persona/权限，避免整实例重建。
+        """
+        was_running = self._require(agent_id).status == "running"
+        instance = await assemble_agent(config, self._services)
+        instance.status = "running" if was_running else "stopped"
+        self._agents[agent_id] = instance
+        logger.info("Agent 配置已重载", agent_id=agent_id)
+
+    # ── 消息处理入口 (由 MessageRouter 经依赖注入调用) ─────
+
+    async def handle_message(
+        self,
+        agent_id: str,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+    ) -> str | None:
+        """处理一条路由到本 Agent 的消息，返回回复文本 (WAIT/DROP 返回 None)。
+
+        TODO(Day 38-39): pending 消息队列 + GatingContext 完整构造
+        (has_at/has_mention/idle_seconds/effective_frequency 等)。
+        """
+        instance = await self.get(agent_id)
+        if instance is None or instance.status != "running":
+            logger.warning("Agent 不存在或未运行，消息忽略", agent_id=agent_id)
+            return None
+
+        from isac.core.types import GatingContext  # 避免模块级循环
+
+        gating_context = GatingContext(
+            session=session,
+            user_profile=user_profile,
+            current_message=message,
+            is_private=message.group_id is None,
+        )
+        decision = await instance.gating.evaluate([message], gating_context)
+        if decision.kind != GateKind.TRIGGER:
+            logger.debug("门控未触发", agent_id=agent_id, kind=decision.kind.value)
+            return None
+
+        agent_context = AgentContext(
+            session=session,
+            user_profile=user_profile,
+            current_message=message,
+        )
+        messages = [{"role": "user", "content": message.content}]
+        result = await instance.loop.run(messages, agent_context)
+        return result.content or None
+
+    # ── 路由信息 (注入 MessageRouter 的 agents_provider) ────
+
+    def routing_infos(self) -> builtins.list[AgentConfig]:
+        """返回所有运行中 Agent 的路由信息 (agent_id + trigger_words)。"""
+        return [a.config for a in self._agents.values() if a.status == "running"]
+
+    # ── 内部 ────────────────────────────────────────────────
+
+    def _require(self, agent_id: str) -> AgentInstance:
+        instance = self._agents.get(agent_id)
+        if instance is None:
+            raise AgentNotFoundError(f"Agent 不存在: {agent_id}")
+        return instance
+
+
+async def ensure_default_agent(manager: AgentManager, global_config: dict) -> AgentInstance:
+    """向后兼容: 无 data/agents/ 时创建默认 Agent (单 Agent 模式)。"""
+    existing = await manager.get(DEFAULT_AGENT_ID)
+    if existing is not None:
+        return existing
+    instance = await manager.create(AgentConfig(agent_id=DEFAULT_AGENT_ID, display_name="ISAC"))
+    await manager.start(DEFAULT_AGENT_ID)
+    logger.info("已创建默认 Agent (单 Agent 兼容模式)", agent_id=DEFAULT_AGENT_ID)
+    return instance
