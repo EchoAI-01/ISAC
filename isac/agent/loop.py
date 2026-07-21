@@ -8,13 +8,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from isac.agent.hooks import AgentHooks
 from isac.core.events import AgentHookPoint
 from isac.core.exceptions import ToolError
 from isac.core.types import (
     AgentContext,
+    InjectionContext,
     LLMChunk,
     LLMResponse,
     TokenUsage,

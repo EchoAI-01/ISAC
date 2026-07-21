@@ -1094,6 +1094,7 @@ ISAC/
 │   │   ├── event_bus.py            # EventBus (Intercept + Async)
 │   │   ├── session.py              # SessionManager
 │   │   ├── user_mapper.py          # 跨平台用户映射
+│   │   ├── lock.py                 # SessionLockManager (并发控制)
 │   │   └── models.py               # Session/Profile 数据模型
 │   │
 │   ├── router/                     # 消息路由 (Agent 归属)
@@ -1244,6 +1245,7 @@ ISAC/
 │       ├── __init__.py
 │       ├── logger.py               # 日志
 │       ├── config.py               # 配置加载
+│       ├── security.py             # API Key 加密 (AES-256-GCM)
 │       └── helpers.py
 │
 ├── plugins/                        # 第三方插件目录
