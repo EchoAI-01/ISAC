@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 
-from isac.agent.injector import PromptInjector
+from isac.core.injector import PromptInjector
 from isac.core.types import InjectionContext
 from isac.utils.logger import get_logger
 

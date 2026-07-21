@@ -83,12 +83,17 @@ class ConfigMigrator:
     """
 
     MIGRATIONS: dict[str, Callable[[dict], dict]] = {
-        # "1.0.0": migrate_from_1_0_to_1_1,
+        # 从缺省/未声明版本升级到 1.0.0：仅补齐 config_version 字段。
+        "0.0.0": lambda cfg: {**cfg, "config_version": "1.0.0"},
     }
 
     def migrate(self, config: dict[str, Any]) -> dict[str, Any]:
-        """从当前版本迁移到最新版本。"""
-        current_version = config.get("config_version", CONFIG_VERSION)
+        """从当前版本迁移到最新版本。
+
+        配置文件缺失 config_version 时视为 "0.0.0"，触发迁移到最新版本；
+        与 ARCHITECTURE.md 4.1 的语义保持一致。
+        """
+        current_version = config.get("config_version", "0.0.0")
         target_version = self._get_latest_version()
 
         while current_version != target_version:

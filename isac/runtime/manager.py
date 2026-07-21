@@ -104,11 +104,20 @@ class AgentManager:
 
         from isac.core.types import GatingContext  # 避免模块级循环
 
+        # 构造门控上下文；has_at / has_mention 在交给门控前填充。
+        # has_mention 判定：消息文本中出现当前 Agent 的 display_name（不含 @）。
+        display_name = instance.config.display_name
+        mention_names = [display_name] if display_name else []
+        bot_id = self._services.get("global_config", {}).get("bot_id", "")
+        has_at = message.has_at(bot_id) if bot_id else any(seg.type == "at" for seg in message.segments)
+
         gating_context = GatingContext(
             session=session,
             user_profile=user_profile,
             current_message=message,
             is_private=message.group_id is None,
+            has_at=has_at,
+            has_mention=message.has_mention(mention_names),
         )
         decision = await instance.gating.evaluate([message], gating_context)
         if decision.kind != GateKind.TRIGGER:

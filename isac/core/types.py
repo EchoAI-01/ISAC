@@ -37,11 +37,19 @@ class MessageStatus(Enum):
 
 @dataclass
 class TokenUsage:
-    """Token 使用情况"""
+    """Token 使用情况。
+
+    total_tokens 为 0 时，__post_init__ 自动按 prompt_tokens + completion_tokens 补齐，
+    避免 Budget.consume() 累加 0 导致预算门控失效。
+    """
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+
+    def __post_init__(self) -> None:
+        if self.total_tokens == 0:
+            self.total_tokens = self.prompt_tokens + self.completion_tokens
 
 
 @dataclass

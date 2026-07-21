@@ -1,6 +1,8 @@
 # ISAC — Intelligent Social AI Companion
 
-> 融合 AstrBot / MaiBot / hermes-agent / openclaw / opencode 等项目之精华的 AI 社交陪伴 Bot 框架
+> 融合 AstrBot / MaiBot / hermes-agent / openclaw / opencode 等项目之精华的 AI 社交陪伴 Bot 框架¹
+
+> ¹ 设计溯源： AstrBot（多平台适配器/插件）、MaiBot（门控/专注模式）、opencode / grok-build（多 Agent 控制面）、hermes-agent / openclaw（Agent 工具与记忆模式）。详见 ARCHITECTURE.md 相关 ADR。
 
 ## 文档导航
 

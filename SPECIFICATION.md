@@ -48,6 +48,28 @@ class ISACMessage:
     # 元数据
     metadata: dict = field(default_factory=dict)  # 平台特定元数据
 
+    @property
+    def is_private_chat(self) -> bool:
+        """是否私聊消息 (group_id 为 None)"""
+        return self.group_id is None
+
+    def has_at(self, bot_id: str) -> bool:
+        """消息中是否 @ 了指定用户 (通常传 bot 自身 ID)"""
+        return any(
+            seg.type == "at" and seg.data.get("user_id") == bot_id
+            for seg in self.segments
+        )
+
+    def has_mention(self, names: list[str]) -> bool:
+        """消息文本中是否以纯文本形式提及指定名称（不含 @）。
+
+        用于私聊场景下的门控强制触发：用户直接叫 Bot 名字也算 "提及"。
+        """
+        if not self.content or not names:
+            return False
+        lower = self.content.lower()
+        return any(name.lower() in lower for name in names if name)
+
 
 @dataclass
 class MessageSegment:
@@ -308,8 +330,10 @@ class PlatformAdapter(ABC):
 ```python
 from abc import ABC
 
+# PromptInjector 位于 isac/core/injector.py，
+# 使 memory/injector/ 与 agent/injectors/ 都能单向依赖 core。
 class PromptInjector(ABC):
-    """Prompt 注入器抽象基类（与 ARCHITECTURE.md 3.4 一致）。
+    """Prompt 注入器抽象基类（与 ARCHITECTURE.md 3.4 / isac/core/injector.py 一致）。
 
     除 `key` 与 `build()` 外，各属性均提供默认实现，子类按需覆写。
     每个子系统实现此基类来注入 Prompt 块。
@@ -509,8 +533,11 @@ class RerankerProvider(ABC):
 class SessionLockManager:
     """会话级锁管理器。同一会话的消息串行处理，避免状态冲突。"""
 
-    _locks: dict[str, asyncio.Lock] = {}
-    _agent_running: dict[str, bool] = {}
+    def __init__(self) -> None:
+        # 实例级字典，避免多实例共享可变默认值
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._agent_running: dict[str, bool] = {}
+        self._queues: dict[str, list[ISACMessage]] = {}
 
     async def acquire(self, session_id: str) -> asyncio.Lock:
         """获取会话锁"""

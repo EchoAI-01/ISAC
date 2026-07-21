@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from isac.agent.injector import PromptInjector
+from isac.core.injector import PromptInjector
 from isac.core.types import MemoryHit
 from isac.memory.pipeline import MemoryRetrievalPipeline
 

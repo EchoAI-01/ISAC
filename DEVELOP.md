@@ -80,18 +80,19 @@ main.py (依赖所有，负责组装)
 ```
 
 **规则**:
+- `core/` 是类型与抽象契约层，被所有模块依赖，不依赖任何业务模块
 - `utils/` 被所有模块依赖，不依赖任何业务模块
-- `provider/` 只依赖 `utils/`
-- `memory/` 只依赖 `utils/` 和 `provider/` (嵌入模型)
-- `agent/` 依赖 `utils/`、`provider/`、`memory/` (通过注入器实例)、`persona/`
-- `gating/` 只依赖 `utils/` (不依赖 agent)，在 AgentInstance 内按 Agent 独立实例化
-- `router/` 只依赖 `utils/` (路由规则是纯数据 + 匹配逻辑)
-- `gateway/` 依赖 `utils/`、`router/` (不直接调 agent，通过依赖注入)
-- `channel/` 依赖 `utils/`、`gateway/`
-- `commands/` 依赖 `utils/`、`agent/` (命令在 Agent 上下文执行)
-- `plugin/` 依赖 `utils/`、`agent/`、`commands/` (通过 hooks 注册)
-- `runtime/` 依赖 `utils/`、`provider/`、`memory/`、`persona/`、`agent/`、`gating/` (组装 AgentInstance；不 import gateway/channel/router，由 main.py 注入)
-- `control/` 依赖 `utils/`、`runtime/` (复用 Manager 公开方法，不复制业务逻辑)
+- `provider/` 只依赖 `utils/`、`core/`
+- `memory/` 只依赖 `utils/`、`core/` 和 `provider/` (嵌入模型)
+- `agent/` 依赖 `utils/`、`core/`、`provider/`、`memory/` (通过注入器实例)、`persona/`
+- `gating/` 只依赖 `utils/`、`core/` (不依赖 agent)，在 AgentInstance 内按 Agent 独立实例化
+- `router/` 只依赖 `utils/`、`core/` (路由规则是纯数据 + 匹配逻辑)
+- `gateway/` 依赖 `utils/`、`core/`、`router/` (不直接调 agent，通过依赖注入)
+- `channel/` 依赖 `utils/`、`core/`、`gateway/`
+- `commands/` 依赖 `utils/`、`core/`、`agent/` (命令在 Agent 上下文执行)
+- `plugin/` 依赖 `utils/`、`core/`、`agent/`、`commands/` (通过 hooks 注册)
+- `runtime/` 依赖 `utils/`、`core/`、`provider/`、`memory/`、`persona/`、`agent/`、`gating/` (组装 AgentInstance；不 import gateway/channel/router，由 main.py 注入)
+- `control/` 依赖 `utils/`、`core/`、`runtime/` (复用 Manager 公开方法，不复制业务逻辑)
 - `main.py` 依赖所有模块，负责组装和依赖注入
 
 **禁止的导入**:
@@ -275,8 +276,8 @@ class HeuristicMemoryInjector:
 #    例如: isac/agent/injectors/my_injector.py (Agent 自身相关)
 #    或: isac/memory/injector/my_memory.py (记忆数据相关)
 
-from isac.agent.injector import PromptInjector
-from isac.agent.prompt_builder import InjectionContext
+from isac.core.injector import PromptInjector
+from isac.core.types import InjectionContext
 
 
 class MyInjector(PromptInjector):
@@ -467,6 +468,9 @@ async def my_final_hook(response: LLMResponse, context: AgentContext) -> None:
 4. 格式化输出时明确标注"内部参考"
 
 ```python
+from isac.core.injector import PromptInjector
+
+
 class MemoryInjector(PromptInjector):
     """记忆检索注入器基类。"""
 

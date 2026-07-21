@@ -40,6 +40,22 @@ class TestMessageStatus:
         assert MessageStatus.DROPPED.value == "dropped"
 
 
+class TestTokenUsage:
+    def test_total_auto_calculated(self):
+        usage = TokenUsage(prompt_tokens=10, completion_tokens=5)
+        assert usage.total_tokens == 15
+
+    def test_total_preserved_when_non_zero(self):
+        usage = TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=100)
+        assert usage.total_tokens == 100
+
+    def test_budget_consume_uses_total(self):
+        budget = Budget(max_tokens=100)
+        budget.consume(TokenUsage(prompt_tokens=30, completion_tokens=20))
+        assert budget.used_tokens == 50
+        assert budget.remaining_tokens == 50
+
+
 class TestContexts:
     def _session(self):
         return SimpleNamespace(session_id="sess_001", agent_id="agent_a")
