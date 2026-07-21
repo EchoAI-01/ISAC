@@ -107,6 +107,7 @@
   - **依赖**：B1-B4。
   - **交接**：
     - 已实现反向 WebSocket 模式，配置 `channels.onebot.enabled=true` 即可启用。
+    - aiocqhttp 改为惰性导入，未安装 onebot extra 时不会导致启动崩溃。
     - 消息转换支持 text/at/image/reply/face/record；发送支持 text/at/image/reply/emoji/voice。
     - 重连逻辑在 `_run_with_retry`，连接建立时重置计数。
     - 真机联调仍需 NapCat + 测试 QQ + 在 `data/config.jsonc` 填写 `channels.onebot` 与 `bot_id`。
@@ -136,7 +137,7 @@
   - **验收**：GatingSystem.evaluate 流程正确；ReplyNecessityJudge 评分模型与文档一致；FocusMode/IdleBackoff/TurnScheduler 工作。
   - **产出**：`gating/{system,reply_necessity,idle_backoff,turn_scheduler,turn_gates,types}.py`。
   - **依赖**：B2。
-  - **当前**：GatingSystem/IdleBackoff/FocusMode 已实现；ReplyNecessityJudge 为桩。
+  - **当前**：GatingSystem/IdleBackoff/FocusMode 已实现；ReplyNecessityJudge 已提供安全兜底（私聊 40/群聊 0），完整评分模型仍为 TODO。
 
 - [x] **D2 Prompt 组装系统**
   - **验收**：SystemPromptBuilder 按 priority 注入；注入器频率控制工作；失败 Injector 不影响整体。
@@ -147,6 +148,7 @@
   - **验收**：ISACAgentLoop.run 完整执行 pre_llm → LLM → post_llm → tool/pre_tool/post_tool → final_response；预算耗尽可停止。
   - **产出**：`agent/loop.py`、`agent/hooks.py`。
   - **依赖**：D2。
+  - **当前**：已接入 ProviderManager.chat_with_retry；PRE_LLM 钩子顺序串联。
 
 - [ ] **D4 工具系统与权限**
   - **验收**：ToolRegistry 注册/执行/权限检查通过测试；所有内置工具（send_emoji/send_image/query_memory/ask_agent/switch_chat/wait/fetch_history/view_forward_message/bash/read_file/write_file/web_search/task）可用。
@@ -189,6 +191,7 @@
   - **验收**：create/start/stop/destroy/list/reload_config 工作；无 `data/agents/` 时创建默认 Agent。
   - **产出**：`runtime/manager.py`、`runtime/instance.py`、`runtime/assembly.py`。
   - **依赖**：E1、D1-D4（需要可组装的子系统）。
+  - **当前**：memory_factory 使用 NoOpMemoryPipeline，保证默认 Agent 可创建/启动。
 
 - [x] **E3 InterAgentBus 与 ACL**
   - **验收**：Link ACL 默认拒绝；ask_agent 工具受 ACL 约束；handoff/notify 消息类型可识别。
@@ -338,4 +341,5 @@
 |------|--------|------|
 | 2026-07-21 | Architect | 将日程制开发计划重构为节点制 SOW/TODO，新增术语表与节点使用规则 |
 | 2026-07-21 | Architect | C1 OneBot 适配器实现：反向 WebSocket 连接、消息转换（text/at/image/reply/face/record）、发送、重连；main.py 注册与回复发送；新增 12 个单元测试 |
-| 2026-07-21 | Architect | Review 修复：PromptInjector 下沉到 core/ 打破导入环；TokenUsage 自动补 total；ConfigMigrator 缺省版本修复；AstrBot 沙箱改用 find_spec/exec_module；补全 has_mention 判定；同步修正 ARCH/DEVELOP/SPEC/AGENTS/README 文档错误与矛盾 |
+| 2026-07-21 | Architect | Review 修复 Round 2：OneBot 惰性导入（可选依赖不强制）、reply_to 对称/metadata 精简/@ 占位、会话锁键修复、Loop 接入 chat_with_retry、ReplyNecessityJudge 安全兜底、NoOpMemoryPipeline + StubProvider 让 main.py 可启动、prompt_builder 频率死锁、PRE_LLM 钩子串联、rules 字段过滤 |
+| 2026-07-21 | Architect | Review 修复 Round 1：PromptInjector 下沉到 core/ 打破导入环；TokenUsage 自动补 total；ConfigMigrator 缺省版本修复；AstrBot 沙箱改用 find_spec/exec_module；补全 has_mention 判定；同步修正 ARCH/DEVELOP/SPEC/AGENTS/README 文档错误与矛盾 |

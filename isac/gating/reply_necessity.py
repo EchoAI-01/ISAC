@@ -30,6 +30,8 @@ class ReplyNecessityJudge:
     async def score(self, pending: list[ISACMessage], context: GatingContext) -> float:
         """计算回复必要性得分。
 
-        TODO(Day 16): 实现完整评分模型 (基础分 + 内容分 + 压力分 - 存在感惩罚) × 频率系数。
+        TODO(D1): 实现完整评分模型 (基础分 + 内容分 + 压力分 - 存在感惩罚) × 频率系数。
+        当前为安全兜底：私聊给 40 分，群聊普通消息给 0 分，避免门控崩溃。
         """
-        raise NotImplementedError("TODO(Day 16): 实现回复必要性评分模型")
+        # 安全兜底：保证主链路可启动，不触发回复，除非强制触发条件（已由 GatingSystem 处理）
+        return 40.0 if context.is_private else 0.0

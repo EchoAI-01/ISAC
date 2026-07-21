@@ -25,10 +25,24 @@ def config() -> dict[str, Any]:
 
 @pytest.fixture
 def adapter(config: dict[str, Any]) -> OneBotAdapter:
-    with patch("isac.channel.adapters.onebot.adapter.CQHttp") as mock_cqhttp:
-        mock_bot = MagicMock()
-        mock_cqhttp.return_value = mock_bot
-        return OneBotAdapter(config)
+    mock_bot = MagicMock()
+    mock_cqhttp_error = type("CQHttpError", (Exception,), {})
+    mock_cqsegment = MagicMock()
+    mock_cqsegment.text = MagicMock(side_effect=lambda text: {"type": "text", "data": {"text": text}})
+    mock_cqsegment.at = MagicMock(side_effect=lambda user_id: {"type": "at", "data": {"qq": user_id}})
+    mock_cqsegment.image = MagicMock(side_effect=lambda url: {"type": "image", "data": {"url": url}})
+    mock_cqsegment.reply = MagicMock(side_effect=lambda msg_id: {"type": "reply", "data": {"id": msg_id}})
+    mock_cqsegment.face = MagicMock(side_effect=lambda id: {"type": "face", "data": {"id": id}})
+    mock_cqsegment.record = MagicMock(side_effect=lambda url: {"type": "record", "data": {"url": url}})
+
+    with patch.object(
+        OneBotAdapter,
+        "_ensure_imports",
+        return_value=(MagicMock(return_value=mock_bot), mock_cqhttp_error, mock_cqsegment),
+    ):
+        adapter = OneBotAdapter(config)
+        adapter._init_bot()
+        return adapter
 
 
 class TestOneBotAdapterLifecycle:
@@ -162,7 +176,7 @@ class TestSend:
 
     @pytest.mark.asyncio
     async def test_send_failure_returns_false(self, adapter: OneBotAdapter):
-        from aiocqhttp import Error as CQHttpError
+        _, CQHttpError, _ = adapter._ensure_imports()
 
         adapter._bot.call_action = AsyncMock(side_effect=CQHttpError("network"))
         msg = ISACMessage(

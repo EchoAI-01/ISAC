@@ -29,11 +29,18 @@ class AgentHooks:
         self._hooks.setdefault(point, []).append((priority, self._seq, fn))
         self._seq += 1
 
+    def _sorted_hooks(self, point: AgentHookPoint) -> list[tuple[int, int, Callable]]:
+        """返回按优先级排序后的钩子列表。"""
+        return sorted(self._hooks.get(point, []), key=lambda t: (-t[0], t[1]))
+
+    def get_hooks(self, point: AgentHookPoint) -> list[Callable]:
+        """返回按优先级排序后的钩子函数列表（供调用方自行控制参数传递）。"""
+        return [fn for _, _, fn in self._sorted_hooks(point)]
+
     async def fire(self, point: AgentHookPoint, *args: Any, **kwargs: Any) -> list[Any]:
         """按优先级执行钩子，返回各钩子结果列表 (异常钩子返回 None 并跳过)。"""
-        hooks = sorted(self._hooks.get(point, []), key=lambda t: (-t[0], t[1]))
         results: list[Any] = []
-        for _, _, fn in hooks:
+        for _, _, fn in self._sorted_hooks(point):
             try:
                 results.append(await fn(*args, **kwargs))
             except Exception as exc:

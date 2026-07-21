@@ -8,7 +8,6 @@
         "channels": {
             "onebot": {
                 "enabled": true,
-                "mode": "reverse_ws",      // 或 "http"
                 "host": "127.0.0.1",
                 "port": 8080,
                 "access_token": "",
@@ -31,36 +30,46 @@ from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 延迟导入 aiocqhttp，未安装时给出友好错误
-try:
-    from aiocqhttp import CQHttp
-    from aiocqhttp import Error as CQHttpError
-    from aiocqhttp import MessageSegment as CQSegment
-except ImportError as exc:  # pragma: no cover
-    raise ImportError(
-        "OneBot 适配器需要 aiocqhttp。请运行: uv sync --extra onebot"
-    ) from exc
-
 
 class OneBotAdapter(PlatformAdapter):
     """OneBot v11 适配器。
 
     当前主要实现 **反向 WebSocket** 模式：ISAC 作为服务端运行，NapCat 主动连接。
-    HTTP 模式预留接口，可通过 ``mode=http`` 选择（当前同样走 call_action）。
+    只在 ``start()`` / ``send()`` 等运行时才导入 aiocqhttp，避免未安装 onebot extra 时
+    导入本模块直接崩溃。
     """
 
     def __init__(self, config: dict[str, Any]):
         self.config = config
-        self._bot = CQHttp(
-            api_root=None,  # 反向 WS 模式不通过 HTTP API 根调用
-            access_token=config.get("access_token") or None,
-            message_class=None,
-        )
+        self._bot: Any = None
         self._server_task: asyncio.Task[Any] | None = None
         self._running = False
         self._retry_count = 0
         self._retry_interval = float(config.get("retry_interval", 5))
         self._max_retries = int(config.get("max_retries", 10))
+
+    def _ensure_imports(self) -> tuple[Any, Any, Any]:
+        """惰性导入 aiocqhttp；未安装时给出友好错误。"""
+        try:
+            from aiocqhttp import CQHttp
+            from aiocqhttp import Error as CQHttpError
+            from aiocqhttp import MessageSegment as CQSegment
+        except ImportError as exc:  # pragma: no cover
+            raise ImportError(
+                "OneBot 适配器需要 aiocqhttp。请运行: uv sync --extra onebot"
+            ) from exc
+        return CQHttp, CQHttpError, CQSegment
+
+    def _init_bot(self) -> None:
+        """初始化 CQHttp 实例（按需）。"""
+        if self._bot is not None:
+            return
+        CQHttp, _CQHttpError, _CQSegment = self._ensure_imports()
+        self._bot = CQHttp(
+            api_root=None,  # 反向 WS 模式不通过 HTTP API 根调用
+            access_token=self.config.get("access_token") or None,
+            message_class=None,
+        )
 
         # 注册 OneBot 事件处理器
         self._bot.on_message(self._on_cq_message)
@@ -77,6 +86,7 @@ class OneBotAdapter(PlatformAdapter):
         if self._running:
             logger.warning("OneBot 适配器已在运行")
             return
+        self._init_bot()
         self._running = True
         host = self.config.get("host", "127.0.0.1")
         port = int(self.config.get("port", 8080))
@@ -100,6 +110,8 @@ class OneBotAdapter(PlatformAdapter):
 
     async def send(self, message: ISACMessage) -> bool:
         """发送消息到 OneBot 平台。"""
+        self._init_bot()
+        _CQHttp, CQHttpError, _CQSegment = self._ensure_imports()
         cq_message = self._to_cq_message(message)
         try:
             if message.group_id:
@@ -207,7 +219,11 @@ class OneBotAdapter(PlatformAdapter):
             content=content,
             segments=segments,
             reply_to=reply_to,
-            metadata={"raw_event": event.__dict__ if hasattr(event, "__dict__") else {}},
+            metadata={
+                "post_type": getattr(event, "post_type", None),
+                "message_type": getattr(event, "message_type", None),
+                "sub_type": getattr(event, "sub_type", None),
+            },
         )
 
     def _from_cq_message(self, raw_message: Any) -> list[MessageSegment]:
@@ -253,24 +269,30 @@ class OneBotAdapter(PlatformAdapter):
         return MessageSegment(type=isac_type, data=seg_data)
 
     def _extract_text(self, segments: list[MessageSegment]) -> str:
-        """从 segment 列表提取纯文本。"""
+        """从 segment 列表提取纯文本。
+
+        @ 段不展开为 QQ 号（避免 LLM 看到数字 ID 影响回复质量），
+        保留为 "@某人" 占位；at 信息已通过 segments 单独传递给门控/工具。
+        """
         parts: list[str] = []
         for seg in segments:
             if seg.type == "text":
                 parts.append(str(seg.data.get("text", "")))
             elif seg.type == "at":
-                parts.append(f"@{seg.data.get('qq', '')}")
+                parts.append("@某人")
         return "".join(parts)
 
     # ── 内部：ISACMessage → OneBot ────────────────────────────
 
     def _to_cq_message(self, message: ISACMessage) -> Any:
         """把 ISACMessage 转换为 CQ 消息。"""
-        if not message.segments:
-            return CQSegment.text(message.content)
+        _CQHttp, _CQHttpError, CQSegment = self._ensure_imports()
         cq_segments: list[Any] = []
+        # 如果顶层 reply_to 存在，先插入 reply 段（与入站解析对称）
+        if message.reply_to:
+            cq_segments.append(CQSegment.reply(message.reply_to))
         for seg in message.segments:
-            converted = self._to_cq_segment(seg)
+            converted = self._to_cq_segment(seg, CQSegment)
             if converted is not None:
                 cq_segments.append(converted)
         if not cq_segments:
@@ -278,7 +300,7 @@ class OneBotAdapter(PlatformAdapter):
         # aiocqhttp Message 支持 list[MessageSegment]
         return cq_segments
 
-    def _to_cq_segment(self, seg: MessageSegment) -> Any | None:
+    def _to_cq_segment(self, seg: MessageSegment, CQSegment: Any) -> Any | None:
         """单个 ISAC MessageSegment → CQ 消息段。"""
         if seg.type == "text":
             return CQSegment.text(str(seg.data.get("text", "")))

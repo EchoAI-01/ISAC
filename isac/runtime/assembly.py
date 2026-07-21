@@ -49,8 +49,15 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools = ToolRegistry(permission)
     prompt_builder.register(ToolsAvailableInjector(tools))
 
-    llm = services["provider_manager"].for_agent(config)
-    loop = ISACAgentLoop(llm=llm, prompt_builder=prompt_builder, hooks=hooks, tools=tools)
+    provider_manager = services["provider_manager"]
+    llm = provider_manager.for_agent(config)
+    loop = ISACAgentLoop(
+        llm=llm,
+        prompt_builder=prompt_builder,
+        hooks=hooks,
+        tools=tools,
+        provider_manager=provider_manager,
+    )
 
     memory = services["memory_factory"](config.effective_memory_namespace)
     persona = PersonaManager(global_config.get("persona", {}), config.persona)

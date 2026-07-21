@@ -79,3 +79,39 @@ class MemoryRetrievalPipeline:
         存储失败记录日志，不阻塞消息流 (SPECIFICATION.md 5.1)。
         """
         raise NotImplementedError("TODO(Day 21): 实现记忆存储")
+
+
+class NoOpMemoryPipeline:
+    """记忆流水线空实现：用于 D5-D7 完成前让主链路能启动。
+
+    检索恒返回空列表，存储恒返回空 ID，不抛异常、不阻塞消息流。
+    待真实存储后端实现后，main.py 的 memory_factory 再替换为真实流水线。
+    """
+
+    def __init__(self, namespace: str):
+        self.namespace = namespace
+
+    async def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        filters: dict | None = None,
+        agent_id: str = "",
+        user_id: str = "",
+        group_id: str = "",
+    ) -> list[MemoryHit]:
+        """空检索，永远返回空列表。"""
+        logger.debug("NoOp 记忆检索", namespace=self.namespace, query=query)
+        return []
+
+    async def store_episode(
+        self,
+        content: str,
+        session_id: str,
+        user_id: str,
+        agent_id: str = "",
+        metadata: dict | None = None,
+    ) -> str:
+        """空存储，仅记录日志。"""
+        logger.debug("NoOp 记忆存储", namespace=self.namespace, session_id=session_id)
+        return ""

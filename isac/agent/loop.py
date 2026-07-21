@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from isac.agent.prompt_builder import SystemPromptBuilder
     from isac.agent.tools.registry import ToolRegistry
     from isac.provider.base import LLMProvider
+    from isac.provider.manager import ProviderManager
 
 logger = get_logger(__name__)
 
@@ -55,11 +56,13 @@ class ISACAgentLoop:
         prompt_builder: SystemPromptBuilder,
         hooks: AgentHooks,
         tools: ToolRegistry,
+        provider_manager: ProviderManager | None = None,
     ):
         self.llm = llm
         self.prompt_builder = prompt_builder
         self.hooks = hooks
         self.tools = tools
+        self.provider_manager = provider_manager
 
     async def run(self, messages: list[dict], context: AgentContext) -> AgentResult:
         """执行 Agent 循环，直到产出最终回复 / 被打断 / 预算耗尽。"""
@@ -71,9 +74,14 @@ class ISACAgentLoop:
             system_prompt = await self.prompt_builder.build(injection_context)
 
             # PRE_LLM: 记忆检索/画像/行话 等在这里注入
-            for result in await self.hooks.fire(AgentHookPoint.PRE_LLM, messages, context):
-                if isinstance(result, list):
-                    messages = result
+            # 顺序调用，每个 hook 收到上一个 hook 修改后的 messages，实现串联
+            for hook in self.hooks.get_hooks(AgentHookPoint.PRE_LLM):
+                try:
+                    result = await hook(messages, context)
+                    if isinstance(result, list):
+                        messages = result
+                except Exception as exc:
+                    logger.error("PRE_LLM Hook 执行失败，已跳过", error=str(exc), exc_info=True)
 
             # LLM 调用 (支持流式和非流式)
             response = await self._call_llm(system_prompt, messages, context)
@@ -127,15 +135,28 @@ class ISACAgentLoop:
         return result
 
     async def _call_llm(self, system_prompt: str, messages: list[dict], context: AgentContext) -> LLMResponse:
-        """统一 LLM 调用入口，处理流式和非流式。"""
+        """统一 LLM 调用入口，处理流式和非流式。
+
+        优先使用 ProviderManager.chat_with_retry（重试+回退+降级）；
+        未注入 ProviderManager 时退化为直接调用 llm.chat（测试/单 Provider 场景）。
+        """
         tools_def = self.tools.definitions()
         if context.streaming:
+            # 流式模式暂不支持 chat_with_retry 包装，直接走原 LLM 流式接口
             chunks: list[LLMChunk] = []
             async for chunk in self.llm.chat_stream(system_prompt, messages, tools_def):
                 chunks.append(chunk)
                 if context.on_chunk:
                     await context.on_chunk(chunk)
             return self._merge_chunks(chunks)
+
+        if self.provider_manager is not None:
+            return await self.provider_manager.chat_with_retry(
+                self.llm,
+                system=system_prompt,
+                messages=messages,
+                tools=tools_def,
+            )
         return await self.llm.chat(system_prompt, messages, tools_def)
 
     def _merge_chunks(self, chunks: list[LLMChunk]) -> LLMResponse:

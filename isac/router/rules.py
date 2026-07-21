@@ -25,8 +25,12 @@ def load_rules(path: str | Path) -> RoutingRules:
         logger.warning("路由规则文件不存在，使用空规则", path=str(file_path))
         return RoutingRules()
     raw = _loads(file_path.read_text(encoding="utf-8"))
+    valid_fields = set(ChannelBinding.__dataclass_fields__)
     return RoutingRules(
-        bindings=[ChannelBinding(**b) for b in raw.get("bindings", [])],
+        bindings=[
+            ChannelBinding(**{k: v for k, v in b.items() if k in valid_fields})
+            for b in raw.get("bindings", [])
+        ],
         default_agents=dict(raw.get("default_agents", {})),
     )
 
