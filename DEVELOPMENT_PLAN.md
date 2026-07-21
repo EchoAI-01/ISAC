@@ -33,7 +33,7 @@
 |--------|------|------|------|
 | A | 文档冻结 | 75% | A1-A3 完成，A4 持续 |
 | B | 基础骨架 | 100% | 全部完成 |
-| C | 连接与路由 | 75% | C2-C4 完成，C1 待实现 |
+| C | 连接与路由 | 100% | 全部完成 |
 | D | 单 Agent 核心 | 35% | 框架完成，大量业务逻辑待填充 |
 | E | 多 Agent 运行时 | 60% | 框架完成，矩阵与集成测试待填充 |
 | F | 插件生态 | 0% | 全部待实现 |
@@ -101,11 +101,15 @@
 
 **目标**：让 IM 消息能进入系统，并按规则路由到正确的 Agent。
 
-- [ ] **C1 OneBot 适配器实现**
+- [x] **C1 OneBot 适配器实现**
   - **验收**：能通过 NapCat 连接 QQ，收发消息；消息转换覆盖 text/at/image/reply；有重连机制。
-  - **产出**：`channel/adapters/onebot/adapter.py`。
+  - **产出**：`channel/adapters/onebot/adapter.py`、`tests/unit/test_onebot_adapter.py`。
   - **依赖**：B1-B4。
-  - **交接**：需准备 NapCat + 测试 QQ（见 `AGENTS.md` 准备清单）。
+  - **交接**：
+    - 已实现反向 WebSocket 模式，配置 `channels.onebot.enabled=true` 即可启用。
+    - 消息转换支持 text/at/image/reply/face/record；发送支持 text/at/image/reply/emoji/voice。
+    - 重连逻辑在 `_run_with_retry`，连接建立时重置计数。
+    - 真机联调仍需 NapCat + 测试 QQ + 在 `data/config.jsonc` 填写 `channels.onebot` 与 `bot_id`。
 
 - [x] **C2 Gateway 会话与用户系统**
   - **验收**：EventBus Intercept/Async 双层工作；SessionManager 能创建/查找会话；UserMapper 跨平台映射；SessionLockManager 串行处理。
@@ -333,4 +337,5 @@
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
 | 2026-07-21 | Architect | 将日程制开发计划重构为节点制 SOW/TODO，新增术语表与节点使用规则 |
+| 2026-07-21 | Architect | C1 OneBot 适配器实现：反向 WebSocket 连接、消息转换（text/at/image/reply/face/record）、发送、重连；main.py 注册与回复发送；新增 12 个单元测试 |
 | 2026-07-21 | Architect | Review 修复：PromptInjector 下沉到 core/ 打破导入环；TokenUsage 自动补 total；ConfigMigrator 缺省版本修复；AstrBot 沙箱改用 find_spec/exec_module；补全 has_mention 判定；同步修正 ARCH/DEVELOP/SPEC/AGENTS/README 文档错误与矛盾 |

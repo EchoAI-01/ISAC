@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from isac.channel.adapters.onebot.adapter import OneBotAdapter
 from isac.channel.model import ISACMessage
 from isac.channel.registry import ChannelRegistry
 from isac.core.events import EventType
@@ -30,6 +31,35 @@ from isac.utils.logger import get_logger, setup_logger
 logger = get_logger(__name__)
 
 DATA_DIR = Path("data")
+
+
+async def _send_reply(
+    channel_registry: ChannelRegistry,
+    incoming: ISACMessage,
+    reply_text: str,
+    agent_id: str,
+) -> None:
+    """把 Agent 的文本回复经原 Channel 适配器发送。"""
+    adapter = channel_registry.get(incoming.platform)
+    if adapter is None:
+        logger.warning("未找到对应平台适配器，无法发送回复", platform=incoming.platform, agent_id=agent_id)
+        return
+
+    reply = ISACMessage(
+        msg_id="",  # 发送后由平台分配
+        platform=incoming.platform,
+        timestamp=0,
+        user_id=incoming.user_id,
+        user_name="",  # 发送方是 Bot，无需昵称
+        group_id=incoming.group_id,
+        content=reply_text,
+        reply_to=incoming.msg_id,
+    )
+    success = await adapter.send(reply)
+    if not success:
+        logger.warning("回复发送失败", platform=incoming.platform, agent_id=agent_id)
+    else:
+        logger.info("Agent 回复已发送", agent_id=agent_id, platform=incoming.platform, length=len(reply_text))
 
 
 def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
@@ -70,6 +100,13 @@ async def main() -> None:
     rules = load_rules(global_config.get("router", {}).get("rules_file", DATA_DIR / "routing.jsonc"))
     router = MessageRouter(rules, agents_provider=agent_manager.routing_infos)
 
+    # ── Channel ─────────────────────────────────────────────
+    channel_registry = ChannelRegistry()
+    onebot_config = global_config.get("channels", {}).get("onebot")
+    if onebot_config and onebot_config.get("enabled"):
+        onebot_adapter = OneBotAdapter(onebot_config)
+        channel_registry.register(onebot_adapter)
+
     # ── Gateway ─────────────────────────────────────────────
     event_bus = EventBus()
     session_mgr = SessionManager(global_config)
@@ -94,13 +131,12 @@ async def main() -> None:
         profile = await user_mapper.resolve(message.platform, message.user_id, message.user_name)
         reply = await agent_manager.handle_message(decision.agent_id, message, session, profile)
         if reply:
-            # TODO(Day 9): 经 Channel 适配器发送回复 (构造回复 ISACMessage)
-            logger.info("Agent 回复", agent_id=decision.agent_id, length=len(reply))
+            await _send_reply(channel_registry, message, reply, decision.agent_id)
         await event_bus.fire_async(EventType.POST_MESSAGE, message)
 
-    # ── Channel ─────────────────────────────────────────────
-    channel_registry = ChannelRegistry()
-    # TODO(C1): 按配置注册 OneBotAdapter，并注入 on_message = handle_message
+    # 注入 Channel 适配器的消息回调
+    for adapter in channel_registry.list():
+        adapter.on_message = handle_message
 
     # ── Control Plane (可选) ─────────────────────────────────
     control_config = global_config.get("control", {})
