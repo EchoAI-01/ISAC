@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 
 from isac.core.constants import DEFAULT_AGENT_ID
 from isac.core.exceptions import AgentNotFoundError
-from isac.core.types import AgentContext
 from isac.gating.types import GateKind
 from isac.runtime.assembly import assemble_agent
 from isac.runtime.config import AgentConfig
@@ -110,7 +109,20 @@ class AgentManager:
         turn_scheduler = instance.gating.turn_scheduler
         turn_scheduler.record_window_message()
 
-        from isac.core.types import GatingContext  # 避免模块级循环
+        from isac.core.types import AgentContext, GatingContext  # 避免模块级循环
+
+        # E4: 命令拦截 (在门控前)。/cmd 是用户显式发起, 跳过门控。
+        if instance.commands is not None and message.content.startswith("/"):
+            agent_context_for_cmd = AgentContext(
+                session=session,
+                user_profile=user_profile,
+                current_message=message,
+            )
+            cmd_result = await instance.commands.try_execute(message, agent_context_for_cmd)
+            if cmd_result is not None:
+                turn_scheduler.record_reply()
+                instance.gating.idle_backoff.record_reply()
+                return cmd_result
 
         # 构造门控上下文；has_at / has_mention 在交给门控前填充。
         # has_mention 判定：消息文本中出现当前 Agent 的 display_name（不含 @）。

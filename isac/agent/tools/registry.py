@@ -1,6 +1,7 @@
 """ToolRegistry: 工具注册与执行 (ARCHITECTURE.md 3.5)。
 
-[已完成] 权限检查 (deny/restricted/allow) + 异常隔离 + restricted 策略 (未注入对应后端时拒绝);
+[已完成] 权限检查 (deny/restricted/allow) + 异常隔离 + restricted 策略 (未注入对应后端时拒绝) +
+启用矩阵接入 (EnableMatrix: Agent ∩ Channel ∩ 全局);
 AST 自动发现待落地 (当前手动 register)。
 
 错误处理: ToolError → 错误信息给 LLM；未知异常 → 内部错误。
@@ -8,10 +9,15 @@ AST 自动发现待落地 (当前手动 register)。
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from isac.agent.tools.base import Tool, ToolContext, ToolPermission
 from isac.core.exceptions import ToolError
 from isac.core.types import AgentContext, ToolCall, ToolResult
 from isac.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from isac.core.policy import EnableMatrix
 
 logger = get_logger(__name__)
 
@@ -19,9 +25,16 @@ logger = get_logger(__name__)
 class ToolRegistry:
     """工具注册表。每个 AgentInstance 持有一个独立实例 (权限策略按 Agent 配置)。"""
 
-    def __init__(self, permission: ToolPermission | None = None):
+    def __init__(
+        self,
+        permission: ToolPermission | None = None,
+        enable_matrix: EnableMatrix | None = None,
+        agent_id: str = "",
+    ):
         self._tools: dict[str, Tool] = {}
         self.permission = permission or ToolPermission()
+        self.enable_matrix = enable_matrix
+        self.agent_id = agent_id
 
     def register(self, tool: Tool) -> None:
         """注册工具 (重名覆盖并告警)。"""
@@ -32,12 +45,28 @@ class ToolRegistry:
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
-    def definitions(self) -> list[dict]:
+    def effective_policy(self, tool_name: str, platform: str = "") -> str:
+        """返回工具有效策略: allow / restricted / deny。
+
+        合并顺序: ToolPermission (全局默认+Agent tools_policy) → EnableMatrix (Channel 覆盖)。
+        """
+        policy = self.permission.check(tool_name)
+        if self.enable_matrix is not None:
+            agent_policy_dict = self.permission.policy
+            platform_policy = self.enable_matrix.tool_policy(
+                tool_name, agent_policy_dict, agent_id=self.agent_id, platform=platform
+            )
+            # Channel 明确 deny 或 restricted 优先
+            if platform_policy in ("deny", "restricted"):
+                policy = platform_policy
+        return policy
+
+    def definitions(self, platform: str = "") -> list[dict]:
         """返回 function calling 定义 (过滤 deny 工具)。"""
         return [
             {"name": t.name, "description": t.description, "parameters": t.parameters}
             for t in self._tools.values()
-            if self.permission.check(t.name) != "deny"
+            if self.effective_policy(t.name, platform) != "deny"
         ]
 
     async def execute(
@@ -58,7 +87,8 @@ class ToolRegistry:
         if tool is None:
             return ToolResult(content=f"未知工具: {tool_call.name}", is_error=True)
 
-        policy = self.permission.check(tool.name)
+        platform = getattr(agent_context.session, "platform", "") if agent_context.session else ""
+        policy = self.effective_policy(tool.name, platform)
         if policy == "deny":
             return ToolResult(content=f"工具 {tool.name} 已被配置禁用", is_error=True)
         if policy == "restricted":
