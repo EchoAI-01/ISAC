@@ -137,7 +137,7 @@
   - **验收**：GatingSystem.evaluate 流程正确；ReplyNecessityJudge 评分模型与文档一致；FocusMode/IdleBackoff/TurnScheduler 工作。
   - **产出**：`gating/{system,reply_necessity,idle_backoff,turn_scheduler,turn_gates,types}.py`。
   - **依赖**：B2。
-  - **当前**：GatingSystem/IdleBackoff/FocusMode 已实现；ReplyNecessityJudge 已提供安全兜底（私聊 40/群聊 0），完整评分模型仍为 TODO。
+  - **当前**：GatingSystem/IdleBackoff/FocusMode 已实现；**ReplyNecessityJudge 完整评分模型已实现**（基础分+内容分+压力分-存在感惩罚 × 频率系数，权重集中在 `core/constants.py`，附 `tests/unit/test_reply_necessity.py`）；已在 `runtime/manager.py` 接线 `notify_new_message`。剩余：TurnScheduler 滑动窗口频率计算 (Day 17) 与 recent_self_replies/recent_window_messages 计数接线仍为桩，因此存在感惩罚与频率系数当前恒为默认值；待这两项落地后 D1 可整体验收（并需在有环境处跑通 ruff/mypy/pytest）。
 
 - [x] **D2 Prompt 组装系统**
   - **验收**：SystemPromptBuilder 按 priority 注入；注入器频率控制工作；失败 Injector 不影响整体。
