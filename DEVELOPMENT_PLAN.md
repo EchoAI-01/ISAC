@@ -36,7 +36,7 @@
 | C | 连接与路由 | 100% | 全部完成 |
 | D | 单 Agent 核心 | 100% | D1-D8 全部完成 |
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
-| F | 插件生态 | 50% | F1/F2 完成, F3/F4 待实现 |
+| F | 插件生态 | 75% | F1-F3 完成, F4 待实现 |
 | G | 控制面与自动化 | 0% | 骨架完成，业务逻辑待填充 |
 | H | 平台与工具扩展 | 0% | 全部待实现 |
 | I | 生产化与交付 | 0% | 全部待实现 |
@@ -237,10 +237,11 @@
   - **依赖**：B2、D3、`commands/`。
   - **当前**：MaiBotPlugin 基类 + @register_action / @register_command 装饰器 (标记 _maibot_action / _maibot_command); MaiBotPluginAdapter 扫描装饰器并 adapt 到 ToolRegistry / CommandRegistry; bridge_action (MaiBotActionAdapter) 桥接 Action → ISAC Tool (同步/异步/异常隔离); bridge_command (MaiBotCommandAdapter) 桥接 Command → ISAC Command。附 `tests/unit/test_maibot_compat.py` (6 测试覆盖装饰器扫描/Action 桥接/Command 桥接)。
 
-- [ ] **F3 原生 SDK v2**
+- [x] **F3 原生 SDK v2**
   - **验收**：ISACPlugin 可注册 Commands/InterAgent Hooks/Admin Routes(预留)；Plugin Manifest 扩展字段生效。
   - **产出**：`plugin/native/{plugin,hooks,api}.py`。
   - **依赖**：B2、E3。
+  - **当前**：PluginContext 实现 register_tool/injector/command 真实注册到 ToolRegistry/CommandRegistry/SystemPromptBuilder; register_inter_agent_hook 挂到 InterAgentBus; register_admin_route 收集到 services["admin_routes"] 待 G1 消费; on_event_intercept/on_event_async 订阅 EventBus。make_plugin_context 工厂在 PluginManager 加载时调用。附 `tests/unit/test_native_plugin.py` (9 测试)。
 
 - [ ] **F4 插件加载器与启用矩阵**
   - **验收**：loader 自动识别三种格式；PluginManager 热重载、错误隔离、启用矩阵生效。
@@ -355,6 +356,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | F3 原生 SDK v2 完成: PluginContext register_tool/injector/command 真实落地; register_inter_agent_hook 挂到 InterAgentBus; register_admin_route 收集到 services["admin_routes"]; on_event_intercept/on_event_async 订阅 EventBus; make_plugin_context 工厂。F 节点 50% → 75% |
 | 2026-07-23 | Architect | F2 MaiBot 兼容层完成: MaiBotPlugin 基类 + @register_action/@register_command 装饰器; MaiBotPluginAdapter 扫描装饰器适配; bridge_action/bridge_command 桥接 (同步异步异常隔离)。F 节点 25% → 50% |
 | 2026-07-23 | Architect | F1 AstrBot 兼容层完成: FunctionToolAdapter 桥接 @filter.llm_tool; ContextAdapter 映射 send_message/get_platform/get_provider/register_tool; Star 基类 + _FilterRegistry 装饰器; EventType 映射到 ISAC; sandbox.py meta_path import 拦截。F 节点 0% → 25% |
 | 2026-07-23 | Architect | E4 启用矩阵生效: core/policy.py 新增 EnableMatrix (Agent ∩ Channel ∩ 全局); ToolRegistry effective_policy 接入; CommandRegistry enable_checker 注入; assembly.py 接线 EnableMatrix 与 4 个内置命令; manager.py handle_message 接入 /cmd 命令拦截 (跳过门控)。E 节点 60% → 80% |
