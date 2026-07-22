@@ -102,6 +102,9 @@ class AgentManager:
             logger.warning("Agent 不存在或未运行，消息忽略", agent_id=agent_id)
             return None
 
+        # 每条到达消息都累加注入器的新消息计数 (支撑 max_new_messages 频率控制)。
+        instance.prompt_builder.notify_new_message()
+
         from isac.core.types import GatingContext  # 避免模块级循环
 
         # 构造门控上下文；has_at / has_mention 在交给门控前填充。
