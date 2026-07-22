@@ -36,7 +36,7 @@
 | C | 连接与路由 | 100% | 全部完成 |
 | D | 单 Agent 核心 | 100% | D1-D8 全部完成 |
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
-| F | 插件生态 | 75% | F1-F3 完成, F4 待实现 |
+| F | 插件生态 | 100% | F1-F4 全部完成 |
 | G | 控制面与自动化 | 0% | 骨架完成，业务逻辑待填充 |
 | H | 平台与工具扩展 | 0% | 全部待实现 |
 | I | 生产化与交付 | 0% | 全部待实现 |
@@ -243,10 +243,11 @@
   - **依赖**：B2、E3。
   - **当前**：PluginContext 实现 register_tool/injector/command 真实注册到 ToolRegistry/CommandRegistry/SystemPromptBuilder; register_inter_agent_hook 挂到 InterAgentBus; register_admin_route 收集到 services["admin_routes"] 待 G1 消费; on_event_intercept/on_event_async 订阅 EventBus。make_plugin_context 工厂在 PluginManager 加载时调用。附 `tests/unit/test_native_plugin.py` (9 测试)。
 
-- [ ] **F4 插件加载器与启用矩阵**
+- [x] **F4 插件加载器与启用矩阵**
   - **验收**：loader 自动识别三种格式；PluginManager 热重载、错误隔离、启用矩阵生效。
   - **产出**：`plugin/runtime/{manager,loader}.py`。
   - **依赖**：F1-F3。
+  - **当前**：PluginLoader 实现 detect_format (manifest.jsonc/metadata.yaml/mai_plugin.yaml 三选一) + load (按格式找对应基类子类并实例化, 多签名兜底); PluginManager 实现 load_all (错误隔离, report 用目录名作 key 解耦) / unload (on_unload 调用) / call_on_load (Native 插件 on_load 传入 PluginContext) / is_enabled_for (EnableMatrix); LoadedPlugin 含 name/format/instance/manifest/path 元数据。附 `tests/unit/test_plugin_loader.py` (12 测试覆盖三种格式 detect/load + 错误隔离 + unload)。
 
 ---
 
@@ -356,6 +357,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | F4 插件加载器与启用矩阵完成: PluginLoader detect_format + load (三种格式多签名实例化); PluginManager load_all (错误隔离) + unload (on_unload) + call_on_load (Native 传 PluginContext); LoadedPlugin 元数据封装。F 节点 75% → 100% |
 | 2026-07-23 | Architect | F3 原生 SDK v2 完成: PluginContext register_tool/injector/command 真实落地; register_inter_agent_hook 挂到 InterAgentBus; register_admin_route 收集到 services["admin_routes"]; on_event_intercept/on_event_async 订阅 EventBus; make_plugin_context 工厂。F 节点 50% → 75% |
 | 2026-07-23 | Architect | F2 MaiBot 兼容层完成: MaiBotPlugin 基类 + @register_action/@register_command 装饰器; MaiBotPluginAdapter 扫描装饰器适配; bridge_action/bridge_command 桥接 (同步异步异常隔离)。F 节点 25% → 50% |
 | 2026-07-23 | Architect | F1 AstrBot 兼容层完成: FunctionToolAdapter 桥接 @filter.llm_tool; ContextAdapter 映射 send_message/get_platform/get_provider/register_tool; Star 基类 + _FilterRegistry 装饰器; EventType 映射到 ISAC; sandbox.py meta_path import 拦截。F 节点 0% → 25% |
