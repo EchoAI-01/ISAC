@@ -39,7 +39,7 @@
 | F | 插件生态 | 100% | F1-F4 全部完成 |
 | G | 控制面与自动化 | 100% | G1-G4 全部完成 |
 | H | 平台与工具扩展 | 100% | H1-H3 全部完成 |
-| I | 生产化与交付 | 67% | I1-I4 完成, I5/I6 待实现 |
+| I | 生产化与交付 | 83% | I1-I5 完成, I6 待实现 |
 
 ---
 
@@ -333,10 +333,11 @@
   - **依赖**：D5-D7。
   - **当前**：scripts/migrate.py 实现 migrate_from_astrbot (LLM 配置从 cmd_config.json/llm_model.json 解析, 插件目录复制, 写出 ISAC config.jsonc) + migrate_from_maibot (config.toml 解析, 记忆目录备份, 创建默认 Agent 配置); 支持 --dry-run; scripts/export.py 实现 export_data (zip 打包, 默认排除 audit.ndjson + .venv + __pycache__) + import_data (解压恢复, 支持 --overwrite); 子命令模式 (export/import)。附 `tests/unit/test_data_tools.py` (11 测试覆盖 AstrBot LLM 迁移 + dry-run + 插件复制, MaiBot config.toml 解析 + 默认 Agent, export 含/排除日志, import 恢复 + skip/overwrite + 排除 venv/pycache)。
 
-- [ ] **I5 监控告警**
+- [x] **I5 监控告警**
   - **验收**：关键指标 Prometheus 采集；Webhook 告警；审计日志查看。
   - **产出**：监控中间件、告警配置。
   - **依赖**：G1、G4。
+  - **当前**：isac/observability/{__init__.py, metrics.py, alerting.py} 新增 MetricsCollector (Counter/Gauge/Histogram 三种指标, 线程安全 + Prometheus 文本格式输出 + JSON snapshot); get_default_metrics 注册 20+ 预定义指标 (messages/agents/llm/tools/memory/control); AlertManager + AlertRule + AlertLevel(StrEnum) 规则驱动告警 (cooldown 防告警风暴 + 推送到 G3 WebhookManager); get_default_alert_rules 提供 3 个默认规则 (llm_error_rate_high/message_drop_rate_high/no_active_agents); server.py 暴露 /metrics (Prometheus 文本, 不需认证) + /api/v1/metrics (JSON snapshot, 需认证); 审计日志查看已在 G1 /api/v1/audit 落地。附 `tests/unit/test_observability.py` (14 测试覆盖 Counter/Gauge/Histogram + 默认指标 + 告警规则触发 + cooldown + list_rules)。
 
 - [ ] **I6 最终测试与发布**
   - **验收**：核心模块覆盖率 ≥80%；集成测试通过；v1.0 发布。
@@ -368,6 +369,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | I5 监控告警完成: isac/observability/ 新增 MetricsCollector (Counter/Gauge/Histogram + Prometheus 输出 + JSON snapshot); AlertManager + AlertRule 规则驱动告警 (cooldown + 推送 Webhook); 3 个默认告警规则; server.py 暴露 /metrics + /api/v1/metrics。I 节点 67% → 83% |
 | 2026-07-23 | Architect | I4 数据工具完成: scripts/migrate.py AstrBot/MaiBot 迁移 (LLM 配置解析 + 插件复制 + 默认 Agent + --dry-run); scripts/export.py export/import 子命令 (zip 打包 + 排除 audit.ndjson/venv/pycache + overwrite 控制)。I 节点 50% → 67% |
 | 2026-07-23 | Architect | I3 文档完善完成: docs/ 新增 6 篇文档 (README 导航/usage 使用/deployment Docker 部署/api Admin REST API/plugin_development 插件开发/control_automation 控制面自动化)。I 节点 33% → 50% |
 | 2026-07-23 | Architect | I2 Docker 部署完成: Dockerfile 多阶段 (builder + runtime, python:3.12-slim) + uv sync + EXPOSE 8765 + HEALTHCHECK + VOLUME /app/data; docker-compose.yml 一键启动 + isac_data volume + restart unless-stopped + 环境变量; scripts/docker_deploy.sh 部署脚本 (8 命令); .dockerignore。I 节点 17% → 33% |

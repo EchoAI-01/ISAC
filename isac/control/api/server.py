@@ -39,6 +39,7 @@ def create_control_app(
     from isac.control.api import routes_agents, routes_plugins, routes_routing
     from isac.control.audit import AuditLog
     from isac.control.auth import make_auth_dependency
+    from isac.observability import get_default_metrics
 
     api_token = config.get("api_token", "")
     auth_dependency = make_auth_dependency(api_token) if api_token else None
@@ -46,6 +47,7 @@ def create_control_app(
     agents_dir = config.get("agents_dir", "data/agents")
     routing_rules_path = config.get("routing_rules_path", "data/routing.jsonc")
     links_path = config.get("links_path", "data/links.jsonc")
+    metrics = get_default_metrics()
 
     app = FastAPI(title="ISAC Admin API", version="0.1.0", docs_url="/docs")
 
@@ -92,6 +94,18 @@ def create_control_app(
         limit: int = 100,
     ) -> list[dict]:
         return audit_log.query(action=action, actor=actor, path_prefix=path_prefix, limit=limit)
+
+    @app.get("/metrics")
+    async def prometheus_metrics() -> Any:
+        """Prometheus 文本格式 (供 Prometheus 抓取, 不需认证)。"""
+        from fastapi.responses import PlainTextResponse
+
+        return PlainTextResponse(metrics.to_prometheus(), media_type="text/plain")
+
+    @app.get("/api/v1/metrics")
+    async def metrics_snapshot() -> dict:
+        """JSON 指标快照 (供 WebUI 或监控系统集成, 需认证)。"""
+        return metrics.snapshot()
 
     # I1: 挂载 WebUI 管理面板 (Vanilla JS, 不依赖 Vue 构建工具链)
     try:
