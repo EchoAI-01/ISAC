@@ -36,7 +36,7 @@
 | C | 连接与路由 | 100% | 全部完成 |
 | D | 单 Agent 核心 | 100% | D1-D8 全部完成 |
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
-| F | 插件生态 | 25% | F1 完成, F2-F4 待实现 |
+| F | 插件生态 | 50% | F1/F2 完成, F3/F4 待实现 |
 | G | 控制面与自动化 | 0% | 骨架完成，业务逻辑待填充 |
 | H | 平台与工具扩展 | 0% | 全部待实现 |
 | I | 生产化与交付 | 0% | 全部待实现 |
@@ -231,10 +231,11 @@
   - **依赖**：B2、D3、D4。
   - **当前**：FunctionToolAdapter 桥接 @filter.llm_tool 函数 → ISAC Tool (同步/异步/异常隔离); ContextAdapter 映射 send_message/get_platform/get_provider/register_tool 到 ISAC services; Star 基类与 _FilterRegistry 实现 AstrBot 装饰器 (llm_tool/on_message/on_llm_request); events.py EventType 映射到 ISAC EventType/AgentHookPoint; sandbox.py meta_path 拦截 astrbot.* import 重定向。附 `tests/unit/test_astrbot_compat.py` (9 测试覆盖装饰器/桥接/Context 适配)。
 
-- [ ] **F2 MaiBot 兼容层**
+- [x] **F2 MaiBot 兼容层**
   - **验收**：2-3 个 MaiBot 插件可运行；Plugin/Action/Command 映射工作；锁定兼容版本。
   - **产出**：`plugin/compatibility/maibot/{plugin,actions,commands}.py`。
   - **依赖**：B2、D3、`commands/`。
+  - **当前**：MaiBotPlugin 基类 + @register_action / @register_command 装饰器 (标记 _maibot_action / _maibot_command); MaiBotPluginAdapter 扫描装饰器并 adapt 到 ToolRegistry / CommandRegistry; bridge_action (MaiBotActionAdapter) 桥接 Action → ISAC Tool (同步/异步/异常隔离); bridge_command (MaiBotCommandAdapter) 桥接 Command → ISAC Command。附 `tests/unit/test_maibot_compat.py` (6 测试覆盖装饰器扫描/Action 桥接/Command 桥接)。
 
 - [ ] **F3 原生 SDK v2**
   - **验收**：ISACPlugin 可注册 Commands/InterAgent Hooks/Admin Routes(预留)；Plugin Manifest 扩展字段生效。
@@ -354,6 +355,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | F2 MaiBot 兼容层完成: MaiBotPlugin 基类 + @register_action/@register_command 装饰器; MaiBotPluginAdapter 扫描装饰器适配; bridge_action/bridge_command 桥接 (同步异步异常隔离)。F 节点 25% → 50% |
 | 2026-07-23 | Architect | F1 AstrBot 兼容层完成: FunctionToolAdapter 桥接 @filter.llm_tool; ContextAdapter 映射 send_message/get_platform/get_provider/register_tool; Star 基类 + _FilterRegistry 装饰器; EventType 映射到 ISAC; sandbox.py meta_path import 拦截。F 节点 0% → 25% |
 | 2026-07-23 | Architect | E4 启用矩阵生效: core/policy.py 新增 EnableMatrix (Agent ∩ Channel ∩ 全局); ToolRegistry effective_policy 接入; CommandRegistry enable_checker 注入; assembly.py 接线 EnableMatrix 与 4 个内置命令; manager.py handle_message 接入 /cmd 命令拦截 (跳过门控)。E 节点 60% → 80% |
 | 2026-07-22 | Architect | D 节点完成 100%：D4 工具系统补齐 (13 个内置工具全部实现, restricted 策略落地, 路径白名单/命令白名单/递归深度限制, shell 元字符注入防护)；D8 人格系统补齐 (MoodEngine update/decay/label 映射, BehaviorLearner FINAL_RESPONSE hook 接线, PersonaManager 聚合 mood/behavior)；新增 `tests/unit/test_persona.py`、扩展 `tests/unit/test_builtin_tools.py` 与 `tests/unit/test_tool_registry.py`；D 节点进度 75% → 100% |
