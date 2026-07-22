@@ -37,7 +37,7 @@
 | D | 单 Agent 核心 | 100% | D1-D8 全部完成 |
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
 | F | 插件生态 | 100% | F1-F4 全部完成 |
-| G | 控制面与自动化 | 50% | G1/G2 完成, G3/G4 待实现 |
+| G | 控制面与自动化 | 75% | G1-G3 完成, G4 待实现 |
 | H | 平台与工具扩展 | 0% | 全部待实现 |
 | I | 生产化与交付 | 0% | 全部待实现 |
 
@@ -267,10 +267,11 @@
   - **依赖**：G1。
   - **当前**：ISACMCPServer 实现 JSON-RPC 2.0 + stdio NDJSON 传输 (sys.stdin/stdout.buffer 简化模式); initialize / tools/list / tools/call / shutdown 方法分发; tools/call 受 Bearer Token 认证 (与 G1 Admin API 共用 verify_token); agent_create/agent_start/agent_stop/link_create/link_delete/route_set_default 6 个工具委托到 AgentManager/Router/Bus; MCPError 异常体系 + 标准 JSON-RPC 错误码 (-32601/-32602/-32603/-32700/-32001); notification (id 为 None) 不响应。附 `tests/unit/test_mcp_server.py` (11 测试覆盖 initialize/tools_list/Token 认证/tools 调用/notification/MCPError)。
 
-- [ ] **G3 Webhooks 与自动化触发器**
+- [x] **G3 Webhooks 与自动化触发器**
   - **验收**：message.received/agent.created 等事件可推送到订阅 URL；`/automation/trigger` 入口可用。
   - **产出**：`control/webhooks.py`。
   - **依赖**：G1。
+  - **当前**：WebhookManager 实现 subscribe/unsubscribe/list_subscriptions/dispatch/trigger; dispatch 并发推送 (asyncio.gather), 失败重试 3 次 (指数退避); httpx 惰性导入 (生产) 或 http_client 注入 (测试 mock); trigger 作为 /automation/trigger 入口委托到 dispatch。附 `tests/unit/test_webhooks.py` (9 测试覆盖订阅/取消/推送/重试/部分失败/trigger)。
 
 - [ ] **G4 控制面安全与审计**
   - **验收**：默认 127.0.0.1；自动化创建 Agent 使用受限默认配置；审计日志可查询。
@@ -359,6 +360,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | G3 Webhooks 完成: WebhookManager subscribe/unsubscribe/list/dispatch/trigger; dispatch 并发推送 + 失败重试 3 次 (指数退避); httpx 惰性导入或 http_client 注入; trigger 作 /automation/trigger 入口。G 节点 50% → 75% |
 | 2026-07-23 | Architect | G2 ISAC MCP Server 完成: JSON-RPC 2.0 + stdio NDJSON; initialize/tools/list/tools/call/shutdown 方法; tools/call 受 Bearer Token 认证 (与 G1 共用); 6 个工具委托到 AgentManager/Router/Bus; MCPError 标准 JSON-RPC 错误码; notification 不响应。G 节点 25% → 50% |
 | 2026-07-23 | Architect | G1 Admin API 完整实现: control/auth.py hmac.compare_digest 恒定时间认证; control/audit.py AuditLog 双写 + query; routes_agents/_routing/_plugins 全部接入 auth + audit + 持久化 (AgentConfig/routing/links/plugins 矩阵); server 注入 auth/audit + /api/v1/audit 查询。G 节点 0% → 25% |
 | 2026-07-23 | Architect | F4 插件加载器与启用矩阵完成: PluginLoader detect_format + load (三种格式多签名实例化); PluginManager load_all (错误隔离) + unload (on_unload) + call_on_load (Native 传 PluginContext); LoadedPlugin 元数据封装。F 节点 75% → 100% |
