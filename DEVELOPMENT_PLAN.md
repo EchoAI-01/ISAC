@@ -38,7 +38,7 @@
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
 | F | 插件生态 | 100% | F1-F4 全部完成 |
 | G | 控制面与自动化 | 100% | G1-G4 全部完成 |
-| H | 平台与工具扩展 | 0% | 全部待实现 |
+| H | 平台与工具扩展 | 33% | H1 完成, H2/H3 待实现 |
 | I | 生产化与交付 | 0% | 全部待实现 |
 
 ---
@@ -285,10 +285,11 @@
 
 **目标**：支持更多 IM 平台，扩展工具能力。
 
-- [ ] **H1 更多平台适配器**
+- [x] **H1 更多平台适配器**
   - **验收**：Telegram / Discord / WebChat 适配器可收发消息。
   - **产出**：`channel/adapters/{telegram,discord,webchat}/`。
   - **依赖**：C1。
+  - **当前**：TelegramAdapter 用 Bot HTTP API long polling + httpx 惰性导入; 私聊/群聊识别 + @mention entity 转 at segment; DiscordAdapter 用 REST polling (简化版, 生产推荐接入 discord.py 或 Gateway); WebChat 用 asyncio.start_server 极简 HTTP 实现 (/webchat/send + /webchat/poll), 不依赖外部 web 框架, 内存消息队列 + 过期清理。附 `tests/unit/test_platform_adapters.py` (13 测试覆盖三种适配器消息转换 + send + token 缺失兜底)。
 
 - [ ] **H2 MCP Client**
   - **验收**：可连接外部 MCP Server；工具按 Agent mcp_servers 矩阵生效。
@@ -361,6 +362,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | H1 平台适配器完成: Telegram (Bot API long polling + httpx); Discord (REST polling 简化版); WebChat (asyncio.start_server 极简 HTTP /webchat/send+/webchat/poll + 内存队列)。H 节点 0% → 33% |
 | 2026-07-23 | Architect | G4 控制面安全与审计完成: control/defaults.py RESTRICTED_TOOLS_POLICY (bash/task deny, read_file/write_file restricted) + RESTRICTED_COMMANDS_ALLOW; make_restricted_agent_config 工厂 (plugins_deny=["*"] + mcp_servers=[]); is_safe_default_host/enforce_safe_host 防误绑定; main.py 接入 enforce_safe_host。审计日志查询 (/api/v1/audit) 在 G1 落地。G 节点 75% → 100% |
 | 2026-07-23 | Architect | G3 Webhooks 完成: WebhookManager subscribe/unsubscribe/list/dispatch/trigger; dispatch 并发推送 + 失败重试 3 次 (指数退避); httpx 惰性导入或 http_client 注入; trigger 作 /automation/trigger 入口。G 节点 50% → 75% |
 | 2026-07-23 | Architect | G2 ISAC MCP Server 完成: JSON-RPC 2.0 + stdio NDJSON; initialize/tools/list/tools/call/shutdown 方法; tools/call 受 Bearer Token 认证 (与 G1 共用); 6 个工具委托到 AgentManager/Router/Bus; MCPError 标准 JSON-RPC 错误码; notification 不响应。G 节点 25% → 50% |
