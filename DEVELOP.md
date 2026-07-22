@@ -261,6 +261,18 @@ class HeuristicMemoryInjector:
    边界       Protocol   代码    集成测  Agent   README
 ```
 
+**专项文档同步规则**：
+
+| 修改范围 | 必须同步阅读/更新 |
+|----------|------------------|
+| 拟人化运行时、wait、主动任务、打断、上下文恢复 | `HUMANLIKE_RUNTIME.md` |
+| 记忆存储、检索、身份归一、记忆治理 | `MEMORY_DESIGN.md` |
+| 路由、旁听 Agent、handoff、Agent 互联 | `ROUTING_AND_AGENT_MESH.md` |
+| 插件加载、兼容、权限、沙箱、热重载 | `PLUGIN_COMPATIBILITY.md` |
+| Admin API、MCP Server、Webhook、审计 | `CONTROL_PLANE_SPEC.md` |
+
+实现与专项文档冲突时，先更新专项文档，再修改代码；不要只改代码造成图纸漂移。
+
 ### 3.2 新增一个 PromptInjector 的步骤
 
 **注入器归属规则**（选择目录的依据）:

@@ -26,11 +26,11 @@ MCP_TOOL_SPECS: list[dict[str, Any]] = [
 class ISACMCPServer:
     """ISAC MCP 服务端。
 
-    TODO(Day 74): MCP 协议实现 (stdio/SSE)，工具全部委托 AgentManager/Router/Bus。
+    [桩] 待实现: MCP 协议实现 (stdio/SSE)，工具全部委托 AgentManager/Router/Bus。
     """
 
     def __init__(self, services: dict[str, Any]):
         self.services = services
 
     async def serve(self) -> None:
-        raise NotImplementedError("TODO(Day 74): 实现 MCP Server")
+        raise NotImplementedError("ISACMCPServer.serve 尚未实现")

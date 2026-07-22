@@ -18,5 +18,6 @@ class ExpressionStyleInjector(PromptInjector):
         return 80
 
     async def build(self, context: InjectionContext) -> str:
-        """TODO(Day 29): 读取 persona/style_profiles + UserProfile.expression_style 生成风格指令。"""
+        """读取 persona/style_profiles + UserProfile.expression_style 生成风格指令; 桩实现返回空。"""
+        del context
         return ""

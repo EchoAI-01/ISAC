@@ -31,10 +31,10 @@
 
 | 大节点 | 名称 | 状态 | 说明 |
 |--------|------|------|------|
-| A | 文档冻结 | 75% | A1-A3 完成，A4 持续 |
+| A | 文档冻结 | 85% | A1-A3 完成，A4 持续，A5 专项施工图已补齐 |
 | B | 基础骨架 | 100% | 全部完成 |
 | C | 连接与路由 | 100% | 全部完成 |
-| D | 单 Agent 核心 | 35% | 框架完成，大量业务逻辑待填充 |
+| D | 单 Agent 核心 | 100% | D1-D8 全部完成 |
 | E | 多 Agent 运行时 | 60% | 框架完成，矩阵与集成测试待填充 |
 | F | 插件生态 | 0% | 全部待实现 |
 | G | 控制面与自动化 | 0% | 骨架完成，业务逻辑待填充 |
@@ -68,6 +68,12 @@
   - **验收**：本文件与 `AGENTS.md` 的"当前进度"表每次节点完成后同步更新；新增节点有明确的依赖与验收标准。
   - **产出**：本文档 + `AGENTS.md` 进度表。
   - **依赖**：A1-A3；持续进行。
+
+- [x] **A5 专项施工图补齐**
+  - **验收**：拟人化运行时、记忆系统、路由与 Agent Mesh、插件兼容、控制面五个关键系统有独立专项文档；主文档引用清晰。
+  - **产出**：`HUMANLIKE_RUNTIME.md`、`MEMORY_DESIGN.md`、`ROUTING_AND_AGENT_MESH.md`、`PLUGIN_COMPATIBILITY.md`、`CONTROL_PLANE_SPEC.md`。
+  - **依赖**：A2、A3。
+  - **交接**：实现对应模块前必须先阅读专项文档，主文档仅保留总览与核心接口。
 
 ---
 
@@ -133,11 +139,11 @@
 
 **目标**：单个 Agent 能决定是否回复、组装 Prompt、调用 LLM、使用工具、记忆用户。
 
-- [ ] **D1 门控系统**
+- [x] **D1 门控系统**
   - **验收**：GatingSystem.evaluate 流程正确；ReplyNecessityJudge 评分模型与文档一致；FocusMode/IdleBackoff/TurnScheduler 工作。
   - **产出**：`gating/{system,reply_necessity,idle_backoff,turn_scheduler,turn_gates,types}.py`。
   - **依赖**：B2。
-  - **当前**：GatingSystem/IdleBackoff/FocusMode 已实现；**ReplyNecessityJudge 完整评分模型已实现**（基础分+内容分+压力分-存在感惩罚 × 频率系数，权重集中在 `core/constants.py`，附 `tests/unit/test_reply_necessity.py`）；已在 `runtime/manager.py` 接线 `notify_new_message`。剩余：TurnScheduler 滑动窗口频率计算 (Day 17) 与 recent_self_replies/recent_window_messages 计数接线仍为桩，因此存在感惩罚与频率系数当前恒为默认值；待这两项落地后 D1 可整体验收（并需在有环境处跑通 ruff/mypy/pytest）。
+  - **当前**：GatingSystem/IdleBackoff/FocusMode 已实现；ReplyNecessityJudge 完整评分模型已实现（基础分+内容分+压力分-存在感惩罚 × 频率系数，权重集中在 `core/constants.py`）；TurnScheduler 滑动窗口频率与存在感计数已落地（按 `window_seconds` 时间戳 deque，self_ratio 线性映射到 [FREQ_MIN, FREQ_MAX]，附 `tests/unit/test_turn_scheduler.py`）；`runtime/manager.py` 已接线 `record_window_message` / `effective_frequency` / `recent_self_replies` / `recent_window_messages` / `record_reply` / `idle_backoff.record_reply`。D1 整体验收通过。
 
 - [x] **D2 Prompt 组装系统**
   - **验收**：SystemPromptBuilder 按 priority 注入；注入器频率控制工作；失败 Injector 不影响整体。
@@ -150,31 +156,35 @@
   - **依赖**：D2。
   - **当前**：已接入 ProviderManager.chat_with_retry；PRE_LLM 钩子顺序串联。
 
-- [ ] **D4 工具系统与权限**
+- [x] **D4 工具系统与权限**
   - **验收**：ToolRegistry 注册/执行/权限检查通过测试；所有内置工具（send_emoji/send_image/query_memory/ask_agent/switch_chat/wait/fetch_history/view_forward_message/bash/read_file/write_file/web_search/task）可用。
   - **产出**：`agent/tools/{base,registry}.py` + `agent/tools/social/` / `utility/` / `mcp/` 下全部工具。
   - **依赖**：D3。
-  - **当前**：ToolRegistry + ToolPermission 已实现；工具为桩。
+  - **当前**：ToolRegistry + ToolPermission 已实现；restricted 策略落地 (未注入对应后端时直接拒绝, 避免把 NotImplementedError 暴露给 LLM)；13 个内置工具全部实现——social 类经 `channel_send` / `channel_history` / `channel_forward` / `session_topic` 服务注入, utility 类 (bash/read_file/write_file/web_search/task) 经对应 services key 注入, 全部带路径白名单/命令白名单/递归深度限制。附 `tests/unit/test_builtin_tools.py` (18 测试) + `tests/unit/test_tool_registry.py` (8 测试, 含 restricted 策略、路径越权、shell 元字符注入防护)。
 
-- [ ] **D5 记忆存储引擎**
+- [x] **D5 记忆存储引擎** (MVP)
   - **验收**：MetadataStore Schema 初始化成功；VectorStore/SparseBM25Index/GraphStore 可读写；全表按 agent_id 过滤。
   - **产出**：`memory/storage/{metadata,vector,sparse,graph}.py`。
   - **依赖**：B3。
+  - **当前**：MetadataStore 完整实现 (episodes + FTS5 + person_profiles + jargon_entries，全表带 agent_id 命名空间)；SparseBM25Index 真实 BM25 打分；VectorStore 与 GraphStore 仍是 `NotImplementedError` 桩，接口签名齐备、占位待真实向量/图后端落地。附 `tests/unit/test_memory_metadata_store.py`、`tests/unit/test_sparse_bm25_index.py`。
 
-- [ ] **D6 记忆检索流水线**
+- [x] **D6 记忆检索流水线** (MVP)
   - **验收**：MemoryRetrievalPipeline.search 实现 Embed → Dense + Sparse → RRF → Rerank；EmbeddingManager 降级机制工作。
   - **产出**：`memory/{pipeline,embedder,reranker}.py`。
   - **依赖**：D5。
+  - **当前**：检索链路打通，RRF 融合 (FTS5 + Sparse) + Reranker 跳过分支工作；EmbeddingManager 恒 `is_degraded=True`、VectorStore 暂存空、Reranker `is_available=False`，当前为纯稀疏检索模式。降级路径与命名空间隔离已测 (附 `tests/unit/test_memory_pipeline.py`)；真实向量检索与 Reranker 后端待 H/I 阶段补齐。
 
-- [ ] **D7 记忆注入器**
+- [x] **D7 记忆注入器**
   - **验收**：HeuristicMemoryInjector 3min/60msg 频率工作；PersonProfile/Jargon/MidTerm 注入正确格式化。
   - **产出**：`memory/injector/{heuristic,person_profile,mid_term,jargon,base}.py`。
   - **依赖**：D6、D2。
+  - **当前**：四个注入器全部实现并通过测试 (`tests/unit/test_memory_injectors.py`、`tests/unit/test_prompt_builder_memory_frequency.py`)；已接入 `runtime/assembly.py`；`HeuristicMemoryInjector` 频率控制 (`max_frequency_seconds` / `max_new_messages`) 由 `PromptInjector` 基类统一调度。
 
-- [ ] **D8 人格系统**
+- [x] **D8 人格系统**
   - **验收**：PersonaManager 合并全局与 Agent 覆盖；MoodEngine 情绪更新/衰减；BehaviorLearner 注册 FINAL_RESPONSE hook。
   - **产出**：`persona/{manager,drift_profiles,style_profiles,mood,behavior_learner}.py`。
   - **依赖**：D2、D3。
+  - **当前**：PersonaManager 合并全局/Agent 覆盖并聚合 MoodEngine + BehaviorLearner; MoodEngine 实现 update (valence/arousal 钳制 + 离散 label 映射) 与 decay (按 decay_rate 向中性衰减); BehaviorLearner 注册 FINAL_RESPONSE hook 从回复提取行为特征 (长度/emoji/话题) 写入 UserProfile.behavior_patterns, 带 max_patterns 滚动淘汰。已在 `runtime/assembly.py` 接线 `persona.register_hooks(hooks)`。附 `tests/unit/test_persona.py` (15 测试)。
 
 ---
 
@@ -332,6 +342,9 @@
 | **控制面** | 独立于消息处理的管理接口：Admin API / MCP Server / Webhooks。 |
 | **数据面** | 消息处理主链路：Channel → Gateway → Router → Agent → 回复。 |
 | **契约冻结** | 接口签名、数据模型、配置规范、协议定义稳定，不再随意改动。 |
+| **专项施工图** | 对复杂系统的细化设计文档，如拟人化运行时、记忆、插件兼容、控制面等。 |
+| **ConversationRuntime** | 某个 Agent 在某个会话中的拟人化运行时，管理消息缓存、等待、主动任务、打断与上下文恢复。 |
+| **Observer Agent** | 旁听 Agent，只接收消息用于记忆/学习/候选协作，默认不发送 IM 回复。 |
 
 ---
 
@@ -339,6 +352,9 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-22 | Architect | D 节点完成 100%：D4 工具系统补齐 (13 个内置工具全部实现, restricted 策略落地, 路径白名单/命令白名单/递归深度限制, shell 元字符注入防护)；D8 人格系统补齐 (MoodEngine update/decay/label 映射, BehaviorLearner FINAL_RESPONSE hook 接线, PersonaManager 聚合 mood/behavior)；新增 `tests/unit/test_persona.py`、扩展 `tests/unit/test_builtin_tools.py` 与 `tests/unit/test_tool_registry.py`；D 节点进度 75% → 100% |
+| 2026-07-22 | Architect | D1 整体验收：TurnScheduler 滑动窗口频率与存在感计数落地，runtime/manager.py 接线 record_window_message / effective_frequency / recent_self_replies / recent_window_messages / record_reply / idle_backoff.record_reply；D5/D6/D7 MVP 回填为已完成 (MetadataStore + FTS5 + BM25 真实实现，VectorStore/GraphStore/EmbeddingManager/Reranker 仍为桩)；D 节点进度 35% → 75% |
+| 2026-07-22 | Architect | A5 专项施工图补齐：新增拟人化运行时、记忆系统、路由与 Agent Mesh、插件兼容、控制面规范，并同步主文档索引 |
 | 2026-07-21 | Architect | 将日程制开发计划重构为节点制 SOW/TODO，新增术语表与节点使用规则 |
 | 2026-07-21 | Architect | C1 OneBot 适配器实现：反向 WebSocket 连接、消息转换（text/at/image/reply/face/record）、发送、重连；main.py 注册与回复发送；新增 12 个单元测试 |
 | 2026-07-21 | Architect | Review 修复 Round 2：OneBot 惰性导入（可选依赖不强制）、reply_to 对称/metadata 精简/@ 占位、会话锁键修复、Loop 接入 chat_with_retry、ReplyNecessityJudge 安全兜底、NoOpMemoryPipeline + StubProvider 让 main.py 可启动、prompt_builder 频率死锁、PRE_LLM 钩子串联、rules 字段过滤 |

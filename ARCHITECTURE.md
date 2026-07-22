@@ -1,7 +1,7 @@
 # ISAC — 生产级架构设计文档
 
 > Intelligent Social AI Companion v3.0
-> 状态: 生产就绪设计
+> 状态: 生产级目标设计
 > v3.0: 多 Agent 架构 (多实例 / 共享 Channel + 路由 / Agent 互联 / 控制面)
 
 ---
@@ -23,7 +23,7 @@
 
 | 原则 | 说明 |
 |------|------|
-| **拟人即 Prompt** | 拟人能力通过 System Prompt 注入实现，不是代码变换 |
+| **拟人表达靠 Prompt，拟人行为靠 Runtime** | 人格、语气、情绪、记忆通过 System Prompt 注入；回复节奏、等待、主动、打断、上下文恢复由 ConversationRuntime 等运行机制实现 |
 | **单点集成** | 所有子系统通过 `SystemPromptBuilder` 和 `AgentHooks` 两个枢纽参与 Agent 循环 |
 | **门控先于 Agent** | 是否回复、何时回复的决定先于 Agent 调用 |
 | **记忆是检索流水线** | 嵌入模型 + 双路径搜索 + 重排序，不是简单 K-V |
@@ -39,6 +39,16 @@
 ---
 
 ## 二、系统架构
+
+专项施工图：
+
+| 文档 | 内容 |
+|------|------|
+| [HUMANLIKE_RUNTIME.md](./HUMANLIKE_RUNTIME.md) | ConversationRuntime、wait、主动任务、打断、上下文恢复、表达/黑话/行为学习 |
+| [MEMORY_DESIGN.md](./MEMORY_DESIGN.md) | 记忆分层、身份归一、写入/检索/注入/治理、无 embedding 模式 |
+| [ROUTING_AND_AGENT_MESH.md](./ROUTING_AND_AGENT_MESH.md) | primary/observer/candidate Agent、旁听、handoff、Agent Mesh ACL |
+| [PLUGIN_COMPATIBILITY.md](./PLUGIN_COMPATIBILITY.md) | AstrBot / MaiBot / Native 插件兼容范围、权限、生命周期与测试 |
+| [CONTROL_PLANE_SPEC.md](./CONTROL_PLANE_SPEC.md) | REST API、MCP Server、Webhook、认证、审计、自动化安全默认值 |
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
@@ -272,6 +282,8 @@ class MessageRouter:
 ### 3.3 Inter-Agent Bus — Agent 互联
 
 **核心职责**: Agent 间通信总线。默认不互通，必须显式配置 Link (ACL)。
+
+详细的 primary / observer / candidate Agent、旁听、handoff 与 Agent Mesh ACL 见 [ROUTING_AND_AGENT_MESH.md](./ROUTING_AND_AGENT_MESH.md)。
 
 ```python
 @dataclass
@@ -560,6 +572,8 @@ class ISACAgentLoop:
 
 **核心职责**: 跨会话的记忆存储、检索、注入。
 
+记忆分层、身份归一、写入流水线、无 embedding 模式、治理与 Schema 补充见 [MEMORY_DESIGN.md](./MEMORY_DESIGN.md)。
+
 **架构**:
 
 ```
@@ -711,6 +725,8 @@ class Reranker:
 
 **核心职责**: 决定"要不要说话、什么时候说"。
 
+Gating 是拟人化行为层的一部分；会话级消息缓存、静默窗口、wait、主动任务、Planner 打断与上下文恢复见 [HUMANLIKE_RUNTIME.md](./HUMANLIKE_RUNTIME.md)。
+
 ```
 Message In
     │
@@ -790,6 +806,8 @@ class FocusMode:
 ---
 
 ### 3.8 Plugin System — AstrBot / MaiBot 兼容 + 原生 SDK
+
+插件格式识别、兼容范围矩阵、权限模型、生命周期和兼容测试见 [PLUGIN_COMPATIBILITY.md](./PLUGIN_COMPATIBILITY.md)。
 
 **兼容层架构**:
 
@@ -922,6 +940,8 @@ sys.meta_path.insert(0, AstrBotImportFinder())
 ### 3.9 Control Plane — 管理自动化 (商业化预留)
 
 **核心职责**: 独立于数据面的管理面。不参与消息处理，只管理配置与生命周期，所有操作复用 AgentManager / Router / Bus / PluginManager 的公开方法。
+
+资源模型、REST API、MCP Server、Webhook、认证、审计与自动化安全默认值见 [CONTROL_PLANE_SPEC.md](./CONTROL_PLANE_SPEC.md)。
 
 ```
 ┌────────────────────────────────────────────────────────────┐

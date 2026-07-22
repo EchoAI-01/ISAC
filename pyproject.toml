@@ -16,9 +16,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# QQ OneBot 适配器 (Day 3-5)
+# QQ OneBot 适配器
 onebot = ["aiocqhttp>=1.4.4"]
-# 本地嵌入模型 (Day 19.5)
+# 本地嵌入模型
 embed-local = ["fastembed>=0.3.0"]
 
 [dependency-groups]

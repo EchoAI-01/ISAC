@@ -17,5 +17,5 @@ class AgentsCommand(Command):
         return "列出当前所有 Agent 及其状态"
 
     async def execute(self, message: ISACMessage, args: str, context: AgentContext) -> str:
-        """TODO(Day 45): 经注入的 AgentManager.list() 生成清单。"""
-        raise NotImplementedError("TODO(Day 45): 实现 /agents 命令")
+        """经注入的 AgentManager.list() 生成清单。"""
+        raise NotImplementedError("AgentsCommand.execute 尚未实现")

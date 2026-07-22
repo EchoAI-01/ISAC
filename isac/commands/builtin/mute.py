@@ -17,8 +17,8 @@ class MuteCommand(Command):
         return "在当前会话静音 (Bot 不再主动回复)"
 
     async def execute(self, message: ISACMessage, args: str, context: AgentContext) -> str:
-        """TODO(Day 40): 设置会话级静音标志 (门控强制 WAIT)。"""
-        raise NotImplementedError("TODO(Day 40): 实现 /mute 命令")
+        """设置会话级静音标志 (门控强制 WAIT)。"""
+        raise NotImplementedError("MuteCommand.execute 尚未实现")
 
 
 class UnmuteCommand(Command):
@@ -31,5 +31,5 @@ class UnmuteCommand(Command):
         return "取消当前会话静音"
 
     async def execute(self, message: ISACMessage, args: str, context: AgentContext) -> str:
-        """TODO(Day 40): 清除会话级静音标志。"""
-        raise NotImplementedError("TODO(Day 40): 实现 /unmute 命令")
+        """清除会话级静音标志。"""
+        raise NotImplementedError("UnmuteCommand.execute 尚未实现")

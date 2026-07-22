@@ -1,6 +1,6 @@
 """路由规则与互联 Link 端点 (SPECIFICATION.md 4.4)。
 
-TODO(Day 72): Token 认证 + 规则持久化 (router/rules.py save_rules) + 审计日志。
+待落地: Token 认证 + 规则持久化 (router/rules.py save_rules) + 审计日志。
 """
 
 from __future__ import annotations

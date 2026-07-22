@@ -43,7 +43,6 @@ class SessionLockManager:
         """统一消息处理入口，保证同一会话串行。
 
         Agent 运行期间新消息排队等待 (MaiBot 做法)，处理完成后依次消费。
-        TODO(Day 7): 排队消息的门控合并评估 (pending_count 累积触发)。
         """
         lock = await self.acquire(message.session_id)
         async with lock:

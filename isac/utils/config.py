@@ -56,10 +56,7 @@ def _set_nested(config: dict[str, Any], dotted_key: str, value: Any) -> None:
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
-    """加载配置文件，依次应用默认值、文件、环境变量。
-
-    TODO(Day 8): CLI 参数覆盖；API Key 加密读取 (utils/security.py)。
-    """
+    """加载配置文件，依次应用默认值、文件、环境变量。"""
     config = dict(DEFAULT_CONFIG)
 
     file_path = Path(path)

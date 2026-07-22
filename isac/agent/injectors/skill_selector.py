@@ -18,5 +18,6 @@ class SkillSelectorInjector(PromptInjector):
         return 60
 
     async def build(self, context: InjectionContext) -> str:
-        """TODO(Day 29): 基于会话上下文选择相关技能说明注入。"""
+        """基于会话上下文选择相关技能说明注入; 桩实现返回空。"""
+        del context
         return ""

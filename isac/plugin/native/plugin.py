@@ -35,23 +35,23 @@ class PluginContext:
     # ── 基础能力 ────────────────────────────────────────────
 
     def register_tool(self, tool: Tool) -> None:
-        raise NotImplementedError("TODO(Day 54): 插件工具注册")
+        raise NotImplementedError("PluginContext.register_tool 尚未实现")
 
     def register_injector(self, injector: PromptInjector) -> None:
-        raise NotImplementedError("TODO(Day 54): 插件注入器注册")
+        raise NotImplementedError("PluginContext.register_injector 尚未实现")
 
     def register_command(self, command: Command) -> None:
-        raise NotImplementedError("TODO(Day 54): 插件命令注册")
+        raise NotImplementedError("PluginContext.register_command 尚未实现")
 
     # ── 独有能力 (Native SDK v2) ────────────────────────────
 
     def register_inter_agent_hook(self, fn: Any) -> None:
         """注册互联钩子 (如 on_inter_agent_message)。"""
-        raise NotImplementedError("TODO(Day 54): 互联钩子注册")
+        raise NotImplementedError("PluginContext.register_inter_agent_hook 尚未实现")
 
     def register_admin_route(self, path: str, handler: Any) -> None:
         """预留: 向 Admin API 注册管理端点 (控制面扩展)。"""
-        raise NotImplementedError("TODO(预留): Admin Routes")
+        raise NotImplementedError("PluginContext.register_admin_route 尚未实现")
 
     def register_router_hook(self, fn: Any) -> None:
         """预留: 自定义路由函数 (MessageRouter 优先级 0)。"""
