@@ -39,7 +39,7 @@
 | F | 插件生态 | 100% | F1-F4 全部完成 |
 | G | 控制面与自动化 | 100% | G1-G4 全部完成 |
 | H | 平台与工具扩展 | 100% | H1-H3 全部完成 |
-| I | 生产化与交付 | 33% | I1/I2 完成, I3-I6 待实现 |
+| I | 生产化与交付 | 50% | I1-I3 完成, I4-I6 待实现 |
 
 ---
 
@@ -321,10 +321,11 @@
   - **依赖**：I1（可选）。
   - **当前**：Dockerfile 多阶段构建 (builder + runtime, python:3.12-slim); uv sync 装运行时依赖 (含 onebot extra); EXPOSE 8765 + HEALTHCHECK + VOLUME /app/data; CMD python -m isac; docker-compose.yml 一键启动, 端口绑 127.0.0.1:8765, isac_data volume 持久化, restart unless-stopped, 环境变量 (ISAC_API_TOKEN / ISAC_LLM_* / ISAC_ONEBOT_*); scripts/docker_deploy.sh 部署脚本 (build/up/down/logs/shell/health/restart/rebuild); .dockerignore 排除缓存与测试。附 `tests/unit/test_docker_deploy.py` (20 测试覆盖 Dockerfile/compose/dockerignore/deploy script)。
 
-- [ ] **I3 文档完善**
+- [x] **I3 文档完善**
   - **验收**：使用文档、API 文档、部署文档、插件开发指南、控制面自动化指南齐全。
   - **产出**：`docs/` 或更新根目录 README/ARCH/DEVELOP/SPEC。
   - **依赖**：F、G 完成。
+  - **当前**：新增 docs/ 目录含 6 篇文档: README.md (导航) + usage.md (使用文档 - 配置详解/运行/维护) + deployment.md (Docker 部署 - 镜像构建/数据卷/生产建议/nginx 反代) + api.md (Admin REST API 文档 - Agent/路由/Link/插件/审计/健康检查) + plugin_development.md (插件开发指南 - ISAC Native/AstrBot/MaiBot 三格式) + control_automation.md (控制面自动化 - REST/MCP/Webhooks 集成)。附 `tests/unit/test_docs.py` (22 测试覆盖文档存在 + 内容完整性 + 关键章节)。
 
 - [ ] **I4 数据工具**
   - **验收**：AstrBot/MaiBot → ISAC 迁移、备份/导出/导入可用。
@@ -366,6 +367,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | I3 文档完善完成: docs/ 新增 6 篇文档 (README 导航/usage 使用/deployment Docker 部署/api Admin REST API/plugin_development 插件开发/control_automation 控制面自动化)。I 节点 33% → 50% |
 | 2026-07-23 | Architect | I2 Docker 部署完成: Dockerfile 多阶段 (builder + runtime, python:3.12-slim) + uv sync + EXPOSE 8765 + HEALTHCHECK + VOLUME /app/data; docker-compose.yml 一键启动 + isac_data volume + restart unless-stopped + 环境变量; scripts/docker_deploy.sh 部署脚本 (8 命令); .dockerignore。I 节点 17% → 33% |
 | 2026-07-23 | Architect | I1 WebUI 管理面板完成: control/webui/{index.html,app.js,__init__.py} FastAPI 静态托管 + Vanilla JS (不依赖 Vue 构建); Agent/路由/Link/审计四模块; 前端 fetch Bearer Token 调 G1 API。I 节点 0% → 17% |
 | 2026-07-23 | Architect | H3 实用工具与子 Agent 完成: bash (命令白名单 + shell 元字符防护) / read_file (路径白名单 + 行范围) / write_file (路径白名单 + append) / web_search (后端注入) 在 D4 落地; 本节点补 TaskRunner 真实实现 (用 ISACAgentLoop 派生子任务, 限制 token 预算与递归深度)。H 节点 67% → 100% |
