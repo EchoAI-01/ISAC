@@ -1,4 +1,4 @@
-"""表达风格配置 (DEVELOPMENT_PLAN.md Day 28)。"""
+"""表达风格配置。"""
 
 from __future__ import annotations
 

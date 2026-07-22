@@ -24,10 +24,7 @@ class IdleBackoffController:
         return max(0.0, backoff - elapsed)
 
     def should_delay(self, pending_count: int) -> bool:
-        """是否处于退避期。
-
-        TODO(Day 17): 结合 pending_count 调整 (积压多时缩短退避)。
-        """
+        """是否处于退避期。"""
         return self.remaining_seconds > 0
 
     def record_reply(self) -> None:

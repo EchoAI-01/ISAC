@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 class AgentManager:
     """Agent 生命周期管理器。
 
-    TODO(Day 34-35): registry.jsonc 持久化 + 重启恢复 running 状态的 Agent。
+    [桩] 内存实现; 待 registry.jsonc 持久化与重启恢复 running 状态落地。
     """
 
     def __init__(self, services: dict[str, Any]):
@@ -63,7 +63,7 @@ class AgentManager:
         """销毁 Agent。keep_memory=True 时保留记忆数据。"""
         self._require(agent_id)
         del self._agents[agent_id]
-        # TODO(Day 34): keep_memory=False 时清理 data/agents/<id>/memory/
+        # TODO: keep_memory=False 时清理 data/agents/<id>/memory/
         logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
 
     async def get(self, agent_id: str) -> AgentInstance | None:
@@ -75,7 +75,7 @@ class AgentManager:
     async def reload_config(self, agent_id: str, config: AgentConfig) -> None:
         """热更新配置 (重建子系统中受配置影响的部分)。
 
-        TODO(Day 35): 差量更新 gating/persona/权限，避免整实例重建。
+        TODO: 差量更新 gating/persona/权限, 避免整实例重建。
         """
         was_running = self._require(agent_id).status == "running"
         instance = await assemble_agent(config, self._services)
@@ -94,8 +94,9 @@ class AgentManager:
     ) -> str | None:
         """处理一条路由到本 Agent 的消息，返回回复文本 (WAIT/DROP 返回 None)。
 
-        TODO(Day 38-39): pending 消息队列 + GatingContext 完整构造
-        (has_at/has_mention/idle_seconds/effective_frequency 等)。
+        [已完成] GatingContext 完整构造 (has_at/has_mention/effective_frequency/
+        recent_self_replies/recent_window_messages);
+        待落地: pending 消息队列与积压评估 (当前为单条即时处理, pending_count 恒为 1)。
         """
         instance = await self.get(agent_id)
         if instance is None or instance.status != "running":
@@ -104,6 +105,10 @@ class AgentManager:
 
         # 每条到达消息都累加注入器的新消息计数 (支撑 max_new_messages 频率控制)。
         instance.prompt_builder.notify_new_message()
+
+        # 同步记录到 TurnScheduler 滑窗，供 effective_frequency / 存在感惩罚计算。
+        turn_scheduler = instance.gating.turn_scheduler
+        turn_scheduler.record_window_message()
 
         from isac.core.types import GatingContext  # 避免模块级循环
 
@@ -121,6 +126,10 @@ class AgentManager:
             is_private=message.group_id is None,
             has_at=has_at,
             has_mention=message.has_mention(mention_names),
+            pending_count=1,  # 当前实现: 单条即时处理, 积压恒为 1
+            effective_frequency=turn_scheduler.effective_frequency(),
+            recent_self_replies=turn_scheduler.recent_self_replies,
+            recent_window_messages=turn_scheduler.recent_window_messages,
         )
         decision = await instance.gating.evaluate([message], gating_context)
         if decision.kind != GateKind.TRIGGER:
@@ -134,6 +143,10 @@ class AgentManager:
         )
         messages = [{"role": "user", "content": message.content}]
         result = await instance.loop.run(messages, agent_context)
+        if result.content:
+            # 话轮调度: 记录本轮回复, 更新滑窗频率与存在感数据。
+            turn_scheduler.record_reply()
+            instance.gating.idle_backoff.record_reply()
         return result.content or None
 
     # ── 路由信息 (注入 MessageRouter 的 agents_provider) ────
