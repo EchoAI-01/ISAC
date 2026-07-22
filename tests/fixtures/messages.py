@@ -1,7 +1,4 @@
-"""测试消息工厂 (DEVELOP.md 5.4 messages.py)。
-
-TODO(Day 10): 补全 TestMessages (short_reaction/long_text/with_image/reply_to)。
-"""
+"""测试消息工厂 (DEVELOP.md 5.4 messages.py)。"""
 
 from __future__ import annotations
 

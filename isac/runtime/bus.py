@@ -53,7 +53,7 @@ class InterAgentBus:
 
     def add_link(self, link: InterAgentLink) -> None:
         self._links.append(link)
-        # TODO(Day 41): 持久化到 data/links.jsonc
+        # TODO: 持久化到 data/links.jsonc
         logger.info("互联 Link 已添加", from_agent=link.from_agent, to_agent=link.to_agent)
 
     def remove_link(self, from_agent: str, to_agent: str) -> None:
@@ -80,7 +80,7 @@ class InterAgentBus:
     async def send(self, message: InterAgentMessage) -> InterAgentMessage | None:
         """发送互联消息: ACL 检查 → 投递 → 返回响应 (notify 返回 None)。
 
-        TODO(Day 41-42): handoff 类型的会话摘要交接；超时控制。
+        TODO: handoff 类型的会话摘要交接; 超时控制。
         """
         if not self.can_talk(message.from_agent, message.to_agent):
             logger.warning(

@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 class WebhookManager:
     """Webhook 订阅与事件推送。
 
-    TODO(Day 74): httpx POST 推送 + 重试 + /automation/trigger 自动化入口。
+    [桩] 待实现: httpx POST 推送 + 重试 + /automation/trigger 自动化入口。
     """
 
     def __init__(self) -> None:
@@ -34,5 +34,5 @@ class WebhookManager:
     async def dispatch(self, event: str, data: dict[str, Any]) -> None:
         """向所有订阅者推送事件。失败记录日志，不影响主流程。"""
         for url in self._subscriptions.get(event, []):
-            # TODO(Day 74): httpx POST + 重试
+            # TODO: httpx POST + 重试
             logger.debug("Webhook 推送 (TODO)", event=event, url=url)

@@ -1,7 +1,6 @@
 """mood 注入器: 情绪状态注入。
 
-职责区分 (DEVELOPMENT_PLAN.md Day 29): persona/mood.py 负责情绪状态计算，
-本注入器负责将其注入 Prompt，职责不重叠。
+persona/mood.py 负责情绪状态计算, 本注入器负责将其注入 Prompt, 职责不重叠。
 """
 
 from __future__ import annotations
@@ -30,5 +29,6 @@ class MoodInjector(PromptInjector):
         return 70
 
     async def build(self, context: InjectionContext) -> str:
-        """TODO(Day 29): 读取 MoodEngine 当前情绪 → 生成情绪提示文案。"""
+        """读取 MoodEngine 当前情绪 → 生成情绪提示文案; 桩实现返回空。"""
+        del context
         return ""

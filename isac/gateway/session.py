@@ -19,8 +19,7 @@ logger = get_logger(__name__)
 class SessionManager:
     """会话管理器。
 
-    TODO(Day 6): SQLite 持久化 (data/sessions/)，启动时加载活跃会话。
-    当前为内存实现，供框架联调使用。
+    [桩] 内存实现; 待 SQLite 持久化 (data/sessions/) 与启动时加载活跃会话落地。
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
@@ -33,10 +32,7 @@ class SessionManager:
         return f"{agent_id}:{platform}:{target}"
 
     async def get_or_create(self, message: ISACMessage, agent_id: str) -> Session:
-        """查找或创建会话。
-
-        TODO(Day 6): 持久化 + UserMapper 跨平台主用户识别。
-        """
+        """查找或创建会话。"""
         key = self.make_session_key(agent_id, message.platform, message.user_id, message.group_id)
         session = self._sessions.get(key)
         if session is None:

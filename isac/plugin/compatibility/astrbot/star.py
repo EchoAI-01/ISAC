@@ -18,14 +18,14 @@ class Star:
 class StarContext:
     """兼容 AstrBot Context 对象。
 
-    TODO(Day 48-49): send_message/get_platform/get_provider 映射到 ISAC。
+    send_message / get_platform / get_provider 映射到 ISAC。
     """
 
     async def send_message(self, message: str, platform: str | None = None) -> None:
-        raise NotImplementedError("TODO(Day 48): 映射到 ISAC Channel 发送")
+        raise NotImplementedError("StarContext.send_message 尚未实现")
 
     def get_platform(self, platform_name: str) -> Any | None:
-        raise NotImplementedError("TODO(Day 48): 映射到 ChannelRegistry.get")
+        raise NotImplementedError("StarContext.get_platform 尚未实现")
 
     def get_provider(self, provider_name: str | None = None) -> Any | None:
-        raise NotImplementedError("TODO(Day 48): 映射到 ProviderManager")
+        raise NotImplementedError("StarContext.get_provider 尚未实现")

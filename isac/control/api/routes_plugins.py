@@ -1,6 +1,6 @@
 """插件启用矩阵端点 (SPECIFICATION.md 4.4)。
 
-TODO(Day 73): Token 认证 + 矩阵持久化到 AgentConfig + 审计日志。
+待落地: Token 认证 + 矩阵持久化到 AgentConfig + 审计日志。
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def build_router(agent_manager: AgentManager, plugin_manager: PluginManager) -> 
             raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
         instance.config.plugins_allow = list(body.get("plugins_allow", ["*"]))
         instance.config.plugins_deny = list(body.get("plugins_deny", []))
-        # TODO(Day 73): 持久化到 data/agents/<id>/config.jsonc
+        # TODO: 持久化到 data/agents/<id>/config.jsonc
         return {"status": "updated"}
 
     return router

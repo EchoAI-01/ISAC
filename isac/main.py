@@ -3,8 +3,6 @@
 组装顺序遵循导入依赖链:
 utils → provider → memory → persona → agent → gating → router
 → gateway → channel → commands → plugin → runtime → control
-
-TODO(Day 9): data/config.jsonc 端到端联调 (QQ 消息 → LLM → 回复)。
 """
 
 from __future__ import annotations
@@ -19,7 +17,13 @@ from isac.gateway.event_bus import EventBus
 from isac.gateway.lock import SessionLockManager
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
-from isac.memory.pipeline import NoOpMemoryPipeline
+from isac.memory.embedder import EmbeddingManager
+from isac.memory.pipeline import MemoryRetrievalPipeline, NoOpMemoryPipeline
+from isac.memory.reranker import Reranker
+from isac.memory.storage.graph import GraphStore
+from isac.memory.storage.metadata import MetadataStore
+from isac.memory.storage.sparse import SparseBM25Index
+from isac.memory.storage.vector import VectorStore
 from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
 from isac.router.router import MessageRouter
@@ -64,17 +68,44 @@ async def _send_reply(
 
 
 def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
-    """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。
-
-    TODO(Day 19-22): memory_factory 返回真实 MemoryRetrievalPipeline
-    (MetadataStore + VectorStore + SparseBM25Index + GraphStore + EmbeddingManager)。
-    """
+    """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。"""
     provider_manager = ProviderManager(global_config.get("llm", {}))
+    memory_config = global_config.get("memory", {})
+    metadata_store: MetadataStore | None = None
+    vector_store: VectorStore | None = None
+    graph_store: GraphStore | None = None
+    sparse_indexes: dict[str, SparseBM25Index] = {}
+    embedder: EmbeddingManager | None = None
+    reranker: Reranker | None = None
+
+    if memory_config.get("enabled"):
+        memory_dir = DATA_DIR / "memory"
+        metadata_store = MetadataStore(str(memory_dir / "metadata.db"))
+        vector_store = VectorStore(
+            str(memory_dir / "vectors.db"),
+            dimension=int(memory_config.get("embedding", {}).get("dimension", 1024) or 1024),
+        )
+        graph_store = GraphStore(str(memory_dir / "graph.db"))
+        embedder = EmbeddingManager(memory_config.get("embedding", {}))
+        reranker = Reranker(memory_config.get("reranker", {}))
 
     def memory_factory(namespace: str) -> Any:
-        # TODO(D5-D7): 替换为真实 MemoryRetrievalPipeline
-        # 当前使用 NoOp 实现，保证主链路可启动，记忆注入器返回空字符串
-        return NoOpMemoryPipeline(namespace)
+        if not memory_config.get("enabled"):
+            return NoOpMemoryPipeline(namespace)
+        assert metadata_store is not None
+        assert vector_store is not None
+        assert graph_store is not None
+        assert embedder is not None
+        sparse = sparse_indexes.setdefault(namespace, SparseBM25Index())
+        return MemoryRetrievalPipeline(
+            namespace=namespace,
+            metadata=metadata_store,
+            vector=vector_store,
+            sparse=sparse,
+            graph=graph_store,
+            embedder=embedder,
+            reranker=reranker,
+        )
 
     return {
         "global_config": global_config,
@@ -91,11 +122,11 @@ async def main() -> None:
 
     # ── Provider ────────────────────────────────────────────
     services = build_services(global_config)
-    # TODO(D8): 当配置合法时注册 OpenAICompatProvider，否则使用 StubProvider 保证可启动
+    # 当配置合法时注册 OpenAICompatProvider, 否则使用 StubProvider 保证可启动
     provider_manager = services["provider_manager"]
     llm_config = global_config.get("llm", {})
     if llm_config.get("provider") and llm_config.get("api_key"):
-        # TODO(D8): 注册 OpenAICompatProvider
+        # TODO: 接入 OpenAICompatProvider
         provider_manager.register(StubProvider())
     else:
         provider_manager.register(StubProvider())
@@ -103,7 +134,7 @@ async def main() -> None:
     # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
     agent_manager = AgentManager(services)
     bus = InterAgentBus()
-    # TODO(Day 41): bus.set_deliver(...) 投递到目标 Agent 的 Agent Loop
+    # TODO: bus.set_deliver(...) 投递到目标 Agent 的 Agent Loop
 
     # ── Router (Channel 与 Agent 解耦) ──────────────────────
     rules = load_rules(global_config.get("router", {}).get("rules_file", DATA_DIR / "routing.jsonc"))

@@ -1,4 +1,4 @@
-"""OpenAI 兼容 Provider (DEVELOPMENT_PLAN.md Day 8)。
+"""OpenAI 兼容 Provider。
 
 支持自定义 base_url: OpenAI / DeepSeek / Moonshot / 任意 OpenAI 兼容 API。
 """
@@ -15,10 +15,10 @@ from isac.provider.base import LLMProvider, ModelCapabilities
 class OpenAICompatProvider(LLMProvider):
     """OpenAI 兼容 Provider。
 
-    TODO(Day 8):
+    [桩] 待实现:
     - httpx AsyncClient 调用 {base_url}/chat/completions
-    - tools 参数 → function calling 格式，tool_calls 响应解析
-    - 429 → RateLimitError；5xx → LLMError(retriable=True) (SPECIFICATION.md 5.1)
+    - tools 参数 → function calling 格式, tool_calls 响应解析
+    - 429 → RateLimitError; 5xx → LLMError(retriable=True) (SPECIFICATION.md 5.1)
     - chat_stream: SSE 解析为 LLMChunk 迭代器
     """
 
@@ -35,7 +35,7 @@ class OpenAICompatProvider(LLMProvider):
         tools: list[dict] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        raise NotImplementedError("TODO(Day 8): 实现 OpenAI 兼容 chat 调用")
+        raise NotImplementedError("OpenAICompatProvider.chat 尚未实现")
 
     async def chat_stream(
         self,
@@ -44,7 +44,7 @@ class OpenAICompatProvider(LLMProvider):
         tools: list[dict] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[LLMChunk]:
-        raise NotImplementedError("TODO(Day 8): 实现 SSE 流式解析")
+        raise NotImplementedError("OpenAICompatProvider.chat_stream 尚未实现")
         yield  # pragma: no cover (标记为异步生成器)
 
     def get_model_name(self) -> str:

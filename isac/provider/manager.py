@@ -41,7 +41,7 @@ class ProviderManager:
     def for_agent(self, config: AgentConfig) -> LLMProvider:
         """返回 Agent 可用的 Provider: 优先独立配置，否则共享池。"""
         if config.llm:
-            # TODO(Day 32): 按 config.llm 创建/缓存独立 Provider 实例
+            # TODO: 按 config.llm 创建/缓存独立 Provider 实例
             cached = self._agent_providers.get(config.agent_id)
             if cached:
                 return cached
@@ -52,7 +52,7 @@ class ProviderManager:
     async def chat_with_retry(self, provider: LLMProvider, **kwargs: Any) -> LLMResponse:
         """LLM 调用: 重试 3 次 (指数退避) → 回退模型 → 降级回复 (SPECIFICATION.md 5.2)。
 
-        TODO(Day 8): 区分错误类型 (RateLimitError 退避更久)；记录 token 用量。
+        TODO: 区分错误类型 (RateLimitError 退避更久)；记录 token 用量。
         """
         last_error: Exception | None = None
         for attempt in range(3):

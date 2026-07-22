@@ -2,8 +2,8 @@
 
 下一代多 Agent AI 社交陪伴 Bot 框架。
 
-把 **LLM 的拟人能力**、**记忆检索**、**回复门控**、**多 Agent 协作**与 **IM 平台适配**
-拆解为可组合的独立子系统，通过 System Prompt 组装器统一注入，让 Bot 行为可按配置定制而无需
+把 **LLM 的拟人表达**、**会话级拟人化运行时**、**记忆检索**、**回复门控**、**多 Agent 协作**与 **IM 平台适配**
+拆解为可组合的独立子系统，通过 ConversationRuntime 与 System Prompt 组装器协同，让 Bot 行为可按配置定制而无需
 改代码。
 
 ---
@@ -44,14 +44,14 @@
 | **多 Agent 单进程** | 多个 Agent 实例在单进程内运行，共享 Provider 连接池与嵌入模型，降低资源消耗 |
 | **Agent 互联显式化** | InterAgentBus + ACL 链路，Agent 默认不互通，需显式授权才能 `ask_agent()` |
 | **控制面/数据面分离** | 消息处理链路（数据面）与 Admin API / MCP Server（控制面）解耦；控制面崩溃不影响发消息 |
-| **拟人即 Prompt** | 注意力漂移、表达风格、情绪、记忆等全部通过 System Prompt 注入，不在代码里硬编码 |
+| **拟人表达靠 Prompt，拟人行为靠 Runtime** | 注意力漂移、表达风格、情绪、记忆等通过 System Prompt 注入；回复节奏、等待、主动、打断等由 ConversationRuntime 管理 |
 | **兼容存量插件** | 计划桥接 AstrBot Star 与 MaiBot 插件系统，同时提供 ISAC Native SDK 承载独有能力 |
 
 ---
 
 ## 项目状态
 
-**Phase 1 中期** — 框架骨架已搭建，单 Agent 核心链路可端到端运行。
+**Phase 1 中期** — 框架骨架已搭建，使用 StubProvider / NoOpMemoryPipeline 时单 Agent 核心链路可开发态端到端运行。
 
 | 模块 | 状态 |
 |------|------|
@@ -117,7 +117,7 @@ uv run python -m isac
 }
 ```
 
-`OpenAICompatProvider` 正在开发中（D8），当前使用 `StubProvider` 占位。
+`OpenAICompatProvider` 正在开发中（后续将作为 Provider 主链路前置节点补齐），当前使用 `StubProvider` 占位。
 
 ### 接入 QQ (OneBot)
 
@@ -150,6 +150,11 @@ uv run python -m isac
 | [DEVELOP.md](./DEVELOP.md) | 开发指南 — 编码规范、模块开发流程、导入规则、测试编写 |
 | [SPECIFICATION.md](./SPECIFICATION.md) | 技术规范 — 数据模型 (ISACMessage/Session/Context)、接口契约 (ABC)、配置规范 |
 | [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) | 开发计划 — 节点制 SOW/TODO、当前进度、依赖关系 |
+| [HUMANLIKE_RUNTIME.md](./HUMANLIKE_RUNTIME.md) | 拟人化运行时 — ConversationRuntime、wait、主动任务、打断、上下文恢复 |
+| [MEMORY_DESIGN.md](./MEMORY_DESIGN.md) | 记忆系统 — 身份归一、写入/检索/注入/治理、无 embedding 模式 |
+| [ROUTING_AND_AGENT_MESH.md](./ROUTING_AND_AGENT_MESH.md) | 路由与 Agent Mesh — 旁听 Agent、handoff、ACL、上下文边界 |
+| [PLUGIN_COMPATIBILITY.md](./PLUGIN_COMPATIBILITY.md) | 插件兼容 — AstrBot / MaiBot / Native SDK 兼容范围、权限与测试 |
+| [CONTROL_PLANE_SPEC.md](./CONTROL_PLANE_SPEC.md) | 控制面规范 — REST API、MCP Server、Webhook、认证、审计 |
 | [AGENTS.md](./AGENTS.md) | Agent 协作指南 — 给接手开发的 Agent 看的一页纸上下文 |
 
 ---

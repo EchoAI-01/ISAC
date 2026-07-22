@@ -9,7 +9,7 @@ from __future__ import annotations
 def verify_token(token: str | None, expected: str) -> bool:
     """校验 Bearer Token。
 
-    TODO(Day 71): 恒定时间比较 (hmac.compare_digest) 防时序攻击。
+    TODO: 恒定时间比较 (hmac.compare_digest) 防时序攻击。
     """
     if not token or not expected:
         return False

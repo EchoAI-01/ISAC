@@ -1,6 +1,6 @@
 """Agent 管理端点 (SPECIFICATION.md 4.4)。
 
-TODO(Day 71): Token 认证依赖注入 + 审计日志 + 统一错误格式。
+待落地: Token 认证依赖注入 + 审计日志 + 统一错误格式。
 """
 
 from __future__ import annotations

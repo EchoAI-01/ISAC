@@ -170,7 +170,7 @@ class AgentContext(RuntimeContext):
     def should_compress(self) -> bool:
         """上下文是否过大需要压缩（触发 COMPRESS hook）。
 
-        TODO(Day 14): 按 messages token 估算与 budget 阈值判定。
+        TODO: 按 messages token 估算与 budget 阈值判定。
         """
         return False
 

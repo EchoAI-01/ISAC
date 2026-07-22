@@ -11,8 +11,7 @@ from __future__ import annotations
 class SecretStore:
     """敏感信息加密存储。
 
-    TODO(Day 8): 实现 AES-256-GCM 加解密 + data/.secrets.enc 读写。
-    禁止明文存储在配置文件或代码中。
+    [桩] 实现 AES-256-GCM 加解密 + data/.secrets.enc 读写; 禁止明文存储在配置文件或代码中。
     """
 
     def __init__(self, path: str, secret_key_env: str = "ISAC_SECRET_KEY"):
@@ -21,8 +20,8 @@ class SecretStore:
 
     async def get(self, key: str) -> str | None:
         """读取并解密一个 secret。不存在返回 None。"""
-        raise NotImplementedError("TODO(Day 8): 实现 AES-256-GCM 解密读取")
+        raise NotImplementedError("SecretStore.get 尚未实现")
 
     async def set(self, key: str, value: str) -> None:
         """加密写入一个 secret。"""
-        raise NotImplementedError("TODO(Day 8): 实现 AES-256-GCM 加密写入")
+        raise NotImplementedError("SecretStore.set 尚未实现")

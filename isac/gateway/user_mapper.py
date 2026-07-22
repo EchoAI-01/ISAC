@@ -15,8 +15,7 @@ logger = get_logger(__name__)
 class UserMapper:
     """跨平台用户映射。
 
-    TODO(Day 7): SQLite 持久化 + 手动绑定 (用户声明/管理命令)。
-    当前为内存实现。
+    [桩] 内存实现; 待 SQLite 持久化与手动绑定 (用户声明/管理命令) 落地。
     """
 
     def __init__(self) -> None:

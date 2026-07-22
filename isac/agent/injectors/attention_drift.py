@@ -24,5 +24,6 @@ class AttentionDriftInjector(PromptInjector):
         return 80
 
     async def build(self, context: InjectionContext) -> str:
-        """TODO(Day 29): 读取 persona manager 当前 drift 档位 + locales 文案 + 锚点策略。"""
+        """读取 persona manager 当前 drift 档位 + locales 文案 + 锚点策略; 桩实现返回空。"""
+        del context
         return ""

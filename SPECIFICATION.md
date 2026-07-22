@@ -11,6 +11,7 @@
 - [三、配置规范](#三配置规范)
 - [四、协议定义](#四协议定义)
 - [五、错误处理规范](#五错误处理规范)
+- [六、专项规范索引](#六专项规范索引)
 
 ---
 
@@ -275,6 +276,9 @@ class InterAgentLink:
     to_agent: str
     direction: str = "both"           # "both" | "oneway"
     enabled: bool = True
+    permissions: list[str] = field(default_factory=list)  # ask | notify | handoff | memory_query
+    visible_memory_scopes: list[str] = field(default_factory=list)
+    max_context_messages: int = 20
 
 
 @dataclass
@@ -282,10 +286,23 @@ class InterAgentMessage:
     """Agent 间消息"""
     from_agent: str
     to_agent: str
-    type: str                         # "request" | "response" | "notify" | "handoff"
+    type: str                         # "request" | "response" | "notify" | "handoff" | "memory_query"
     content: str
     context: dict = field(default_factory=dict)
+    trace_id: str = ""
 ```
+
+### 1.9 专项数据模型
+
+以下模型在专项文档中定义，核心契约实现时应与对应文档保持一致：
+
+| 模型 | 文档 | 说明 |
+|------|------|------|
+| `ConversationRuntime` / `WaitState` / `ProactiveTask` | [HUMANLIKE_RUNTIME.md](./HUMANLIKE_RUNTIME.md) | 会话级拟人化运行时、等待与主动任务 |
+| `MemoryItem` / `PlatformIdentity` / `PersonIdentity` | [MEMORY_DESIGN.md](./MEMORY_DESIGN.md) | 记忆条目、跨平台身份归一 |
+| 扩展 `RoutingDecision` | [ROUTING_AND_AGENT_MESH.md](./ROUTING_AND_AGENT_MESH.md) | primary / observer / candidate Agent 路由结果 |
+| `PluginContext` / 权限类型 | [PLUGIN_COMPATIBILITY.md](./PLUGIN_COMPATIBILITY.md) | 插件上下文、权限与生命周期 |
+| `AuditEvent` / Webhook payload | [CONTROL_PLANE_SPEC.md](./CONTROL_PLANE_SPEC.md) | 控制面审计、Webhook 与 MCP 返回格式 |
 
 ---
 
@@ -1168,3 +1185,18 @@ class ToolError(ISACError):
     code = "TOOL_ERROR"
     retriable = False
 ```
+
+---
+
+## 六、专项规范索引
+
+为避免主规范过长，以下施工细节独立成专项文档；实现对应模块前必须先阅读：
+
+| 模块 | 必读文档 | 重点 |
+|------|----------|------|
+| 拟人化运行时 | [HUMANLIKE_RUNTIME.md](./HUMANLIKE_RUNTIME.md) | ConversationRuntime、wait、proactive、interrupt、context restore |
+| 记忆系统 | [MEMORY_DESIGN.md](./MEMORY_DESIGN.md) | IdentityResolver、MemoryItem、keyword/hybrid/vector 模式、治理 |
+| 路由与 Agent Mesh | [ROUTING_AND_AGENT_MESH.md](./ROUTING_AND_AGENT_MESH.md) | observer agent、handoff、Link ACL、上下文边界 |
+| 插件兼容 | [PLUGIN_COMPATIBILITY.md](./PLUGIN_COMPATIBILITY.md) | 三格式加载、兼容矩阵、权限、测试插件集合 |
+| 控制面 | [CONTROL_PLANE_SPEC.md](./CONTROL_PLANE_SPEC.md) | REST/MCP/Webhook schema、scope、audit、安全默认值 |
+

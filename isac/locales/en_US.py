@@ -1,7 +1,4 @@
-"""English language pack.
-
-TODO(Day 29): 与 zh_CN.py 对齐补全。
-"""
+"""English language pack."""
 
 TEXTS: dict[str, str] = {
     "base_identity": "You are ISAC, an intelligent social AI companion.",

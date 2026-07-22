@@ -24,7 +24,7 @@ def create_control_app(
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi，未安装时给出友好错误)。
 
-    TODO(Day 71-73): 注册全部路由 + Token 认证中间件 + 审计日志。
+    TODO: 注册全部路由 + Token 认证中间件 + 审计日志。
     """
     try:
         from fastapi import FastAPI

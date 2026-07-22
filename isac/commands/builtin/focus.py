@@ -19,5 +19,5 @@ class FocusCommand(Command):
         return "开启/关闭专注模式 (Bot 在该会话积极参与)"
 
     async def execute(self, message: ISACMessage, args: str, context: AgentContext) -> str:
-        """TODO(Day 40): 经注入的 GatingSystem.focus_mode enter/exit。"""
-        raise NotImplementedError("TODO(Day 40): 实现 /focus 命令")
+        """经注入的 GatingSystem.focus_mode enter/exit。"""
+        raise NotImplementedError("FocusCommand.execute 尚未实现")
