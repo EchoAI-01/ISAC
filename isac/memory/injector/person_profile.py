@@ -27,5 +27,32 @@ class PersonProfileInjector(MemoryInjector):
         return 400
 
     async def build(self, context: InjectionContext) -> str:
-        """TODO(Day 24): 识别参与者 → MetadataStore.get_person_profile → 格式化。"""
-        return ""
+        """拉取当前用户画像并格式化为内部参考。"""
+        metadata = getattr(self.pipeline, "metadata", None)
+        if metadata is None or not hasattr(metadata, "get_person_profile"):
+            return ""
+        person_id = getattr(context.user_profile, "user_id", "") or getattr(context.session, "user_id", "")
+        if not person_id:
+            return ""
+        try:
+            profile = await metadata.get_person_profile(getattr(context.session, "agent_id", ""), person_id)
+        except Exception:
+            return ""
+        if not profile:
+            return ""
+        return self._format_profile(profile)
+
+    @staticmethod
+    def _format_profile(profile: dict) -> str:
+        name = profile.get("name") or profile.get("person_id") or "未知用户"
+        profile_text = profile.get("profile_text") or "暂无画像摘要"
+        relationship_depth = float(profile.get("relationship_depth", 0.0) or 0.0)
+        return "\n".join(
+            [
+                "【人物画像-内部参考】",
+                f"用户: {name}",
+                f"关系深度: {relationship_depth:.2f}",
+                f"画像: {profile_text}",
+                "(仅作为推理参考，不要向用户逐字复述)",
+            ]
+        )

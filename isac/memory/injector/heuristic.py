@@ -39,5 +39,8 @@ class HeuristicMemoryInjector(MemoryInjector):
         return 500
 
     async def build(self, context: InjectionContext) -> str:
-        """TODO(Day 23): LLM 生成聊天印象 → 用印象搜记忆 → _format_reference 注入。"""
-        return ""
+        """使用当前消息文本搜索相关长期记忆。"""
+        query = str(getattr(context.current_message, "content", "") or "").strip()
+        if not query:
+            return ""
+        return await self.search_and_format(query, top_k=3, header="【启发式记忆-内部参考】")

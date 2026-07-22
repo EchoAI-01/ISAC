@@ -1,6 +1,9 @@
-"""ToolRegistry: 工具注册与执行 (AST 自动发现 TODO)。
+"""ToolRegistry: 工具注册与执行 (ARCHITECTURE.md 3.5)。
 
-错误处理 (ARCHITECTURE.md 3.5): ToolError → 错误信息给 LLM；未知异常 → 内部错误。
+[已完成] 权限检查 (deny/restricted/allow) + 异常隔离 + restricted 策略 (未注入对应后端时拒绝);
+AST 自动发现待落地 (当前手动 register)。
+
+错误处理: ToolError → 错误信息给 LLM；未知异常 → 内部错误。
 """
 
 from __future__ import annotations
@@ -43,7 +46,14 @@ class ToolRegistry:
         agent_context: AgentContext,
         services: dict | None = None,
     ) -> ToolResult:
-        """执行工具调用 (权限检查 + 异常隔离)。"""
+        """执行工具调用 (权限检查 + 异常隔离)。
+
+        权限策略:
+        - deny: 直接拒绝
+        - restricted: 必须在 services 中注入对应后端, 否则拒绝 (避免受限工具
+          在未配置后端时被 LLM 调用, 暴露 NotImplementedError 给 LLM)
+        - allow: 正常执行
+        """
         tool = self._tools.get(tool_call.name)
         if tool is None:
             return ToolResult(content=f"未知工具: {tool_call.name}", is_error=True)
@@ -51,7 +61,13 @@ class ToolRegistry:
         policy = self.permission.check(tool.name)
         if policy == "deny":
             return ToolResult(content=f"工具 {tool.name} 已被配置禁用", is_error=True)
-        # TODO(Day 15): "restricted" 策略 (如 read_file/write_file 限制项目目录内)
+        if policy == "restricted":
+            required = self._required_service(tool.name)
+            if required and (not services or services.get(required) is None):
+                return ToolResult(
+                    content=f"工具 {tool.name} 为受限工具, 需注入服务 {required} 后方可使用。",
+                    is_error=True,
+                )
 
         context = ToolContext(args=tool_call.arguments, agent_context=agent_context, services=services or {})
         try:
@@ -62,3 +78,23 @@ class ToolRegistry:
             return ToolResult(content=str(exc), is_error=True)
         except Exception as exc:
             raise ToolError(f"{type(exc).__name__}: {exc}") from exc
+
+    @staticmethod
+    def _required_service(tool_name: str) -> str | None:
+        """restricted 工具 → 必须注入的 service key。
+
+        没有列入的 restricted 工具默认只要求 services 非空 (任意后端存在即可)。
+        """
+        mapping = {
+            "read_file": "workspace_root",
+            "write_file": "workspace_root",
+            "bash": "bash_allowlist",
+            "web_search": "web_search",
+            "task": "task_runner",
+            "send_emoji": "channel_send",
+            "send_image": "channel_send",
+            "fetch_history": "channel_history",
+            "switch_chat": "session_topic",
+            "view_forward_message": "channel_forward",
+        }
+        return mapping.get(tool_name)

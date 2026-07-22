@@ -21,5 +21,15 @@ class MidTermMemoryInjector(MemoryInjector):
         return 30
 
     async def build(self, context: InjectionContext) -> str:
-        """TODO(Day 25): 压缩策略 (保留最近 N 轮 + 摘要 + 回忆线索)。"""
-        return ""
+        """基于 pending_messages 生成轻量中期上下文参考。"""
+        if not context.pending_messages:
+            return ""
+        lines = ["【中期记忆-内部参考】", "最近尚未处理或需要保留的上下文摘要："]
+        for message in context.pending_messages[-5:]:
+            content = str(getattr(message, "content", "") or "").strip()
+            if content:
+                lines.append(f"- {content[:120]}")
+        if len(lines) <= 2:
+            return ""
+        lines.append("(仅作为推理参考，不要向用户逐字复述)")
+        return "\n".join(lines)
