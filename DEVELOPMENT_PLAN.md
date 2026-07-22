@@ -39,7 +39,7 @@
 | F | 插件生态 | 100% | F1-F4 全部完成 |
 | G | 控制面与自动化 | 100% | G1-G4 全部完成 |
 | H | 平台与工具扩展 | 100% | H1-H3 全部完成 |
-| I | 生产化与交付 | 50% | I1-I3 完成, I4-I6 待实现 |
+| I | 生产化与交付 | 67% | I1-I4 完成, I5/I6 待实现 |
 
 ---
 
@@ -327,10 +327,11 @@
   - **依赖**：F、G 完成。
   - **当前**：新增 docs/ 目录含 6 篇文档: README.md (导航) + usage.md (使用文档 - 配置详解/运行/维护) + deployment.md (Docker 部署 - 镜像构建/数据卷/生产建议/nginx 反代) + api.md (Admin REST API 文档 - Agent/路由/Link/插件/审计/健康检查) + plugin_development.md (插件开发指南 - ISAC Native/AstrBot/MaiBot 三格式) + control_automation.md (控制面自动化 - REST/MCP/Webhooks 集成)。附 `tests/unit/test_docs.py` (22 测试覆盖文档存在 + 内容完整性 + 关键章节)。
 
-- [ ] **I4 数据工具**
+- [x] **I4 数据工具**
   - **验收**：AstrBot/MaiBot → ISAC 迁移、备份/导出/导入可用。
   - **产出**：`scripts/migrate.py`、`scripts/export.py`。
   - **依赖**：D5-D7。
+  - **当前**：scripts/migrate.py 实现 migrate_from_astrbot (LLM 配置从 cmd_config.json/llm_model.json 解析, 插件目录复制, 写出 ISAC config.jsonc) + migrate_from_maibot (config.toml 解析, 记忆目录备份, 创建默认 Agent 配置); 支持 --dry-run; scripts/export.py 实现 export_data (zip 打包, 默认排除 audit.ndjson + .venv + __pycache__) + import_data (解压恢复, 支持 --overwrite); 子命令模式 (export/import)。附 `tests/unit/test_data_tools.py` (11 测试覆盖 AstrBot LLM 迁移 + dry-run + 插件复制, MaiBot config.toml 解析 + 默认 Agent, export 含/排除日志, import 恢复 + skip/overwrite + 排除 venv/pycache)。
 
 - [ ] **I5 监控告警**
   - **验收**：关键指标 Prometheus 采集；Webhook 告警；审计日志查看。
@@ -367,6 +368,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | I4 数据工具完成: scripts/migrate.py AstrBot/MaiBot 迁移 (LLM 配置解析 + 插件复制 + 默认 Agent + --dry-run); scripts/export.py export/import 子命令 (zip 打包 + 排除 audit.ndjson/venv/pycache + overwrite 控制)。I 节点 50% → 67% |
 | 2026-07-23 | Architect | I3 文档完善完成: docs/ 新增 6 篇文档 (README 导航/usage 使用/deployment Docker 部署/api Admin REST API/plugin_development 插件开发/control_automation 控制面自动化)。I 节点 33% → 50% |
 | 2026-07-23 | Architect | I2 Docker 部署完成: Dockerfile 多阶段 (builder + runtime, python:3.12-slim) + uv sync + EXPOSE 8765 + HEALTHCHECK + VOLUME /app/data; docker-compose.yml 一键启动 + isac_data volume + restart unless-stopped + 环境变量; scripts/docker_deploy.sh 部署脚本 (8 命令); .dockerignore。I 节点 17% → 33% |
 | 2026-07-23 | Architect | I1 WebUI 管理面板完成: control/webui/{index.html,app.js,__init__.py} FastAPI 静态托管 + Vanilla JS (不依赖 Vue 构建); Agent/路由/Link/审计四模块; 前端 fetch Bearer Token 调 G1 API。I 节点 0% → 17% |
