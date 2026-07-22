@@ -28,6 +28,11 @@ from isac.agent.tools.utility.read_file import ReadFileTool
 from isac.agent.tools.utility.task import TaskTool
 from isac.agent.tools.utility.web_search import WebSearchTool
 from isac.agent.tools.utility.write_file import WriteFileTool
+from isac.commands.builtin.agents import AgentsCommand
+from isac.commands.builtin.focus import FocusCommand
+from isac.commands.builtin.mute import MuteCommand, UnmuteCommand
+from isac.commands.registry import CommandRegistry
+from isac.core.policy import EnableMatrix
 from isac.gating.system import GatingSystem
 from isac.memory.injector.heuristic import HeuristicMemoryInjector
 from isac.memory.injector.jargon import JargonInjector
@@ -54,6 +59,16 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     """
     global_config: dict = services.get("global_config", {})
 
+    # E4 启用矩阵: Agent ∩ Channel ∩ 全局; Channel 覆盖来自 global_config.channels
+    channel_overrides: dict = {}
+    for platform, platform_cfg in global_config.get("channels", {}).items():
+        if isinstance(platform_cfg, dict) and "matrix" in platform_cfg:
+            channel_overrides[platform] = platform_cfg["matrix"]
+    enable_matrix = EnableMatrix(
+        global_policy=global_config.get("policy", {}),
+        channel_overrides=channel_overrides,
+    )
+
     gating = GatingSystem()  # TODO: 应用 config.gating 覆盖项
 
     prompt_builder = SystemPromptBuilder()
@@ -61,7 +76,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
 
     hooks = AgentHooks()
     permission = ToolPermission(config.tools_policy)
-    tools = ToolRegistry(permission)
+    tools = ToolRegistry(permission, enable_matrix=enable_matrix, agent_id=config.agent_id)
     # 社交类工具: 与 Channel/记忆交互, 多为 allow 策略
     tools.register(QueryMemoryTool())
     tools.register(QueryPersonProfileTool())
@@ -79,6 +94,19 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(WebSearchTool())
     tools.register(TaskTool())
     prompt_builder.register(ToolsAvailableInjector(tools))
+
+    # E4 命令注册表: commands_allow 矩阵在 try_execute 时生效
+    def _cmd_enable_check(name: str, agent_id: str, platform: str) -> bool:
+        instance_agent_id = agent_id or config.agent_id
+        return enable_matrix.is_command_enabled(
+            name, config.commands_allow, agent_id=instance_agent_id, platform=platform
+        )
+
+    commands = CommandRegistry(enable_checker=_cmd_enable_check)
+    commands.register(AgentsCommand())
+    commands.register(FocusCommand())
+    commands.register(MuteCommand())
+    commands.register(UnmuteCommand())
 
     provider_manager = services["provider_manager"]
     llm = provider_manager.for_agent(config)
@@ -113,4 +141,6 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
         persona=persona,
         tools=tools,
         services=agent_services,
+        enable_matrix=enable_matrix,
+        commands=commands,
     )
