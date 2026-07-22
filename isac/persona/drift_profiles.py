@@ -1,4 +1,4 @@
-"""注意力漂移配置 (DEVELOPMENT_PLAN.md Day 28)。
+"""注意力漂移配置。
 
 文案经 locales 获取 (ADR-006)，此处只定义档位元数据。
 """
