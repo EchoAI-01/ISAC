@@ -1,0 +1,39 @@
+# .dockerignore - 排除不必要的文件加速构建
+
+# Git 与 IDE
+.git
+.gitignore
+.github
+.idea
+.vscode
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 临时与构建产物
+.tmpfiles/
+dist/
+build/
+*.egg
+
+# 测试与文档 (运行时不需要)
+tests/
+docs/
+*.md
+!README.md  # 保留 README (Dockerfile 引用)
+
+# 数据 (避免镜像内置用户数据, 通过 volume 挂载)
+data/*
+!data/.gitkeep
+
+# 系统文件
+.DS_Store
+*.log

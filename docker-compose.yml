@@ -1,0 +1,51 @@
+# ISAC docker-compose.yml (I2)
+#
+# 一键启动 ISAC + 数据卷 + 控制面端口暴露
+# 用法: docker compose up -d
+# 注意: 容器内控制面需绑定 0.0.0.0 才能从宿主访问
+#       生产场景建议前置 nginx + HTTPS + 限制访问 IP
+
+services:
+  isac:
+    build: .
+    image: isac:latest
+    container_name: isac
+    restart: unless-stopped
+    ports:
+      # 控制面 API + WebUI
+      - "127.0.0.1:8765:8765"
+    volumes:
+      # 持久化数据 (Agent 配置 / 记忆 / 审计 / Link)
+      - isac_data:/app/data
+      # 持久化插件 (可挂载本地插件目录)
+      - ./plugins:/app/plugins:ro
+    environment:
+      # 控制面绑定 0.0.0.0 (容器内才能被宿主访问)
+      - ISAC_CONTROL_HOST=0.0.0.0
+      - ISAC_CONTROL_PORT=8765
+      # API Token (生产请改用 docker secrets 或 .env)
+      - ISAC_API_TOKEN=${ISAC_API_TOKEN:-change-me-in-prod}
+      # LLM 配置 (从环境变量注入)
+      - ISAC_LLM_PROVIDER=${ISAC_LLM_PROVIDER:-}
+      - ISAC_LLM_API_KEY=${ISAC_LLM_API_KEY:-}
+      - ISAC_LLM_MODEL=${ISAC_LLM_MODEL:-}
+      # OneBot 配置 (NapCat 等通过反向 WebSocket 连接)
+      - ISAC_ONEBOT_ENABLED=${ISAC_ONEBOT_ENABLED:-false}
+      - ISAC_ONEBOT_HOST=${ISAC_ONEBOT_HOST:-0.0.0.0}
+      - ISAC_ONEBOT_PORT=${ISAC_ONEBOT_PORT:-8080}
+    # 健康检查在 Dockerfile 已定义, 这里再次声明以便 docker compose ps 显示状态
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  isac_data:
+    driver: local

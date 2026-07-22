@@ -39,7 +39,7 @@
 | F | 插件生态 | 100% | F1-F4 全部完成 |
 | G | 控制面与自动化 | 100% | G1-G4 全部完成 |
 | H | 平台与工具扩展 | 100% | H1-H3 全部完成 |
-| I | 生产化与交付 | 17% | I1 完成, I2-I6 待实现 |
+| I | 生产化与交付 | 33% | I1/I2 完成, I3-I6 待实现 |
 
 ---
 
@@ -315,10 +315,11 @@
   - **依赖**：G1。
   - **当前**：采用 FastAPI 静态托管 + Vanilla JS (不依赖 Vue 构建工具链) 实现单页管理面板; control/webui/{index.html, app.js, __init__.py} 含 Agent 管理 (创建/启动/停止/删除)、路由规则更新、互联 Link 添加/删除、审计日志查询四个模块; server.py mount_webui 把 /ui 挂载到 FastAPI app; 前端用 fetch 调 G1 Admin API, Bearer Token 存 localStorage 自动持久化。附 `tests/unit/test_webui.py` (5 测试覆盖 index.html/app.js 静态返回 + 4 个模块齐全 + 端到端 API 工作流)。
 
-- [ ] **I2 Docker 部署**
+- [x] **I2 Docker 部署**
   - **验收**：Dockerfile + docker-compose.yml 一键启动；含控制面端口。
   - **产出**：`Dockerfile`、`docker-compose.yml`、部署脚本。
   - **依赖**：I1（可选）。
+  - **当前**：Dockerfile 多阶段构建 (builder + runtime, python:3.12-slim); uv sync 装运行时依赖 (含 onebot extra); EXPOSE 8765 + HEALTHCHECK + VOLUME /app/data; CMD python -m isac; docker-compose.yml 一键启动, 端口绑 127.0.0.1:8765, isac_data volume 持久化, restart unless-stopped, 环境变量 (ISAC_API_TOKEN / ISAC_LLM_* / ISAC_ONEBOT_*); scripts/docker_deploy.sh 部署脚本 (build/up/down/logs/shell/health/restart/rebuild); .dockerignore 排除缓存与测试。附 `tests/unit/test_docker_deploy.py` (20 测试覆盖 Dockerfile/compose/dockerignore/deploy script)。
 
 - [ ] **I3 文档完善**
   - **验收**：使用文档、API 文档、部署文档、插件开发指南、控制面自动化指南齐全。
@@ -365,6 +366,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | I2 Docker 部署完成: Dockerfile 多阶段 (builder + runtime, python:3.12-slim) + uv sync + EXPOSE 8765 + HEALTHCHECK + VOLUME /app/data; docker-compose.yml 一键启动 + isac_data volume + restart unless-stopped + 环境变量; scripts/docker_deploy.sh 部署脚本 (8 命令); .dockerignore。I 节点 17% → 33% |
 | 2026-07-23 | Architect | I1 WebUI 管理面板完成: control/webui/{index.html,app.js,__init__.py} FastAPI 静态托管 + Vanilla JS (不依赖 Vue 构建); Agent/路由/Link/审计四模块; 前端 fetch Bearer Token 调 G1 API。I 节点 0% → 17% |
 | 2026-07-23 | Architect | H3 实用工具与子 Agent 完成: bash (命令白名单 + shell 元字符防护) / read_file (路径白名单 + 行范围) / write_file (路径白名单 + append) / web_search (后端注入) 在 D4 落地; 本节点补 TaskRunner 真实实现 (用 ISACAgentLoop 派生子任务, 限制 token 预算与递归深度)。H 节点 67% → 100% |
 | 2026-07-23 | Architect | H2 MCP Client 完成: MCPClient 支持 stdio 子进程 + HTTP/SSE 两种传输; connect/list_tools/call_tool/disconnect 完整生命周期; MCPToolBridge 桥接为 ISAC Tool; JSON-RPC 2.0 协议 + 错误处理。H 节点 33% → 67% |
