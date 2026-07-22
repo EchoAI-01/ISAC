@@ -211,19 +211,22 @@ async def _start_control_plane(
         import uvicorn
 
         from isac.control.api.server import create_control_app
+        from isac.control.defaults import enforce_safe_host
         from isac.plugin.runtime.manager import PluginManager
 
         app = create_control_app(agent_manager, router, bus, PluginManager({}), control_config)
+        host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
+        port = int(control_config.get("port", 8765))
         config = uvicorn.Config(
             app,
-            host=control_config.get("host", "127.0.0.1"),
-            port=int(control_config.get("port", 8765)),
+            host=host,
+            port=port,
             log_level="warning",
         )
         import asyncio
 
         asyncio.get_running_loop().create_task(uvicorn.Server(config).serve())
-        logger.info("控制面已启动", host=control_config.get("host"), port=control_config.get("port"))
+        logger.info("控制面已启动", host=host, port=port)
     except Exception as exc:
         logger.error("控制面启动失败 (不阻塞数据面)", error=str(exc), exc_info=True)
 

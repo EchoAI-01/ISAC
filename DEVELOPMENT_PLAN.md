@@ -37,7 +37,7 @@
 | D | 单 Agent 核心 | 100% | D1-D8 全部完成 |
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
 | F | 插件生态 | 100% | F1-F4 全部完成 |
-| G | 控制面与自动化 | 75% | G1-G3 完成, G4 待实现 |
+| G | 控制面与自动化 | 100% | G1-G4 全部完成 |
 | H | 平台与工具扩展 | 0% | 全部待实现 |
 | I | 生产化与交付 | 0% | 全部待实现 |
 
@@ -273,10 +273,11 @@
   - **依赖**：G1。
   - **当前**：WebhookManager 实现 subscribe/unsubscribe/list_subscriptions/dispatch/trigger; dispatch 并发推送 (asyncio.gather), 失败重试 3 次 (指数退避); httpx 惰性导入 (生产) 或 http_client 注入 (测试 mock); trigger 作为 /automation/trigger 入口委托到 dispatch。附 `tests/unit/test_webhooks.py` (9 测试覆盖订阅/取消/推送/重试/部分失败/trigger)。
 
-- [ ] **G4 控制面安全与审计**
+- [x] **G4 控制面安全与审计**
   - **验收**：默认 127.0.0.1；自动化创建 Agent 使用受限默认配置；审计日志可查询。
-  - **产出**：`control/auth.py` 审计中间件、日志查询接口。
+  - **产出**：`control/defaults.py` 审计中间件、日志查询接口。
   - **依赖**：G1。
+  - **当前**：control/defaults.py 新增 RESTRICTED_TOOLS_POLICY (bash/task deny, read_file/write_file restricted) + RESTRICTED_COMMANDS_ALLOW (focus/mute/unmute); make_restricted_agent_config 工厂供自动化场景 (MCP/Webhook) 使用, 默认 plugins_deny=["*"] + mcp_servers=[]; is_safe_default_host/enforce_safe_host 防止误绑定 0.0.0.0/外网 IP; main.py _start_control_plane 接入 enforce_safe_host。审计日志查询接口已在 G1 落地 (/api/v1/audit endpoint)。附 `tests/unit/test_control_defaults.py` (16 测试覆盖受限策略表/构造工厂/extra 覆盖/未知字段忽略/安全地址判定)。
 
 ---
 
@@ -360,6 +361,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | G4 控制面安全与审计完成: control/defaults.py RESTRICTED_TOOLS_POLICY (bash/task deny, read_file/write_file restricted) + RESTRICTED_COMMANDS_ALLOW; make_restricted_agent_config 工厂 (plugins_deny=["*"] + mcp_servers=[]); is_safe_default_host/enforce_safe_host 防误绑定; main.py 接入 enforce_safe_host。审计日志查询 (/api/v1/audit) 在 G1 落地。G 节点 75% → 100% |
 | 2026-07-23 | Architect | G3 Webhooks 完成: WebhookManager subscribe/unsubscribe/list/dispatch/trigger; dispatch 并发推送 + 失败重试 3 次 (指数退避); httpx 惰性导入或 http_client 注入; trigger 作 /automation/trigger 入口。G 节点 50% → 75% |
 | 2026-07-23 | Architect | G2 ISAC MCP Server 完成: JSON-RPC 2.0 + stdio NDJSON; initialize/tools/list/tools/call/shutdown 方法; tools/call 受 Bearer Token 认证 (与 G1 共用); 6 个工具委托到 AgentManager/Router/Bus; MCPError 标准 JSON-RPC 错误码; notification 不响应。G 节点 25% → 50% |
 | 2026-07-23 | Architect | G1 Admin API 完整实现: control/auth.py hmac.compare_digest 恒定时间认证; control/audit.py AuditLog 双写 + query; routes_agents/_routing/_plugins 全部接入 auth + audit + 持久化 (AgentConfig/routing/links/plugins 矩阵); server 注入 auth/audit + /api/v1/audit 查询。G 节点 0% → 25% |
