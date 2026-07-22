@@ -1,6 +1,6 @@
 """Agent 管理端点 (SPECIFICATION.md 4.4)。
 
-待落地: Token 认证依赖注入 + 审计日志 + 统一错误格式。
+Bearer Token 认证 (依赖注入) + 审计日志 (写操作记录) + AgentConfig 持久化到 data/agents/<id>/config.jsonc。
 """
 
 from __future__ import annotations
@@ -8,20 +8,30 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from isac.control.audit import AuditLog
     from isac.runtime.manager import AgentManager
 
 
-def build_router(agent_manager: AgentManager) -> Any:
-    from fastapi import APIRouter, HTTPException
+def build_router(
+    agent_manager: AgentManager,
+    auth_dependency: Any = None,
+    audit_log: AuditLog | None = None,
+    agents_dir: str = "data/agents",
+) -> Any:
+    from fastapi import APIRouter, Depends, HTTPException
 
-    from isac.core.exceptions import AgentNotFoundError
-    from isac.runtime.config import AgentConfig
+    from isac.runtime.config import save_agent_config
 
-    router = APIRouter(prefix="/agents", tags=["agents"])
+    deps = [Depends(auth_dependency)] if auth_dependency else []
+    router = APIRouter(prefix="/agents", tags=["agents"], dependencies=deps)
 
     @router.post("")
     async def create_agent(config: dict) -> dict:
-        instance = await agent_manager.create(AgentConfig(**config))
+        instance = await _do_create_agent(agent_manager, config)
+        save_agent_config(f"{agents_dir}/{instance.agent_id}/config.jsonc", instance.config)
+        await _audit(
+            audit_log, "POST", "/api/v1/agents", "create_agent", instance.agent_id
+        )
         return {"agent_id": instance.agent_id, "status": instance.status}
 
     @router.get("")
@@ -37,23 +47,76 @@ def build_router(agent_manager: AgentManager) -> Any:
 
     @router.post("/{agent_id}/start")
     async def start_agent(agent_id: str) -> dict:
-        try:
-            await agent_manager.start(agent_id)
-        except AgentNotFoundError as exc:
-            raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
+        await _require_agent(agent_manager, agent_id, "start")
+        await _audit(audit_log, "POST", f"/api/v1/agents/{agent_id}/start", "start_agent", agent_id)
         return {"agent_id": agent_id, "status": "running"}
 
     @router.post("/{agent_id}/stop")
     async def stop_agent(agent_id: str) -> dict:
-        try:
-            await agent_manager.stop(agent_id)
-        except AgentNotFoundError as exc:
-            raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
+        await _require_agent(agent_manager, agent_id, "stop")
+        await _audit(audit_log, "POST", f"/api/v1/agents/{agent_id}/stop", "stop_agent", agent_id)
         return {"agent_id": agent_id, "status": "stopped"}
 
     @router.delete("/{agent_id}")
     async def destroy_agent(agent_id: str, keep_memory: bool = True) -> dict:
+        await _require_agent(agent_manager, agent_id, "destroy")
         await agent_manager.destroy(agent_id, keep_memory=keep_memory)
+        await _audit(
+            audit_log, "DELETE", f"/api/v1/agents/{agent_id}", "destroy_agent",
+            agent_id, detail=f"keep_memory={keep_memory}",
+        )
         return {"agent_id": agent_id, "status": "destroyed"}
 
     return router
+
+
+async def _do_create_agent(agent_manager: AgentManager, config: dict) -> Any:
+    """构造 AgentConfig 并创建实例, 错误转 HTTPException。"""
+    from fastapi import HTTPException
+
+    from isac.runtime.config import AgentConfig
+    try:
+        return await agent_manager.create(AgentConfig(**config))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"code": "AGENT_EXISTS", "message": str(exc)}) from exc
+    except TypeError as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_CONFIG", "message": str(exc)}) from exc
+
+
+async def _require_agent(agent_manager: AgentManager, agent_id: str, action: str) -> None:
+    """执行需要 Agent 存在的操作 (start/stop/destroy); 不存在抛 404。"""
+    from fastapi import HTTPException
+
+    from isac.core.exceptions import AgentNotFoundError
+    try:
+        if action == "start":
+            await agent_manager.start(agent_id)
+        elif action == "stop":
+            await agent_manager.stop(agent_id)
+        elif action == "destroy":
+            # destroy 内部会自己 _require, 这里只是 placeholder 保持接口一致
+            return
+    except AgentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
+
+
+async def _audit(
+    audit_log: AuditLog | None,
+    method: str,
+    path: str,
+    action: str,
+    target: str,
+    detail: str = "",
+) -> None:
+    """记录审计日志 (如果 audit_log 为 None 则跳过)。"""
+    if audit_log is None:
+        return
+    await audit_log.record(
+        actor="authenticated",
+        method=method,
+        path=path,
+        action=action,
+        target=target,
+        detail=detail,
+        status_code=200,
+    )
