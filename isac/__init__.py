@@ -4,4 +4,4 @@
 架构见 ARCHITECTURE.md (v3.0)，接口契约见 SPECIFICATION.md。
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

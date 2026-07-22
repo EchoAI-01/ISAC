@@ -1,6 +1,6 @@
 [project]
 name = "isac"
-version = "0.1.0"
+version = "1.0.0"
 description = "Intelligent Social AI Companion — 多 Agent AI 社交陪伴 Bot 框架"
 readme = "README.md"
 license = { text = "MIT" }
