@@ -38,7 +38,7 @@
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
 | F | 插件生态 | 100% | F1-F4 全部完成 |
 | G | 控制面与自动化 | 100% | G1-G4 全部完成 |
-| H | 平台与工具扩展 | 67% | H1/H2 完成, H3 待实现 |
+| H | 平台与工具扩展 | 100% | H1-H3 全部完成 |
 | I | 生产化与交付 | 0% | 全部待实现 |
 
 ---
@@ -297,10 +297,11 @@
   - **依赖**：D4、E4。
   - **当前**：MCPClient 支持两种传输 (stdio 子进程 + HTTP/SSE); connect 启动子进程或 httpx.AsyncClient; list_tools 发现 MCP 工具并桥接为 MCPToolBridge (实现 ISAC Tool 接口); call_tool 转发 JSON-RPC tools/call + 错误处理 (jsonrpc error → is_error=True); disconnect 终止子进程 / 关闭 httpx + 取消 pending future。stdio 模式后台读 stdout NDJSON 并分发到 pending future。Agent 的 mcp_servers 启用矩阵在 E4 EnableMatrix 落地。附 `tests/unit/test_mcp_client.py` (9 测试覆盖 connect 各传输 + list_tools + call_tool 正常/错误/未连接 + MCPToolBridge 桥接)。
 
-- [ ] **H3 实用工具与子 Agent**
+- [x] **H3 实用工具与子 Agent**
   - **验收**：bash/read_file/write_file/web_search/task 可用；受限策略（项目目录/递归深度）生效。
   - **产出**：`agent/tools/utility/*.py`。
   - **依赖**：D4。
+  - **当前**：bash (命令白名单 + shell 元字符注入防护) / read_file (路径白名单 + 行范围 + 64KB 上限) / write_file (路径白名单 + 256KB 上限 + append) / web_search (经 services["web_search"] 注入后端) 全部在 D4 落地; task 工具在 D4 实现受限框架, 本节点补 TaskRunner 真实实现 (用 ISACAgentLoop 派生子任务, 限制 token 预算与递归深度)。附 `tests/unit/test_utility_integration.py` (11 测试覆盖 write→read 往返 / 路径越权 / append / bash 白名单 / 元字符防护 / web_search 缺后端与注入 / task_runner 调用与递归深度)。
 
 ---
 
@@ -363,6 +364,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | H3 实用工具与子 Agent 完成: bash (命令白名单 + shell 元字符防护) / read_file (路径白名单 + 行范围) / write_file (路径白名单 + append) / web_search (后端注入) 在 D4 落地; 本节点补 TaskRunner 真实实现 (用 ISACAgentLoop 派生子任务, 限制 token 预算与递归深度)。H 节点 67% → 100% |
 | 2026-07-23 | Architect | H2 MCP Client 完成: MCPClient 支持 stdio 子进程 + HTTP/SSE 两种传输; connect/list_tools/call_tool/disconnect 完整生命周期; MCPToolBridge 桥接为 ISAC Tool; JSON-RPC 2.0 协议 + 错误处理。H 节点 33% → 67% |
 | 2026-07-23 | Architect | H1 平台适配器完成: Telegram (Bot API long polling + httpx); Discord (REST polling 简化版); WebChat (asyncio.start_server 极简 HTTP /webchat/send+/webchat/poll + 内存队列)。H 节点 0% → 33% |
 | 2026-07-23 | Architect | G4 控制面安全与审计完成: control/defaults.py RESTRICTED_TOOLS_POLICY (bash/task deny, read_file/write_file restricted) + RESTRICTED_COMMANDS_ALLOW; make_restricted_agent_config 工厂 (plugins_deny=["*"] + mcp_servers=[]); is_safe_default_host/enforce_safe_host 防误绑定; main.py 接入 enforce_safe_host。审计日志查询 (/api/v1/audit) 在 G1 落地。G 节点 75% → 100% |
