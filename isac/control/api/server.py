@@ -93,4 +93,15 @@ def create_control_app(
     ) -> list[dict]:
         return audit_log.query(action=action, actor=actor, path_prefix=path_prefix, limit=limit)
 
+    # I1: 挂载 WebUI 管理面板 (Vanilla JS, 不依赖 Vue 构建工具链)
+    try:
+        from isac.control.webui import mount_webui
+
+        mount_webui(app, prefix="/ui", api_token=api_token)
+    except Exception as exc:  # noqa: BLE001
+        # WebUI 挂载失败不阻塞 API
+        from isac.utils.logger import get_logger as _get_logger
+
+        _get_logger(__name__).warning("WebUI 挂载失败", error=str(exc))
+
     return app
