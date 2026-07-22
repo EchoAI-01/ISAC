@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 class MCPClient:
     """MCP 服务器客户端。
 
-    TODO(Day 66-68):
+    [桩] 待实现:
     - 连接 MCP Server (stdio / SSE)
     - 发现工具列表并转换为 ISAC Tool 定义
     - 调用转发 + 错误处理
@@ -27,11 +27,11 @@ class MCPClient:
         self.config = config
 
     async def connect(self) -> None:
-        raise NotImplementedError("TODO(Day 66): 连接 MCP Server")
+        raise NotImplementedError("MCPClient.connect 尚未实现")
 
     async def list_tools(self) -> list[Tool]:
         """发现 MCP 工具并桥接为 ISAC Tool。"""
-        raise NotImplementedError("TODO(Day 67): 工具发现与桥接")
+        raise NotImplementedError("MCPClient.list_tools 尚未实现")
 
     async def disconnect(self) -> None:
-        raise NotImplementedError("TODO(Day 66): 断开连接")
+        raise NotImplementedError("MCPClient.disconnect 尚未实现")

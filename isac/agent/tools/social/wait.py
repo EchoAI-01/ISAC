@@ -23,5 +23,7 @@ class WaitTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        """TODO(Day 27): 设置会话等待状态 (与门控 idle_backoff 联动)。"""
-        raise NotImplementedError("TODO(Day 27): 实现 wait")
+        """返回非阻塞等待意图，后续 ConversationRuntime 接管真实 wait 状态。"""
+        seconds = max(0, int(context.args.get("seconds", 5) or 5))
+        session_id = getattr(context.agent_context.session, "session_id", "")
+        return ToolResult(content=f"已记录等待意图：等待 {seconds} 秒或等待对方继续说。session_id={session_id}")

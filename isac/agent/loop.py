@@ -57,12 +57,14 @@ class ISACAgentLoop:
         hooks: AgentHooks,
         tools: ToolRegistry,
         provider_manager: ProviderManager | None = None,
+        services: dict | None = None,
     ):
         self.llm = llm
         self.prompt_builder = prompt_builder
         self.hooks = hooks
         self.tools = tools
         self.provider_manager = provider_manager
+        self.services = services or {}
 
     async def run(self, messages: list[dict], context: AgentContext) -> AgentResult:
         """执行 Agent 循环，直到产出最终回复 / 被打断 / 预算耗尽。"""
@@ -122,7 +124,7 @@ class ISACAgentLoop:
             return ToolResult(content=f"工具 {tool_call.name} 被权限策略阻止", is_error=True)
 
         try:
-            result = await self.tools.execute(tool_call, context)
+            result = await self.tools.execute(tool_call, context, services=self.services)
         except ToolError as exc:
             logger.warning("工具执行失败", tool=tool_call.name, error=str(exc))
             result = ToolResult(content=f"工具 {tool_call.name} 执行失败: {exc.message}", is_error=True)

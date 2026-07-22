@@ -48,7 +48,7 @@ class SystemPromptBuilder:
                 continue
             if not text:
                 continue
-            # TODO(Day 12): token 预算裁剪 (tokens_estimate vs context.available_prompt_tokens)
+            # TODO: token 预算裁剪 (tokens_estimate vs context.available_prompt_tokens)
             blocks.append(text)
             self._mark_triggered(injector)
 

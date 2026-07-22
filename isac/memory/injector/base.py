@@ -14,8 +14,11 @@ class MemoryInjector(PromptInjector):
         self.pipeline = pipeline
 
     async def search_and_format(self, query: str, top_k: int = 3, header: str = "【记忆-内部参考】") -> str:
-        """通用检索 + 格式化流程。失败时返回空字符串 (优雅降级)。"""
-        hits = await self.pipeline.search(query, top_k=top_k)
+        """通用检索 + 格式化流程。失败时返回空字符串。"""
+        try:
+            hits = await self.pipeline.search(query, top_k=top_k)
+        except Exception:
+            return ""
         if not hits:
             return ""
         return self._format_reference(hits, header=header)
