@@ -36,7 +36,7 @@
 | C | 连接与路由 | 100% | 全部完成 |
 | D | 单 Agent 核心 | 100% | D1-D8 全部完成 |
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
-| F | 插件生态 | 0% | 全部待实现 |
+| F | 插件生态 | 25% | F1 完成, F2-F4 待实现 |
 | G | 控制面与自动化 | 0% | 骨架完成，业务逻辑待填充 |
 | H | 平台与工具扩展 | 0% | 全部待实现 |
 | I | 生产化与交付 | 0% | 全部待实现 |
@@ -225,10 +225,11 @@
 
 **目标**：兼容 AstrBot / MaiBot 存量插件，同时提供更强的原生 SDK。
 
-- [ ] **F1 AstrBot 兼容层**
+- [x] **F1 AstrBot 兼容层**
   - **验收**：3 个简单 + 2 个复杂 AstrBot 插件可直接运行；Star/Context/EventType/FunctionTool 桥接工作。
   - **产出**：`plugin/compatibility/astrbot/{star,context,events,tools,sandbox}.py`。
   - **依赖**：B2、D3、D4。
+  - **当前**：FunctionToolAdapter 桥接 @filter.llm_tool 函数 → ISAC Tool (同步/异步/异常隔离); ContextAdapter 映射 send_message/get_platform/get_provider/register_tool 到 ISAC services; Star 基类与 _FilterRegistry 实现 AstrBot 装饰器 (llm_tool/on_message/on_llm_request); events.py EventType 映射到 ISAC EventType/AgentHookPoint; sandbox.py meta_path 拦截 astrbot.* import 重定向。附 `tests/unit/test_astrbot_compat.py` (9 测试覆盖装饰器/桥接/Context 适配)。
 
 - [ ] **F2 MaiBot 兼容层**
   - **验收**：2-3 个 MaiBot 插件可运行；Plugin/Action/Command 映射工作；锁定兼容版本。
@@ -353,6 +354,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | F1 AstrBot 兼容层完成: FunctionToolAdapter 桥接 @filter.llm_tool; ContextAdapter 映射 send_message/get_platform/get_provider/register_tool; Star 基类 + _FilterRegistry 装饰器; EventType 映射到 ISAC; sandbox.py meta_path import 拦截。F 节点 0% → 25% |
 | 2026-07-23 | Architect | E4 启用矩阵生效: core/policy.py 新增 EnableMatrix (Agent ∩ Channel ∩ 全局); ToolRegistry effective_policy 接入; CommandRegistry enable_checker 注入; assembly.py 接线 EnableMatrix 与 4 个内置命令; manager.py handle_message 接入 /cmd 命令拦截 (跳过门控)。E 节点 60% → 80% |
 | 2026-07-22 | Architect | D 节点完成 100%：D4 工具系统补齐 (13 个内置工具全部实现, restricted 策略落地, 路径白名单/命令白名单/递归深度限制, shell 元字符注入防护)；D8 人格系统补齐 (MoodEngine update/decay/label 映射, BehaviorLearner FINAL_RESPONSE hook 接线, PersonaManager 聚合 mood/behavior)；新增 `tests/unit/test_persona.py`、扩展 `tests/unit/test_builtin_tools.py` 与 `tests/unit/test_tool_registry.py`；D 节点进度 75% → 100% |
 | 2026-07-22 | Architect | D1 整体验收：TurnScheduler 滑动窗口频率与存在感计数落地，runtime/manager.py 接线 record_window_message / effective_frequency / recent_self_replies / recent_window_messages / record_reply / idle_backoff.record_reply；D5/D6/D7 MVP 回填为已完成 (MetadataStore + FTS5 + BM25 真实实现，VectorStore/GraphStore/EmbeddingManager/Reranker 仍为桩)；D 节点进度 35% → 75% |
