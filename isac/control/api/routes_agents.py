@@ -71,16 +71,24 @@ def build_router(
 
 
 async def _do_create_agent(agent_manager: AgentManager, config: dict) -> Any:
-    """构造 AgentConfig 并创建实例, 错误转 HTTPException。"""
+    """构造 AgentConfig 并创建实例, 错误转 HTTPException。
+
+    构造 AgentConfig (格式校验，如 agent_id 非法) 与创建实例 (是否已存在) 分开处理，
+    避免 agent_id 格式错误被误报成"已存在" (409)。
+    """
     from fastapi import HTTPException
 
     from isac.runtime.config import AgentConfig
+
     try:
-        return await agent_manager.create(AgentConfig(**config))
+        agent_config = AgentConfig(**config)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_CONFIG", "message": str(exc)}) from exc
+
+    try:
+        return await agent_manager.create(agent_config)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail={"code": "AGENT_EXISTS", "message": str(exc)}) from exc
-    except TypeError as exc:
-        raise HTTPException(status_code=400, detail={"code": "INVALID_CONFIG", "message": str(exc)}) from exc
 
 
 async def _require_agent(agent_manager: AgentManager, agent_id: str, action: str) -> None:
