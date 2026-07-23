@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from isac.agent.hooks import AgentHooks
@@ -97,6 +98,25 @@ class ISACAgentLoop:
                 return AgentResult(interrupted=True)
 
             if response.tool_calls:
+                # LLM API 要求 tool 消息必须紧跟在声明了对应 tool_calls 的 assistant
+                # 消息之后, 否则下一轮请求里 tool_call_id 找不到归属会被 API 拒绝。
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": response.content,
+                        "tool_calls": [
+                            {
+                                "id": tool_call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_call.name,
+                                    "arguments": json.dumps(tool_call.arguments, ensure_ascii=False),
+                                },
+                            }
+                            for tool_call in response.tool_calls
+                        ],
+                    }
+                )
                 for tool_call in response.tool_calls:
                     result = await self._execute_tool(tool_call, context)
                     messages.append(
