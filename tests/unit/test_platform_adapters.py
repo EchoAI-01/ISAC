@@ -213,6 +213,47 @@ class TestDiscordAdapter:
         method, url, kwargs = adapter._http_client.calls[0]
         assert "channels/channel_123/messages" in url
 
+    @pytest.mark.asyncio
+    async def test_poll_channel_paginates_until_all_new_messages_consumed(self) -> None:
+        """本轮积压 13 条 (超过单页 limit=10) 应分两页拉完, 每页处理完才提交 cursor。"""
+        adapter = DiscordAdapter({"bot_token": "fake", "watch_channel_ids": ["chan1"]})
+        received: list[str] = []
+
+        async def on_message(msg: ISACMessage) -> None:
+            received.append(msg.msg_id)
+
+        adapter.on_message = on_message
+
+        def _mk(msg_id: str) -> dict[str, Any]:
+            return {
+                "id": msg_id,
+                "timestamp": "2024-01-01T00:00:00.000000+00:00",
+                "author": {"id": "u1", "username": "alice"},
+                "content": f"msg-{msg_id}",
+            }
+
+        page1 = [_mk(str(i)) for i in range(10, 0, -1)]  # id: 10..1 (Discord 降序: 最新在前)
+        page2 = [_mk(str(i)) for i in range(13, 10, -1)]  # id: 13..11
+
+        calls: list[dict[str, Any]] = []
+
+        async def fake_call_api(method: str, path: str, *, json_body: Any = None, query: Any = None) -> Any:
+            calls.append(dict(query or {}))
+            if len(calls) == 1:
+                return page1
+            if len(calls) == 2:
+                return page2
+            return []
+
+        adapter._call_api = fake_call_api  # type: ignore[method-assign]
+        await adapter._poll_channel("chan1")
+
+        assert received == [str(i) for i in range(1, 14)]
+        assert len(calls) == 2
+        assert "after" not in calls[0]
+        assert calls[1]["after"] == "10"
+        assert adapter._last_message_ids["chan1"] == "13"
+
 
 def _adapter_port(adapter: WebChatAdapter) -> int:
     return adapter._http_server.sockets[0].getsockname()[1]
