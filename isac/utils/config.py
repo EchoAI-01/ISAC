@@ -25,13 +25,27 @@ except ImportError:  # pragma: no cover
 
 CONFIG_VERSION = "1.0.0"
 
-# 环境变量映射 (SPECIFICATION.md 3.2)
-ENV_MAPPING: dict[str, str] = {
-    "ISAC_LLM_PROVIDER": "llm.provider",
-    "ISAC_LLM_API_KEY": "llm.api_key",
-    "ISAC_DEBUG": "debug",
-    "ISAC_LOG_LEVEL": "log_level",
-    "ISAC_MEMORY_ENABLED": "memory.enabled",
+
+def _to_bool(value: str) -> bool:
+    """把环境变量字符串转成真布尔值 (裸字符串 "false"/"0" 不能被当真值)。"""
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+# 环境变量映射 (SPECIFICATION.md 3.2): env var -> (dotted_key, 类型转换函数)
+ENV_MAPPING: dict[str, tuple[str, Callable[[str], Any]]] = {
+    "ISAC_LLM_PROVIDER": ("llm.provider", str),
+    "ISAC_LLM_API_KEY": ("llm.api_key", str),
+    "ISAC_LLM_MODEL": ("llm.model", str),
+    "ISAC_DEBUG": ("debug", _to_bool),
+    "ISAC_LOG_LEVEL": ("log_level", str),
+    "ISAC_MEMORY_ENABLED": ("memory.enabled", _to_bool),
+    "ISAC_CONTROL_ENABLED": ("control.enabled", _to_bool),
+    "ISAC_CONTROL_HOST": ("control.host", str),
+    "ISAC_CONTROL_PORT": ("control.port", int),
+    "ISAC_API_TOKEN": ("control.api_token", str),
+    "ISAC_ONEBOT_ENABLED": ("channels.onebot.enabled", _to_bool),
+    "ISAC_ONEBOT_HOST": ("channels.onebot.host", str),
+    "ISAC_ONEBOT_PORT": ("channels.onebot.port", int),
 }
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -65,9 +79,9 @@ def load_config(path: str | Path) -> dict[str, Any]:
     else:
         logger.warning("配置文件不存在，使用默认值", path=str(file_path))
 
-    for env_key, config_key in ENV_MAPPING.items():
+    for env_key, (config_key, convert) in ENV_MAPPING.items():
         if env_key in os.environ:
-            _set_nested(config, config_key, os.environ[env_key])
+            _set_nested(config, config_key, convert(os.environ[env_key]))
 
     migrator = ConfigMigrator()
     return migrator.migrate(config)

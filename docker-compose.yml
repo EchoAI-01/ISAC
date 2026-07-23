@@ -21,6 +21,7 @@ services:
       - ./plugins:/app/plugins:ro
     environment:
       # 控制面绑定 0.0.0.0 (容器内才能被宿主访问)
+      - ISAC_CONTROL_ENABLED=${ISAC_CONTROL_ENABLED:-true}
       - ISAC_CONTROL_HOST=0.0.0.0
       - ISAC_CONTROL_PORT=8765
       # API Token (生产请改用 docker secrets 或 .env)
