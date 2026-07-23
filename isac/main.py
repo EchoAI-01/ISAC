@@ -7,6 +7,7 @@ utils → provider → memory → persona → agent → gating → router
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,35 @@ from isac.utils.logger import get_logger, setup_logger
 logger = get_logger(__name__)
 
 DATA_DIR = Path("data")
+
+
+async def process_message(
+    message: ISACMessage,
+    *,
+    event_bus: EventBus,
+    router: MessageRouter,
+    session_mgr: SessionManager,
+    user_mapper: UserMapper,
+    agent_manager: AgentManager,
+    channel_registry: ChannelRegistry,
+) -> None:
+    """消息主链路: EventBus → Router → Agent (DEVELOP.md 1.2 依赖注入)。"""
+    payload = await event_bus.fire_intercept(EventType.ON_MESSAGE, message)
+    if payload is None:
+        return  # 被插件拦截
+    message = payload
+
+    decision = await router.route(message)
+    if decision is None:
+        return  # 路由无匹配 → DROP
+    routed_message = dataclasses.replace(message, content=decision.content)
+
+    session = await session_mgr.get_or_create(routed_message, agent_id=decision.agent_id)
+    profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
+    reply = await agent_manager.handle_message(decision.agent_id, routed_message, session, profile)
+    if reply:
+        await _send_reply(channel_registry, routed_message, reply, decision.agent_id)
+    await event_bus.fire_async(EventType.POST_MESSAGE, routed_message)
 
 
 async def _send_reply(
@@ -165,24 +195,15 @@ async def main() -> None:
         lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
         lock = await session_lock.acquire(lock_key)
         async with lock:
-            await process_message(message)
-
-    async def process_message(message: ISACMessage) -> None:
-        """消息主链路: EventBus → Router → Agent (DEVELOP.md 1.2 依赖注入)。"""
-        payload = await event_bus.fire_intercept(EventType.ON_MESSAGE, message)
-        if payload is None:
-            return  # 被插件拦截
-
-        decision = await router.route(message)
-        if decision is None:
-            return  # 路由无匹配 → DROP
-
-        session = await session_mgr.get_or_create(message, agent_id=decision.agent_id)
-        profile = await user_mapper.resolve(message.platform, message.user_id, message.user_name)
-        reply = await agent_manager.handle_message(decision.agent_id, message, session, profile)
-        if reply:
-            await _send_reply(channel_registry, message, reply, decision.agent_id)
-        await event_bus.fire_async(EventType.POST_MESSAGE, message)
+            await process_message(
+                message,
+                event_bus=event_bus,
+                router=router,
+                session_mgr=session_mgr,
+                user_mapper=user_mapper,
+                agent_manager=agent_manager,
+                channel_registry=channel_registry,
+            )
 
     # 注入 Channel 适配器的消息回调
     for adapter in channel_registry.list():
