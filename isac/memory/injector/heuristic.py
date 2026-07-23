@@ -39,8 +39,15 @@ class HeuristicMemoryInjector(MemoryInjector):
         return 500
 
     async def build(self, context: InjectionContext) -> str:
-        """使用当前消息文本搜索相关长期记忆。"""
+        """使用当前消息文本搜索相关长期记忆 (按 session 的 user_id/group_id 隔离)。"""
         query = str(getattr(context.current_message, "content", "") or "").strip()
         if not query:
             return ""
-        return await self.search_and_format(query, top_k=3, header="【启发式记忆-内部参考】")
+        session = context.session
+        return await self.search_and_format(
+            query,
+            top_k=3,
+            header="【启发式记忆-内部参考】",
+            user_id=str(getattr(session, "user_id", "") or ""),
+            group_id=str(getattr(session, "group_id", "") or ""),
+        )

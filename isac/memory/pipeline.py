@@ -58,19 +58,32 @@ class MemoryRetrievalPipeline:
         user_id: str = "",
         group_id: str = "",
     ) -> list[MemoryHit]:
-        """检索记忆。"""
-        del filters, agent_id, user_id, group_id
+        """检索记忆。
+
+        agent 隔离由 self.namespace 保证 (agent_id 参数含义相同, 仅为调用方兼容保留);
+        user_id/group_id 用于 user/group 访问控制 (CODE_REVIEW_REPORT.md #9):
+        群聊场景按 group_id 过滤 (群内共享)，私聊场景按 user_id 过滤且排除群聊记忆。
+        """
+        del filters, agent_id  # TODO: 结构化过滤条件 (topics/时间范围等), 当前未实现
         clean_query = str(query or "").strip()
         if not clean_query:
             return []
         try:
-            fts_rows = await self.metadata.search_fts(self.namespace, clean_query, limit=max(top_k * 2, 10))
+            fts_rows = await self.metadata.search_fts(
+                self.namespace,
+                clean_query,
+                limit=max(top_k * 2, 10),
+                user_id=user_id,
+                group_id=group_id,
+            )
             sparse_rows = self.sparse.search(clean_query, top_k=max(top_k * 2, 10))
             sparse_ids = [memory_id for memory_id, _score in sparse_rows]
             fts_ids = {str(row.get("id", "")) for row in fts_rows}
             missing_rows = await self.metadata.get_episodes_by_ids(
                 self.namespace,
                 [memory_id for memory_id in sparse_ids if memory_id not in fts_ids],
+                user_id=user_id,
+                group_id=group_id,
             )
             hits = self._merge_results([*fts_rows, *missing_rows], sparse_rows)
             if self.reranker is not None and self.reranker.is_available():
@@ -86,6 +99,7 @@ class MemoryRetrievalPipeline:
         session_id: str,
         user_id: str,
         agent_id: str = "",
+        group_id: str = "",
         metadata: dict | None = None,
     ) -> str:
         """存储一条情景记忆。"""
@@ -97,6 +111,7 @@ class MemoryRetrievalPipeline:
         payload["content"] = clean_content
         payload["session_id"] = session_id
         payload["user_id"] = user_id
+        payload["group_id"] = group_id
         try:
             memory_id = await self.metadata.store_episode(agent_id or self.namespace, payload)
             self.sparse.add(memory_id, clean_content)
@@ -172,6 +187,7 @@ class NoOpMemoryPipeline:
         session_id: str,
         user_id: str,
         agent_id: str = "",
+        group_id: str = "",
         metadata: dict | None = None,
     ) -> str:
         """空存储，仅记录日志。"""

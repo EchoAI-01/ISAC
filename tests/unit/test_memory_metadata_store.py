@@ -2,9 +2,53 @@
 
 from __future__ import annotations
 
+import aiosqlite
 import pytest
 
 from isac.memory.storage.metadata import MetadataStore
+
+_LEGACY_EPISODES_SCHEMA = """
+CREATE TABLE episodes (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    summary TEXT,
+    topics TEXT,
+    participants TEXT,
+    emotion TEXT,
+    importance REAL DEFAULT 0.5,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE VIRTUAL TABLE episodes_fts USING fts5(
+    content, summary, topics, participants,
+    content=episodes, content_rowid=rowid
+);
+"""
+
+
+@pytest.mark.asyncio
+async def test_init_schema_migrates_legacy_db_missing_group_id_column(tmp_path) -> None:
+    """老库没有 group_id 列 (ALTER TABLE ADD COLUMN 无 IF NOT EXISTS, 需先探测)。"""
+    db_path = str(tmp_path / "legacy.db")
+    async with aiosqlite.connect(db_path) as db:
+        await db.executescript(_LEGACY_EPISODES_SCHEMA)
+        await db.commit()
+
+    store = MetadataStore(db_path)
+    await store.init_schema()  # 不应因列已存在的部分表结构而报错
+    await store.init_schema()  # 再次调用 (幂等) 也不应报错
+
+    memory_id = await store.store_episode(
+        "agent_a",
+        {"id": "mem_1", "session_id": "sess_1", "user_id": "user_1", "group_id": "group_1", "content": "迁移后可用"},
+    )
+    results = await store.search_fts("agent_a", "迁移后可用", limit=5, group_id="group_1")
+
+    assert memory_id == "mem_1"
+    assert [item["id"] for item in results] == ["mem_1"]
 
 
 @pytest.mark.asyncio
@@ -40,6 +84,69 @@ async def test_store_episode_and_search_fts_are_agent_isolated(tmp_path) -> None
 
     assert [item["id"] for item in results] == ["mem_a"]
     assert results[0]["content"] == "ISAC 正在补齐记忆系统施工图"
+
+
+@pytest.mark.asyncio
+async def test_search_fts_private_chat_is_isolated_per_user(tmp_path) -> None:
+    """同一 agent 下, 私聊记忆 (group_id 为空) 应仅对发言者本人可见 (CODE_REVIEW_REPORT.md #9)。"""
+    store = MetadataStore(str(tmp_path / "memory.db"))
+    await store.init_schema()
+
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_user_a", "session_id": "sess_a", "user_id": "user_a", "content": "ISAC 私聊记忆 来自 user_a"},
+    )
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_user_b", "session_id": "sess_b", "user_id": "user_b", "content": "ISAC 私聊记忆 来自 user_b"},
+    )
+
+    results_a = await store.search_fts("agent_a", "ISAC 私聊记忆", limit=5, user_id="user_a")
+
+    assert [item["id"] for item in results_a] == ["mem_user_a"]
+
+
+@pytest.mark.asyncio
+async def test_search_fts_group_chat_is_shared_across_members(tmp_path) -> None:
+    """同一 agent 下, 群聊记忆 (group_id 非空) 应对该群全部成员可见, 不按发言人收窄。"""
+    store = MetadataStore(str(tmp_path / "memory.db"))
+    await store.init_schema()
+
+    await store.store_episode(
+        "agent_a",
+        {
+            "id": "mem_group_1",
+            "session_id": "sess_g1",
+            "user_id": "user_a",
+            "group_id": "group_1",
+            "content": "群聊共享记忆 来自 user_a",
+        },
+    )
+    await store.store_episode(
+        "agent_a",
+        {
+            "id": "mem_group_2",
+            "session_id": "sess_g1",
+            "user_id": "user_b",
+            "group_id": "group_1",
+            "content": "群聊共享记忆 来自 user_b",
+        },
+    )
+    await store.store_episode(
+        "agent_a",
+        {
+            "id": "mem_other_group",
+            "session_id": "sess_g2",
+            "user_id": "user_c",
+            "group_id": "group_2",
+            "content": "群聊共享记忆 来自另一个群",
+        },
+    )
+
+    # user_c 本人未曾在 group_1 发言, 但因为身处该群, 传 group_id 后应看到全部成员的记忆。
+    results = await store.search_fts("agent_a", "群聊共享记忆", limit=10, user_id="user_c", group_id="group_1")
+
+    assert {item["id"] for item in results} == {"mem_group_1", "mem_group_2"}
 
 
 @pytest.mark.asyncio

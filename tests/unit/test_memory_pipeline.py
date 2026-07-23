@@ -58,6 +58,35 @@ async def test_search_is_namespace_isolated(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_private_chat_excludes_other_users_memory(tmp_path) -> None:
+    """pipeline.search() 传入 user_id 时, 私聊记忆应仅对发言者本人可见 (CODE_REVIEW_REPORT.md #9)。"""
+    pipeline = await make_pipeline(tmp_path)
+    await pipeline.store_episode("ISAC 私聊记忆 来自 user_a", session_id="sess_a", user_id="user_a")
+    await pipeline.store_episode("ISAC 私聊记忆 来自 user_b", session_id="sess_b", user_id="user_b")
+
+    hits_a = await pipeline.search("ISAC 私聊记忆", top_k=10, user_id="user_a")
+
+    assert [hit.source for hit in hits_a] == ["sess_a"]
+
+
+@pytest.mark.asyncio
+async def test_search_group_chat_is_visible_to_all_members(tmp_path) -> None:
+    """pipeline.search() 传入 group_id 时, 群聊记忆应对该群全部成员可见, 不按发言人收窄。"""
+    pipeline = await make_pipeline(tmp_path)
+    await pipeline.store_episode(
+        "群聊共享记忆 来自 user_a", session_id="sess_g1", user_id="user_a", group_id="group_1"
+    )
+    await pipeline.store_episode(
+        "群聊共享记忆 来自 user_b", session_id="sess_g1", user_id="user_b", group_id="group_1"
+    )
+
+    # user_c 身处 group_1, 即使不是发言人本人也应看到群内全部成员的共享记忆。
+    hits = await pipeline.search("群聊共享记忆", top_k=10, user_id="user_c", group_id="group_1")
+
+    assert {hit.content for hit in hits} == {"群聊共享记忆 来自 user_a", "群聊共享记忆 来自 user_b"}
+
+
+@pytest.mark.asyncio
 async def test_search_top_k_and_empty_query(tmp_path) -> None:
     pipeline = await make_pipeline(tmp_path)
     await pipeline.store_episode("记忆 检索 一", session_id="sess_1", user_id="user_1")
