@@ -68,6 +68,13 @@ class ProviderManager:
                 if not exc.retriable:
                     break
                 await asyncio.sleep(2**attempt)
+            except Exception as exc:  # noqa: BLE001
+                # Provider 具体实现可能抛出非 LLMError 异常 (网络库异常/JSON 解析失败等)。
+                # 规范化为可重试错误继续走既有 重试/回退/降级 流程, 而不是让异常直接
+                # 冒泡打断整条消息处理链路 (调用方 main.py 没有兜底 try/except)。
+                last_error = exc
+                logger.warning("LLM 调用出现非预期异常，按可重试处理", attempt=attempt + 1, error=str(exc))
+                await asyncio.sleep(2**attempt)
 
         if self._fallback is not None:
             logger.warning("回退到备选模型", model=self._fallback.get_model_name())
