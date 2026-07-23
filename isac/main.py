@@ -25,6 +25,7 @@ from isac.memory.storage.graph import GraphStore
 from isac.memory.storage.metadata import MetadataStore
 from isac.memory.storage.sparse import SparseBM25Index
 from isac.memory.storage.vector import VectorStore
+from isac.provider.llm.openai_compat import OpenAICompatProvider
 from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
 from isac.router.router import MessageRouter
@@ -97,6 +98,36 @@ async def _send_reply(
         logger.info("Agent 回复已发送", agent_id=agent_id, platform=incoming.platform, length=len(reply_text))
 
 
+def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[str, Any]) -> None:
+    """按配置注册 LLM Provider。
+
+    真实 provider+api_key 已配置但 OpenAICompatProvider 仍是未实现的桩时, 不再静默
+    注册 StubProvider 冒充成功接入——注册真实的 OpenAICompatProvider, 它的 chat()
+    会诚实地抛出 NotImplementedError, 经 chat_with_retry() 的兜底重试/降级逻辑
+    (isac/provider/manager.py) 最终仍能拿到回复, 但每次调用都会留下 ERROR 日志,
+    而不是像 Stub 一样悄无声息地表现正常 (CODE_REVIEW_REPORT.md #4)。仅在完全未配置
+    任何 Provider 时才用 Stub 作为开发态兜底, 保证无 LLM 配置也能跑通主链路。
+
+    范围说明: 不实现 OpenAICompatProvider 的真实 HTTP 调用 (独立后续 initiative)。
+    """
+    if llm_config.get("provider") and llm_config.get("api_key"):
+        logger.critical(
+            "已配置真实 LLM Provider, 但 OpenAICompatProvider 尚未实现真实调用; "
+            "消息处理将收到降级回复而非真实模型输出, 请勿在生产环境依赖当前状态",
+            provider=llm_config.get("provider"),
+            model=llm_config.get("model", ""),
+        )
+        provider_manager.register(
+            OpenAICompatProvider(
+                api_key=str(llm_config.get("api_key", "")),
+                base_url=str(llm_config.get("base_url", "")),
+                model=str(llm_config.get("model", "")),
+            )
+        )
+    else:
+        provider_manager.register(StubProvider())
+
+
 def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。"""
     provider_manager = ProviderManager(global_config.get("llm", {}))
@@ -152,14 +183,7 @@ async def main() -> None:
 
     # ── Provider ────────────────────────────────────────────
     services = build_services(global_config)
-    # 当配置合法时注册 OpenAICompatProvider, 否则使用 StubProvider 保证可启动
-    provider_manager = services["provider_manager"]
-    llm_config = global_config.get("llm", {})
-    if llm_config.get("provider") and llm_config.get("api_key"):
-        # TODO: 接入 OpenAICompatProvider
-        provider_manager.register(StubProvider())
-    else:
-        provider_manager.register(StubProvider())
+    register_llm_provider(services["provider_manager"], global_config.get("llm", {}))
 
     # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
     agent_manager = AgentManager(services)

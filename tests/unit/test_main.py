@@ -15,9 +15,13 @@ from isac.core.events import EventType
 from isac.gateway.event_bus import EventBus
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
-from isac.main import process_message
+from isac.main import process_message, register_llm_provider
+from isac.provider.llm.openai_compat import OpenAICompatProvider
+from isac.provider.llm.stub import StubProvider
+from isac.provider.manager import ProviderManager
 from isac.router.router import MessageRouter
 from isac.router.types import RoutingRules
+from isac.runtime.config import AgentConfig
 
 
 class _RecordingAgentManager:
@@ -101,3 +105,64 @@ async def test_trigger_word_stripped_content_reaches_agent() -> None:
 
     assert len(agent_manager.received_messages) == 1
     assert agent_manager.received_messages[0].content == "你好呀"
+
+
+class TestRegisterLLMProvider:
+    """register_llm_provider() 覆盖 CODE_REVIEW_REPORT.md #4:
+
+    真实 provider+api_key 已配置但 OpenAICompatProvider 仍是未实现的桩时,
+    不应静默注册 StubProvider 冒充成功接入。
+    """
+
+    def test_configured_real_provider_registers_openai_compat_not_stub(self) -> None:
+        manager = ProviderManager({})
+        register_llm_provider(
+            manager,
+            {"provider": "openai", "api_key": "sk-test", "model": "gpt-4o", "base_url": "https://api.openai.com/v1"},
+        )
+
+        provider = manager.for_agent(AgentConfig(agent_id="agent_a"))
+
+        assert isinstance(provider, OpenAICompatProvider)
+        assert not isinstance(provider, StubProvider)
+
+    def test_missing_llm_config_falls_back_to_stub(self) -> None:
+        manager = ProviderManager({})
+        register_llm_provider(manager, {})
+
+        provider = manager.for_agent(AgentConfig(agent_id="agent_a"))
+
+        assert isinstance(provider, StubProvider)
+
+    def test_partial_llm_config_falls_back_to_stub(self) -> None:
+        """只配置 provider 或只配置 api_key (未同时满足) 时仍视为"未配置", 用 Stub 兜底。"""
+        manager = ProviderManager({})
+        register_llm_provider(manager, {"provider": "openai"})  # 缺 api_key
+
+        provider = manager.for_agent(AgentConfig(agent_id="agent_a"))
+
+        assert isinstance(provider, StubProvider)
+
+    @pytest.mark.asyncio
+    async def test_real_provider_config_degrades_gracefully_instead_of_silently_replying(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """真实配置注册的 OpenAICompatProvider 调用会抛 NotImplementedError,
+        但经 chat_with_retry() 兜底后仍能拿到降级回复, 而不是让异常冒泡崩溃消息链路。
+        """
+        import asyncio
+
+        from isac.provider.manager import DEGRADED_REPLY
+
+        async def _instant_sleep(_seconds: float) -> None:
+            return None
+
+        monkeypatch.setattr(asyncio, "sleep", _instant_sleep)
+
+        manager = ProviderManager({})
+        register_llm_provider(manager, {"provider": "openai", "api_key": "sk-test", "model": "gpt-4o"})
+        provider = manager.for_agent(AgentConfig(agent_id="agent_a"))
+
+        result = await manager.chat_with_retry(provider, system="s", messages=[])
+
+        assert result.content == DEGRADED_REPLY
