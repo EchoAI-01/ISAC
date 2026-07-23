@@ -87,6 +87,22 @@ class TestTokenAuth:
         assert response.status_code == 200
         assert response.json() == []
 
+    def test_audit_endpoint_requires_token(self, control_app) -> None:
+        client, _ = control_app
+        response = client.get("/api/v1/audit")
+        assert response.status_code == 401
+
+    def test_json_metrics_endpoint_requires_token(self, control_app) -> None:
+        client, _ = control_app
+        response = client.get("/api/v1/metrics")
+        assert response.status_code == 401
+
+    def test_prometheus_metrics_endpoint_stays_unauthenticated(self, control_app) -> None:
+        """/metrics (无 /api/v1 前缀) 是刻意开放给 Prometheus 抓取的，不应加认证。"""
+        client, _ = control_app
+        response = client.get("/metrics")
+        assert response.status_code == 200
+
 
 class TestAgentLifecycleWithAudit:
     def test_create_agent_persists_config(self, control_app) -> None:

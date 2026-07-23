@@ -32,7 +32,7 @@ def create_control_app(
     - audit_log_path: 审计日志 NDJSON 文件 (默认 data/audit.ndjson)
     """
     try:
-        from fastapi import FastAPI
+        from fastapi import Depends, FastAPI
     except ImportError as exc:
         raise RuntimeError("控制面需要 fastapi: uv sync --all-extras") from exc
 
@@ -82,11 +82,13 @@ def create_control_app(
         prefix="/api/v1",
     )
 
+    audit_deps = [Depends(auth_dependency)] if auth_dependency else []
+
     @app.get("/health")
     async def health() -> dict:
         return {"status": "ok"}
 
-    @app.get("/api/v1/audit")
+    @app.get("/api/v1/audit", dependencies=audit_deps)
     async def query_audit(
         action: str | None = None,
         actor: str | None = None,
@@ -102,7 +104,7 @@ def create_control_app(
 
         return PlainTextResponse(metrics.to_prometheus(), media_type="text/plain")
 
-    @app.get("/api/v1/metrics")
+    @app.get("/api/v1/metrics", dependencies=audit_deps)
     async def metrics_snapshot() -> dict:
         """JSON 指标快照 (供 WebUI 或监控系统集成, 需认证)。"""
         return metrics.snapshot()
