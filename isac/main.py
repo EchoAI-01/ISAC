@@ -25,6 +25,7 @@ from isac.memory.storage.graph import GraphStore
 from isac.memory.storage.metadata import MetadataStore
 from isac.memory.storage.sparse import SparseBM25Index
 from isac.memory.storage.vector import VectorStore
+from isac.observability import AlertManager, MetricsCollector, get_default_alert_rules, get_default_metrics
 from isac.provider.llm.openai_compat import OpenAICompatProvider
 from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
@@ -49,21 +50,32 @@ async def process_message(
     user_mapper: UserMapper,
     agent_manager: AgentManager,
     channel_registry: ChannelRegistry,
+    metrics: MetricsCollector | None = None,
 ) -> None:
     """消息主链路: EventBus → Router → Agent (DEVELOP.md 1.2 依赖注入)。"""
+    metrics = metrics or get_default_metrics()
+    metrics.counter("isac_messages_received_total").inc()
+
     payload = await event_bus.fire_intercept(EventType.ON_MESSAGE, message)
     if payload is None:
+        metrics.counter("isac_messages_dropped_total").inc()
         return  # 被插件拦截
     message = payload
 
     decision = await router.route(message)
     if decision is None:
+        metrics.counter("isac_messages_dropped_total").inc()
         return  # 路由无匹配 → DROP
     routed_message = dataclasses.replace(message, content=decision.content)
 
     session = await session_mgr.get_or_create(routed_message, agent_id=decision.agent_id)
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
-    reply = await agent_manager.handle_message(decision.agent_id, routed_message, session, profile)
+    try:
+        reply = await agent_manager.handle_message(decision.agent_id, routed_message, session, profile)
+    except Exception:
+        metrics.counter("isac_messages_failed_total").inc()
+        raise
+    metrics.counter("isac_messages_processed_total").inc()
     if reply:
         await _send_reply(channel_registry, routed_message, reply, decision.agent_id)
     await event_bus.fire_async(EventType.POST_MESSAGE, routed_message)
@@ -129,8 +141,14 @@ def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[st
 
 
 def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
-    """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。"""
-    provider_manager = ProviderManager(global_config.get("llm", {}))
+    """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。
+
+    metrics 是应用生命周期内唯一的 MetricsCollector 实例, 通过这个 services 字典
+    注入给 AgentManager/ISACAgentLoop (二者已持有 services), 并显式传给 ProviderManager/
+    MemoryRetrievalPipeline (CODE_REVIEW_REPORT.md #5)。
+    """
+    metrics = get_default_metrics()
+    provider_manager = ProviderManager(global_config.get("llm", {}), metrics=metrics)
     memory_config = global_config.get("memory", {})
     metadata_store: MetadataStore | None = None
     vector_store: VectorStore | None = None
@@ -166,12 +184,14 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
             graph=graph_store,
             embedder=embedder,
             reranker=reranker,
+            metrics=metrics,
         )
 
     return {
         "global_config": global_config,
         "provider_manager": provider_manager,
         "memory_factory": memory_factory,
+        "metrics": metrics,
     }
 
 
@@ -183,6 +203,7 @@ async def main() -> None:
 
     # ── Provider ────────────────────────────────────────────
     services = build_services(global_config)
+    metrics: MetricsCollector = services["metrics"]
     register_llm_provider(services["provider_manager"], global_config.get("llm", {}))
 
     # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
@@ -227,6 +248,7 @@ async def main() -> None:
                 user_mapper=user_mapper,
                 agent_manager=agent_manager,
                 channel_registry=channel_registry,
+                metrics=metrics,
             )
 
     # 注入 Channel 适配器的消息回调
@@ -236,7 +258,14 @@ async def main() -> None:
     # ── Control Plane (可选) ─────────────────────────────────
     control_config = global_config.get("control", {})
     if control_config.get("enabled"):
-        await _start_control_plane(control_config, agent_manager, router, bus)
+        await _start_control_plane(control_config, agent_manager, router, bus, metrics)
+
+    # ── 告警 (规则驱动, 复用同一个 metrics 实例; 目前无 WebhookManager 生产实例可注入,
+    # 告警仍会被记录/检查, 只是不会推送 Webhook 通知) ─────────
+    alert_manager = AlertManager(metrics)
+    for rule in get_default_alert_rules():
+        alert_manager.add_rule(rule)
+    await alert_manager.start()
 
     # ── 启动 ────────────────────────────────────────────────
     await ensure_default_agent(agent_manager, global_config)
@@ -250,6 +279,7 @@ async def _start_control_plane(
     agent_manager: AgentManager,
     router: MessageRouter,
     bus: InterAgentBus,
+    metrics: MetricsCollector,
 ) -> None:
     """启动控制面 (Admin API)。失败不阻塞数据面 (DEVELOP.md 7.4)。"""
     try:
@@ -259,7 +289,7 @@ async def _start_control_plane(
         from isac.control.defaults import enforce_safe_host
         from isac.plugin.runtime.manager import PluginManager
 
-        app = create_control_app(agent_manager, router, bus, PluginManager({}), control_config)
+        app = create_control_app(agent_manager, router, bus, PluginManager({}), control_config, metrics=metrics)
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))
         config = uvicorn.Config(

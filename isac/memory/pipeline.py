@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     from isac.memory.storage.metadata import MetadataStore
     from isac.memory.storage.sparse import SparseBM25Index
     from isac.memory.storage.vector import VectorStore
+    from isac.observability.metrics import MetricsCollector
 
 logger = get_logger(__name__)
 
@@ -36,6 +38,7 @@ class MemoryRetrievalPipeline:
         graph: GraphStore,
         embedder: EmbeddingManager,
         reranker: Reranker | None = None,
+        metrics: MetricsCollector | None = None,
     ):
         """
         Args:
@@ -48,6 +51,7 @@ class MemoryRetrievalPipeline:
         self.graph = graph
         self.embedder = embedder
         self.reranker = reranker
+        self._metrics = metrics
 
     async def search(
         self,
@@ -68,6 +72,9 @@ class MemoryRetrievalPipeline:
         clean_query = str(query or "").strip()
         if not clean_query:
             return []
+        if self._metrics is not None:
+            self._metrics.counter("isac_memory_searches_total").inc()
+        start = time.monotonic()
         try:
             fts_rows = await self.metadata.search_fts(
                 self.namespace,
@@ -92,6 +99,9 @@ class MemoryRetrievalPipeline:
         except Exception as exc:
             logger.warning("记忆检索失败，返回空结果", namespace=self.namespace, error=str(exc))
             return []
+        finally:
+            if self._metrics is not None:
+                self._metrics.histogram("isac_memory_search_latency_seconds").observe(time.monotonic() - start)
 
     async def store_episode(
         self,
@@ -119,6 +129,8 @@ class MemoryRetrievalPipeline:
                 embeddings = await self.embedder.embed([clean_content])
                 if embeddings:
                     await self.vector.upsert(memory_id, embeddings[0])
+            if self._metrics is not None:
+                self._metrics.counter("isac_memory_stores_total").inc()
             return memory_id
         except Exception as exc:
             logger.warning("记忆存储失败，返回空 ID", namespace=self.namespace, error=str(exc))

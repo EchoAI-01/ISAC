@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from isac.observability.alerting import AlertLevel, AlertManager, AlertRule
+from isac.observability.alerting import AlertLevel, AlertManager, AlertRule, get_default_alert_rules
 from isac.observability.metrics import MetricsCollector, get_default_metrics
 
 __all__ = [
@@ -10,5 +10,6 @@ __all__ = [
     "AlertManager",
     "AlertRule",
     "MetricsCollector",
+    "get_default_alert_rules",
     "get_default_metrics",
 ]

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from isac.observability.metrics import MetricsCollector
     from isac.plugin.runtime.manager import PluginManager
     from isac.router.router import MessageRouter
     from isac.runtime.bus import InterAgentBus
@@ -21,6 +22,7 @@ def create_control_app(
     bus: InterAgentBus,
     plugin_manager: PluginManager,
     config: dict[str, Any],
+    metrics: MetricsCollector | None = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -30,6 +32,9 @@ def create_control_app(
     - routing_rules_path: 路由规则文件 (默认 data/routing.jsonc)
     - links_path: 互联 Link 文件 (默认 data/links.jsonc)
     - audit_log_path: 审计日志 NDJSON 文件 (默认 data/audit.ndjson)
+
+    metrics: 应用生命周期内唯一的 MetricsCollector 实例 (由 main.build_services()
+    创建并注入给核心组件); 未传入时兜底创建独立实例, 保证测试 fixture 不必更新。
     """
     try:
         from fastapi import Depends, FastAPI
@@ -47,7 +52,7 @@ def create_control_app(
     agents_dir = config.get("agents_dir", "data/agents")
     routing_rules_path = config.get("routing_rules_path", "data/routing.jsonc")
     links_path = config.get("links_path", "data/links.jsonc")
-    metrics = get_default_metrics()
+    metrics = metrics or get_default_metrics()
 
     app = FastAPI(title="ISAC Admin API", version="0.1.0", docs_url="/docs")
 

@@ -260,3 +260,52 @@ class TestPluginMatrix:
         config = json.loads(config_file.read_text(encoding="utf-8"))
         assert config["plugins_allow"] == ["foo", "bar"]
         assert config["plugins_deny"] == ["evil"]
+
+
+class TestMetricsInjection:
+    """create_control_app(metrics=...) 应使用传入的实例, 而不是内部另建一份
+
+    (CODE_REVIEW_REPORT.md #5: 修复前每次调用都创建独立 Collector, 无法汇聚
+    生产链路其他组件记录的指标)。
+    """
+
+    def test_injected_metrics_instance_is_reflected_by_endpoints(self, tmp_path: Path) -> None:
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            pytest.skip("fastapi 未安装")
+        from isac.control.api.server import create_control_app
+        from isac.observability import get_default_metrics
+        from isac.plugin.runtime.manager import PluginManager
+        from isac.router.router import MessageRouter
+        from isac.router.types import RoutingRules
+        from isac.runtime.bus import InterAgentBus
+        from isac.runtime.manager import AgentManager
+
+        metrics = get_default_metrics()
+        metrics.counter("isac_messages_received_total").inc(7)
+
+        services = {
+            "global_config": {},
+            "provider_manager": _StubProviderManager(),
+            "memory_factory": lambda namespace: _StubMemory(namespace),
+        }
+        agent_manager = AgentManager(services)
+        router = MessageRouter(RoutingRules(), agents_provider=agent_manager.routing_infos)
+        app = create_control_app(
+            agent_manager=agent_manager,
+            router=router,
+            bus=InterAgentBus(),
+            plugin_manager=PluginManager({}),
+            config={"api_token": "secret-token-123"},
+            metrics=metrics,
+        )
+        client = TestClient(app)
+
+        prom_response = client.get("/metrics")
+        assert "isac_messages_received_total 7.0" in prom_response.text
+
+        json_response = client.get(
+            "/api/v1/metrics", headers={"Authorization": "Bearer secret-token-123"}
+        )
+        assert json_response.json()["counters"]["isac_messages_received_total"] == 7.0
