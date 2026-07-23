@@ -13,10 +13,21 @@ class MemoryInjector(PromptInjector):
     def __init__(self, pipeline: MemoryRetrievalPipeline):
         self.pipeline = pipeline
 
-    async def search_and_format(self, query: str, top_k: int = 3, header: str = "【记忆-内部参考】") -> str:
-        """通用检索 + 格式化流程。失败时返回空字符串。"""
+    async def search_and_format(
+        self,
+        query: str,
+        top_k: int = 3,
+        header: str = "【记忆-内部参考】",
+        user_id: str = "",
+        group_id: str = "",
+    ) -> str:
+        """通用检索 + 格式化流程。失败时返回空字符串。
+
+        user_id/group_id 用于 user/group 访问控制 (CODE_REVIEW_REPORT.md #9)，
+        调用方应从 context.session 取值传入，而不是让检索默认看到全部记忆。
+        """
         try:
-            hits = await self.pipeline.search(query, top_k=top_k)
+            hits = await self.pipeline.search(query, top_k=top_k, user_id=user_id, group_id=group_id)
         except Exception:
             return ""
         if not hits:

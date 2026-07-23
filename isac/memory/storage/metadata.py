@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS episodes (
 CREATE INDEX IF NOT EXISTS idx_episodes_agent ON episodes(agent_id);
 CREATE INDEX IF NOT EXISTS idx_episodes_user ON episodes(user_id);
 CREATE INDEX IF NOT EXISTS idx_episodes_time ON episodes(created_at);
+-- group_id 列由 init_schema() 按需 ALTER TABLE 补齐 (老库无此列, SQLite ALTER TABLE
+-- ADD COLUMN 没有 IF NOT EXISTS 语法, 需先探测再执行, 见 _ensure_column)。
 
 CREATE VIRTUAL TABLE IF NOT EXISTS episodes_fts USING fts5(
     content, summary, topics, participants,
@@ -79,7 +81,20 @@ class MetadataStore:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as db:
             await db.executescript(SCHEMA_SQL)
+            await self._ensure_column(db, "episodes", "group_id", "TEXT")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_episodes_group ON episodes(group_id)")
             await db.commit()
+
+    @staticmethod
+    async def _ensure_column(db: aiosqlite.Connection, table: str, column: str, decl_type: str) -> None:
+        """SQLite 的 ALTER TABLE ADD COLUMN 没有 IF NOT EXISTS, 需先探测再决定是否执行。
+
+        table/column/decl_type 均为调用方硬编码的 schema 常量, 非用户输入, 拼接安全。
+        """
+        cursor = await db.execute(f"PRAGMA table_info({table})")
+        existing_columns = {row[1] for row in await cursor.fetchall()}
+        if column not in existing_columns:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl_type}")
 
     async def store_episode(self, agent_id: str, episode: dict) -> str:
         """写入 episode，并同步 FTS。"""
@@ -88,19 +103,21 @@ class MetadataStore:
         summary = str(episode.get("summary", "") or "")
         topics = self._json_text(episode.get("topics", []))
         participants = self._json_text(episode.get("participants", []))
+        group_id = str(episode.get("group_id") or "") or None  # 空字符串规范化为 NULL (= 私聊)
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO episodes (
-                    id, agent_id, session_id, user_id, content, summary, topics, participants,
-                    emotion, importance, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, agent_id, session_id, user_id, group_id, content, summary, topics,
+                    participants, emotion, importance, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     memory_id,
                     agent_id,
                     str(episode.get("session_id", "")),
                     str(episode.get("user_id", "")),
+                    group_id,
                     str(episode.get("content", "")),
                     summary,
                     topics,
@@ -115,37 +132,73 @@ class MetadataStore:
             await db.commit()
         return memory_id
 
-    async def search_fts(self, agent_id: str, query: str, limit: int = 10) -> list[dict]:
-        """按 agent_id 隔离执行 FTS5 搜索。"""
+    async def search_fts(
+        self,
+        agent_id: str,
+        query: str,
+        limit: int = 10,
+        user_id: str = "",
+        group_id: str = "",
+    ) -> list[dict]:
+        """按 agent_id 隔离执行 FTS5 搜索, 并按 user_id/group_id 做访问控制。
+
+        user_id/group_id 均为空时不过滤 (向后兼容); group_id 非空时按群聊场景过滤
+        (群内共享); group_id 为空但 user_id 非空时按私聊场景过滤 (仅自己的私聊记忆,
+        不含该用户在群聊中的发言)。
+        """
         clean_query = " ".join(str(query or "").split())
         if not clean_query:
             return []
+        conditions = ["episodes_fts MATCH ?", "episodes.agent_id = ?"]
+        params: list[Any] = [self._fts_query(clean_query), agent_id]
+        if group_id:
+            conditions.append("episodes.group_id = ?")
+            params.append(group_id)
+        elif user_id:
+            conditions.append("episodes.user_id = ? AND episodes.group_id IS NULL")
+            params.append(user_id)
+        where_clause = " AND ".join(conditions)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             rows = await db.execute_fetchall(
-                """
+                f"""
                 SELECT episodes.*, bm25(episodes_fts) AS score
                 FROM episodes_fts
                 JOIN episodes ON episodes_fts.rowid = episodes.rowid
-                WHERE episodes_fts MATCH ? AND episodes.agent_id = ?
+                WHERE {where_clause}
                 ORDER BY score ASC, episodes.created_at DESC
                 LIMIT ?
                 """,
-                (self._fts_query(clean_query), agent_id, max(1, int(limit))),
+                (*params, max(1, int(limit))),
             )
         return [self._episode_row_to_dict(row) for row in rows]
 
-    async def get_episodes_by_ids(self, agent_id: str, memory_ids: list[str]) -> list[dict]:
-        """按 ID 批量读取 episode，保持输入 ID 顺序。"""
+    async def get_episodes_by_ids(
+        self,
+        agent_id: str,
+        memory_ids: list[str],
+        user_id: str = "",
+        group_id: str = "",
+    ) -> list[dict]:
+        """按 ID 批量读取 episode，保持输入 ID 顺序 (过滤语义同 search_fts)。"""
         ordered_ids = [memory_id for memory_id in memory_ids if memory_id]
         if not ordered_ids:
             return []
         placeholders = ",".join("?" for _ in ordered_ids)
+        conditions = ["agent_id = ?", f"id IN ({placeholders})"]
+        params: list[Any] = [agent_id, *ordered_ids]
+        if group_id:
+            conditions.append("group_id = ?")
+            params.append(group_id)
+        elif user_id:
+            conditions.append("user_id = ? AND group_id IS NULL")
+            params.append(user_id)
+        where_clause = " AND ".join(conditions)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             rows = await db.execute_fetchall(
-                f"SELECT * FROM episodes WHERE agent_id = ? AND id IN ({placeholders})",
-                (agent_id, *ordered_ids),
+                f"SELECT * FROM episodes WHERE {where_clause}",
+                params,
             )
         rows_by_id = {str(row["id"]): self._episode_row_to_dict(row) for row in rows}
         return [rows_by_id[memory_id] for memory_id in ordered_ids if memory_id in rows_by_id]
