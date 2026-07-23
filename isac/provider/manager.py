@@ -7,6 +7,7 @@ Provider 共享池，可按 Agent 配置 (AgentConfig.llm) 创建独立实例。
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, Any
 
 from isac.core.exceptions import LLMError, RateLimitError
@@ -15,6 +16,7 @@ from isac.provider.base import LLMProvider
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from isac.observability.metrics import MetricsCollector
     from isac.runtime.config import AgentConfig
 
 logger = get_logger(__name__)
@@ -25,11 +27,12 @@ DEGRADED_REPLY = "我现在有点累，稍后再聊好吗？"  # 降级回复 (L
 class ProviderManager:
     """Provider 管理器。"""
 
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], metrics: MetricsCollector | None = None):
         self.config = config
         self._primary: LLMProvider | None = None
         self._fallback: LLMProvider | None = None
         self._agent_providers: dict[str, LLMProvider] = {}
+        self._metrics = metrics
 
     def register(self, provider: LLMProvider, *, fallback: bool = False) -> None:
         """注册全局 Provider (main.py 组装时调用)。"""
@@ -52,12 +55,12 @@ class ProviderManager:
     async def chat_with_retry(self, provider: LLMProvider, **kwargs: Any) -> LLMResponse:
         """LLM 调用: 重试 3 次 (指数退避) → 回退模型 → 降级回复 (SPECIFICATION.md 5.2)。
 
-        TODO: 区分错误类型 (RateLimitError 退避更久)；记录 token 用量。
+        TODO: 区分错误类型 (RateLimitError 退避更久)。
         """
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                return await provider.chat(**kwargs)
+                return await self._call_and_record(provider, **kwargs)
             except RateLimitError as exc:
                 last_error = exc
                 logger.warning("LLM 限流，退避重试", attempt=attempt + 1)
@@ -79,9 +82,25 @@ class ProviderManager:
         if self._fallback is not None:
             logger.warning("回退到备选模型", model=self._fallback.get_model_name())
             try:
-                return await self._fallback.chat(**kwargs)
+                return await self._call_and_record(self._fallback, **kwargs)
             except Exception as exc:
                 last_error = exc
 
         logger.error("LLM 全部失败，降级回复", error=str(last_error))
         return LLMResponse(content=DEGRADED_REPLY)
+
+    async def _call_and_record(self, provider: LLMProvider, **kwargs: Any) -> LLMResponse:
+        """调用 provider.chat() 并记录 isac_llm_* 指标 (调用数/失败数/延迟/token 用量)。"""
+        if self._metrics is None:
+            return await provider.chat(**kwargs)
+        self._metrics.counter("isac_llm_calls_total").inc()
+        start = time.monotonic()
+        try:
+            response = await provider.chat(**kwargs)
+        except Exception:
+            self._metrics.counter("isac_llm_errors_total").inc()
+            raise
+        finally:
+            self._metrics.histogram("isac_llm_latency_seconds").observe(time.monotonic() - start)
+        self._metrics.counter("isac_llm_tokens_total").inc(response.usage.total_tokens)
+        return response

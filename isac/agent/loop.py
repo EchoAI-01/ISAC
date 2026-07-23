@@ -143,6 +143,9 @@ class ISACAgentLoop:
         if any(r is False for r in results):
             return ToolResult(content=f"工具 {tool_call.name} 被权限策略阻止", is_error=True)
 
+        metrics = self.services.get("metrics")
+        if metrics is not None:
+            metrics.counter("isac_tool_calls_total").inc()
         try:
             result = await self.tools.execute(tool_call, context, services=self.services)
         except ToolError as exc:
@@ -151,6 +154,9 @@ class ISACAgentLoop:
         except Exception as exc:
             logger.error("工具执行严重错误", tool=tool_call.name, error=str(exc), exc_info=True)
             result = ToolResult(content="工具执行内部错误", is_error=True)
+
+        if metrics is not None and result.is_error:
+            metrics.counter("isac_tool_errors_total").inc()
 
         # POST_TOOL: 触发记忆更新等副作用
         await self.hooks.fire(AgentHookPoint.POST_TOOL, tool_call, result, context)

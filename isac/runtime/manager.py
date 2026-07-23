@@ -45,23 +45,29 @@ class AgentManager:
             raise ValueError(f"Agent 已存在: {config.agent_id}")
         instance = await assemble_agent(config, self._services)
         self._agents[config.agent_id] = instance
+        self._inc_metric("isac_agent_creates_total")
         logger.info("Agent 已创建", agent_id=config.agent_id)
         return instance
 
     async def start(self, agent_id: str) -> None:
         instance = self._require(agent_id)
         instance.status = "running"
+        self._inc_metric("isac_agent_starts_total")
+        self._update_active_gauge()
         logger.info("Agent 已启动", agent_id=agent_id)
 
     async def stop(self, agent_id: str) -> None:
         instance = self._require(agent_id)
         instance.status = "stopped"
+        self._inc_metric("isac_agent_stops_total")
+        self._update_active_gauge()
         logger.info("Agent 已停止", agent_id=agent_id)
 
     async def destroy(self, agent_id: str, *, keep_memory: bool = True) -> None:
         """销毁 Agent。keep_memory=True 时保留记忆数据。"""
         self._require(agent_id)
         del self._agents[agent_id]
+        self._update_active_gauge()
         # TODO: keep_memory=False 时清理 data/agents/<id>/memory/
         logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
 
@@ -174,6 +180,19 @@ class AgentManager:
         if instance is None:
             raise AgentNotFoundError(f"Agent 不存在: {agent_id}")
         return instance
+
+    def _inc_metric(self, name: str) -> None:
+        metrics = self._services.get("metrics")
+        if metrics is not None:
+            metrics.counter(name).inc()
+
+    def _update_active_gauge(self) -> None:
+        """重新统计 status=running 的 Agent 数并更新 isac_agents_active。"""
+        metrics = self._services.get("metrics")
+        if metrics is None:
+            return
+        active = sum(1 for instance in self._agents.values() if instance.status == "running")
+        metrics.gauge("isac_agents_active").set(active)
 
 
 async def ensure_default_agent(manager: AgentManager, global_config: dict) -> AgentInstance:

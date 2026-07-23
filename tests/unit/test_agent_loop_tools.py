@@ -144,3 +144,92 @@ async def test_agent_loop_appends_assistant_message_for_every_tool_call_round() 
                 "tool_call_id": msg["tool_calls"][0]["id"],
                 "content": "memory-service",
             }
+
+
+class FailingTool(Tool):
+    @property
+    def name(self) -> str:
+        return "failing_tool"
+
+    @property
+    def description(self) -> str:
+        return "总是返回错误的工具"
+
+    async def execute(self, context: ToolContext) -> ToolResult:
+        return ToolResult(content="出错了", is_error=True)
+
+
+class SingleToolCallProvider:
+    """第一轮调用指定名称的工具, 第二轮产出最终回复。"""
+
+    def __init__(self, tool_name: str) -> None:
+        self.calls = 0
+        self._tool_name = tool_name
+
+    async def chat(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs) -> LLMResponse:
+        self.calls += 1
+        if self.calls == 1:
+            return LLMResponse(
+                content="",
+                tool_calls=[ToolCall(id="tool_1", name=self._tool_name, arguments={})],
+                usage=TokenUsage(total_tokens=1),
+            )
+        return LLMResponse(content="done", usage=TokenUsage(total_tokens=1))
+
+    def chat_stream(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs):
+        raise NotImplementedError
+
+    def get_model_name(self) -> str:
+        return "test"
+
+    def get_capabilities(self):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_records_tool_call_metric_on_success() -> None:
+    """成功的工具调用应递增 isac_tool_calls_total, 不递增 isac_tool_errors_total
+
+    (CODE_REVIEW_REPORT.md #5)。
+    """
+    from isac.observability import get_default_metrics
+
+    metrics = get_default_metrics()
+    provider = SingleToolCallProvider("service_echo")
+    registry = ToolRegistry()
+    registry.register(ServiceEchoTool())
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=registry,
+        services={"memory": "memory-service", "metrics": metrics},
+    )
+
+    await loop.run([{"role": "user", "content": "查记忆"}], make_agent_context())
+
+    assert metrics.counter("isac_tool_calls_total").value() == 1
+    assert metrics.counter("isac_tool_errors_total").value() == 0
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_records_tool_error_metric_on_failure() -> None:
+    """返回 is_error=True 的工具调用应同时递增 calls 与 errors 两个指标。"""
+    from isac.observability import get_default_metrics
+
+    metrics = get_default_metrics()
+    provider = SingleToolCallProvider("failing_tool")
+    registry = ToolRegistry()
+    registry.register(FailingTool())
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=registry,
+        services={"metrics": metrics},
+    )
+
+    await loop.run([{"role": "user", "content": "触发失败工具"}], make_agent_context())
+
+    assert metrics.counter("isac_tool_calls_total").value() == 1
+    assert metrics.counter("isac_tool_errors_total").value() == 1

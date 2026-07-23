@@ -90,3 +90,40 @@ async def test_interleaved_sessions_have_independent_idle_backoff_instances() ->
     backoff_b = instance.gating.get_idle_backoff(session_b.session_id)
 
     assert backoff_a is not backoff_b
+
+
+@pytest.mark.asyncio
+async def test_agent_lifecycle_records_metrics() -> None:
+    """create/start/stop/destroy 应记录对应指标并维护 isac_agents_active 门数
+
+    (CODE_REVIEW_REPORT.md #5)。
+    """
+    from isac.observability import get_default_metrics
+
+    metrics = get_default_metrics()
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    manager = AgentManager(
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+            "metrics": metrics,
+        }
+    )
+
+    await manager.create(AgentConfig(agent_id="agent_x"))
+    assert metrics.counter("isac_agent_creates_total").value() == 1
+
+    await manager.start("agent_x")
+    assert metrics.counter("isac_agent_starts_total").value() == 1
+    assert metrics.gauge("isac_agents_active").value() == 1
+
+    await manager.stop("agent_x")
+    assert metrics.counter("isac_agent_stops_total").value() == 1
+    assert metrics.gauge("isac_agents_active").value() == 0
+
+    await manager.start("agent_x")
+    assert metrics.gauge("isac_agents_active").value() == 1
+    await manager.destroy("agent_x")
+    assert metrics.gauge("isac_agents_active").value() == 0

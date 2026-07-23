@@ -13,7 +13,7 @@ from isac.memory.storage.sparse import SparseBM25Index
 from isac.memory.storage.vector import VectorStore
 
 
-async def make_pipeline(tmp_path, namespace: str = "agent_a") -> MemoryRetrievalPipeline:
+async def make_pipeline(tmp_path, namespace: str = "agent_a", metrics=None) -> MemoryRetrievalPipeline:
     metadata = MetadataStore(str(tmp_path / "memory.db"))
     await metadata.init_schema()
     return MemoryRetrievalPipeline(
@@ -24,6 +24,7 @@ async def make_pipeline(tmp_path, namespace: str = "agent_a") -> MemoryRetrieval
         graph=GraphStore(str(tmp_path / "graph.db")),
         embedder=EmbeddingManager({}),
         reranker=Reranker({}),
+        metrics=metrics,
     )
 
 
@@ -94,6 +95,26 @@ async def test_search_top_k_and_empty_query(tmp_path) -> None:
 
     assert await pipeline.search("", top_k=5) == []
     assert len(await pipeline.search("记忆", top_k=1)) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_and_store_episode_record_metrics(tmp_path) -> None:
+    """search()/store_episode() 应记录检索/写入次数与检索延迟 (CODE_REVIEW_REPORT.md #5)。"""
+    from isac.observability import get_default_metrics
+
+    metrics = get_default_metrics()
+    pipeline = await make_pipeline(tmp_path, metrics=metrics)
+
+    await pipeline.store_episode("ISAC 记忆", session_id="sess_1", user_id="user_1")
+    assert metrics.counter("isac_memory_stores_total").value() == 1
+
+    await pipeline.search("ISAC", top_k=3)
+    assert metrics.counter("isac_memory_searches_total").value() == 1
+    assert metrics.histogram("isac_memory_search_latency_seconds")._count == 1
+
+    # 空 query 直接短路返回, 不算一次真正的检索尝试。
+    await pipeline.search("", top_k=3)
+    assert metrics.counter("isac_memory_searches_total").value() == 1
 
 
 @pytest.mark.asyncio
