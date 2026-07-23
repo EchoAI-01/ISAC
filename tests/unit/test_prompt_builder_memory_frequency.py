@@ -37,7 +37,7 @@ async def test_heuristic_memory_requires_enough_new_messages() -> None:
     assert await builder.build(make_context()) == ""
 
     for _ in range(60):
-        builder.notify_new_message()
+        builder.notify_new_message("sess_1")
 
     prompt = await builder.build(make_context())
 

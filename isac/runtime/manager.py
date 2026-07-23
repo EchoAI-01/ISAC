@@ -102,11 +102,11 @@ class AgentManager:
             logger.warning("Agent 不存在或未运行，消息忽略", agent_id=agent_id)
             return None
 
-        # 每条到达消息都累加注入器的新消息计数 (支撑 max_new_messages 频率控制)。
-        instance.prompt_builder.notify_new_message()
+        # 每条到达消息都累加注入器的新消息计数 (按 session 隔离, 支撑 max_new_messages 频率控制)。
+        instance.prompt_builder.notify_new_message(session.session_id)
 
-        # 同步记录到 TurnScheduler 滑窗，供 effective_frequency / 存在感惩罚计算。
-        turn_scheduler = instance.gating.turn_scheduler
+        # 同步记录到该 session 独立的 TurnScheduler 滑窗，供 effective_frequency / 存在感惩罚计算。
+        turn_scheduler = instance.gating.get_turn_scheduler(session.session_id)
         turn_scheduler.record_window_message()
 
         from isac.core.types import AgentContext, GatingContext  # 避免模块级循环
@@ -121,7 +121,7 @@ class AgentManager:
             cmd_result = await instance.commands.try_execute(message, agent_context_for_cmd)
             if cmd_result is not None:
                 turn_scheduler.record_reply()
-                instance.gating.idle_backoff.record_reply()
+                instance.gating.get_idle_backoff(session.session_id).record_reply()
                 return cmd_result
 
         # 构造门控上下文；has_at / has_mention 在交给门控前填充。
@@ -158,7 +158,7 @@ class AgentManager:
         if result.content:
             # 话轮调度: 记录本轮回复, 更新滑窗频率与存在感数据。
             turn_scheduler.record_reply()
-            instance.gating.idle_backoff.record_reply()
+            instance.gating.get_idle_backoff(session.session_id).record_reply()
         return result.content or None
 
     # ── 路由信息 (注入 MessageRouter 的 agents_provider) ────
