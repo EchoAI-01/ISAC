@@ -40,6 +40,8 @@ logger = get_logger(__name__)
 class DiscordAdapter(PlatformAdapter):
     """Discord REST API 适配器 (polling 模式, 简化版)。"""
 
+    _MAX_POLL_PAGES = 20  # 单轮 poll 最多翻的页数, 避免异常场景下无限拉取
+
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self._bot_token = str(config.get("bot_token", ""))
@@ -108,27 +110,35 @@ class DiscordAdapter(PlatformAdapter):
             await asyncio.sleep(self._poll_interval)
 
     async def _poll_channel(self, channel_id: str) -> None:
-        """拉取单 channel 的最新消息。"""
-        params: dict[str, Any] = {"limit": 10}
+        """拉取单 channel 的新消息。
+
+        单页 limit=10, 若本轮积压超过一页, 循环翻页直到拿完本轮所有新消息或
+        达到页数上限, 每页完整处理 (全部 dispatch 给 on_message) 后才提交 cursor,
+        避免只拉一页导致中间消息永远排不到 (CODE_REVIEW_REPORT.md #16)。
+        """
+        page_limit = 10
         last_id = self._last_message_ids.get(channel_id)
-        if last_id:
-            params["after"] = last_id
-        messages = await self._call_api("GET", f"/channels/{channel_id}/messages", query=params)
-        if not messages:
-            return
-        # Discord REST 返回最新→最旧, 倒序处理后发
-        for msg in reversed(messages):
-            isac_msg = self._to_isac_message(msg, channel_id)
-            if isac_msg is None:
-                continue
-            if self.on_message is not None:
-                try:
-                    await self.on_message(isac_msg)
-                except Exception as exc:  # noqa: BLE001
-                    logger.error("Discord 消息回调异常", error=str(exc), exc_info=True)
-        # 更新 last seen id
-        if messages:
-            self._last_message_ids[channel_id] = str(messages[0].get("id", last_id or ""))
+        for _ in range(self._MAX_POLL_PAGES):
+            params: dict[str, Any] = {"limit": page_limit}
+            if last_id:
+                params["after"] = last_id
+            messages = await self._call_api("GET", f"/channels/{channel_id}/messages", query=params)
+            if not messages:
+                return
+            # Discord REST 返回最新→最旧, 倒序处理后发
+            for msg in reversed(messages):
+                isac_msg = self._to_isac_message(msg, channel_id)
+                if isac_msg is None:
+                    continue
+                if self.on_message is not None:
+                    try:
+                        await self.on_message(isac_msg)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error("Discord 消息回调异常", error=str(exc), exc_info=True)
+            last_id = str(messages[0].get("id", last_id or ""))
+            self._last_message_ids[channel_id] = last_id
+            if len(messages) < page_limit:
+                return  # 本页未填满, 说明没有更多新消息了
 
     def _to_isac_message(self, dc_message: dict[str, Any], channel_id: str) -> ISACMessage | None:
         """Discord message → ISACMessage。"""
