@@ -44,6 +44,28 @@ CREATE VIRTUAL TABLE IF NOT EXISTS episodes_fts USING fts5(
     content=episodes, content_rowid=rowid
 );
 
+-- external content FTS5 表标准同步模式: episodes 增/删/改时增量维护 episodes_fts,
+-- 取代写入路径上的全量 rebuild (CODE_REVIEW_REPORT.md #12)。
+-- INSERT OR REPLACE 命中 PRIMARY KEY 冲突时会先触发 DELETE 再触发 INSERT (新行拿到
+-- 新 rowid); 但 SQLite 默认关闭 recursive_triggers, REPLACE 隐式删除旧行时不会
+-- 激活 DELETE 触发器, 必须在连接上 PRAGMA recursive_triggers = ON 才会触发
+-- (见 store_episode(), 这是本改动里最容易踩的坑)。保留 AFTER UPDATE 触发器是为了
+-- 真正执行 SQL UPDATE 语句的场景 (防御性覆盖, 当前代码未使用)。
+CREATE TRIGGER IF NOT EXISTS episodes_fts_ai AFTER INSERT ON episodes BEGIN
+    INSERT INTO episodes_fts(rowid, content, summary, topics, participants)
+    VALUES (new.rowid, new.content, new.summary, new.topics, new.participants);
+END;
+CREATE TRIGGER IF NOT EXISTS episodes_fts_ad AFTER DELETE ON episodes BEGIN
+    INSERT INTO episodes_fts(episodes_fts, rowid, content, summary, topics, participants)
+    VALUES ('delete', old.rowid, old.content, old.summary, old.topics, old.participants);
+END;
+CREATE TRIGGER IF NOT EXISTS episodes_fts_au AFTER UPDATE ON episodes BEGIN
+    INSERT INTO episodes_fts(episodes_fts, rowid, content, summary, topics, participants)
+    VALUES ('delete', old.rowid, old.content, old.summary, old.topics, old.participants);
+    INSERT INTO episodes_fts(rowid, content, summary, topics, participants)
+    VALUES (new.rowid, new.content, new.summary, new.topics, new.participants);
+END;
+
 CREATE TABLE IF NOT EXISTS person_profiles (
     agent_id TEXT NOT NULL,
     person_id TEXT NOT NULL,
@@ -105,6 +127,11 @@ class MetadataStore:
         participants = self._json_text(episode.get("participants", []))
         group_id = str(episode.get("group_id") or "") or None  # 空字符串规范化为 NULL (= 私聊)
         async with aiosqlite.connect(self.db_path) as db:
+            # SQLite 默认关闭 recursive_triggers: INSERT OR REPLACE 命中 PRIMARY KEY
+            # 冲突时隐式删除旧行, 若不开启这个 PRAGMA, 该隐式删除不会激活 AFTER DELETE
+            # 触发器, episodes_fts 倒排索引会残留旧 rowid 的词项 (MATCH 旧内容仍命中;
+            # search_fts() 因为额外 JOIN episodes 才没有把这些孤儿行暴露出来)。
+            await db.execute("PRAGMA recursive_triggers = ON")
             await db.execute(
                 """
                 INSERT OR REPLACE INTO episodes (
@@ -128,7 +155,8 @@ class MetadataStore:
                     int(episode.get("updated_at", now) or now),
                 ),
             )
-            await self._rebuild_fts_row(db, memory_id)
+            # episodes_fts 由 episodes_fts_ai/ad/au 触发器增量同步, 此处不再需要
+            # 手动全量 rebuild (见 rebuild_fts_index() 的运维用途说明)。
             await db.commit()
         return memory_id
 
@@ -290,9 +318,15 @@ class MetadataStore:
         terms = [term.replace('"', "") for term in query.split() if term.strip()]
         return " OR ".join(f'"{term}"' for term in terms) or '""'
 
-    async def _rebuild_fts_row(self, db: aiosqlite.Connection, memory_id: str) -> None:
-        del memory_id
-        await db.execute("INSERT INTO episodes_fts(episodes_fts) VALUES ('rebuild')")
+    async def rebuild_fts_index(self) -> None:
+        """全量重建 episodes_fts 索引。
+
+        运维用途: 修复因触发器缺失/异常导致的索引不一致。写入路径 (store_episode)
+        依赖 episodes_fts_ai/ad/au 触发器增量同步, 不应该也不会调用这个全量方法。
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("INSERT INTO episodes_fts(episodes_fts) VALUES ('rebuild')")
+            await db.commit()
 
     def _episode_row_to_dict(self, row: aiosqlite.Row) -> dict:
         data = dict(row)
