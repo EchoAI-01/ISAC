@@ -168,6 +168,61 @@ class TestRoutingAndLinks:
         assert "from_agent" in content and "\"a\"" in content
 
 
+class TestAgentIdValidation:
+    def test_path_traversal_agent_id_rejected(self, control_app) -> None:
+        client, tmp_path = control_app
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"agent_id": "../escaped"},
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "INVALID_CONFIG"
+        assert not (tmp_path / "escaped").exists()
+        assert not (tmp_path / "agents" / ".." / "escaped").exists()
+
+    def test_empty_agent_id_rejected(self, control_app) -> None:
+        client, _ = control_app
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"agent_id": ""},
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "INVALID_CONFIG"
+
+    def test_agent_id_with_slash_rejected(self, control_app) -> None:
+        client, tmp_path = control_app
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"agent_id": "foo/bar"},
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "INVALID_CONFIG"
+        assert not (tmp_path / "agents" / "foo").exists()
+
+    def test_overlong_agent_id_rejected(self, control_app) -> None:
+        client, _ = control_app
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"agent_id": "a" * 65},
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "INVALID_CONFIG"
+
+    def test_valid_agent_id_with_underscore_and_dash_accepted(self, control_app) -> None:
+        client, _ = control_app
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"agent_id": "valid_agent-01"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"agent_id": "valid_agent-01", "status": "stopped"}
+
+
 class TestPluginMatrix:
     def test_put_matrix_persists_to_agent_config(self, control_app) -> None:
         client, tmp_path = control_app

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,8 @@ try:
     _loads = json5.loads
 except ImportError:  # pragma: no cover
     _loads = json.loads
+
+AGENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 @dataclass
@@ -49,6 +52,13 @@ class AgentConfig:
     tools_policy: dict[str, str] = field(default_factory=dict)  # 覆盖全局工具权限
     commands_allow: list[str] = field(default_factory=lambda: ["*"])
     mcp_servers: list[str] = field(default_factory=list)  # 允许使用的 MCP Server 名
+
+    def __post_init__(self) -> None:
+        """校验 agent_id，避免其被用于拼接文件路径时发生目录穿越 (SPECIFICATION.md 3.3)。"""
+        if not AGENT_ID_PATTERN.match(self.agent_id):
+            raise ValueError(
+                f"agent_id 非法: {self.agent_id!r}，只允许 1-64 位字母/数字/下划线/短横线"
+            )
 
     @property
     def effective_memory_namespace(self) -> str:
