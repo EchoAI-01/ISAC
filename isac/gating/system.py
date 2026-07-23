@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 
 from isac.channel.model import ISACMessage
 from isac.core.types import GatingContext
@@ -42,25 +43,50 @@ class FocusMode:
 
 
 class GatingSystem:
-    """门控系统门面。每个 AgentInstance 持有一个独立实例。"""
+    """门控系统门面。每个 AgentInstance 持有一个独立实例。
+
+    TurnScheduler / IdleBackoffController 按 session_id 隔离持有 (复刻 FocusMode 的
+    dict[session_id, ...] 模式)，避免同一 Agent 服务的多个会话共享发言频率/退避状态、
+    互相干扰 (CODE_REVIEW_REPORT.md #6)。
+    """
 
     def __init__(
         self,
         reply_necessity: ReplyNecessityJudge | None = None,
-        turn_scheduler: TurnScheduler | None = None,
+        turn_scheduler: Callable[[], TurnScheduler] = TurnScheduler,
         turn_gates: TurnGates | None = None,
-        idle_backoff: IdleBackoffController | None = None,
+        idle_backoff: Callable[[], IdleBackoffController] = IdleBackoffController,
     ):
         self.reply_necessity = reply_necessity or ReplyNecessityJudge()
-        self.turn_scheduler = turn_scheduler or TurnScheduler()
+        self._turn_scheduler_factory = turn_scheduler
         self.turn_gates = turn_gates or TurnGates()
-        self.idle_backoff = idle_backoff or IdleBackoffController()
+        self._idle_backoff_factory = idle_backoff
         self.focus_mode = FocusMode()
+        self._turn_schedulers: dict[str, TurnScheduler] = {}
+        self._idle_backoffs: dict[str, IdleBackoffController] = {}
+
+    def get_turn_scheduler(self, session_id: str) -> TurnScheduler:
+        """按 session_id 惰性创建/取回独立的 TurnScheduler。"""
+        scheduler = self._turn_schedulers.get(session_id)
+        if scheduler is None:
+            scheduler = self._turn_scheduler_factory()
+            self._turn_schedulers[session_id] = scheduler
+        return scheduler
+
+    def get_idle_backoff(self, session_id: str) -> IdleBackoffController:
+        """按 session_id 惰性创建/取回独立的 IdleBackoffController。"""
+        backoff = self._idle_backoffs.get(session_id)
+        if backoff is None:
+            backoff = self._idle_backoff_factory()
+            self._idle_backoffs[session_id] = backoff
+        return backoff
 
     async def evaluate(self, pending: list[ISACMessage], context: GatingContext) -> GateDecision:
         """评估门控决策，返回 TRIGGER / WAIT / DELAY(N秒)。"""
+        session_id = context.session.session_id
+
         # 1. Focus Mode 激活时直接 TRIGGER
-        if self.focus_mode.is_active(context.session.session_id):
+        if self.focus_mode.is_active(session_id):
             return GateDecision.trigger()
 
         # 2. 强制触发
@@ -72,8 +98,9 @@ class GatingSystem:
         if score < self.reply_necessity.threshold:
             return GateDecision.wait()
 
-        # 4. 空闲退避
-        if self.idle_backoff.should_delay(context.pending_count):
-            return GateDecision.delay(self.idle_backoff.remaining_seconds)
+        # 4. 空闲退避 (按 session 隔离)
+        idle_backoff = self.get_idle_backoff(session_id)
+        if idle_backoff.should_delay(context.pending_count):
+            return GateDecision.delay(idle_backoff.remaining_seconds)
 
         return GateDecision.trigger()
