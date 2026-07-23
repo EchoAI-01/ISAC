@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import sys
 from typing import Any
 
 import pytest
@@ -151,6 +153,117 @@ class TestMCPClientHTTPFlow:
         result = await client.call_tool("any", {})
         assert result.is_error is True
         assert "未连接" in result.content
+
+
+_ECHO_SCRIPT = """
+import json
+import sys
+
+for raw_line in sys.stdin:
+    raw_line = raw_line.strip()
+    if not raw_line:
+        continue
+    request = json.loads(raw_line)
+    print("noise on stderr", file=sys.stderr, flush=True)
+    response = {"jsonrpc": "2.0", "id": request.get("id"), "result": {"echo": request.get("method")}}
+    print(json.dumps(response), flush=True)
+"""
+
+
+class _FakeStdin:
+    def __init__(self) -> None:
+        self.writes: list[bytes] = []
+
+    def write(self, data: bytes) -> None:
+        self.writes.append(data)
+
+    async def drain(self) -> None:
+        return None
+
+
+class _NeverRespondingProcess:
+    """模拟一个已启动但永远不回应 stdin 请求的子进程 (用于超时清理测试)。"""
+
+    def __init__(self) -> None:
+        self.stdin = _FakeStdin()
+        self.stdout = None
+        self.stderr = None
+
+
+class TestMCPClientStdioLifecycle:
+    @pytest.mark.asyncio
+    async def test_stdio_roundtrip_tracks_reader_tasks_and_drains_stderr(self) -> None:
+        client = MCPClient(
+            "server1",
+            {"transport": "stdio", "command": sys.executable, "args": ["-c", _ECHO_SCRIPT]},
+        )
+        await client.connect()
+        try:
+            assert client._stdout_task is not None
+            assert client._stderr_task is not None
+
+            response = await client._send_request("ping", {})
+            assert response["result"]["echo"] == "ping"
+            # 请求完成后不应在 _pending 里遗留 (无论走成功路径还是超时路径)
+            assert client._pending == {}
+        finally:
+            await client.disconnect()
+
+        assert client._process is None
+        assert client._stdout_task is None
+        assert client._stderr_task is None
+
+    @pytest.mark.asyncio
+    async def test_send_stdio_timeout_removes_pending_entry(self) -> None:
+        client = MCPClient(
+            "server1",
+            {"transport": "stdio", "command": "true", "request_timeout_seconds": 0.05},
+        )
+        client._process = _NeverRespondingProcess()  # type: ignore[assignment]
+        client._connected = True
+
+        with pytest.raises(TimeoutError):
+            await client._send_stdio({"jsonrpc": "2.0", "id": 1, "method": "x", "params": {}}, 1)
+
+        assert client._pending == {}
+
+    @pytest.mark.asyncio
+    async def test_disconnect_kills_and_awaits_process_when_terminate_times_out(self) -> None:
+        client = MCPClient(
+            "server1",
+            {"transport": "stdio", "command": "true", "terminate_timeout_seconds": 0.05},
+        )
+
+        class _StubbornProcess:
+            def __init__(self) -> None:
+                self.stdin = _FakeStdin()
+                self.stdout = None
+                self.stderr = None
+                self.terminate_called = False
+                self.kill_called = False
+                self.wait_calls = 0
+
+            def terminate(self) -> None:
+                self.terminate_called = True
+
+            def kill(self) -> None:
+                self.kill_called = True
+
+            async def wait(self) -> int:
+                self.wait_calls += 1
+                if self.wait_calls == 1:
+                    await asyncio.sleep(999)
+                return 0
+
+        process = _StubbornProcess()
+        client._process = process  # type: ignore[assignment]
+        client._connected = True
+
+        await client.disconnect()
+
+        assert process.terminate_called is True
+        assert process.kill_called is True
+        assert process.wait_calls == 2  # 第一次 terminate 超时, 第二次 kill 后必须真正 await 到退出
 
 
 class TestMCPToolBridge:

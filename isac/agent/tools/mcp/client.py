@@ -44,6 +44,11 @@ class MCPClient:
         self._stdout_reader: asyncio.StreamReader | None = None
         self._stdin_writer: asyncio.StreamWriter | None = None
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
+        # 后台读取任务 (disconnect 时需要 cancel + await, 避免任务泄漏)
+        self._stdout_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
+        self._stdio_request_timeout = float(config.get("request_timeout_seconds", 30))
+        self._terminate_timeout = float(config.get("terminate_timeout_seconds", 5))
 
     async def connect(self) -> None:
         """建立连接 (stdio 子进程或 HTTP)。"""
@@ -74,8 +79,9 @@ class MCPClient:
             )
         except FileNotFoundError as exc:
             raise RuntimeError(f"MCP 子进程启动失败: {exc}") from exc
-        # 启动后台读 stdout 的任务
-        asyncio.create_task(self._read_stdout_loop())
+        # 启动后台读 stdout/stderr 的任务 (任务引用必须保存, disconnect 时才能 cancel+await)
+        self._stdout_task = asyncio.create_task(self._read_stdout_loop())
+        self._stderr_task = asyncio.create_task(self._read_stderr_loop())
 
     async def _connect_http(self) -> None:
         """建立 HTTP/SSE 连接 (惰性 httpx)。"""
@@ -131,12 +137,22 @@ class MCPClient:
     async def disconnect(self) -> None:
         """断开连接 (kill 子进程 / 关闭 httpx)。"""
         self._connected = False
+        for task in (self._stdout_task, self._stderr_task):
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._stdout_task = None
+        self._stderr_task = None
         if self._process is not None:
             try:
                 self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=5)
+                await asyncio.wait_for(self._process.wait(), timeout=self._terminate_timeout)
             except TimeoutError:
                 self._process.kill()
+                await self._process.wait()
             except ProcessLookupError:
                 pass
             self._process = None
@@ -167,15 +183,21 @@ class MCPClient:
         return await self._send_http(request)
 
     async def _send_stdio(self, request: dict[str, Any], request_id: int) -> dict[str, Any]:
-        """stdio 模式: 写入 stdin, 等 stdout 响应。"""
+        """stdio 模式: 写入 stdin, 等 stdout 响应。
+
+        超时或被取消时必须清理 _pending, 否则每次超时都会永久残留一个 Future (内存泄漏)。
+        """
         if self._process is None or self._process.stdin is None:
             raise RuntimeError("MCP 子进程未启动")
         line = (json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8")
         fut: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
         self._pending[request_id] = fut
-        self._process.stdin.write(line)
-        await self._process.stdin.drain()
-        return await asyncio.wait_for(fut, timeout=30)
+        try:
+            self._process.stdin.write(line)
+            await self._process.stdin.drain()
+            return await asyncio.wait_for(fut, timeout=self._stdio_request_timeout)
+        finally:
+            self._pending.pop(request_id, None)
 
     async def _send_http(self, request: dict[str, Any]) -> dict[str, Any]:
         """HTTP 模式: POST 请求 + 响应。"""
@@ -202,6 +224,26 @@ class MCPClient:
                 break
             except Exception as exc:  # noqa: BLE001
                 logger.warning("MCP stdout 读异常", server=self.server_name, error=str(exc))
+                break
+
+    async def _read_stderr_loop(self) -> None:
+        """stdio 模式: 持续消费 stderr, 避免管道缓冲区填满导致子进程阻塞。仅记录日志。"""
+        if self._process is None or self._process.stderr is None:
+            return
+        while True:
+            try:
+                line = await self._process.stderr.readline()
+                if not line:
+                    break
+                logger.debug(
+                    "MCP stderr",
+                    server=self.server_name,
+                    line=line.decode("utf-8", errors="replace").rstrip(),
+                )
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("MCP stderr 读异常", server=self.server_name, error=str(exc))
                 break
 
 
