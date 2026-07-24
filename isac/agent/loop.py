@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import time
 import uuid
@@ -71,7 +73,13 @@ class ISACAgentLoop:
         self.services = services or {}
 
     async def run(self, messages: list[dict], context: AgentContext) -> AgentResult:
-        """执行 Agent 循环，直到产出最终回复 / 被打断 / 预算耗尽。"""
+        """执行 Agent 循环，直到产出最终回复 / 被打断 / 预算耗尽。
+
+        planned/completed/interrupted 只在本轮确实执行过工具调用 (即存在多步"任务")
+        时才报告；单轮直接给出文本回复的简单对话不产生这三类事件, 避免每条问候
+        都附带"我先理一下接下来要做的事"这类噪音 (D9)。
+        """
+        reported_task_progress = False
         while context.budget.remaining:
             context.iteration += 1
 
@@ -98,9 +106,11 @@ class ISACAgentLoop:
 
             # 被新消息打断
             if context.interrupt_requested:
+                await self._emit_progress_if_task_started(context, reported_task_progress, "interrupted")
                 return AgentResult(interrupted=True)
 
             if response.tool_calls:
+                reported_task_progress = await self._emit_task_planned_once(context, reported_task_progress)
                 # LLM API 要求 tool 消息必须紧跟在声明了对应 tool_calls 的 assistant
                 # 消息之后, 否则下一轮请求里 tool_call_id 找不到归属会被 API 拒绝。
                 messages.append(
@@ -131,6 +141,7 @@ class ISACAgentLoop:
                     )
             else:
                 await self.hooks.fire(AgentHookPoint.FINAL_RESPONSE, response, context)
+                await self._emit_progress_if_task_started(context, reported_task_progress, "completed")
                 return AgentResult(content=response.content)
 
             # COMPRESS: 上下文过大时
@@ -149,6 +160,13 @@ class ISACAgentLoop:
         metrics = self.services.get("metrics")
         if metrics is not None:
             metrics.counter("isac_tool_calls_total").inc()
+
+        # D9: 慢工具前置事件 —— 只有当工具执行时间超过阈值才报告 tool_started,
+        # 用哨兵任务实现, 工具正常完成后立即 cancel, 未触发时不产生任何进度事件。
+        # report_progress 为 None 时不创建哨兵任务, 保持零行为变化。
+        slow_tool_task: asyncio.Task[None] | None = None
+        if context.report_progress is not None:
+            slow_tool_task = asyncio.create_task(self._emit_slow_tool_started(context, tool_call.name))
         try:
             result = await self.tools.execute(tool_call, context, services=self.services)
         except ToolError as exc:
@@ -157,6 +175,11 @@ class ISACAgentLoop:
         except Exception as exc:
             logger.error("工具执行严重错误", tool=tool_call.name, error=str(exc), exc_info=True)
             result = ToolResult(content="工具执行内部错误", is_error=True)
+        finally:
+            if slow_tool_task is not None:
+                slow_tool_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await slow_tool_task
 
         if metrics is not None and result.is_error:
             metrics.counter("isac_tool_errors_total").inc()
@@ -171,6 +194,24 @@ class ISACAgentLoop:
             tool_name=tool_call.name,
         )
         return result
+
+    async def _emit_task_planned_once(self, context: AgentContext, already_reported: bool) -> bool:
+        """D9: 本轮第一次出现工具调用时报告 planned, 返回更新后的 already_reported。"""
+        if already_reported:
+            return True
+        await self._emit_progress(context, "planned")
+        return True
+
+    async def _emit_progress_if_task_started(self, context: AgentContext, task_started: bool, stage: str) -> None:
+        """D9: 只有此前已报告过 planned (即存在多步任务) 才发 completed/interrupted 收束。"""
+        if task_started:
+            await self._emit_progress(context, stage)
+
+    async def _emit_slow_tool_started(self, context: AgentContext, tool_name: str) -> None:
+        """D9: sleep 阈值后报告 tool_started; 工具正常完成时被外层 cancel, 永不触发。"""
+        threshold = float(context.services.get("progress_slow_tool_threshold_seconds", 2.0))
+        await asyncio.sleep(threshold)
+        await self._emit_progress(context, "tool_started", tool_name=tool_name)
 
     async def _emit_progress(
         self,
