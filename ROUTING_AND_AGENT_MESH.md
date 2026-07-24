@@ -245,9 +245,35 @@ class InterAgentLink:
 
 ---
 
-## 七、配置示例
+## 七、SubAgent 与 Agent Mesh 的边界
 
-### 7.1 routing.jsonc
+SubAgent 与 Agent Mesh 都能委派工作，但生命周期和信任边界不同，禁止共用同一抽象掩盖差异。
+
+| 维度 | SubAgent | Agent Mesh Agent |
+|------|----------|------------------|
+| 身份 | 父 Agent 下的临时执行单元 | 长期独立 Agent |
+| 生命周期 | 单任务，可恢复/取消，完成后归档 | 独立启停和长期运行 |
+| 上下文 | 最小 `ContextEnvelope`，默认无陪伴状态 | 由 Link ACL 决定摘要和记忆范围 |
+| 权限 | 父权限的严格子集 | 自身配置与 Link ACL 的交集 |
+| 用户交互 | 默认禁止直接发送 Channel 消息 | 可经路由成为 primary Agent |
+| 记忆 | 默认只读授权摘要，不写长期记忆 | 拥有独立 memory namespace |
+| 回传 | `SubAgentResult` + evidence refs + usage | `InterAgentMessage` |
+| 日志 | 持久化 `SubAgentJournal`，父 Agent 可查询 | Agent 间消息与各自审计日志 |
+
+主 Agent 通过 `delegate_task` 创建子任务，并可使用：
+
+- `list_subagent_runs`：列出当前会话或任务的委派记录；
+- `get_subagent_status`：读取状态、阶段、预算和错误摘要；
+- `fetch_subagent_log`：分页读取脱敏工作日志和证据引用；
+- `cancel_subagent`：请求取消正在运行的子任务。
+
+日志可解释子 Agent 做了什么，但不得包含模型原始 reasoning。用户追问时，主 Agent 应优先通过 `task_id` 读取既有日志与证据，不应在信息仍有效时重复执行任务。
+
+---
+
+## 八、配置示例
+
+### 8.1 routing.jsonc
 
 ```jsonc
 {
@@ -270,7 +296,7 @@ class InterAgentLink:
 }
 ```
 
-### 7.2 links.jsonc
+### 8.2 links.jsonc
 
 ```jsonc
 {
@@ -298,7 +324,7 @@ class InterAgentLink:
 
 ---
 
-## 八、验收标准
+## 九、验收标准
 
 | 能力 | 验收 |
 |------|------|
@@ -309,12 +335,15 @@ class InterAgentLink:
 | ask_agent | 受 ACL 约束，能得到目标 Agent 返回 |
 | handoff | 主回复权可转交目标 Agent |
 | memory_query | 只能访问 visible_memory_scopes |
+| SubAgent boundary | 临时 SubAgent 使用独立上下文和父权限子集，不混入长期 Agent Mesh 身份 |
+| SubAgent trace | 主 Agent 可按 task_id 查询持久化脱敏日志和证据，无需重新执行 |
 | 审计 | 每条 Agent 间消息有 trace_id 与审计记录 |
 
 ---
 
-## 九、文档更新记录
+## 十、文档更新记录
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-24 | Architect | 明确 SubAgent 与长期 Agent Mesh 的身份、生命周期、权限、上下文、日志和回传边界 |
 | 2026-07-22 | Architect | 新增路由与 Agent Mesh 专项设计，补充 primary/observer/candidate Agent、路由优先级、handoff 与 ACL 边界 |

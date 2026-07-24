@@ -279,6 +279,33 @@ COMPLETED / INTERRUPTED
 
 平台降级规则：WebChat 等支持结构化事件的平台发送原生 `progress` 帧；普通 IM 以 `ISACMessage` 文本发送，并设置 `metadata.message_kind="progress"`，以便历史、学习、统计和 WebUI 区分进度与正式回复。
 
+### 5.5 陪伴型 Agent 的 SubAgent 委派
+
+情感陪伴主 Agent 的核心职责是保持关系、语气与对话连续性。搜索、文件分析、批量工具和长耗时研究等事务性轨迹不应默认进入主会话上下文，应优先委派给隔离 SubAgent。
+
+建议委派：
+
+- 需要两次及以上工具调用的检索或分析；
+- 可能产生大量网页、日志、代码或结构化数据；
+- 预计超过交互延迟阈值；
+- 需要高风险工具、临时工作区或不同模型能力；
+- 任务细节与当前情感对话无关，注入后会稀释人格和关系上下文。
+
+不建议委派：
+
+- 简短澄清、共情、闲聊和人格表达；
+- 单次低延迟、低输出工具即可完成的操作；
+- 必须依赖细腻关系状态且无法安全摘要的判断。
+
+上下文隔离规则：
+
+1. 主 Agent 生成 `ContextEnvelope`，只包含用户目标、必要事实摘要、输出要求和授权引用。
+2. 默认不传 MoodState、RelationshipState、全量聊天历史、人物画像正文或陪伴人格 Prompt。
+3. 子 Agent 完成后只回注 `SubAgentResult`；完整工具轨迹保留在 Journal 中。
+4. 主 Agent 可在用户追问或结果异常时按 task_id 查询日志和证据，再用自身人格重新组织回答。
+5. 子 Agent 结果是内部参考，不得逐字复述内部日志，也不得把错误堆栈直接发给用户。
+6. 用户可见进度由主 Agent 的 ProgressReporter 统一发送；子 Agent 不得绕过主 Agent 与用户建立独立陪伴关系。
+
 ---
 
 ## 六、关系、情绪与表达学习
@@ -372,6 +399,7 @@ class MoodState:
 | wait | Agent 可进入等待并由 timeout/message/proactive 恢复 |
 | interrupt | 新消息能打断正在运行的规划，旧回复不发送 |
 | progress | 每次工具完成后产生结构化事件；Reporter 可按人设汇报，支持频控、合并、脱敏和普通 IM 降级 |
+| SubAgent isolation | 事务性任务使用独立上下文；主 Agent 只回注结构化结果，并能按 task_id 查询日志与证据 |
 | proactive | 插件/API/记忆可创建主动任务并唤醒会话 |
 | context restore | 重启后恢复最近上下文并注入内部参考 |
 | relationship | 关系深度影响回复频率和称呼风格 |
@@ -383,5 +411,6 @@ class MoodState:
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-24 | Architect | 新增陪伴型 Agent 的 SubAgent 委派与上下文隔离：委派判断、最小 ContextEnvelope、结果回注和按需日志查询 |
 | 2026-07-23 | Architect | 新增任务进度与中间态设计：ProgressEvent、ProgressReporter、Persona 渲染、频控合并、脱敏与平台降级 |
 | 2026-07-22 | Architect | 新增拟人化运行时专项设计，补充 ConversationRuntime、wait、proactive、interrupt、上下文恢复与学习模块 |

@@ -159,6 +159,7 @@ uv run python -m isac
 
 | 文档 | 内容 |
 |------|------|
+| [REQUIREMENTS.md](./REQUIREMENTS.md) | 统一需求清单 — 多 Agent、多 IM、拟人化、模型、控制面、稳定性与 SubAgent |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 架构设计 — 系统拓扑、组件职责、消息生命周期、ADR 决策记录 |
 | [DEVELOP.md](./DEVELOP.md) | 开发指南 — 编码规范、模块开发流程、导入规则、测试编写 |
 | [SPECIFICATION.md](./SPECIFICATION.md) | 技术规范 — 数据模型 (ISACMessage/Session/Context)、接口契约 (ABC)、配置规范 |
