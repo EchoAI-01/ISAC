@@ -380,6 +380,13 @@
   - **依赖**：G1-G4、I1/I5、D9、J1-J2。
   - **当前**：十个页面域、配置编辑事务、Schema/diff/确认/ETag、密钥不回显、实时事件恢复、响应式、WCAG 2.1 AA 与浏览器测试要求已写入 `CONTROL_PLANE_SPEC.md` 和 `ARCHITECTURE.md`；代码待实现。现有 Vanilla JS 四模块面板保留为 v1 最小实现，不视为 J3 完成。
 
+- [ ] **J4 SubAgent Runtime 与可追溯任务日志**
+  - **验收**：每个 Agent 可用 `delegate_task` 创建隔离子任务；子 Agent 使用独立 History/Prompt/Budget/Workspace 和父权限子集；主 Agent 默认只收到结构化结果、证据引用和用量摘要；可通过 task_id 列表、查询状态、分页读取脱敏日志、取消任务；日志持久化后重启仍可查询；不记录原始 reasoning；子 Agent 默认不能直接发消息、写长期记忆或无限派生。
+  - **产出**：`runtime/subagent/{models,supervisor,context,journal,broker}.py`、delegate/list/status/log/cancel 工具、SQLite Journal、Control API/WebUI 时间线、恢复/取消/权限/隐私/预算测试。
+  - **依赖**：K1-K5、D3-D4、D9、J1、K3-K4。
+  - **当前**：架构、数据契约、陪伴上下文隔离、Agent Mesh 边界、日志与控制面接口已写入 `REQUIREMENTS.md`、`ARCHITECTURE.md`、`SPECIFICATION.md`、`HUMANLIKE_RUNTIME.md`、`ROUTING_AND_AGENT_MESH.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；代码待实现。
+  - **迁移**：H3 `TaskRunner` 仅为复用主 Loop/Session 的原型。J4 实现时应保留 `task` 工具的兼容入口，但内部迁移到 `SubAgentSupervisor`，不得继续共享主会话可变上下文。
+
 ---
 
 ### K 稳定化与可用版本闭环
@@ -429,7 +436,7 @@
   - **产出**：CI 门禁、Docker smoke、Playwright/浏览器测试、发布检查表、版本状态校准。
   - **依赖**：K1-K7、I1-I6。
 
-**强制开发顺序**：K1 → K2 → K3/K4 → K5 → K6/K7 → K8。K1-K5 完成前暂停 D9、J1-J3；K8 通过后才允许恢复 I6 发布验收。
+**强制开发顺序**：K1 → K2 → K3/K4 → K5 → K6/K7 → K8。K1-K5 完成前暂停 D9、J1-J4；K8 通过后才允许恢复 I6 发布验收。
 
 ---
 
@@ -452,6 +459,8 @@
 | **ModelUsageEvent** | 单次物理模型请求的标准计量事件，记录 Provider、模型、Agent、模态、实际用量和价格快照。 |
 | **ModelDescriptor** | 模型能力声明，描述输入/输出模态、operation、限制、成本/延迟层级和安全标签。 |
 | **ArtifactRef** | 多模态生成制品的受控引用，不把二进制内容直接写入消息历史、日志或记忆。 |
+| **SubAgent** | 父 Agent 下的临时隔离执行单元，使用独立上下文与收窄权限，结果和脱敏日志通过 task_id 关联。 |
+| **SubAgentJournal** | 追加式持久化子任务事件日志，记录状态、工具、证据、错误和用量，不记录模型原始 reasoning。 |
 | **稳定化节点** | K1-K8；修复常驻、真实 Provider、持久化、E2E、安全和发布门禁的最高优先级工作。 |
 | **可用版本准入** | K1-K8 全部完成且真实运行验收通过后，项目才可从 Alpha 提升为可用版本。 |
 | **Observer Agent** | 旁听 Agent，只接收消息用于记忆/学习/候选协作，默认不发送 IM 回复。 |
@@ -462,6 +471,7 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-24 | Architect | 新增 J4 SubAgent Runtime：每个 Agent 可隔离委派工具/检索任务，主 Agent 只接收结构化结果但可按 task_id 查询持久化脱敏日志、证据、状态与用量；明确陪伴上下文隔离、权限收窄、取消恢复及 Agent Mesh 边界；代码待实现 |
 | 2026-07-23 | Reviewer | 复审撤回 v1.0/生产可用结论：实测主程序启动后立即返回；真实 Provider、存储恢复、多 Agent E2E 未闭环。新增 K1-K8 稳定化节点为最高优先级，I 节点 100% → 50% |
 | 2026-07-23 | Architect | 新增 J3 WebUI v2 设计：覆盖 Dashboard、Agent、Channel/路由、Provider/模型、用量成本、扩展、记忆、会话任务、日志审计与系统配置；加入安全配置事务、实时事件、响应式与无障碍要求；代码待实现 |
 | 2026-07-23 | Architect | 新增 J2 多模态 Provider 与能力选择设计：统一文本/视觉/STT/TTS/生图/视频理解与生成的能力目录、Agent 授权、ModelRouter、语义工具、ArtifactStore 和 Channel 降级；代码待实现 |
