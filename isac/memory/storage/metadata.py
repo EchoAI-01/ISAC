@@ -231,6 +231,21 @@ class MetadataStore:
         rows_by_id = {str(row["id"]): self._episode_row_to_dict(row) for row in rows}
         return [rows_by_id[memory_id] for memory_id in ordered_ids if memory_id in rows_by_id]
 
+    async def iter_episodes_by_namespace(self, agent_id: str) -> list[tuple[str, str]]:
+        """按 agent_id 列出全部 (memory_id, content) 供 SparseBM25Index 重启恢复。
+
+        SparseBM25Index 是内存数据结构, 进程重启后会丢失倒排索引; 启动时从 SQLite
+        episodes 表加载现有记忆重建索引, 让 BM25 检索在重启后立即可用
+        (K3, DEVELOPMENT_PLAN.md)。
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT id, content FROM episodes WHERE agent_id = ? AND content != ''",
+                (agent_id,),
+            )
+            rows = await cursor.fetchall()
+        return [(str(row[0]), str(row[1])) for row in rows]
+
     async def get_person_profile(self, agent_id: str, person_id: str) -> dict | None:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row

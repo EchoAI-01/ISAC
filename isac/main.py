@@ -165,6 +165,16 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         embedder = EmbeddingManager(memory_config.get("embedding", {}))
         reranker = Reranker(memory_config.get("reranker", {}))
 
+    async def _storage_start() -> None:
+        """K3: 启动时执行 SQLite schema init/migration (MetadataStore.init_schema
+        + VectorStore.init_schema); memory 关闭时由各 store 的 async-with 自行释放,
+        无显式 close 动作 (aiosqlite 每次连接即关)。"""
+        if metadata_store is not None:
+            await metadata_store.init_schema()
+            logger.info("MetadataStore schema 已初始化", path=metadata_store.db_path)
+        if vector_store is not None:
+            await vector_store.init_schema()
+
     def memory_factory(namespace: str) -> Any:
         if not memory_config.get("enabled"):
             return NoOpMemoryPipeline(namespace)
@@ -189,6 +199,7 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         "provider_manager": provider_manager,
         "memory_factory": memory_factory,
         "metrics": metrics,
+        "storage_start": _storage_start if memory_config.get("enabled") else _noop_start,
     }
 
 
@@ -330,6 +341,13 @@ async def main() -> None:
         _noop_start,
         provider_manager.aclose,
     )
+
+    # K3: 先执行 storage schema init/migration (MetadataStore + VectorStore), 保证
+    # 后续 load_persisted_agents 创建 Agent 时 warm_up_sparse_index 能从 SQLite 读数据;
+    # 再注册到 runtime 的 LIFO 关闭链 (storage 关闭时无显式动作, aiosqlite 每次连接即关)。
+    storage_start = services["storage_start"]
+    await storage_start()
+    runtime.register_lifecycle("storage", _noop_start, _noop_start)
 
     # 先恢复持久化 Agent (data/agents/*/config.jsonc, enabled=true 的自动 start),
     # 再回退到默认 Agent 保证无任何持久化配置时也能跑通 (CODE_REVIEW_REPORT.md #2)。

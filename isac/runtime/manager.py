@@ -42,11 +42,23 @@ class AgentManager:
     # ── 生命周期 (控制面暴露) ──────────────────────────────
 
     async def create(self, config: AgentConfig) -> AgentInstance:
-        """创建并组装 Agent (默认 stopped，需 start 后才处理消息)。"""
+        """创建并组装 Agent (默认 stopped，需 start 后才处理消息)。
+
+        assemble_agent 内部 memory_factory 返回 NoOpMemoryPipeline 或真实 MemoryRetrievalPipeline;
+        真实 pipeline 有 warm_up_sparse_index 方法, 从 MetadataStore 重建 BM25 内存索引,
+        让重启后 BM25 检索立即可用而不等下次写入 (K3, DEVELOPMENT_PLAN.md)。
+        """
         if config.agent_id in self._agents:
             raise ValueError(f"Agent 已存在: {config.agent_id}")
         instance = await assemble_agent(config, self._services)
         self._agents[config.agent_id] = instance
+        # K3: 预热 Sparse 索引 (NoOpMemoryPipeline 没有此方法, 静默跳过)
+        warm = getattr(instance.memory, "warm_up_sparse_index", None)
+        if warm is not None:
+            try:
+                await warm()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Sparse 索引预热失败, 不阻塞 Agent 创建", agent_id=config.agent_id, error=str(exc))
         self._inc_metric("isac_agent_creates_total")
         logger.info("Agent 已创建", agent_id=config.agent_id)
         return instance
