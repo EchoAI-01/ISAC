@@ -67,10 +67,21 @@ class MemoryRetrievalPipeline:
         agent 隔离由 self.namespace 保证 (agent_id 参数含义相同, 仅为调用方兼容保留);
         user_id/group_id 用于 user/group 访问控制 (CODE_REVIEW_REPORT.md #9):
         群聊场景按 group_id 过滤 (群内共享)，私聊场景按 user_id 过滤且排除群聊记忆。
+
+        shared namespace 强制 ACL (K3, DEVELOPMENT_PLAN.md): namespace="shared" 时必须
+        传 user_id 或 group_id, 否则拒绝检索 (返回空) 防止跨用户注入。
         """
         del filters, agent_id  # TODO: 结构化过滤条件 (topics/时间范围等), 当前未实现
         clean_query = str(query or "").strip()
         if not clean_query:
+            return []
+        if self.namespace == "shared" and not user_id and not group_id:
+            logger.warning(
+                "shared namespace 检索被 ACL 拒绝: 缺少 user_id/group_id",
+                namespace=self.namespace,
+            )
+            if self._metrics is not None:
+                self._metrics.counter("isac_memory_acl_rejections_total").inc()
             return []
         if self._metrics is not None:
             self._metrics.counter("isac_memory_searches_total").inc()
@@ -103,6 +114,32 @@ class MemoryRetrievalPipeline:
             if self._metrics is not None:
                 self._metrics.histogram("isac_memory_search_latency_seconds").observe(time.monotonic() - start)
 
+    async def warm_up_sparse_index(self) -> int:
+        """从 MetadataStore 加载全部 episodes 重建 SparseBM25Index 内存索引。
+
+        SparseBM25Index 是纯内存数据结构, 进程重启会丢失; 启动时调用本方法从 SQLite
+        episodes 表读取现有 (memory_id, content) 重建倒排索引, 让 BM25 检索在重启后
+        立即可用而不必等下次写入 (K3, DEVELOPMENT_PLAN.md)。
+
+        返回加载到索引中的文档数。
+        """
+        try:
+            pairs = await self.metadata.iter_episodes_by_namespace(self.namespace)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Sparse 索引预热失败, BM25 检索将退化为空直到下次写入",
+                namespace=self.namespace, error=str(exc),
+            )
+            if self._metrics is not None:
+                self._metrics.counter("isac_memory_store_errors_total").inc()
+            return 0
+        for memory_id, content in pairs:
+            self.sparse.add(memory_id, content)
+        if pairs and self._metrics is not None:
+            self._metrics.counter("isac_memory_warmup_docs_total").inc(len(pairs))
+        logger.info("Sparse 索引预热完成", namespace=self.namespace, docs=len(pairs))
+        return len(pairs)
+
     async def store_episode(
         self,
         content: str,
@@ -134,6 +171,8 @@ class MemoryRetrievalPipeline:
             return memory_id
         except Exception as exc:
             logger.warning("记忆存储失败，返回空 ID", namespace=self.namespace, error=str(exc))
+            if self._metrics is not None:
+                self._metrics.counter("isac_memory_store_errors_total").inc()
             return ""
 
     @staticmethod
