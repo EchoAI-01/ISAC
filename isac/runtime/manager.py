@@ -194,11 +194,15 @@ class AgentManager:
             return None
 
         reporter = self._get_or_create_progress_reporter(instance, session.session_id, progress_sender)
+        progress_services: dict[str, Any] = {"task_id": uuid.uuid4().hex, "agent_id": agent_id}
+        if reporter is not None:
+            progress_services["progress_slow_tool_threshold_seconds"] = reporter.policy.slow_tool_threshold_seconds
+            progress_services["progress_report_before_slow_tool"] = reporter.policy.report_before_slow_tool
         agent_context = AgentContext(
             session=session,
             user_profile=user_profile,
             current_message=message,
-            services={"task_id": uuid.uuid4().hex, "agent_id": agent_id},
+            services=progress_services,
             report_progress=reporter.report if reporter is not None else None,
         )
         messages = [{"role": "user", "content": message.content}]

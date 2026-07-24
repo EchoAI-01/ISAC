@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from isac.agent.loop import AgentResult
 from isac.channel.model import ISACMessage, MessageSegment
 from isac.core.types import ProgressEvent
 from isac.gateway.models import Session
@@ -266,6 +267,34 @@ async def test_handle_message_wires_progress_reporter_and_reuses_per_session() -
     assert len(planned_events) == 1
     assert planned_events[0].agent_id == AGENT_ID
     assert planned_events[0].session_id == "sess_p1"
+
+
+@pytest.mark.asyncio
+async def test_handle_message_passes_configured_slow_tool_policy_to_context() -> None:
+    """D9-7: services 里的慢工具阈值/开关应来自 Agent 配置的 ProgressPolicy,
+    而不是 loop.py 内部硬编码的默认值 (此前是死配置)。"""
+    manager = await _make_running_agent_manager()
+    instance = await manager.get(AGENT_ID)
+    assert instance is not None
+
+    captured_services: list[dict] = []
+
+    class _CapturingLoop:
+        async def run(self, messages, context):
+            captured_services.append(context.services)
+            return AgentResult(content="done")
+
+    instance.loop = _CapturingLoop()  # type: ignore[assignment]
+    instance.config.persona = {
+        "progress": {"slow_tool_threshold_seconds": 0.5, "report_before_slow_tool": False}
+    }
+
+    session = Session(session_id="sess_policy", user_id="u1", agent_id=AGENT_ID)
+    await manager.handle_message(AGENT_ID, _at_message("m1", "u1"), session, None)
+
+    assert len(captured_services) == 1
+    assert captured_services[0]["progress_slow_tool_threshold_seconds"] == 0.5
+    assert captured_services[0]["progress_report_before_slow_tool"] is False
 
     instance = await manager.get(AGENT_ID)
     assert instance is not None
