@@ -41,6 +41,24 @@ class ProviderManager:
         else:
             self._primary = provider
 
+    async def aclose(self) -> None:
+        """关闭所有已注册 Provider 的底层连接池 (ApplicationRuntime 关闭时调用)。
+
+        对没有 aclose() 的 Provider (如 StubProvider) 静默跳过。
+        """
+        seen: set[int] = set()
+        for provider in [self._primary, self._fallback, *self._agent_providers.values()]:
+            if provider is None or id(provider) in seen:
+                continue
+            seen.add(id(provider))
+            close = getattr(provider, "aclose", None)
+            if close is None:
+                continue
+            try:
+                await close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Provider 关闭失败, 继续关闭其他", error=str(exc))
+
     def for_agent(self, config: AgentConfig) -> LLMProvider:
         """返回 Agent 可用的 Provider: 优先独立配置，否则共享池。
 

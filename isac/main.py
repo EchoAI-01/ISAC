@@ -113,30 +113,25 @@ async def _send_reply(
 
 
 def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[str, Any]) -> None:
-    """按配置注册 LLM Provider。
+    """按配置注册 LLM Provider (K2, DEVELOPMENT_PLAN.md)。
 
-    真实 provider+api_key 已配置但 OpenAICompatProvider 仍是未实现的桩时, 不再静默
-    注册 StubProvider 冒充成功接入——注册真实的 OpenAICompatProvider, 它的 chat()
-    会诚实地抛出 NotImplementedError, 经 chat_with_retry() 的兜底重试/降级逻辑
-    (isac/provider/manager.py) 最终仍能拿到回复, 但每次调用都会留下 ERROR 日志,
-    而不是像 Stub 一样悄无声息地表现正常 (CODE_REVIEW_REPORT.md #4)。仅在完全未配置
-    任何 Provider 时才用 Stub 作为开发态兜底, 保证无 LLM 配置也能跑通主链路。
-
-    范围说明: 不实现 OpenAICompatProvider 的真实 HTTP 调用 (独立后续 initiative)。
+    - llm.provider + llm.api_key 同时配置时注册 OpenAICompatProvider (真实 HTTP 实现),
+      不再静默降级为 Stub; 真实模型不可达时走 chat_with_retry 的降级回复
+    - 未配置任何 Provider 时用 StubProvider 作为开发态兜底, 保证无 LLM 配置也能跑通主链路
     """
     if llm_config.get("provider") and llm_config.get("api_key"):
-        logger.critical(
-            "已配置真实 LLM Provider, 但 OpenAICompatProvider 尚未实现真实调用; "
-            "消息处理将收到降级回复而非真实模型输出, 请勿在生产环境依赖当前状态",
-            provider=llm_config.get("provider"),
-            model=llm_config.get("model", ""),
-        )
         provider_manager.register(
             OpenAICompatProvider(
                 api_key=str(llm_config.get("api_key", "")),
                 base_url=str(llm_config.get("base_url", "")),
                 model=str(llm_config.get("model", "")),
             )
+        )
+        logger.info(
+            "已注册 OpenAICompatProvider",
+            provider=llm_config.get("provider"),
+            model=llm_config.get("model", ""),
+            base_url=llm_config.get("base_url", ""),
         )
     else:
         provider_manager.register(StubProvider())
@@ -195,6 +190,11 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         "memory_factory": memory_factory,
         "metrics": metrics,
     }
+
+
+async def _noop_start() -> None:
+    """无启动动作的资源 (如 Provider 连接池: 惰性创建, 无需 start) 占位。"""
+    return None
 
 
 async def main() -> None:
@@ -305,8 +305,8 @@ async def main() -> None:
         alert_manager.add_rule(rule)
 
     # ── 启动编排 (K1): 所有资源通过 register_lifecycle 注册到 runtime ──
-    # 启动顺序: Channel 适配器 → Control Plane (可选) → Alert
-    # 关闭顺序 (LIFO): Alert → Control → Channel
+    # 启动顺序: Channel 适配器 → Control Plane (可选) → Alert → Provider 连接池关闭
+    # 关闭顺序 (LIFO): Provider → Alert → Control → Channel
     runtime.register_lifecycle(
         "channels",
         channel_registry.start_all,
@@ -321,6 +321,14 @@ async def main() -> None:
         "alerts",
         alert_manager.start,
         alert_manager.stop,
+    )
+    # K2: Provider (httpx.AsyncClient 连接池) 在 shutdown 时 aclose, 避免连接泄漏;
+    # 启动无需动作 (httpx.AsyncClient 惰性创建, 首次 chat 时才建池)。
+    provider_manager = services["provider_manager"]
+    runtime.register_lifecycle(
+        "providers",
+        _noop_start,
+        provider_manager.aclose,
     )
 
     # 先恢复持久化 Agent (data/agents/*/config.jsonc, enabled=true 的自动 start),
