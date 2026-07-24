@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-24 (基于 dev 分支实测复审: 467 单测通过、Ruff/Mypy 全绿、主程序实测驻留)
+> 最近更新: 2026-07-25 (基于 dev 分支实测复审: 539 单测通过、Ruff/Mypy 全绿、主程序实测驻留)
 
 ## 节点总览
 
@@ -11,7 +11,7 @@
 | A | 文档冻结 | 100% | A1-A5 完成 |
 | B | 基础骨架 | 100% | 脚手架 + 核心契约 + 配置日志 + 入口 |
 | C | 连接与路由 | 100% | OneBot + Gateway + Router + Registry |
-| D | 单 Agent 核心 | 89% | D1-D8 完成;D9 任务进度报告能力框架已搭建,业务实现待续 |
+| D | 单 Agent 核心 | 100% | D1-D9 完成 |
 | E | 多 Agent 运行时 | 100% | E1-E4 完成;E5 经 K6 端到端验收 |
 | F | 插件生态 | 100% | AstrBot / MaiBot / Native / 加载器 |
 | G | 控制面与自动化 | 100% | Admin API / MCP / Webhook / 安全默认值 |
@@ -22,10 +22,10 @@
 
 ## 可运行性状态
 
-**已达到「可运行」完成度**(2026-07-24 实测):
+**已达到「可运行」完成度**(2026-07-25 实测):
 
 - 主程序实测驻留(`RESIDENT_AFTER_3S=True`),支持 SIGINT/SIGTERM 优雅关闭。
-- 512 单元测试通过;Ruff 通过;Mypy 全绿(185 文件)。
+- 539 单元测试通过;Ruff 通过;Mypy 全绿(185 文件)。
 - 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke。
 - 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用。
 - Agent / Session / 路由 / Link / 记忆可持久化恢复。
@@ -51,7 +51,6 @@
 
 | 节点 | 能力 | 状态 | 依赖 |
 |------|------|------|------|
-| D9 | 任务进度报告 (ProgressEvent/ProgressReporter) | 框架已搭建 | K1-K5 |
 | J1 | Token 用量与成本计量 (ModelUsageEvent) | 框架已搭建 | K1、G1 |
 | J2 | 多模态 Provider 与能力选择 (ModelRouter/ArtifactStore) | 框架已搭建 | D2-D4、J1 |
 | J3 | WebUI v2 管理与观测 | 仅设计 | G1-G4、D9、J1-J2 |
