@@ -332,7 +332,10 @@ class MetadataStore:
         data = dict(row)
         data["topics"] = self._json_loads(data.get("topics"), [])
         data["participants"] = self._json_loads(data.get("participants"), [])
-        data["score"] = abs(float(data.get("score", 0.0) or 0.0))
+        # SQLite FTS5 bm25() 返回负值, 越负越相关 (ORDER BY score ASC 已让最相关在前)。
+        # 保留原值而非 abs(), 让 score 字段与 FTS5 原生语义一致, 避免调用方按
+        # "越大越相关"误解 (CODE_REVIEW_REPORT.md #21)。
+        data["score"] = float(data.get("score", 0.0) or 0.0)
         return data
 
     def _profile_row_to_dict(self, row: aiosqlite.Row) -> dict:

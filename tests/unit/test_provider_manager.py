@@ -86,3 +86,50 @@ async def test_non_llm_error_without_fallback_degrades_gracefully() -> None:
 
     assert result.content == DEGRADED_REPLY
     assert primary.calls == 3
+
+
+class _FakeAgentConfig:
+    """最小 AgentConfig 替身, 仅提供 for_agent() 需要的字段。"""
+
+    def __init__(self, agent_id: str, llm: dict | None) -> None:
+        self.agent_id = agent_id
+        self.llm = llm
+
+
+def test_for_agent_returns_independent_provider_per_agent() -> None:
+    """AgentConfig.llm 配置时为每个 agent 创建独立 Provider 并缓存 (CODE_REVIEW_REPORT.md #9)。"""
+    manager = ProviderManager({})
+    config_a = _FakeAgentConfig("a", {"provider": "openai", "api_key": "key-a", "model": "m-a"})
+    config_b = _FakeAgentConfig("b", {"provider": "openai", "api_key": "key-b", "model": "m-b"})
+
+    provider_a1 = manager.for_agent(config_a)
+    provider_a2 = manager.for_agent(config_a)
+    provider_b = manager.for_agent(config_b)
+
+    assert provider_a1 is provider_a2  # 同 agent 缓存
+    assert provider_a1 is not provider_b  # 不同 agent 独立
+    assert provider_a1.get_model_name() == "m-a"
+    assert provider_b.get_model_name() == "m-b"
+
+
+def test_for_agent_falls_back_to_primary_when_llm_missing() -> None:
+    """AgentConfig.llm 缺失或字段不完整时退回共享池 primary (CODE_REVIEW_REPORT.md #9)。"""
+    manager = ProviderManager({})
+    primary = _StubReplyProvider("primary")
+    manager.register(primary)
+
+    no_llm = _FakeAgentConfig("a", None)
+    assert manager.for_agent(no_llm) is primary
+
+    incomplete_llm = _FakeAgentConfig("b", {"provider": "openai"})  # 缺 api_key
+    assert manager.for_agent(incomplete_llm) is primary
+
+
+def test_for_agent_stub_provider() -> None:
+    """provider=stub 时 Agent 独立 Provider 是 StubProvider (dev 兜底)。"""
+    from isac.provider.llm.stub import StubProvider
+
+    manager = ProviderManager({})
+    config = _FakeAgentConfig("a", {"provider": "stub", "api_key": "dev"})
+    provider = manager.for_agent(config)
+    assert isinstance(provider, StubProvider)

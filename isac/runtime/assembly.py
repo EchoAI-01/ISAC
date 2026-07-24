@@ -55,7 +55,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
 
     [已完成] memory_factory / 人格注入器 / 记忆注入器 / BehaviorLearner hooks;
     待落地: attention_drift/expression_style/mood/skill_selector 注入器接入 PersonaManager,
-            AgentConfig.llm 非空时创建独立 Provider, config.gating 覆盖项应用。
+            AgentConfig.llm 非空时创建独立 Provider。
     """
     global_config: dict = services.get("global_config", {})
 
@@ -69,7 +69,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
         channel_overrides=channel_overrides,
     )
 
-    gating = GatingSystem()  # TODO: 应用 config.gating 覆盖项
+    gating = GatingSystem(config=config.gating)
 
     prompt_builder = SystemPromptBuilder()
     prompt_builder.register(BaseIdentityInjector())

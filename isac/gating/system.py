@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from typing import Any
 
 from isac.channel.model import ISACMessage
 from isac.core.types import GatingContext
@@ -48,19 +49,57 @@ class GatingSystem:
     TurnScheduler / IdleBackoffController 按 session_id 隔离持有 (复刻 FocusMode 的
     dict[session_id, ...] 模式)，避免同一 Agent 服务的多个会话共享发言频率/退避状态、
     互相干扰 (CODE_REVIEW_REPORT.md #6)。
+
+    config 覆盖项 (AgentConfig.gating, ARCHITECTURE.md 3.7):
+      - reply_necessity_threshold: int  覆盖 REPLY_NECESSITY_THRESHOLD
+      - turn_scheduler.max_ratio / window_seconds
+      - idle_backoff.base_seconds / cap_seconds
+      - turn_gates.trigger_threshold
+    未提供时使用各子系统的框架级默认值 (CODE_REVIEW_REPORT.md #8)。
     """
 
     def __init__(
         self,
+        config: dict[str, Any] | None = None,
         reply_necessity: ReplyNecessityJudge | None = None,
-        turn_scheduler: Callable[[], TurnScheduler] = TurnScheduler,
+        turn_scheduler: Callable[[], TurnScheduler] | None = None,
         turn_gates: TurnGates | None = None,
-        idle_backoff: Callable[[], IdleBackoffController] = IdleBackoffController,
+        idle_backoff: Callable[[], IdleBackoffController] | None = None,
     ):
-        self.reply_necessity = reply_necessity or ReplyNecessityJudge()
+        config = config or {}
+
+        if reply_necessity is None:
+            threshold = config.get("reply_necessity_threshold")
+            reply_necessity = (
+                ReplyNecessityJudge(threshold=int(threshold))
+                if threshold is not None
+                else ReplyNecessityJudge()
+            )
+        self.reply_necessity = reply_necessity
+
+        if turn_scheduler is None:
+            ts_cfg = config.get("turn_scheduler", {}) or {}
+            turn_scheduler = lambda: TurnScheduler(  # noqa: E731
+                max_ratio=float(ts_cfg.get("max_ratio", 0.5)),
+                window_seconds=float(ts_cfg.get("window_seconds", 300.0)),
+            )
         self._turn_scheduler_factory = turn_scheduler
-        self.turn_gates = turn_gates or TurnGates()
+
+        if turn_gates is None:
+            tg_cfg = config.get("turn_gates", {}) or {}
+            turn_gates = TurnGates(
+                trigger_threshold=int(tg_cfg.get("trigger_threshold", 3))
+            )
+        self.turn_gates = turn_gates
+
+        if idle_backoff is None:
+            ib_cfg = config.get("idle_backoff", {}) or {}
+            idle_backoff = lambda: IdleBackoffController(  # noqa: E731
+                base_seconds=int(ib_cfg.get("base_seconds", 30)),
+                cap_seconds=int(ib_cfg.get("cap_seconds", 300)),
+            )
         self._idle_backoff_factory = idle_backoff
+
         self.focus_mode = FocusMode()
         self._turn_schedulers: dict[str, TurnScheduler] = {}
         self._idle_backoffs: dict[str, IdleBackoffController] = {}
@@ -84,6 +123,13 @@ class GatingSystem:
     async def evaluate(self, pending: list[ISACMessage], context: GatingContext) -> GateDecision:
         """评估门控决策，返回 TRIGGER / WAIT / DELAY(N秒)。"""
         session_id = context.session.session_id
+
+        # 0. /mute 静音期内: 非 @ 触发一律 WAIT, 防止 Bot 主动发言。
+        # 被 @ 仍然放行, 让用户能用 @bot /unmute 解锁 (CODE_REVIEW_REPORT.md #10)。
+        muted_until = getattr(context.session, "muted_until", 0.0)
+        if muted_until and not context.has_at:
+            if time.monotonic() < muted_until:
+                return GateDecision.wait()
 
         # 1. Focus Mode 激活时直接 TRIGGER
         if self.focus_mode.is_active(session_id):

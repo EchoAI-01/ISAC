@@ -42,15 +42,53 @@ class ProviderManager:
             self._primary = provider
 
     def for_agent(self, config: AgentConfig) -> LLMProvider:
-        """返回 Agent 可用的 Provider: 优先独立配置，否则共享池。"""
+        """返回 Agent 可用的 Provider: 优先独立配置，否则共享池。
+
+        Agent 级独立 Provider 由 AgentConfig.llm dict 描述 (provider/api_key/base_url/model);
+        为每个 agent 缓存一个 LLMProvider 实例, 实现多 Agent 各自使用不同模型/凭据
+        (CODE_REVIEW_REPORT.md #9)。
+        """
         if config.llm:
-            # TODO: 按 config.llm 创建/缓存独立 Provider 实例
             cached = self._agent_providers.get(config.agent_id)
-            if cached:
+            if cached is not None:
                 return cached
+            provider = self._build_agent_provider(config.llm)
+            if provider is not None:
+                self._agent_providers[config.agent_id] = provider
+                return provider
+            # config.llm 字段存在但缺少必要字段, 退回共享池 (并记录一次警告避免日志噪声)
+            logger.warning(
+                "Agent 配置了 llm 但字段不完整, 退回共享 Provider",
+                agent_id=config.agent_id,
+                llm_keys=sorted(config.llm.keys()),
+            )
         if self._primary is None:
             raise LLMError("未注册任何 LLM Provider")
         return self._primary
+
+    def _build_agent_provider(self, llm_config: dict[str, Any]) -> LLMProvider | None:
+        """按 AgentConfig.llm 字典构造独立 Provider; 字段不完整返回 None。
+
+        复用 OpenAICompatProvider 作为 OpenAI 兼容 API 适配器; 同时接受 StubProvider
+        作为 dev 兜底 (provider=stub)。生产环境应由 register_llm_provider() 走相同的
+        路径, 不在此处引入新的 Provider 类型。
+        """
+        provider_name = str(llm_config.get("provider") or "").strip().lower()
+        api_key = str(llm_config.get("api_key") or "").strip()
+        if not provider_name or not api_key:
+            return None
+        # 仅当 provider + api_key 同时存在才视为"已配置", 与 register_llm_provider() 的
+        # 判定保持一致 (避免 agent 级与全局级出现分歧)。
+        from isac.provider.llm.openai_compat import OpenAICompatProvider
+        from isac.provider.llm.stub import StubProvider
+
+        if provider_name == "stub":
+            return StubProvider()
+        return OpenAICompatProvider(
+            api_key=api_key,
+            base_url=str(llm_config.get("base_url") or ""),
+            model=str(llm_config.get("model") or ""),
+        )
 
     async def chat_with_retry(self, provider: LLMProvider, **kwargs: Any) -> LLMResponse:
         """LLM 调用: 重试 3 次 (指数退避) → 回退模型 → 降级回复 (SPECIFICATION.md 5.2)。
