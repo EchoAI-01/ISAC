@@ -102,7 +102,7 @@ def test_smoke_control_plane_only_mode_resident_and_sigterm_clean(tmp_path: Path
         "ISAC_API_TOKEN": "",
     }
     proc = _start_isac(tmp_path, env_overrides=env_overrides)
-    returncode, output = _wait_and_terminate(proc, runtime_seconds=2.5)
+    returncode, output = _wait_and_terminate(proc, runtime_seconds=3.5)
 
     assert returncode == 0, f"exit={returncode}\noutput={output}"
     assert "Task was destroyed but it is pending" not in output
