@@ -221,9 +221,12 @@ async def test_tool_call_full_loop() -> None:
     msg = _msg("@bot 帮我查记忆", at_bot=True)
     await _run(msg, agent_manager=am, router=router, event_bus=eb, session_mgr=sm, user_mapper=um, channel_registry=cr)
 
-    # D9: 工具调用完成会先经 sender 送一条 progress 通知, 再是最终回复。
-    assert len(channel.replies) == 2
+    # D9: 工具调用任务会先经 sender 送若干 progress 通知 (planned/tool_finished/
+    # completed 具体哪些能穿过 min_interval_seconds 频控取决于事件时间间隔),
+    # 最终回复始终是最后一条且内容不受影响。
+    assert len(channel.replies) >= 2
     assert channel.replies[-1].content == "based on memory: hello"
+    assert channel.replies[-1].metadata.get("message_kind") != "progress"
     # 验证 LLM 被调用了 2 次 (tool_call + final_reply)
     assert len(provider.calls) == 2
 
@@ -312,9 +315,10 @@ async def test_tool_call_emits_progress_notification_before_final_reply() -> Non
 
     progress_msgs = [r for r in channel.replies if r.metadata.get("message_kind") == "progress"]
     assert len(progress_msgs) >= 1
-    assert progress_msgs[0].metadata.get("progress_stage") == "tool_finished"
-    # 最终回复仍是最后一条、内容不受影响
+    assert all(msg.metadata.get("progress_stage") != "completed" for msg in progress_msgs[:-1])
+    # 最终回复仍是最后一条、内容不受影响, 且不会被误标成 progress
     assert channel.replies[-1].content == "based on memory: hello"
+    assert channel.replies[-1].metadata.get("message_kind") != "progress"
 
 
 @pytest.mark.asyncio

@@ -258,13 +258,14 @@ async def test_handle_message_wires_progress_reporter_and_reuses_per_session() -
         AGENT_ID, _at_message("m2", "u_p1"), session, None, progress_sender=sender
     )
 
-    tool_events = [e for e in captured if e.stage == "tool_finished"]
-    # 第二条 tool_finished 被跨消息的 min_interval_seconds (默认 2.0s) 频控吞掉;
-    # 这恰恰证明两次 handle_message 复用的是同一个 ProgressReporter (而非各自新建
-    # 一个、频控互不干扰的实例) —— 与 per-message 设计相比的核心行为差异。
-    assert len(tool_events) == 1
-    assert tool_events[0].agent_id == AGENT_ID
-    assert tool_events[0].session_id == "sess_p1"
+    planned_events = [e for e in captured if e.stage == "planned"]
+    # message2 的 planned 被跨消息的 min_interval_seconds (默认 2.0s) 频控吞掉
+    # (message1 的 completed 刚更新过 _last_emit_at); 这恰恰证明两次 handle_message
+    # 复用的是同一个 ProgressReporter, 而非各自新建、频控互不干扰的实例——若是
+    # per-message 新建, 两条 planned 都会因 _last_emit_at 重置为 0 而通过。
+    assert len(planned_events) == 1
+    assert planned_events[0].agent_id == AGENT_ID
+    assert planned_events[0].session_id == "sess_p1"
 
     instance = await manager.get(AGENT_ID)
     assert instance is not None
