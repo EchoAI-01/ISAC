@@ -148,6 +148,71 @@ async def test_reporter_swallows_sender_errors() -> None:
     assert await reporter.report(_event("tool_finished")) is False
 
 
+def test_merge_combines_tool_name_for_adjacent_same_stage_same_task_events() -> None:
+    reporter = build_progress_reporter(agent_id="a1", session_id="s1")
+    first = _event("tool_finished", task_id="t1", tool_name="query_memory", occurred_at=100.0)
+    second = _event("tool_finished", task_id="t1", tool_name="web_search", occurred_at=100.5)
+
+    merged_first = reporter._merge(first)
+    merged_second = reporter._merge(second)
+
+    assert merged_first.tool_name == "query_memory"
+    assert merged_second.tool_name is not None
+    assert "query_memory" in merged_second.tool_name
+    assert "web_search" in merged_second.tool_name
+
+
+def test_merge_does_not_combine_events_outside_window() -> None:
+    reporter = build_progress_reporter(agent_id="a1", session_id="s1")
+    first = _event("tool_finished", task_id="t1", tool_name="query_memory", occurred_at=100.0)
+    # 默认 merge_window_seconds=1.5, 5 秒之后已超出窗口
+    second = _event("tool_finished", task_id="t1", tool_name="web_search", occurred_at=105.0)
+
+    reporter._merge(first)
+    merged_second = reporter._merge(second)
+
+    assert merged_second.tool_name == "web_search"
+
+
+def test_merge_does_not_combine_different_stages() -> None:
+    reporter = build_progress_reporter(agent_id="a1", session_id="s1")
+    first = _event("tool_started", task_id="t1", tool_name="query_memory", occurred_at=100.0)
+    second = _event("tool_finished", task_id="t1", tool_name="query_memory", occurred_at=100.2)
+
+    reporter._merge(first)
+    merged_second = reporter._merge(second)
+
+    assert merged_second.tool_name == "query_memory"
+
+
+def test_merge_does_not_combine_different_tasks() -> None:
+    reporter = build_progress_reporter(agent_id="a1", session_id="s1")
+    first = _event("tool_finished", task_id="t1", tool_name="query_memory", occurred_at=100.0)
+    second = _event("tool_finished", task_id="t2", tool_name="web_search", occurred_at=100.2)
+
+    reporter._merge(first)
+    merged_second = reporter._merge(second)
+
+    assert merged_second.tool_name == "web_search"
+
+
+async def test_report_dispatches_merged_text_for_rapid_terminal_events() -> None:
+    """通过完整 report() 管道验证: 两个短时间内的 tool_failed (终态, 绕过频控)
+    合并后渲染文案同时提到两个工具名。"""
+    sent: list[str] = []
+
+    async def sender(text: str, event: ProgressEvent) -> None:
+        sent.append(text)
+
+    reporter = build_progress_reporter(agent_id="a1", session_id="s1", sender=sender)
+    await reporter.report(_event("tool_failed", task_id="t1", tool_name="query_memory", occurred_at=100.0))
+    await reporter.report(_event("tool_failed", task_id="t1", tool_name="web_search", occurred_at=100.5))
+
+    assert len(sent) == 2
+    assert "query_memory" in sent[1]
+    assert "web_search" in sent[1]
+
+
 async def test_loop_emit_progress_is_inert_without_callback() -> None:
     loop = _make_loop()
     # report_progress 默认 None → 直接返回, 即使 session 是裸对象也不访问其属性

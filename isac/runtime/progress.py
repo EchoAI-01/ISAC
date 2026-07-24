@@ -11,7 +11,7 @@ Agent Loop 只提交 ``ProgressEvent``；本模块负责策略判断、频控、
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from typing import TYPE_CHECKING
 
 from isac.core.types import ProgressEvent
@@ -111,6 +111,7 @@ class ProgressReporter:
         self._sender = sender
         self._last_emit_at: float = 0.0
         self._visible_count_by_task: dict[str, int] = {}
+        self._pending_merge: dict[tuple[str, str], ProgressEvent] = {}
 
     def rebind_sender(self, sender: Callable[[str, ProgressEvent], Awaitable[None]] | None) -> None:
         """D9: 复用 per-session 实例时重新绑定 sender (同一 session 后续消息可能来自不同连接)。"""
@@ -148,10 +149,19 @@ class ProgressReporter:
         return (now - self._last_emit_at) >= self.policy.min_interval_seconds
 
     def _merge(self, event: ProgressEvent) -> ProgressEvent:
-        """合并 merge_window 内的连续同类事件 (占位: 暂原样返回)。
+        """合并 merge_window_seconds 内, 同 task 同 stage 的相邻事件。
 
-        TODO(D9): 在 merge_window_seconds 窗口内合并相邻 tool_started/finished 降噪。
+        合并策略: 保留最新事件的其它字段, 把 tool_name 与前一条去重拼接, 让既有
+        渲染模板 (依赖 ``{tool}`` 占位符) 自然呈现"这几步都处理好了"式的合并
+        文案, 不必改动 PersonaProgressRenderer。不跨 stage / 不跨 task 合并。
         """
+        key = (event.task_id, event.stage)
+        pending = self._pending_merge.get(key)
+        if pending is not None and (event.occurred_at - pending.occurred_at) <= self.policy.merge_window_seconds:
+            names = [name for name in (pending.tool_name, event.tool_name) if name]
+            if names:
+                event = replace(event, tool_name="、".join(dict.fromkeys(names)))
+        self._pending_merge[key] = event
         return event
 
     def _sanitize(self, event: ProgressEvent) -> ProgressEvent:
