@@ -159,16 +159,20 @@ uv run python -m isac
 
 | 文档 | 内容 |
 |------|------|
-| [REQUIREMENTS.md](./REQUIREMENTS.md) | 统一需求清单 — 多 Agent、多 IM、拟人化、模型、控制面、稳定性与 SubAgent |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | 架构设计 — 系统拓扑、组件职责、消息生命周期、ADR 决策记录 |
-| [DEVELOP.md](./DEVELOP.md) | 开发指南 — 编码规范、模块开发流程、导入规则、测试编写 |
-| [SPECIFICATION.md](./SPECIFICATION.md) | 技术规范 — 数据模型 (ISACMessage/Session/Context)、接口契约 (ABC)、配置规范 |
-| [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) | 开发计划 — 节点制 SOW/TODO、当前进度、依赖关系 |
-| [HUMANLIKE_RUNTIME.md](./HUMANLIKE_RUNTIME.md) | 拟人化运行时 — ConversationRuntime、wait、主动任务、打断、上下文恢复 |
-| [MEMORY_DESIGN.md](./MEMORY_DESIGN.md) | 记忆系统 — 身份归一、写入/检索/注入/治理、无 embedding 模式 |
-| [ROUTING_AND_AGENT_MESH.md](./ROUTING_AND_AGENT_MESH.md) | 路由与 Agent Mesh — 旁听 Agent、handoff、ACL、上下文边界 |
-| [PLUGIN_COMPATIBILITY.md](./PLUGIN_COMPATIBILITY.md) | 插件兼容 — AstrBot / MaiBot / Native SDK 兼容范围、权限与测试 |
-| [CONTROL_PLANE_SPEC.md](./CONTROL_PLANE_SPEC.md) | 控制面规范 — REST API、MCP Server、Webhook、认证、审计 |
+| [docs/](./docs/README.md) | 文档导航 — 架构、规范、使用、部署、进度的统一入口 |
+| [REQUIREMENTS.md](./docs/REQUIREMENTS.md) | 统一需求清单 — 多 Agent、多 IM、拟人化、模型、控制面、稳定性与 SubAgent |
+| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | 架构设计 — 系统拓扑、组件职责、消息生命周期、ADR 决策记录 |
+| [DEVELOP.md](./docs/DEVELOP.md) | 开发指南 — 编码规范、模块开发流程、导入规则、测试编写 |
+| [SPECIFICATION.md](./docs/SPECIFICATION.md) | 技术规范 — 数据模型 (ISACMessage/Session/Context)、接口契约 (ABC)、配置规范 |
+| [DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) | 开发计划 — 节点制 SOW/TODO、依赖关系 |
+| [PROGRESS.md](./docs/PROGRESS.md) | 进度总表 — 各节点唯一进度事实源 |
+| [HUMANLIKE_RUNTIME.md](./docs/HUMANLIKE_RUNTIME.md) | 拟人化运行时 — ConversationRuntime、wait、主动任务、打断、上下文恢复 |
+| [MEMORY_DESIGN.md](./docs/MEMORY_DESIGN.md) | 记忆系统 — 身份归一、写入/检索/注入/治理、无 embedding 模式 |
+| [ROUTING_AND_AGENT_MESH.md](./docs/ROUTING_AND_AGENT_MESH.md) | 路由与 Agent Mesh — 旁听 Agent、handoff、ACL、上下文边界 |
+| [PLUGIN_COMPATIBILITY.md](./docs/PLUGIN_COMPATIBILITY.md) | 插件兼容 — AstrBot / MaiBot / Native SDK 兼容范围、权限与测试 |
+| [CONTROL_PLANE_SPEC.md](./docs/CONTROL_PLANE_SPEC.md) | 控制面规范 — REST API、MCP Server、Webhook、认证、审计 |
+| [CODE_REVIEW_REPORT.md](./docs/CODE_REVIEW_REPORT.md) | 复审报告 — 可运行性与需求完成度评估 |
+| [CHANGELOG.md](./docs/CHANGELOG.md) | 变更记录 |
 | [AGENTS.md](./AGENTS.md) | Agent 协作指南 — 给接手开发的 Agent 看的一页纸上下文 |
 
 ---
