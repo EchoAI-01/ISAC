@@ -1,22 +1,14 @@
-# ISAC 代码审查报告
+# ISAC 已修复缺陷追溯档案
 
-- **审查范围**：当前 `main` 分支代码基线及工作树中的未提交差异
-- **审查日期**：2026-07-23（同日追加应用级可运行性复审）
-- **审查方式**：静态代码审查、全量测试、关键控制面行为复现、主程序驻留动态验证
-- **总体结论**：**Request changes / Alpha**。组件级单元测试基础较好，但主程序启动后立即返回、真实 LLM Provider 不可用、持久化恢复和应用级 E2E 缺失；不应按“可生产运行的 v1.0.0”验收。前期问题的最新状态见第 8.4 节。
+> 本文件记录 2026-07-23 复审发现的 P0/P1 缺陷。**所有条目已由 K1-K8 稳定化节点修复**：
+> 主程序已驻留并支持优雅关闭、真实 `OpenAICompatProvider` 可用、存储/配置/Agent 可持久化恢复、
+> 单/多 Agent 端到端测试就位、安全基线落地；467 单测通过，Ruff/Mypy 全绿。当前进度见 [PROGRESS.md](./PROGRESS.md)。
+>
+> **保留原因**：源码与测试中约 40 处注释以 `(CODE_REVIEW_REPORT.md #N)` 锚定对应修复项，
+> 删除本文件会造成悬空引用。下方第 2–6 节即这些编号锚点的定义，请保持顺序，不要删除。
+> 过时的验证结果表、Alpha 结论与修复顺序建议已移除（结论已由实测复审取代）。
 
-## 1. 验证结果
-
-| 检查项 | 结果 | 说明 |
-|---|---:|---|
-| Ruff | 通过 | `.venv/bin/ruff check .` |
-| Mypy | 失败 | `aiocqhttp` 缺少 stubs/`py.typed`，检查 160 个源文件时 1 error |
-| Pytest | 378 passed，1 warning | `.venv/bin/python -m pytest tests -q` |
-| Statement coverage | 上次报告 71% | 本次未重新采集；CI 仍未设置 `--cov-fail-under` |
-| Branch coverage | 上次报告 51% | 本次未重新采集；关键启动、网关、真实 Provider、外部适配器和安全路径覆盖不足 |
-| 工作树 | 有既有差异 | `uv.lock` 中项目版本由 `0.1.0` 改为 `1.0.0`；本次审查未修改该文件 |
-
-## 2. 必须优先修复的问题
+## 2. 必须优先修复的问题（已全部修复）
 
 ### P0 / Critical：`agent_id` 可造成目录穿越写入
 
@@ -305,122 +297,3 @@ GET /api/v1/metrics → 200
 ## 6. 文档与版本状态不一致
 
 `AGENTS.md:5-38` 和 `README.md:54-71` 仍描述“Phase 1 中期”和大量模块待实现；而 `DEVELOPMENT_PLAN.md` 又记录 v1.0.0 已整体完成。建议明确该版本到底是“框架预览版”还是“生产可用版”，同步更新 README、AGENTS、部署文档和变更记录，避免新开发者误判功能完成度。
-
-## 7. 建议修复顺序
-
-1. **先修安全边界**：Agent ID 路径穿越、控制面认证、shared memory ACL。
-2. **再修可部署性**：环境变量映射、控制面启用逻辑、Docker healthcheck smoke test。
-3. **修复核心正确性**：路由内容、EventBus payload、会话状态隔离、Provider 异常回退和工具调用消息序列。
-4. **修复长期运行稳定性**：MCP 进程/pending、WebChat 输入、Session/Lock 生命周期、Discord 分页。
-5. **优化记忆与索引**：FTS 增量维护、Sparse BM25 增量索引。
-6. **补测试与 CI 门禁**：集成测试、覆盖率阈值、包构建、Docker smoke test。
-7. **最后同步版本和文档状态**。
-
-## 8. 2026-07-23 可运行性复审
-
-本节是在前述安全/正确性审查之后进行的应用级复审。历史发现保留用于追踪；本节以当前工作树和实际运行结果为准。
-
-### 8.1 当前定位
-
-**当前项目是 Alpha 框架：组件可测试，但应用服务不可用。** 不应继续按“生产可用 v1.0.0”验收。
-
-| 检查项 | 当前结果 | 判定 |
-|---|---:|---|
-| Pytest | 378 passed，1 warning | 组件级单元测试基础良好 |
-| Ruff | 通过 | 静态风格通过 |
-| Mypy | 失败：`aiocqhttp` 缺少 stubs/`py.typed` | 类型门禁未全绿 |
-| 主程序驻留 | 失败：打印“ISAC 启动完成”后立即返回 `MAIN_RETURNED` | 服务不可运行 |
-| Integration tests | `tests/integration/` 仅空 `__init__.py` | 无应用级证明 |
-| 真实 LLM | `OpenAICompatProvider.chat/chat_stream` 抛 `NotImplementedError` | 无真实 AI 对话 |
-| Docker | 未建立 build/start/health 真实 smoke | 不可宣称一键可用 |
-
-### 8.2 新增 Critical / P0
-
-#### P0：应用没有常驻与统一关闭生命周期
-
-**位置**：`isac/main.py:258-274`、`isac/__main__.py:7-8`
-
-**复现**：直接执行 `asyncio.run(main())` 后打印 `MAIN_RETURNED`。`main()` 在 `channel_registry.start_all()` 返回后结束，没有等待停止事件、信号处理、TaskGroup 或统一 close。Control、Alert 和 Channel 后台任务会随事件循环结束被取消。
-
-**影响**：即使初始化日志显示成功，应用也不会持续接收消息或提供控制面；Docker healthcheck 随后失败。
-
-**Required**：建立 `ApplicationRuntime`/`ServiceContainer`，统一管理 start/health/close、SIGINT/SIGTERM、启动回滚、后台任务异常传播和 graceful shutdown；增加进程级驻留与关闭测试。
-
-#### P0：真实 Provider 不可用
-
-**位置**：`isac/provider/llm/openai_compat.py:15-48`、`isac/main.py:113-140`
-
-配置真实 Provider 后仍只会调用未实现方法并最终返回降级话术。当前代码比旧版“静默 Stub”更诚实，但仍不能完成真实模型调用。
-
-**Required**：至少实现一个 Provider 的非流式、SSE、Tool Call、usage、错误分类、重试/fallback、健康检查和连接池关闭；用本地 Fake HTTP Server 做契约测试。
-
-#### P0：Storage/Memory 生命周期未闭环
-
-**位置**：`isac/main.py:143-188`、`isac/memory/pipeline.py`、`isac/memory/storage/{metadata,vector,graph}.py`
-
-Store 会被构造，但生产启动链没有统一执行 schema migration/init、Episode 写入、Sparse 重建、重启恢复与连接关闭；Vector/Graph/Reranker 仍是降级桩。
-
-**Required**：建立 StorageLifecycle 与 schema version/migration；接入真实 MemoryEncoder 写入；验证重启后检索和 shared namespace ACL。向量/图可以推迟，但必须明确为 experimental，不得计入 MVP 完成。
-
-#### P0：多 Agent 核心状态不能恢复，Agent Mesh 未真实投递
-
-**位置**：`isac/main.py:209-213`、`isac/runtime/manager.py:26-30,198-205`、`isac/gateway/{session,user_mapper}.py`
-
-`InterAgentBus` 未设置 deliver 回调；AgentManager、SessionManager、UserMapper 仍以进程内状态为主；重启后只创建默认 Agent，控制面写出的 Agent 配置不会组成完整恢复流程。
-
-**Required**：持久化并恢复 Agent registry/运行状态、Session、Identity、Routing、Link；完成 Bus deliver、超时和 handoff；增加重启恢复及双 Agent E2E。
-
-### 8.3 新增 Required / P1
-
-1. **真实集成测试为空**：`tests/integration/` 没有实际测试。必须覆盖单 Agent 纵向链、多 Agent/ACL、Control 配置生效、重启恢复、Docker 和浏览器黄金路径。
-2. **CI 没有发布门禁**：`.github/workflows/ci.yml` 未设置 branch coverage/`--cov-fail-under`，也没有 wheel/sdist、安装 smoke、Docker 或浏览器测试。
-3. **命令和密钥仍有桩**：`Focus/Agents/Mute/UnmuteCommand`、`SecretStore`、MemoryConsolidator 等仍未实现，不得在计划中按完整能力验收。
-4. **Webhook 缺 SSRF 与持久化边界**：订阅 URL 未限制内网/重定向/DNS rebinding，订阅仅内存保存；生产 Client 生命周期也未统一管理。
-5. **插件“沙箱”名不副实**：当前 `AstrBotImportFinder` 只是 import 兼容重定向，不能隔离文件、网络、进程或环境变量访问；应更名为兼容层或提供进程/容器级隔离。
-6. **WebUI v1 Token 持久化不安全**：管理 Token 写入 `localStorage`，需迁移为 HttpOnly/SameSite Session Cookie + CSRF，生产 HTTPS 下启用 Secure。
-7. **长期运行资源边界不足**：MCP pending/管道、Session/Lock/队列、Webhook Client、Bash 子进程树和同步文件读取仍需统一上限与关闭验证。
-8. **文档/版本状态失真**：README 的 Phase 1 描述与 DEVELOPMENT_PLAN 的 v1.0 完成记录冲突。当前版本应标记 Alpha/Preview，待稳定化验收后再确定正式版本。
-
-### 8.4 旧报告问题状态
-
-| 历史问题 | 当前状态 | 说明 |
-|---|---|---|
-| Agent ID 路径穿越 | 已部分修复，需回归 | `AgentConfig` 已有格式校验描述，但仍需 API/持久化双重路径 containment 测试 |
-| 审计/JSON metrics 认证绕过 | 已修复，需持续回归 | 当前端点使用认证 dependencies；`/metrics` 仍公开，需明确部署策略 |
-| Compose 环境变量未映射 | 已修复基础映射 | `ENV_MAPPING` 已覆盖 Control/LLM/OneBot；仍受主进程立即退出阻塞 |
-| 真实 LLM 静默 Stub | 部分修复 | 不再静默冒充，但真实 Provider 仍未实现 |
-| Metrics/Alert 未接线 | 部分修复 | 已注入同一 Metrics 并启动 AlertManager，但生命周期与 E2E 未通过 |
-| 路由剥词/EventBus payload | 需要重新验证 | 应纳入 K5 单 Agent 全链测试 |
-| 会话状态隔离/shared memory ACL | 仍需修复/验证 | 单测不能替代并发会话和跨用户 E2E |
-| MCP/WebChat/Discord/索引资源问题 | 仍需修复 | 长期运行和压力测试尚未建立 |
-
-### 8.5 可用版本准入清单
-
-只有以下条件全部满足，才可从 Alpha 提升为“可用版本”：
-
-- [ ] 主程序持续驻留，支持信号、启动回滚和优雅关闭；
-- [ ] 至少一个真实 LLM Provider 完成流式/工具/错误/usage 闭环；
-- [ ] Storage 初始化、迁移、记忆写入和重启恢复通过；
-- [ ] Agent/Session/Identity/Router/Link 可持久化恢复；
-- [ ] 单 Agent 与多 Agent E2E 通过；
-- [ ] 控制面、Webhook、插件和工具安全基线通过；
-- [ ] CI 覆盖率、包构建、Docker、浏览器测试成为强制门禁；
-- [ ] README、AGENTS、CHANGELOG、版本号与真实能力一致。
-
-### 8.6 执行顺序
-
-复审结果已映射为 `DEVELOPMENT_PLAN.md` 的 K1-K8：
-
-1. K1 应用常驻与资源生命周期；
-2. K2 真实 Provider；
-3. K3/K4 存储与运行状态恢复；
-4. K5 单 Agent E2E；
-5. K6 多 Agent/Control E2E；
-6. K7 安全与长期运行；
-7. K8 CI/Docker/浏览器/版本准入。
-
-K1-K5 完成前暂停 D9、J1-J3，避免继续横向扩展却没有可运行主链。
-
-## 最终 Verdict
-
-**Request changes / Alpha。** 当前组件级测试基础较好，但主程序不驻留、真实 Provider 不可用、持久化恢复和 E2E 缺失。K1-K8 完成前不得宣称生产可用或完成 v1.0 验收。

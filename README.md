@@ -171,8 +171,7 @@ uv run python -m isac
 | [ROUTING_AND_AGENT_MESH.md](./docs/ROUTING_AND_AGENT_MESH.md) | 路由与 Agent Mesh — 旁听 Agent、handoff、ACL、上下文边界 |
 | [PLUGIN_COMPATIBILITY.md](./docs/PLUGIN_COMPATIBILITY.md) | 插件兼容 — AstrBot / MaiBot / Native SDK 兼容范围、权限与测试 |
 | [CONTROL_PLANE_SPEC.md](./docs/CONTROL_PLANE_SPEC.md) | 控制面规范 — REST API、MCP Server、Webhook、认证、审计 |
-| [CODE_REVIEW_REPORT.md](./docs/CODE_REVIEW_REPORT.md) | 复审报告 — 可运行性与需求完成度评估 |
-| [CHANGELOG.md](./docs/CHANGELOG.md) | 变更记录 |
+| [CODE_REVIEW_REPORT.md](./docs/CODE_REVIEW_REPORT.md) | 已修复缺陷追溯档案 — 源码 `#N` 引用锚点 |
 | [AGENTS.md](./AGENTS.md) | Agent 协作指南 — 给接手开发的 Agent 看的一页纸上下文 |
 
 ---

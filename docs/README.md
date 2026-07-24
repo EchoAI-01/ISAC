@@ -19,8 +19,7 @@
 |------|------|
 | [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) | 开发 SOW / TODO 清单 / 下一步计划 |
 | [PROGRESS.md](./PROGRESS.md) | 各节点唯一进度事实源 |
-| [CODE_REVIEW_REPORT.md](./CODE_REVIEW_REPORT.md) | 复审报告 (可运行性与需求完成度) |
-| [CHANGELOG.md](./CHANGELOG.md) | 变更记录 |
+| [CODE_REVIEW_REPORT.md](./CODE_REVIEW_REPORT.md) | 已修复缺陷追溯档案 (源码 `#N` 引用锚点) |
 
 ## 专项施工图
 

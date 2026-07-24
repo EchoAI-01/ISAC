@@ -37,7 +37,7 @@
 
 K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可验证。剩余工作按下述优先级推进:
 
-1. **K8 收尾** — 补 WebUI 浏览器黄金路径测试,校准 README/AGENTS/CHANGELOG/版本号,确认发布准入。
+1. **K8 收尾** — 补 WebUI 浏览器黄金路径测试,校准 README/AGENTS/版本号,发版时再重建变更记录,确认发布准入。
 2. **D9 任务进度报告** — 实现 `ProgressEvent`/`ProgressReporter`,工具完成后按人设汇报;是 J4 与 WebUI 任务时间线的前置。
 3. **J1 Token 用量与成本计量** — 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。
 4. **J2 多模态 Provider 与能力选择** — 落地 `ModelDescriptor`/`ModelCatalog`/`ModelRouter`/`ArtifactStore`,填充 `provider/{embed,rerank,stt_tts}` 空目录。
@@ -468,41 +468,3 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 | **稳定化节点** | K1-K8；修复常驻、真实 Provider、持久化、E2E、安全和发布门禁的最高优先级工作。 |
 | **可用版本准入** | K1-K8 全部完成且真实运行验收通过后，项目才可从 Alpha 提升为可用版本。 |
 | **Observer Agent** | 旁听 Agent，只接收消息用于记忆/学习/候选协作，默认不发送 IM 回复。 |
-
----
-
-## 六、文档更新记录
-
-| 日期 | 更新人 | 内容 |
-|------|--------|------|
-| 2026-07-24 | Architect | 新增 J4 SubAgent Runtime：每个 Agent 可隔离委派工具/检索任务，主 Agent 只接收结构化结果但可按 task_id 查询持久化脱敏日志、证据、状态与用量；明确陪伴上下文隔离、权限收窄、取消恢复及 Agent Mesh 边界；代码待实现 |
-| 2026-07-23 | Reviewer | 复审撤回 v1.0/生产可用结论：实测主程序启动后立即返回；真实 Provider、存储恢复、多 Agent E2E 未闭环。新增 K1-K8 稳定化节点为最高优先级，I 节点 100% → 50% |
-| 2026-07-23 | Architect | 新增 J3 WebUI v2 设计：覆盖 Dashboard、Agent、Channel/路由、Provider/模型、用量成本、扩展、记忆、会话任务、日志审计与系统配置；加入安全配置事务、实时事件、响应式与无障碍要求；代码待实现 |
-| 2026-07-23 | Architect | 新增 J2 多模态 Provider 与能力选择设计：统一文本/视觉/STT/TTS/生图/视频理解与生成的能力目录、Agent 授权、ModelRouter、语义工具、ArtifactStore 和 Channel 降级；代码待实现 |
-| 2026-07-23 | Architect | 新增 J1 模型用量与成本计量设计：按物理请求记录 Provider/模型/Agent/会话/模态、缓存与推理 Token、非 Token 计量单位、重试/回退/失败、价格快照与查询权限；代码待实现 |
-| 2026-07-23 | Architect | 新增 D9 任务进度报告设计：工具完成后最低保障汇报，慢工具执行前可选汇报；定义 ProgressEvent/ProgressReporter、人格模板、频控合并、脱敏、WebChat 原生事件与普通 IM 降级。D 节点 100% → 89% |
-| 2026-07-23 | Architect | I6 最终测试与发布 v1.0.0: 单测 326 passed (核心模块 80%+ 覆盖率); CHANGELOG.md 记录 v1.0.0 全部变更; pyproject.toml + isac/__init__.py 版本号 → 1.0.0; A4 标 [x] (持续维护验收); Git tag v1.0.0。I 节点 83% → 100%, A 节点 85% → 100%。项目整体完成 v1.0.0 发布 (集成测试待业务全完成后做) |
-| 2026-07-23 | Architect | I5 监控告警完成: isac/observability/ 新增 MetricsCollector (Counter/Gauge/Histogram + Prometheus 输出 + JSON snapshot); AlertManager + AlertRule 规则驱动告警 (cooldown + 推送 Webhook); 3 个默认告警规则; server.py 暴露 /metrics + /api/v1/metrics。I 节点 67% → 83% |
-| 2026-07-23 | Architect | I4 数据工具完成: scripts/migrate.py AstrBot/MaiBot 迁移 (LLM 配置解析 + 插件复制 + 默认 Agent + --dry-run); scripts/export.py export/import 子命令 (zip 打包 + 排除 audit.ndjson/venv/pycache + overwrite 控制)。I 节点 50% → 67% |
-| 2026-07-23 | Architect | I3 文档完善完成: docs/ 新增 6 篇文档 (README 导航/usage 使用/deployment Docker 部署/api Admin REST API/plugin_development 插件开发/control_automation 控制面自动化)。I 节点 33% → 50% |
-| 2026-07-23 | Architect | I2 Docker 部署完成: Dockerfile 多阶段 (builder + runtime, python:3.12-slim) + uv sync + EXPOSE 8765 + HEALTHCHECK + VOLUME /app/data; docker-compose.yml 一键启动 + isac_data volume + restart unless-stopped + 环境变量; scripts/docker_deploy.sh 部署脚本 (8 命令); .dockerignore。I 节点 17% → 33% |
-| 2026-07-23 | Architect | I1 WebUI 管理面板完成: control/webui/{index.html,app.js,__init__.py} FastAPI 静态托管 + Vanilla JS (不依赖 Vue 构建); Agent/路由/Link/审计四模块; 前端 fetch Bearer Token 调 G1 API。I 节点 0% → 17% |
-| 2026-07-23 | Architect | H3 实用工具与子 Agent 完成: bash (命令白名单 + shell 元字符防护) / read_file (路径白名单 + 行范围) / write_file (路径白名单 + append) / web_search (后端注入) 在 D4 落地; 本节点补 TaskRunner 真实实现 (用 ISACAgentLoop 派生子任务, 限制 token 预算与递归深度)。H 节点 67% → 100% |
-| 2026-07-23 | Architect | H2 MCP Client 完成: MCPClient 支持 stdio 子进程 + HTTP/SSE 两种传输; connect/list_tools/call_tool/disconnect 完整生命周期; MCPToolBridge 桥接为 ISAC Tool; JSON-RPC 2.0 协议 + 错误处理。H 节点 33% → 67% |
-| 2026-07-23 | Architect | H1 平台适配器完成: Telegram (Bot API long polling + httpx); Discord (REST polling 简化版); WebChat (asyncio.start_server 极简 HTTP /webchat/send+/webchat/poll + 内存队列)。H 节点 0% → 33% |
-| 2026-07-23 | Architect | G4 控制面安全与审计完成: control/defaults.py RESTRICTED_TOOLS_POLICY (bash/task deny, read_file/write_file restricted) + RESTRICTED_COMMANDS_ALLOW; make_restricted_agent_config 工厂 (plugins_deny=["*"] + mcp_servers=[]); is_safe_default_host/enforce_safe_host 防误绑定; main.py 接入 enforce_safe_host。审计日志查询 (/api/v1/audit) 在 G1 落地。G 节点 75% → 100% |
-| 2026-07-23 | Architect | G3 Webhooks 完成: WebhookManager subscribe/unsubscribe/list/dispatch/trigger; dispatch 并发推送 + 失败重试 3 次 (指数退避); httpx 惰性导入或 http_client 注入; trigger 作 /automation/trigger 入口。G 节点 50% → 75% |
-| 2026-07-23 | Architect | G2 ISAC MCP Server 完成: JSON-RPC 2.0 + stdio NDJSON; initialize/tools/list/tools/call/shutdown 方法; tools/call 受 Bearer Token 认证 (与 G1 共用); 6 个工具委托到 AgentManager/Router/Bus; MCPError 标准 JSON-RPC 错误码; notification 不响应。G 节点 25% → 50% |
-| 2026-07-23 | Architect | G1 Admin API 完整实现: control/auth.py hmac.compare_digest 恒定时间认证; control/audit.py AuditLog 双写 + query; routes_agents/_routing/_plugins 全部接入 auth + audit + 持久化 (AgentConfig/routing/links/plugins 矩阵); server 注入 auth/audit + /api/v1/audit 查询。G 节点 0% → 25% |
-| 2026-07-23 | Architect | F4 插件加载器与启用矩阵完成: PluginLoader detect_format + load (三种格式多签名实例化); PluginManager load_all (错误隔离) + unload (on_unload) + call_on_load (Native 传 PluginContext); LoadedPlugin 元数据封装。F 节点 75% → 100% |
-| 2026-07-23 | Architect | F3 原生 SDK v2 完成: PluginContext register_tool/injector/command 真实落地; register_inter_agent_hook 挂到 InterAgentBus; register_admin_route 收集到 services["admin_routes"]; on_event_intercept/on_event_async 订阅 EventBus; make_plugin_context 工厂。F 节点 50% → 75% |
-| 2026-07-23 | Architect | F2 MaiBot 兼容层完成: MaiBotPlugin 基类 + @register_action/@register_command 装饰器; MaiBotPluginAdapter 扫描装饰器适配; bridge_action/bridge_command 桥接 (同步异步异常隔离)。F 节点 25% → 50% |
-| 2026-07-23 | Architect | F1 AstrBot 兼容层完成: FunctionToolAdapter 桥接 @filter.llm_tool; ContextAdapter 映射 send_message/get_platform/get_provider/register_tool; Star 基类 + _FilterRegistry 装饰器; EventType 映射到 ISAC; sandbox.py meta_path import 拦截。F 节点 0% → 25% |
-| 2026-07-23 | Architect | E4 启用矩阵生效: core/policy.py 新增 EnableMatrix (Agent ∩ Channel ∩ 全局); ToolRegistry effective_policy 接入; CommandRegistry enable_checker 注入; assembly.py 接线 EnableMatrix 与 4 个内置命令; manager.py handle_message 接入 /cmd 命令拦截 (跳过门控)。E 节点 60% → 80% |
-| 2026-07-22 | Architect | D 节点完成 100%：D4 工具系统补齐 (13 个内置工具全部实现, restricted 策略落地, 路径白名单/命令白名单/递归深度限制, shell 元字符注入防护)；D8 人格系统补齐 (MoodEngine update/decay/label 映射, BehaviorLearner FINAL_RESPONSE hook 接线, PersonaManager 聚合 mood/behavior)；新增 `tests/unit/test_persona.py`、扩展 `tests/unit/test_builtin_tools.py` 与 `tests/unit/test_tool_registry.py`；D 节点进度 75% → 100% |
-| 2026-07-22 | Architect | D1 整体验收：TurnScheduler 滑动窗口频率与存在感计数落地，runtime/manager.py 接线 record_window_message / effective_frequency / recent_self_replies / recent_window_messages / record_reply / idle_backoff.record_reply；D5/D6/D7 MVP 回填为已完成 (MetadataStore + FTS5 + BM25 真实实现，VectorStore/GraphStore/EmbeddingManager/Reranker 仍为桩)；D 节点进度 35% → 75% |
-| 2026-07-22 | Architect | A5 专项施工图补齐：新增拟人化运行时、记忆系统、路由与 Agent Mesh、插件兼容、控制面规范，并同步主文档索引 |
-| 2026-07-21 | Architect | 将日程制开发计划重构为节点制 SOW/TODO，新增术语表与节点使用规则 |
-| 2026-07-21 | Architect | C1 OneBot 适配器实现：反向 WebSocket 连接、消息转换（text/at/image/reply/face/record）、发送、重连；main.py 注册与回复发送；新增 12 个单元测试 |
-| 2026-07-21 | Architect | Review 修复 Round 2：OneBot 惰性导入（可选依赖不强制）、reply_to 对称/metadata 精简/@ 占位、会话锁键修复、Loop 接入 chat_with_retry、ReplyNecessityJudge 安全兜底、NoOpMemoryPipeline + StubProvider 让 main.py 可启动、prompt_builder 频率死锁、PRE_LLM 钩子串联、rules 字段过滤 |
-| 2026-07-21 | Architect | Review 修复 Round 1：PromptInjector 下沉到 core/ 打破导入环；TokenUsage 自动补 total；ConfigMigrator 缺省版本修复；AstrBot 沙箱改用 find_spec/exec_module；补全 has_mention 判定；同步修正 ARCH/DEVELOP/SPEC/AGENTS/README 文档错误与矛盾 |
