@@ -1,6 +1,10 @@
 """task 工具: 子 Agent 委派 (限制递归深度和预算)。
 
 经 services["task_runner"] 派生子 Agent 执行子任务; 未注入时返回友好错误。
+
+TODO(J4): 本工具是复用主 Loop/Session 的原型。J4 实现节点应保留 task 兼容入口, 但内部
+迁移到 isac.runtime.subagent.SubAgentSupervisor (独立 History/Prompt/Budget/Workspace +
+父权限子集 + 可追溯 SubAgentJournal), 不得继续共享主会话可变上下文。
 """
 
 from __future__ import annotations

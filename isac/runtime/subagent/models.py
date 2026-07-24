@@ -1,0 +1,135 @@
+"""J4 SubAgent 数据契约 (SPECIFICATION.md 2.5)。
+
+子 Agent 是父 Agent 下的临时隔离执行单元, 使用独立上下文与收窄权限, 结果和脱敏日志
+通过 task_id 关联。生效权限是父 Agent 权限、Agent SubAgentPolicy、Channel/全局策略和
+本次任务限制的交集。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from isac.core.types import TokenUsage
+
+
+def _merge_allowlist(a: list[str], b: list[str]) -> list[str]:
+    """合并两个 allow-list: 任一为空视为"该层不额外约束", 取另一方; 两方非空取交集。"""
+    if not a:
+        return list(b)
+    if not b:
+        return list(a)
+    return sorted(set(a) & set(b))
+
+
+@dataclass
+class SubAgentPolicy:
+    """子 Agent 的权限与资源上限 (SPECIFICATION.md 2.5)。"""
+
+    max_tokens: int = 8_000
+    timeout_seconds: int = 120
+    max_tool_calls: int = 12
+    max_depth: int = 1
+    max_log_bytes: int = 256_000
+    allowed_tools: list[str] = field(default_factory=list)
+    readable_memory_scopes: list[str] = field(default_factory=list)
+    allow_memory_write: bool = False
+    allow_channel_send: bool = False
+    allow_delegate: bool = False
+
+    def intersect(self, other: SubAgentPolicy) -> SubAgentPolicy:
+        """求两个策略的交集 (取更严格者), 用于权限收窄。
+
+        数值上限取 min; allow-list 用 _merge_allowlist 合并; 布尔权限取 AND
+        (两层都放行才放行), 保证子 Agent 权限恒为父层子集。
+        """
+        return SubAgentPolicy(
+            max_tokens=min(self.max_tokens, other.max_tokens),
+            timeout_seconds=min(self.timeout_seconds, other.timeout_seconds),
+            max_tool_calls=min(self.max_tool_calls, other.max_tool_calls),
+            max_depth=min(self.max_depth, other.max_depth),
+            max_log_bytes=min(self.max_log_bytes, other.max_log_bytes),
+            allowed_tools=_merge_allowlist(self.allowed_tools, other.allowed_tools),
+            readable_memory_scopes=_merge_allowlist(self.readable_memory_scopes, other.readable_memory_scopes),
+            allow_memory_write=self.allow_memory_write and other.allow_memory_write,
+            allow_channel_send=self.allow_channel_send and other.allow_channel_send,
+            allow_delegate=self.allow_delegate and other.allow_delegate,
+        )
+
+
+@dataclass
+class ContextEnvelope:
+    """传给子 Agent 的最小上下文信封。
+
+    约束 (§2.5.1): 不默认复制主会话全量历史、MoodState、RelationshipState、用户画像
+    或私有记忆正文; 只带最小任务摘要与显式授权的引用。
+    """
+
+    objective: str
+    summary: str = ""  # 主 Agent 提供的最小任务摘要
+    authorized_refs: list[str] = field(default_factory=list)  # 显式授权的证据 / 记忆引用
+    allowed_memory_scopes: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class SubAgentTask:
+    """一次子任务的提交描述 (SPECIFICATION.md 2.5)。"""
+
+    task_id: str
+    parent_agent_id: str
+    session_id: str
+    trace_id: str
+    objective: str
+    output_schema: dict = field(default_factory=dict)
+    context: dict = field(default_factory=dict)  # 最小摘要和授权引用
+    policy: SubAgentPolicy = field(default_factory=SubAgentPolicy)
+    created_at: int = 0
+
+
+@dataclass
+class SubAgentRun:
+    """子任务运行状态 (SPECIFICATION.md 2.5)。"""
+
+    task_id: str
+    status: str = "queued"  # queued | running | waiting_tool | succeeded | failed | cancelled | timed_out
+    phase: str = ""
+    started_at: int = 0
+    updated_at: int = 0
+    finished_at: int = 0
+    tokens_used: int = 0
+    tool_calls_used: int = 0
+    error_code: str = ""
+    error_summary: str = ""
+
+
+@dataclass
+class SubAgentEvent:
+    """子任务追加式日志事件 (SPECIFICATION.md 2.5); 不记录模型原始 reasoning。"""
+
+    task_id: str
+    seq: int
+    event_type: str  # status | model | tool | evidence | result | error
+    timestamp: int
+    summary: str
+    tool_name: str = ""
+    usage: TokenUsage | None = None
+    evidence_refs: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)  # 已脱敏、已截断
+
+
+@dataclass
+class SubAgentResult:
+    """子任务结构化结果 (主 Agent 默认只收到本对象)。"""
+
+    task_id: str
+    status: str
+    summary: str
+    data: dict = field(default_factory=dict)
+    evidence_refs: list[str] = field(default_factory=list)
+    usage: TokenUsage = field(default_factory=TokenUsage)
+    log_cursor: int = 0
+    completed_at: int = 0
+
+
+# 终态状态集合: 到达后不可再被 cancel 改写。
+TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})

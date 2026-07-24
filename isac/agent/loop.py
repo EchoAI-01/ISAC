@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import json
+import time
+import uuid
 from typing import TYPE_CHECKING
 
 from isac.agent.hooks import AgentHooks
@@ -19,6 +21,7 @@ from isac.core.types import (
     InjectionContext,
     LLMChunk,
     LLMResponse,
+    ProgressEvent,
     TokenUsage,
     ToolCall,
     ToolResult,
@@ -160,7 +163,45 @@ class ISACAgentLoop:
 
         # POST_TOOL: 触发记忆更新等副作用
         await self.hooks.fire(AgentHookPoint.POST_TOOL, tool_call, result, context)
+
+        # D9: 工具完成后按人设报告进度 (context.report_progress 为 None 时惰性跳过)。
+        await self._emit_progress(
+            context,
+            "tool_failed" if result.is_error else "tool_finished",
+            tool_name=tool_call.name,
+        )
         return result
+
+    async def _emit_progress(
+        self,
+        context: AgentContext,
+        stage: str,
+        *,
+        tool_name: str | None = None,
+        summary: str = "",
+    ) -> None:
+        """提交进度事件 (D9)。
+
+        ``context.report_progress`` 为 None 时直接返回 (默认关闭), 主链路热路径零变化。
+        进度是旁路信号, 发送失败在此吞掉, 不得中断主任务。
+        """
+        callback = context.report_progress
+        if callback is None:
+            return
+        event = ProgressEvent(
+            event_id=uuid.uuid4().hex,
+            task_id=str(context.services.get("task_id") or context.session.session_id),
+            agent_id=str(context.services.get("agent_id", "")),
+            session_id=context.session.session_id,
+            stage=stage,
+            tool_name=tool_name,
+            summary=summary,
+            occurred_at=time.time(),
+        )
+        try:
+            await callback(event)
+        except Exception as exc:
+            logger.warning("进度事件提交失败, 已忽略", stage=stage, error=str(exc))
 
     async def _call_llm(self, system_prompt: str, messages: list[dict], context: AgentContext) -> LLMResponse:
         """统一 LLM 调用入口，处理流式和非流式。

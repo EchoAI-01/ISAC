@@ -145,7 +145,22 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     MemoryRetrievalPipeline (CODE_REVIEW_REPORT.md #5)。
     """
     metrics = get_default_metrics()
-    provider_manager = ProviderManager(global_config.get("llm", {}), metrics=metrics)
+
+    # J1: 模型用量计量子系统 (默认关闭; observability.usage.enabled=true 时启用)。
+    # 未启用时 usage_recorder 为 None → ProviderManager 不计量, 主链路热路径零变化,
+    # 也不会创建任何 usage.db 文件。
+    usage_store: Any = None
+    usage_recorder: Any = None
+    usage_config = (global_config.get("observability", {}) or {}).get("usage", {}) or {}
+    if usage_config.get("enabled"):
+        from isac.observability.usage.pricing import PricingCatalog
+        from isac.observability.usage.recorder import UsageRecorder
+        from isac.observability.usage.storage import UsageStore
+
+        usage_store = UsageStore(str(DATA_DIR / "usage" / "usage.db"))
+        usage_recorder = UsageRecorder(store=usage_store, pricing=PricingCatalog())
+
+    provider_manager = ProviderManager(global_config.get("llm", {}), metrics=metrics, usage_recorder=usage_recorder)
     memory_config = global_config.get("memory", {})
     metadata_store: MetadataStore | None = None
     vector_store: VectorStore | None = None
@@ -194,12 +209,44 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
             metrics=metrics,
         )
 
+    # J2: 模型能力目录 / 路由 / 制品存储 (轻量, 始终构造, 无 I/O 副作用)。
+    # 默认无多模态 Provider 注册 → ModelRouter.select 返回 None, Agent 无多模态能力;
+    # 真实 Provider 注册与制品落地留待 J2 实现节点。
+    from isac.artifacts.store import ArtifactStore
+    from isac.provider.catalog import ModelCatalog
+    from isac.provider.router import ModelRouter
+
+    model_catalog = ModelCatalog()
+    model_router = ModelRouter(model_catalog)
+    artifact_store = ArtifactStore(str(DATA_DIR / "artifacts"))
+
+    # J4: SubAgent 运行时。Supervisor 轻量常驻 (纯内存); Journal 持久化默认关闭,
+    # subagent.enabled=true 时才创建 DB 与生命周期。执行循环留待 J4 实现节点。
+    from isac.runtime.subagent.supervisor import SubAgentSupervisor
+
+    subagent_journal: Any = None
+    if (global_config.get("subagent", {}) or {}).get("enabled"):
+        from isac.runtime.subagent.journal import SubAgentJournal
+
+        subagent_journal = SubAgentJournal(str(DATA_DIR / "subagent" / "journal.db"))
+    subagent_supervisor = SubAgentSupervisor(journal=subagent_journal)
+
     return {
         "global_config": global_config,
         "provider_manager": provider_manager,
         "memory_factory": memory_factory,
         "metrics": metrics,
         "storage_start": _storage_start if memory_config.get("enabled") else _noop_start,
+        # J1: 计量子系统句柄 (未启用时为 None, main 据此决定是否注册生命周期)。
+        "usage_store": usage_store,
+        "usage_recorder": usage_recorder,
+        # J2: 模型能力目录 / 路由 / 制品存储 (供多模态工具与能力选择使用)。
+        "model_catalog": model_catalog,
+        "model_router": model_router,
+        "artifact_store": artifact_store,
+        # J4: SubAgent 监督器 (常驻) 与日志句柄 (未启用时为 None)。
+        "subagent_supervisor": subagent_supervisor,
+        "subagent_journal": subagent_journal,
     }
 
 
@@ -349,6 +396,11 @@ async def main() -> None:
     await storage_start()
     runtime.register_lifecycle("storage", _noop_start, _noop_start)
 
+    # J1: 用量存储生命周期 (仅启用计量时注册; stop 时先 flush 缓冲再关连接)。
+    _register_usage_lifecycle(runtime, services)
+    # J4: 子任务日志生命周期 (仅启用 subagent.enabled 时注册)。
+    _register_subagent_lifecycle(runtime, services)
+
     # 先恢复持久化 Agent (data/agents/*/config.jsonc, enabled=true 的自动 start),
     # 再回退到默认 Agent 保证无任何持久化配置时也能跑通 (CODE_REVIEW_REPORT.md #2)。
     agents_dir = global_config.get("control", {}).get(
@@ -440,6 +492,35 @@ async def _register_control_plane(
         logger.info("控制面已注册", host=host, port=port)
     except Exception as exc:
         logger.error("控制面注册失败 (不阻塞数据面)", error=str(exc), exc_info=True)
+
+
+def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
+    """J1: 仅在启用计量时注册用量存储生命周期 (stop 时先 flush 缓冲再关连接)。
+
+    未启用计量 (usage_store 为 None) 时直接返回, 不注册任何生命周期, 主链路零变化。
+    """
+    usage_store = services.get("usage_store")
+    if usage_store is None:
+        return
+    usage_recorder = services.get("usage_recorder")
+
+    async def _usage_stop() -> None:
+        if usage_recorder is not None:
+            await usage_recorder.flush()
+        await usage_store.stop()
+
+    runtime.register_lifecycle("usage_store", usage_store.start, _usage_stop)
+
+
+def _register_subagent_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
+    """J4: 仅在启用 subagent 日志时注册 Journal 生命周期。
+
+    未启用 (subagent_journal 为 None) 时直接返回, 不创建任何 DB 文件。
+    """
+    journal = services.get("subagent_journal")
+    if journal is None:
+        return
+    runtime.register_lifecycle("subagent_journal", journal.start, journal.stop)
 
 
 def _get_version() -> str:

@@ -31,7 +31,7 @@
 
 各节点进度以 [PROGRESS.md](./PROGRESS.md) 为**唯一事实源**,本文档不再另存进度表,只描述节点定义、依赖与验收。
 
-当前概况(详见 PROGRESS.md): A-C、F-H 已完成;E 经 K6 端到端验收完成;D 待 D9;I 主体完成(WebUI 仅 v1);K1-K8 稳定化代码已落地,项目已达可运行完成度;J1-J4 仅设计待实现。
+当前概况(详见 PROGRESS.md): A-C、F-H 已完成;E 经 K6 端到端验收完成;I 主体完成(WebUI 仅 v1);K1-K8 稳定化代码已落地,项目已达可运行完成度;D9/J1/J2/J4 能力框架 (scaffolding) 已落地(契约/骨架/惰性接线就位、512 单测通过、ruff/mypy 全绿),业务实现待续。
 
 ## 三之二、下一步开发计划
 
@@ -198,7 +198,7 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **验收**：Agent Loop 在工具完成/失败后产生 `ProgressEvent`；慢工具可在执行前报告；`ProgressReporter` 完成人格模板渲染、敏感信息过滤、2 秒默认频控、连续事件合并和每任务上限；WebChat 输出原生 `progress` 事件，普通 IM 降级为带 `message_kind=progress` 的文本；发送失败不阻断主任务；中断后不再发送旧任务进度。
   - **产出**：`runtime/progress.py`、Agent Loop/Runtime/Channel 接线、Persona 进度模板、配置项及单元/集成测试。
   - **依赖**：D3、D4、D8、C1。
-  - **当前**：架构与协议已写入 `HUMANLIKE_RUNTIME.md`、`ARCHITECTURE.md`、`SPECIFICATION.md`、`DEVELOP.md`；代码待实现。
+  - **当前**：架构与协议已写入 `HUMANLIKE_RUNTIME.md`、`ARCHITECTURE.md`、`SPECIFICATION.md`、`DEVELOP.md`；**能力框架 (scaffolding) 已落地**——`core/types.ProgressEvent` + `AgentContext.report_progress`、`runtime/progress.py`（`ProgressPolicy`/`ProgressReporter`/`PersonaProgressRenderer`）、Agent Loop `_execute_tool` 受 `None` 保护的进度提交点、`assembly` 注入 `progress_reporter_factory`，附 `tests/unit/test_progress_reporter.py`；默认关闭（无 sender/回调时零行为变化）。人设模板 LLM 改写、跨窗口合并、Channel 原生 `progress` 帧与 IM 降级发送、中断后停止旧任务进度待实现节点补齐。
   - **边界**：默认模板渲染不额外调用 LLM；可选 LLM 改写必须受预算、超时和降级策略约束。进度不包含 reasoning、原始工具参数或未清洗结果，也不计入普通回复频率和行为学习。
 
 ---
@@ -370,13 +370,13 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **验收**：LLM/Embedding/Reranker/STT/TTS/ImageGen/Video 的每次物理请求均产生 `ModelUsageEvent`；重试、回退、失败和缓存 Token 可区分；支持按 Provider/模型/Agent/会话/模态/时间聚合；价格快照可追溯；未知价格不伪造成本；写入失败不阻塞主调用。
   - **产出**：`observability/usage/{models,recorder,storage,pricing}.py`、SQLite Schema、ProviderManager 接线、Usage REST API、指标与测试。
   - **依赖**：B2、G1、I5。
-  - **当前**：架构、数据契约、API、权限和隐私规范已写入 `ARCHITECTURE.md`、`SPECIFICATION.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；代码待实现。
+  - **当前**：架构、数据契约、API、权限和隐私规范已写入 `ARCHITECTURE.md`、`SPECIFICATION.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；**能力框架 (scaffolding) 已落地**——`observability/usage/{models,pricing,storage,recorder}.py`（`ModelUsageEvent`/`PricingCatalog`/`UsageStore`/`UsageRecorder`）、`ProviderManager` 成功/失败双路径受 `None` 保护的用量记录、`main` 计量子系统按 `observability.usage.enabled` 默认关闭并注册 Journal 生命周期，附 `tests/unit/test_usage_recorder.py`。`TokenUsage` 扩展字段（cache/reasoning/audio）、多维聚合查询、Usage REST API 与周期性 flush 待实现节点补齐。
 
 - [ ] **J2 多模态 Provider 与能力选择**
   - **验收**：文本、视觉理解、STT、TTS、图片生成、视频理解/生成 Provider 使用统一注册与能力声明；Agent 只感知被授权能力；输入内容、用户意图、成本/延迟策略可选择模型；不可用时按能力回退或明确失败；生成结果经制品存储和 Channel 能力适配发送。
   - **产出**：Provider 能力目录、ModelRouter、多模态 Provider ABC/适配器、能力 Injector、媒体工具、ArtifactStore、权限与测试。
   - **依赖**：D2-D4、E1/E4、H1、J1。
-  - **当前**：能力目录、Provider ABC、ModelRouter、Agent 能力授权、语义工具、媒体校验、ArtifactStore 与 Channel 降级设计已写入 `ARCHITECTURE.md`、`SPECIFICATION.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；代码待实现。
+  - **当前**：能力目录、Provider ABC、ModelRouter、Agent 能力授权、语义工具、媒体校验、ArtifactStore 与 Channel 降级设计已写入 `ARCHITECTURE.md`、`SPECIFICATION.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；**能力框架 (scaffolding) 已落地**——`artifacts/{models,store}.py`、`provider/base.py` 五个多模态 ABC、`provider/{catalog,router}.py`（`ModelDescriptor`/`ModelCatalog`/`ModelRouter`）、`provider/{embed,rerank,stt_tts}/base.py` 桩、`agent/injectors/model_capabilities.py`、`agent/tools/media.py`（默认 deny）、`main` 注入 `model_catalog`/`model_router`/`artifact_store`，附 `tests/unit/test_model_catalog.py`。真实多模态 Provider 网络实现、制品落地、MediaNormalizer、AgentConfig.model_capabilities_allow 字段与 assembly 媒体工具注册待实现节点补齐。
 
 - [ ] **J3 WebUI v2 管理与观测**
   - **验收**：Dashboard、Agent、Channel/路由、Provider/模型、Token/成本、插件/MCP/工具、记忆、会话/任务进度、日志/审计、系统设置页面可用；配置写入支持 Schema 校验、差异预览、二次确认、版本冲突检测和审计；密钥只可替换不可回显。
@@ -388,8 +388,8 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **验收**：每个 Agent 可用 `delegate_task` 创建隔离子任务；子 Agent 使用独立 History/Prompt/Budget/Workspace 和父权限子集；主 Agent 默认只收到结构化结果、证据引用和用量摘要；可通过 task_id 列表、查询状态、分页读取脱敏日志、取消任务；日志持久化后重启仍可查询；不记录原始 reasoning；子 Agent 默认不能直接发消息、写长期记忆或无限派生。
   - **产出**：`runtime/subagent/{models,supervisor,context,journal,broker}.py`、delegate/list/status/log/cancel 工具、SQLite Journal、Control API/WebUI 时间线、恢复/取消/权限/隐私/预算测试。
   - **依赖**：K1-K5、D3-D4、D9、J1、K3-K4。
-  - **当前**：架构、数据契约、陪伴上下文隔离、Agent Mesh 边界、日志与控制面接口已写入 `REQUIREMENTS.md`、`ARCHITECTURE.md`、`SPECIFICATION.md`、`HUMANLIKE_RUNTIME.md`、`ROUTING_AND_AGENT_MESH.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；代码待实现。
-  - **迁移**：H3 `TaskRunner` 仅为复用主 Loop/Session 的原型。J4 实现时应保留 `task` 工具的兼容入口，但内部迁移到 `SubAgentSupervisor`，不得继续共享主会话可变上下文。
+  - **当前**：架构、数据契约、陪伴上下文隔离、Agent Mesh 边界、日志与控制面接口已写入 `REQUIREMENTS.md`、`ARCHITECTURE.md`、`SPECIFICATION.md`、`HUMANLIKE_RUNTIME.md`、`ROUTING_AND_AGENT_MESH.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；**能力框架 (scaffolding) 已落地**——`runtime/subagent/{models,journal,context,supervisor,broker}.py`（全部 §2.5 契约 + `SubAgentPolicy.intersect` 权限交集 + `(task_id,seq)` 追加日志 + 幂等取消）、`agent/tools/subagent.py`（delegate/list/status/log/cancel，默认 deny/restricted）、`main` 注入 `subagent_supervisor` 并按 `subagent.enabled` 注册 Journal 生命周期，`task` 工具留迁移锚点，附 `tests/unit/test_subagent_supervisor.py`。真实子 Agent 执行循环（独立 History/Prompt/Budget/Workspace）、恢复/取消向 Provider/工具/子进程传播待实现节点补齐。
+  - **迁移**：H3 `TaskRunner` 仅为复用主 Loop/Session 的原型。J4 实现时应保留 `task` 工具的兼容入口，但内部迁移到 `SubAgentSupervisor`，不得继续共享主会话可变上下文（`agent/tools/utility/task.py` 已留 `TODO(J4)` 锚点）。
 
 ---
 

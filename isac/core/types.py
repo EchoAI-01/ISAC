@@ -134,6 +134,31 @@ class Budget:
         self.used_tokens += usage.total_tokens
 
 
+# ── 任务进度 (SPECIFICATION.md 1.6) ───────────────────────────
+
+
+@dataclass
+class ProgressEvent:
+    """Agent 任务阶段的结构化进度事实；不直接承载人格化文案。
+
+    Agent Loop 只提交本事件，人格化渲染、频控、合并、脱敏与平台降级
+    统一交给 ProgressReporter (isac/runtime/progress.py)。summary 必须
+    是已脱敏的事实摘要，禁止包含 reasoning、密钥、原始工具参数或未清洗结果。
+    """
+
+    event_id: str
+    task_id: str
+    agent_id: str
+    session_id: str
+    # "planned" | "tool_started" | "tool_finished" | "tool_failed" | "completed" | "interrupted"
+    stage: str
+    tool_name: str | None = None
+    summary: str = ""  # 已脱敏的事实摘要
+    occurred_at: float = 0.0
+    visible: bool = True
+    metadata: dict = field(default_factory=dict)
+
+
 # ── Context 层次 (ARCHITECTURE.md 3.4) ────────────────────────
 
 
@@ -169,6 +194,9 @@ class AgentContext(RuntimeContext):
     # 共享服务字典 (runtime/assembly 注入): gating/agent_manager/session_mgr 等
     # 让 Command 实现能访问 Agent 子系统 (CODE_REVIEW_REPORT.md #10)。
     services: dict[str, Any] = field(default_factory=dict)
+    # 任务进度回调 (D9): Agent Loop 只提交 ProgressEvent，实际发送由 ProgressReporter 负责。
+    # 默认 None 时进度报告关闭，主链路热路径零变化。
+    report_progress: Callable[[ProgressEvent], Awaitable[None]] | None = None
 
     def should_compress(self) -> bool:
         """上下文是否过大需要压缩（触发 COMPRESS hook）。

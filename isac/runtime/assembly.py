@@ -9,6 +9,7 @@ from typing import Any
 
 from isac.agent.hooks import AgentHooks
 from isac.agent.injectors.base_identity import BaseIdentityInjector
+from isac.agent.injectors.model_capabilities import ModelCapabilitiesInjector
 from isac.agent.injectors.tools_available import ToolsAvailableInjector
 from isac.agent.loop import ISACAgentLoop
 from isac.agent.prompt_builder import SystemPromptBuilder
@@ -41,6 +42,7 @@ from isac.memory.injector.person_profile import PersonProfileInjector
 from isac.persona.manager import PersonaManager
 from isac.runtime.config import AgentConfig
 from isac.runtime.instance import AgentInstance
+from isac.runtime.progress import build_progress_reporter
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -73,6 +75,10 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
 
     prompt_builder = SystemPromptBuilder()
     prompt_builder.register(BaseIdentityInjector())
+    # J2: 多模态能力注入器 (默认无授权媒体能力 → 注入空串, 主链路零变化)。
+    # model_capabilities_allow 字段将在 J2 实现节点加入 AgentConfig; 当前经 getattr 兜底。
+    _media_caps = [c for c in (getattr(config, "model_capabilities_allow", None) or []) if c != "chat"]
+    prompt_builder.register(ModelCapabilitiesInjector(_media_caps))
 
     hooks = AgentHooks()
     permission = ToolPermission(config.tools_policy)
@@ -116,6 +122,20 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     prompt_builder.register(HeuristicMemoryInjector(memory))
     prompt_builder.register(MidTermMemoryInjector(memory))
     agent_services = {**services, "memory": memory}
+
+    # D9 进度报告: 注入工厂 (默认无 sender → 惰性关闭, 主链路热路径零变化)。
+    # 实现节点在消息处理时用它构造 per-session Reporter 并绑定 Channel sender。
+    def _progress_reporter_factory(session_id, sender=None):  # noqa: ANN001, ANN202
+        return build_progress_reporter(
+            agent_id=config.agent_id,
+            session_id=session_id,
+            persona=config.persona,
+            policy_config=config.persona.get("progress"),
+            sender=sender,
+        )
+
+    agent_services["progress_reporter_factory"] = _progress_reporter_factory
+
     loop = ISACAgentLoop(
         llm=llm,
         prompt_builder=prompt_builder,

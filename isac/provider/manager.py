@@ -17,6 +17,7 @@ from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from isac.observability.metrics import MetricsCollector
+    from isac.observability.usage.recorder import UsageRecorder
     from isac.runtime.config import AgentConfig
 
 logger = get_logger(__name__)
@@ -27,12 +28,19 @@ DEGRADED_REPLY = "我现在有点累，稍后再聊好吗？"  # 降级回复 (L
 class ProviderManager:
     """Provider 管理器。"""
 
-    def __init__(self, config: dict[str, Any], metrics: MetricsCollector | None = None):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        metrics: MetricsCollector | None = None,
+        usage_recorder: UsageRecorder | None = None,
+    ):
         self.config = config
         self._primary: LLMProvider | None = None
         self._fallback: LLMProvider | None = None
         self._agent_providers: dict[str, LLMProvider] = {}
         self._metrics = metrics
+        # J1: 模型用量记录器 (默认 None → 不计量, 主链路热路径零变化)。
+        self._usage_recorder = usage_recorder
 
     def register(self, provider: LLMProvider, *, fallback: bool = False) -> None:
         """注册全局 Provider (main.py 组装时调用)。"""
@@ -146,17 +154,50 @@ class ProviderManager:
         return LLMResponse(content=DEGRADED_REPLY)
 
     async def _call_and_record(self, provider: LLMProvider, **kwargs: Any) -> LLMResponse:
-        """调用 provider.chat() 并记录 isac_llm_* 指标 (调用数/失败数/延迟/token 用量)。"""
-        if self._metrics is None:
-            return await provider.chat(**kwargs)
-        self._metrics.counter("isac_llm_calls_total").inc()
+        """调用 provider.chat() 并记录 isac_llm_* 指标与 J1 用量事件。
+
+        成功和失败都记录一次物理请求 (SPECIFICATION.md 2.3): 失败时用量保持 0
+        并标记 status=failed。指标与用量记录都在 finally 中完成, 记录失败不影响主调用。
+        """
         start = time.monotonic()
+        status = "success"
+        response: LLMResponse | None = None
+        if self._metrics is not None:
+            self._metrics.counter("isac_llm_calls_total").inc()
         try:
             response = await provider.chat(**kwargs)
+            return response
         except Exception:
-            self._metrics.counter("isac_llm_errors_total").inc()
+            status = "failed"
+            if self._metrics is not None:
+                self._metrics.counter("isac_llm_errors_total").inc()
             raise
         finally:
-            self._metrics.histogram("isac_llm_latency_seconds").observe(time.monotonic() - start)
-        self._metrics.counter("isac_llm_tokens_total").inc(response.usage.total_tokens)
-        return response
+            elapsed = time.monotonic() - start
+            if self._metrics is not None:
+                self._metrics.histogram("isac_llm_latency_seconds").observe(elapsed)
+                if response is not None:
+                    self._metrics.counter("isac_llm_tokens_total").inc(response.usage.total_tokens)
+            self._record_usage(provider, response, status, int(elapsed * 1000))
+
+    def _record_usage(
+        self,
+        provider: LLMProvider,
+        response: LLMResponse | None,
+        status: str,
+        latency_ms: int,
+    ) -> None:
+        """J1: 缓冲一次模型用量事件。recorder 为 None 时惰性跳过, 失败不影响主调用。"""
+        recorder = self._usage_recorder
+        if recorder is None:
+            return
+        try:
+            recorder.record_llm(
+                model=provider.get_model_name(),
+                provider=type(provider).__name__,
+                response=response,
+                status=status,
+                latency_ms=latency_ms,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("模型用量记录失败, 已忽略", error=str(exc))
