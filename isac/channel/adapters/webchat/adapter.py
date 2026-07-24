@@ -35,6 +35,8 @@ logger = get_logger(__name__)
 DEFAULT_MAX_BODY_BYTES = 1024 * 1024  # 1MB
 DEFAULT_READ_TIMEOUT_SECONDS = 10.0
 DEFAULT_MAX_CONNECTIONS = 200
+# K7: 待消费回复队列上限, 防止客户端不 poll 时内存无限增长
+DEFAULT_MAX_PENDING_REPLIES = 100
 
 
 class _RequestTooLarge(Exception):
@@ -55,6 +57,8 @@ class WebChatAdapter(PlatformAdapter):
         )
         self._max_connections = int(config.get("max_connections", DEFAULT_MAX_CONNECTIONS))
         self._connection_semaphore = asyncio.Semaphore(self._max_connections)
+        # K7: 每个 session 的待消费回复队列上限; 超出时丢弃最旧的 (FIFO), 不让内存无限增长
+        self._max_pending_replies = int(config.get("max_pending_replies", DEFAULT_MAX_PENDING_REPLIES))
         self._running = False
         # session_id -> 待消费的回复列表 [(timestamp, content)]
         self._pending_replies: dict[str, list[tuple[float, str]]] = {}
@@ -88,7 +92,10 @@ class WebChatAdapter(PlatformAdapter):
             self._http_server = None
 
     async def send(self, message: ISACMessage) -> bool:
-        """把 Bot 回复存入 session 的待消费队列。"""
+        """把 Bot 回复存入 session 的待消费队列。
+
+        K7: 队列长度上限, 超出时丢弃最旧的 (FIFO), 防止客户端长期不 poll 时内存无限增长。
+        """
         session_id = message.session_id or message.group_id or message.user_id
         if not session_id:
             logger.warning("WebChat send 缺少 session_id")
@@ -96,6 +103,9 @@ class WebChatAdapter(PlatformAdapter):
         async with self._lock:
             queue = self._pending_replies.setdefault(session_id, [])
             queue.append((time.time(), message.content))
+            # 超出上限时丢弃最旧的
+            while len(queue) > self._max_pending_replies:
+                queue.pop(0)
         return True
 
     async def receive_from_client(self, session_id: str, user_id: str, content: str) -> None:

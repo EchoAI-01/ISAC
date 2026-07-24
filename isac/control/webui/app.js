@@ -222,8 +222,11 @@ async function refreshAll() {
 }
 
 // 页面加载后自动刷新 (如果有保存的 token)
+// K7: 用 sessionStorage 而非 localStorage, 标签页关闭即清除, 不长期持久化 Bearer Token。
+// 生产场景 Bearer Token 应通过短期 Cookie + HttpOnly 或外置密码管理器提供, 这里仅为
+// 开发态便利, 关闭浏览器不会留下凭据。
 document.addEventListener("DOMContentLoaded", () => {
-    const saved = localStorage.getItem("isac_token");
+    const saved = sessionStorage.getItem("isac_token");
     if (saved) {
         document.getElementById("api-token").value = saved;
         refreshAll();
@@ -231,5 +234,5 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 document.getElementById("api-token").addEventListener("input", (e) => {
-    localStorage.setItem("isac_token", e.target.value);
+    sessionStorage.setItem("isac_token", e.target.value);
 });
