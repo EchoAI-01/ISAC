@@ -28,7 +28,7 @@ from isac.router.types import RoutingRules
 class _RecordingAgentManager:
     """模拟 AgentManager: handle_message() 总是返回一条固定回复。"""
 
-    async def handle_message(self, agent_id, message, session, user_profile):
+    async def handle_message(self, agent_id, message, session, user_profile, progress_sender=None):
         return "已收到"
 
 
@@ -83,7 +83,7 @@ async def test_process_message_dropped_when_router_has_no_match() -> None:
 class _RaisingAgentManager:
     """模拟 AgentManager: handle_message() 总是抛出未处理异常。"""
 
-    async def handle_message(self, agent_id, message, session, user_profile):
+    async def handle_message(self, agent_id, message, session, user_profile, progress_sender=None):
         raise RuntimeError("模拟 Agent 处理崩溃")
 
 

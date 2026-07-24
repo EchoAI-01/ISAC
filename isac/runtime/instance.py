@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from isac.gating.system import GatingSystem
     from isac.memory.pipeline import MemoryRetrievalPipeline
     from isac.persona.manager import PersonaManager
+    from isac.runtime.progress import ProgressReporter
 
 
 @dataclass
@@ -40,3 +41,5 @@ class AgentInstance:
     # E4 启用矩阵
     enable_matrix: EnableMatrix | None = None
     commands: CommandRegistry | None = None
+    # D9: per-session ProgressReporter 缓存 (min_interval_seconds 频控需跨消息生效)。
+    progress_reporters: dict[str, ProgressReporter] = field(default_factory=dict)

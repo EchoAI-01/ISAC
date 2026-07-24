@@ -10,12 +10,14 @@ from __future__ import annotations
 import pytest
 
 from isac.channel.model import ISACMessage, MessageSegment
+from isac.core.types import ProgressEvent
 from isac.gateway.models import Session
 from isac.memory.pipeline import NoOpMemoryPipeline
 from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
 from isac.runtime.config import AgentConfig
 from isac.runtime.manager import AgentManager
+from tests.fixtures.fakes import FakeLLMProvider, make_final_reply, make_tool_call_response
 
 AGENT_ID = "agent_a"
 
@@ -23,6 +25,21 @@ AGENT_ID = "agent_a"
 async def _make_running_agent_manager() -> AgentManager:
     provider_manager = ProviderManager({})
     provider_manager.register(StubProvider())
+    manager = AgentManager(
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        }
+    )
+    await manager.create(AgentConfig(agent_id=AGENT_ID))
+    await manager.start(AGENT_ID)
+    return manager
+
+
+async def _make_running_agent_manager_with_provider(provider: object) -> AgentManager:
+    provider_manager = ProviderManager({})
+    provider_manager.register(provider)  # type: ignore[arg-type]
     manager = AgentManager(
         {
             "provider_manager": provider_manager,
@@ -207,3 +224,48 @@ async def test_load_persisted_agents_missing_dir_returns_empty(tmp_path) -> None
 
     report = await load_persisted_agents(manager, str(tmp_path / "nonexistent"))
     assert report == {}
+
+
+@pytest.mark.asyncio
+async def test_handle_message_wires_progress_reporter_and_reuses_per_session() -> None:
+    """D9-1: handle_message() 消费 instance.services["progress_reporter_factory"]
+    构造/复用 per-session ProgressReporter, 绑定传入的 progress_sender, 赋值
+    agent_context.report_progress, 且正确填充 agent_id (此前恒为空字符串)。
+
+    同一 session 两次调用应复用同一个 ProgressReporter 实例 (per-session, 非
+    per-message), 使 min_interval_seconds 频控能跨消息生效。
+    """
+    provider = FakeLLMProvider(
+        scripted_replies=[
+            make_tool_call_response("query_memory", arguments={"query": "hi"}),
+            make_final_reply("first done"),
+            make_tool_call_response("query_memory", arguments={"query": "again"}),
+            make_final_reply("second done"),
+        ]
+    )
+    manager = await _make_running_agent_manager_with_provider(provider)
+    session = Session(session_id="sess_p1", user_id="u_p1", agent_id=AGENT_ID)
+
+    captured: list[ProgressEvent] = []
+
+    async def sender(text: str, event: ProgressEvent) -> None:
+        captured.append(event)
+
+    await manager.handle_message(
+        AGENT_ID, _at_message("m1", "u_p1"), session, None, progress_sender=sender
+    )
+    await manager.handle_message(
+        AGENT_ID, _at_message("m2", "u_p1"), session, None, progress_sender=sender
+    )
+
+    tool_events = [e for e in captured if e.stage == "tool_finished"]
+    # 第二条 tool_finished 被跨消息的 min_interval_seconds (默认 2.0s) 频控吞掉;
+    # 这恰恰证明两次 handle_message 复用的是同一个 ProgressReporter (而非各自新建
+    # 一个、频控互不干扰的实例) —— 与 per-message 设计相比的核心行为差异。
+    assert len(tool_events) == 1
+    assert tool_events[0].agent_id == AGENT_ID
+    assert tool_events[0].session_id == "sess_p1"
+
+    instance = await manager.get(AGENT_ID)
+    assert instance is not None
+    assert len(instance.progress_reporters) == 1

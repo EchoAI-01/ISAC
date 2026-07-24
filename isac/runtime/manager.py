@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -19,10 +20,18 @@ from isac.runtime.instance import AgentInstance
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from isac.channel.model import ISACMessage
+    from isac.core.types import ProgressEvent
     from isac.gateway.models import Session, UserProfile
+    from isac.runtime.progress import ProgressReporter
 
 logger = get_logger(__name__)
+
+# D9: instance.progress_reporters 的 session 数量软上限, 防止长期运行无界增长
+# (超出时丢弃最旧插入的 session, 与 WebChatAdapter._pending_replies 的 FIFO 上限同思路)。
+MAX_PROGRESS_REPORTERS_PER_AGENT = 500
 
 
 class AgentManager:
@@ -114,6 +123,7 @@ class AgentManager:
         message: ISACMessage,
         session: Session,
         user_profile: UserProfile | None,
+        progress_sender: Callable[[str, ProgressEvent], Awaitable[None]] | None = None,
     ) -> str | None:
         """处理一条路由到本 Agent 的消息，返回回复文本 (WAIT/DROP 返回 None)。
 
@@ -183,10 +193,13 @@ class AgentManager:
             logger.debug("门控未触发", agent_id=agent_id, kind=decision.kind.value)
             return None
 
+        reporter = self._get_or_create_progress_reporter(instance, session.session_id, progress_sender)
         agent_context = AgentContext(
             session=session,
             user_profile=user_profile,
             current_message=message,
+            services={"task_id": uuid.uuid4().hex, "agent_id": agent_id},
+            report_progress=reporter.report if reporter is not None else None,
         )
         messages = [{"role": "user", "content": message.content}]
         result = await instance.loop.run(messages, agent_context)
@@ -222,6 +235,32 @@ class AgentManager:
             return
         active = sum(1 for instance in self._agents.values() if instance.status == "running")
         metrics.gauge("isac_agents_active").set(active)
+
+    def _get_or_create_progress_reporter(
+        self,
+        instance: AgentInstance,
+        session_id: str,
+        sender: Callable[[str, ProgressEvent], Awaitable[None]] | None,
+    ) -> ProgressReporter | None:
+        """D9: 按 session 复用 ProgressReporter (使 min_interval_seconds 频控跨消息生效)。
+
+        未注入 progress_reporter_factory 时返回 None (旧测试/未组装该服务的场景),
+        主链路保持零行为变化。sender 每次调用都重新绑定, 因为同一 session 后续消息
+        可能来自不同的 Channel 连接。
+        """
+        factory = instance.services.get("progress_reporter_factory")
+        if factory is None:
+            return None
+        reporter = instance.progress_reporters.get(session_id)
+        if reporter is None:
+            if len(instance.progress_reporters) >= MAX_PROGRESS_REPORTERS_PER_AGENT:
+                oldest_session_id = next(iter(instance.progress_reporters))
+                del instance.progress_reporters[oldest_session_id]
+            reporter = factory(session_id, sender=sender)
+            instance.progress_reporters[session_id] = reporter
+        else:
+            reporter.rebind_sender(sender)
+        return reporter
 
 
 async def ensure_default_agent(manager: AgentManager, global_config: dict) -> AgentInstance:

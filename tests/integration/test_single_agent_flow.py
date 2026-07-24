@@ -221,8 +221,9 @@ async def test_tool_call_full_loop() -> None:
     msg = _msg("@bot 帮我查记忆", at_bot=True)
     await _run(msg, agent_manager=am, router=router, event_bus=eb, session_mgr=sm, user_mapper=um, channel_registry=cr)
 
-    assert len(channel.replies) == 1
-    assert channel.replies[0].content == "based on memory: hello"
+    # D9: 工具调用完成会先经 sender 送一条 progress 通知, 再是最终回复。
+    assert len(channel.replies) == 2
+    assert channel.replies[-1].content == "based on memory: hello"
     # 验证 LLM 被调用了 2 次 (tool_call + final_reply)
     assert len(provider.calls) == 2
 
@@ -291,6 +292,29 @@ async def test_restart_recovery_agent_can_still_handle_messages(tmp_path) -> Non
     inst = await am.get("persisted")
     assert inst is not None
     assert inst.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_tool_call_emits_progress_notification_before_final_reply() -> None:
+    """D9-1: 工具调用完成后应经 sender 送一条带 message_kind=progress 标记的通知到
+    同一 Channel, 在最终回复之前到达, 且不影响最终回复内容本身。
+    """
+    provider = FakeLLMProvider(
+        scripted_replies=[
+            make_tool_call_response("query_memory", arguments={"query": "hi"}),
+            make_final_reply("based on memory: hello"),
+        ]
+    )
+    (am, router, eb, sm, um, cr, channel, _) = await _build_e2e(default_agent="default", provider=provider)
+
+    msg = _msg("@bot 帮我查记忆", at_bot=True)
+    await _run(msg, agent_manager=am, router=router, event_bus=eb, session_mgr=sm, user_mapper=um, channel_registry=cr)
+
+    progress_msgs = [r for r in channel.replies if r.metadata.get("message_kind") == "progress"]
+    assert len(progress_msgs) >= 1
+    assert progress_msgs[0].metadata.get("progress_stage") == "tool_finished"
+    # 最终回复仍是最后一条、内容不受影响
+    assert channel.replies[-1].content == "based on memory: hello"
 
 
 @pytest.mark.asyncio

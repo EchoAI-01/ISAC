@@ -30,7 +30,7 @@ class _RecordingAgentManager:
     def __init__(self) -> None:
         self.received_messages: list[ISACMessage] = []
 
-    async def handle_message(self, agent_id, message, session, user_profile):
+    async def handle_message(self, agent_id, message, session, user_profile, progress_sender=None):
         self.received_messages.append(message)
         return None
 

@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 from isac.channel.model import ISACMessage
 from isac.channel.registry import ChannelRegistry
 from isac.core.events import EventType
+from isac.core.types import ProgressEvent
 from isac.gateway.event_bus import EventBus
 from isac.gateway.lock import SessionLockManager
 from isac.gateway.session import SessionManager
@@ -72,8 +74,11 @@ async def process_message(
 
     session = await session_mgr.get_or_create(routed_message, agent_id=decision.agent_id)
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
+    progress_sender = _make_progress_sender(channel_registry, routed_message, decision.agent_id)
     try:
-        reply = await agent_manager.handle_message(decision.agent_id, routed_message, session, profile)
+        reply = await agent_manager.handle_message(
+            decision.agent_id, routed_message, session, profile, progress_sender=progress_sender
+        )
     except Exception:
         metrics.counter("isac_messages_failed_total").inc()
         raise
@@ -110,6 +115,41 @@ async def _send_reply(
         logger.warning("回复发送失败", platform=incoming.platform, agent_id=agent_id)
     else:
         logger.info("Agent 回复已发送", agent_id=agent_id, platform=incoming.platform, length=len(reply_text))
+
+
+def _make_progress_sender(
+    channel_registry: ChannelRegistry, incoming: ISACMessage, agent_id: str
+) -> Callable[[str, ProgressEvent], Awaitable[None]]:
+    """D9: 构造绑定到本次到达消息所属 Channel 的进度 sender。
+
+    与 _send_reply 同构: 按 incoming.platform 找 adapter, 构造一条降级为普通文本的
+    ISACMessage, 附 metadata.message_kind=progress 供 Channel 侧按需特殊处理
+    (WebChat 输出原生 kind 字段, 其余平台按普通文本发送)。找不到 adapter / 发送失败
+    时只记日志, 不得影响主任务 (进度是旁路信号)。
+    """
+
+    async def sender(text: str, event: ProgressEvent) -> None:
+        adapter = channel_registry.get(incoming.platform)
+        if adapter is None:
+            return
+        progress_message = ISACMessage(
+            msg_id="",
+            platform=incoming.platform,
+            timestamp=0,
+            user_id=incoming.user_id,
+            user_name="",
+            group_id=incoming.group_id,
+            session_id=incoming.session_id,
+            content=text,
+            reply_to=incoming.msg_id,
+            metadata={"message_kind": "progress", "task_id": event.task_id, "progress_stage": event.stage},
+        )
+        try:
+            await adapter.send(progress_message)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("进度通知发送失败, 已忽略", platform=incoming.platform, agent_id=agent_id, error=str(exc))
+
+    return sender
 
 
 def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[str, Any]) -> None:
