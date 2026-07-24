@@ -72,8 +72,10 @@ def load_agent_config(path: str | Path) -> AgentConfig:
 
 
 def save_agent_config(path: str | Path, config: AgentConfig) -> None:
-    """保存 Agent 配置到 JSONC 文件。"""
+    """保存 Agent 配置到 JSONC 文件 (原子替换, K4)。"""
     file_path = Path(path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(json.dumps(asdict(config), ensure_ascii=False, indent=2), encoding="utf-8")
+    content = json.dumps(asdict(config), ensure_ascii=False, indent=2)
+    from isac.utils.fs import atomic_write_text
+
+    atomic_write_text(file_path, content)
     logger.info("Agent 配置已保存", agent_id=config.agent_id, path=str(file_path))
