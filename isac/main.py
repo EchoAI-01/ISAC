@@ -7,6 +7,7 @@ utils → provider → memory → persona → agent → gating → router
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 from pathlib import Path
 from typing import Any
@@ -31,8 +32,9 @@ from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
 from isac.router.router import MessageRouter
 from isac.router.rules import load_rules
-from isac.runtime.bus import InterAgentBus
-from isac.runtime.manager import AgentManager, ensure_default_agent
+from isac.runtime.application import ApplicationRuntime
+from isac.runtime.bus import InterAgentBus, InterAgentLink, InterAgentMessage
+from isac.runtime.manager import AgentManager, ensure_default_agent, load_persisted_agents
 from isac.utils.config import load_config
 from isac.utils.logger import get_logger, setup_logger
 
@@ -196,10 +198,22 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
 
 
 async def main() -> None:
-    """应用主入口。"""
+    """应用主入口。
+
+    使用 ApplicationRuntime 统一管理后台任务生命周期 (K1, DEVELOPMENT_PLAN.md):
+    - Channel/Control/Alert 等资源 register_lifecycle 成对注册, 启动按注册顺序、
+      关闭按 LIFO 倒序
+    - 后台 task 通过 runtime.spawn 挂到统一 TaskGroup, 持有强引用不被 GC
+    - SIGINT/SIGTERM 触发 request_stop(), 进入优雅关闭
+    - 之前 main 调 channel_registry.start_all() 后直接返回, 后台 task 随事件循环
+      结束被取消的 bug 已修 (CODE_REVIEW_REPORT.md #12/#13)
+    """
     global_config = load_config(DATA_DIR / "config.jsonc")
     setup_logger(debug=bool(global_config.get("debug", False)))
     logger.info("ISAC 启动中", version=_get_version())
+
+    runtime = ApplicationRuntime()
+    runtime.install_signal_handlers()
 
     # ── Provider ────────────────────────────────────────────
     services = build_services(global_config)
@@ -209,7 +223,37 @@ async def main() -> None:
     # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
     agent_manager = AgentManager(services)
     bus = InterAgentBus()
-    # TODO: bus.set_deliver(...) 投递到目标 Agent 的 Agent Loop
+    # 投递回调: 把 InterAgentMessage 路由到目标 Agent 的 handle_message。
+    # 命令 (ask_agent) 现在能拿到 response 而不是恒 None (CODE_REVIEW_REPORT.md #3)。
+    async def _deliver_to_agent(target_agent_id: str, message: InterAgentMessage) -> str | None:
+        # 互联消息复用原消息的 session 上下文; 跨 Agent 时把 from_agent 当作 user_id
+        # 让目标 Agent 不会因 has_at=False 而被门控过滤。但目标 Agent 的 handle_message
+        # 依赖真实 Session/UserProfile; 这里构造一个最小可路由会话。
+        wrapped = ISACMessage(
+            msg_id="",
+            platform="interagent",
+            timestamp=0,
+            user_id=message.from_agent,
+            user_name="",
+            group_id=None,
+            content=message.content,
+        )
+        session_mgr = SessionManager(global_config)
+        session = await session_mgr.get_or_create(wrapped, agent_id=target_agent_id)
+        return await agent_manager.handle_message(target_agent_id, wrapped, session, None)
+
+    bus.set_deliver(_deliver_to_agent)
+    # 启动时从 data/links.jsonc 恢复已持久化的互联 Link (CODE_REVIEW_REPORT.md #3)。
+    await _load_persisted_links(bus, DATA_DIR / "links.jsonc")
+    # Link 持久化回调: add_link/remove_link 改动时落盘 (失败只记日志, 不回滚 in-memory)。
+    def _persist_links_snapshot() -> None:
+        from isac.control.api.routes_routing import _persist_links
+
+        _persist_links(bus, DATA_DIR / "links.jsonc")
+
+    bus.set_persist(_persist_links_snapshot)
+    # 把 bus 也加入 services, 让 ask_agent 工具与命令能通过 context.services 访问。
+    services["bus"] = bus
 
     # ── Router (Channel 与 Agent 解耦) ──────────────────────
     rules = load_rules(global_config.get("router", {}).get("rules_file", DATA_DIR / "routing.jsonc"))
@@ -255,33 +299,63 @@ async def main() -> None:
     for adapter in channel_registry.list():
         adapter.on_message = handle_message
 
-    # ── Control Plane (可选) ─────────────────────────────────
-    control_config = global_config.get("control", {})
-    if control_config.get("enabled"):
-        await _start_control_plane(control_config, agent_manager, router, bus, metrics)
-
-    # ── 告警 (规则驱动, 复用同一个 metrics 实例; 目前无 WebhookManager 生产实例可注入,
-    # 告警仍会被记录/检查, 只是不会推送 Webhook 通知) ─────────
+    # ── Alert (规则驱动; 在 start 之前注册, 启动后才挂到 TaskGroup) ──
     alert_manager = AlertManager(metrics)
     for rule in get_default_alert_rules():
         alert_manager.add_rule(rule)
-    await alert_manager.start()
 
-    # ── 启动 ────────────────────────────────────────────────
+    # ── 启动编排 (K1): 所有资源通过 register_lifecycle 注册到 runtime ──
+    # 启动顺序: Channel 适配器 → Control Plane (可选) → Alert
+    # 关闭顺序 (LIFO): Alert → Control → Channel
+    runtime.register_lifecycle(
+        "channels",
+        channel_registry.start_all,
+        channel_registry.stop_all,
+    )
+    control_config = global_config.get("control", {}) or {}
+    if control_config.get("enabled"):
+        await _register_control_plane(
+            runtime, control_config, agent_manager, router, bus, metrics
+        )
+    runtime.register_lifecycle(
+        "alerts",
+        alert_manager.start,
+        alert_manager.stop,
+    )
+
+    # 先恢复持久化 Agent (data/agents/*/config.jsonc, enabled=true 的自动 start),
+    # 再回退到默认 Agent 保证无任何持久化配置时也能跑通 (CODE_REVIEW_REPORT.md #2)。
+    agents_dir = global_config.get("control", {}).get(
+        "agents_dir", str(DATA_DIR / "agents")
+    )
+    restore_report = await load_persisted_agents(agent_manager, agents_dir)
+    if restore_report:
+        logger.info("持久化 Agent 恢复完成", report=restore_report)
     await ensure_default_agent(agent_manager, global_config)
     await event_bus.fire_async(EventType.ON_START, {"config": global_config})
+
+    # ── 进入 runtime (启动 TaskGroup + 触发所有 register_lifecycle.start) ──
+    await runtime.start()
     logger.info("ISAC 启动完成")
-    await channel_registry.start_all()
+    await runtime.serve_forever()
+    await runtime.shutdown()
+    logger.info("ISAC 已退出")
 
 
-async def _start_control_plane(
+async def _register_control_plane(
+    runtime: ApplicationRuntime,
     control_config: dict[str, Any],
     agent_manager: AgentManager,
     router: MessageRouter,
     bus: InterAgentBus,
     metrics: MetricsCollector,
 ) -> None:
-    """启动控制面 (Admin API)。失败不阻塞数据面 (DEVELOP.md 7.4)。"""
+    """把控制面 (uvicorn Server) 注册到 runtime 的生命周期管理。
+
+    uvicorn Server 用 should_exit=True 触发优雅关闭, 再 await shutdown() 等连接退出;
+    serve() 是长循环, 通过 runtime.spawn 挂到 TaskGroup 持有强引用
+    (CODE_REVIEW_REPORT.md #12/#13)。
+    """
     try:
         import uvicorn
 
@@ -289,7 +363,29 @@ async def _start_control_plane(
         from isac.control.defaults import enforce_safe_host
         from isac.plugin.runtime.manager import PluginManager
 
-        app = create_control_app(agent_manager, router, bus, PluginManager({}), control_config, metrics=metrics)
+        # 用真实配置初始化 PluginManager, 并加载 plugins/ 目录下的全部插件。
+        # 失败不阻塞控制面启动: 加载报告会作为日志输出, 单个插件加载错误由 PluginManager
+        # 自身错误隔离 (CODE_REVIEW_REPORT.md #27)。
+        plugin_config = (control_config.get("plugins", {}) or {}) if isinstance(control_config, dict) else {}
+        plugin_manager = PluginManager(plugin_config)
+        plugins_dir = Path(control_config.get("plugins_dir", "plugins"))
+        # 用 to_thread 包装 Path.exists 避免 event loop 内 blocking IO (ruff ASYNC240)。
+        if await asyncio.to_thread(plugins_dir.exists):
+            try:
+                load_report = await plugin_manager.load_all(plugins_dir)
+                if load_report:
+                    logger.info("插件加载完成", report=load_report)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("插件加载过程异常, 不阻塞控制面", error=str(exc), exc_info=True)
+
+        app = create_control_app(
+            agent_manager,
+            router,
+            bus,
+            plugin_manager,
+            control_config,
+            metrics=metrics,
+        )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))
         config = uvicorn.Config(
@@ -298,15 +394,66 @@ async def _start_control_plane(
             port=port,
             log_level="warning",
         )
-        import asyncio
+        server = uvicorn.Server(config)
 
-        asyncio.get_running_loop().create_task(uvicorn.Server(config).serve())
-        logger.info("控制面已启动", host=host, port=port)
+        async def _start_control() -> None:
+            # uvicorn.Server.serve 是阻塞循环, 通过 runtime.spawn 挂到 TaskGroup;
+            # serve_forever 的 request_stop 设置 server.should_exit 让 serve 返回。
+            runtime.spawn(server.serve(), name="control-plane-uvicorn")
+
+        async def _stop_control() -> None:
+            server.should_exit = True
+            try:
+                await asyncio.wait_for(server.shutdown(), timeout=5.0)
+            except TimeoutError:
+                logger.warning("控制面 5 秒未完成优雅关闭, 继续往下走")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("控制面关闭异常", error=str(exc))
+
+        runtime.register_lifecycle("control_plane", _start_control, _stop_control)
+        logger.info("控制面已注册", host=host, port=port)
     except Exception as exc:
-        logger.error("控制面启动失败 (不阻塞数据面)", error=str(exc), exc_info=True)
+        logger.error("控制面注册失败 (不阻塞数据面)", error=str(exc), exc_info=True)
 
 
 def _get_version() -> str:
     from isac import __version__
 
     return __version__
+
+
+async def _load_persisted_links(bus: InterAgentBus, path: Path) -> None:
+    """从 data/links.jsonc 恢复互联 Link (CODE_REVIEW_REPORT.md #3)。
+
+    文件不存在或损坏时不阻塞启动; 损坏时仅记录 warning 并跳过, 让 in-memory 状态保持干净。
+    """
+    raw = await asyncio.to_thread(_read_links_file, path)
+    if raw is None:
+        return
+    for item in raw.get("links", []) or []:
+        try:
+            bus.add_link(InterAgentLink(**item))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Link 恢复失败, 跳过该项", link=item, error=str(exc))
+
+
+def _read_links_file(path: Path) -> dict | None:
+    """同步读取并解析 links.jsonc; 不存在/损坏返回 None。
+
+    拆成同步 helper 是为了让 async 调用方用 asyncio.to_thread 包装, 不在事件循环里
+    直接执行 blocking IO (ruff ASYNC240)。
+    """
+    if not path.exists():
+        return None
+    try:
+        try:
+            import json5 as _json5
+
+            return dict(_json5.loads(path.read_text(encoding="utf-8")))
+        except ImportError:
+            import json
+
+            return dict(json.loads(path.read_text(encoding="utf-8")))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("links.jsonc 解析失败, 跳过恢复", path=str(path), error=str(exc))
+        return None
