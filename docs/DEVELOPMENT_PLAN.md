@@ -38,8 +38,8 @@
 K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可验证。剩余工作按下述优先级推进:
 
 1. **K8 收尾** — 补 WebUI 浏览器黄金路径测试,校准 README/AGENTS/版本号,发版时再重建变更记录,确认发布准入。
-2. **D9 任务进度报告** — 实现 `ProgressEvent`/`ProgressReporter`,工具完成后按人设汇报;是 J4 与 WebUI 任务时间线的前置。
-3. **J1 Token 用量与成本计量** — 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。
+2. **[x] D9 任务进度报告** — 实现 `ProgressEvent`/`ProgressReporter`,工具完成后按人设汇报;是 J4 与 WebUI 任务时间线的前置。已完成,详见上文 D9 节点"当前"。
+3. **J1 Token 用量与成本计量**（下一项）— 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。
 4. **J2 多模态 Provider 与能力选择** — 落地 `ModelDescriptor`/`ModelCatalog`/`ModelRouter`/`ArtifactStore`,填充 `provider/{embed,rerank,stt_tts}` 空目录。
 5. **J4 SubAgent Runtime** — 基于 D9/J1 实现隔离子 Agent 与可追溯 `SubAgentJournal`,把 H3 `TaskRunner` 原型迁移为 `SubAgentSupervisor`。
 6. **J3 WebUI v2** — 汇聚上述能力,提供十域管理与观测面板。
@@ -194,12 +194,12 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：D2、D3。
   - **当前**：PersonaManager 合并全局/Agent 覆盖并聚合 MoodEngine + BehaviorLearner; MoodEngine 实现 update (valence/arousal 钳制 + 离散 label 映射) 与 decay (按 decay_rate 向中性衰减); BehaviorLearner 注册 FINAL_RESPONSE hook 从回复提取行为特征 (长度/emoji/话题) 写入 UserProfile.behavior_patterns, 带 max_patterns 滚动淘汰。已在 `runtime/assembly.py` 接线 `persona.register_hooks(hooks)`。附 `tests/unit/test_persona.py` (15 测试)。
 
-- [ ] **D9 任务进度报告**
+- [x] **D9 任务进度报告**
   - **验收**：Agent Loop 在工具完成/失败后产生 `ProgressEvent`；慢工具可在执行前报告；`ProgressReporter` 完成人格模板渲染、敏感信息过滤、2 秒默认频控、连续事件合并和每任务上限；WebChat 输出原生 `progress` 事件，普通 IM 降级为带 `message_kind=progress` 的文本；发送失败不阻断主任务；中断后不再发送旧任务进度。
   - **产出**：`runtime/progress.py`、Agent Loop/Runtime/Channel 接线、Persona 进度模板、配置项及单元/集成测试。
   - **依赖**：D3、D4、D8、C1。
-  - **当前**：架构与协议已写入 `HUMANLIKE_RUNTIME.md`、`ARCHITECTURE.md`、`SPECIFICATION.md`、`DEVELOP.md`；**能力框架 (scaffolding) 已落地**——`core/types.ProgressEvent` + `AgentContext.report_progress`、`runtime/progress.py`（`ProgressPolicy`/`ProgressReporter`/`PersonaProgressRenderer`）、Agent Loop `_execute_tool` 受 `None` 保护的进度提交点、`assembly` 注入 `progress_reporter_factory`，附 `tests/unit/test_progress_reporter.py`；默认关闭（无 sender/回调时零行为变化）。人设模板 LLM 改写、跨窗口合并、Channel 原生 `progress` 帧与 IM 降级发送、中断后停止旧任务进度待实现节点补齐。
-  - **边界**：默认模板渲染不额外调用 LLM；可选 LLM 改写必须受预算、超时和降级策略约束。进度不包含 reasoning、原始工具参数或未清洗结果，也不计入普通回复频率和行为学习。
+  - **当前**：业务实现已落地，满足强化完成定义。`runtime/manager.py::handle_message()` 消费 `progress_reporter_factory` 按 session 复用 `ProgressReporter` 并绑定 `main.py` 构造的 Channel sender；`AgentContext.services` 携带每次处理独立生成的 `task_id`。Agent Loop 补齐 6 个契约阶段：`planned`（本轮首次出现工具调用时）、`tool_started`（哨兵任务在 `slow_tool_threshold_seconds` 后触发、工具完成即取消）、`tool_finished`/`tool_failed`（沿用既有提交点）、`completed`/`interrupted`（仅当本轮已报告过 `planned` 才收束，避免无工具调用的简单回复产生噪音）。`ProgressReporter._merge()` 在 `merge_window_seconds` 内合并同 task 同 stage 的相邻事件（拼接 `tool_name` 复用既有模板）；任务 `completed`/`interrupted` 后把 `task_id` 计入短期黑名单，丢弃迟到旧进度并清理按 task 累积的字典。`PersonaProgressRenderer` 的 `llm` 模式在注入 Provider 时受 3 秒超时约束改写文案，超时/异常/空响应均回退模板。`WebChatAdapter` 的 `poll_replies()` 按 `metadata.message_kind` 输出 `kind="message"|"progress"` 帧（progress 帧附 `task_id`/`progress_stage`）；普通 IM 复用现有 `adapter.send()`，sender 侧已附带 `message_kind=progress` metadata，adapter 本身无需改动。覆盖：`tests/unit/test_progress_reporter.py`、`tests/unit/test_runtime_manager.py`、`tests/unit/test_platform_adapters.py`、`tests/unit/test_runtime_assembly.py`、`tests/integration/test_single_agent_flow.py`。
+  - **边界**：默认模板渲染不额外调用 LLM；可选 LLM 改写受预算、超时和降级策略约束。进度不包含 reasoning、原始工具参数或未清洗结果，也不计入普通回复频率和行为学习。
 
 ---
 
