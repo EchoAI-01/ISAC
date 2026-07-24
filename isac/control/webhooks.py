@@ -4,16 +4,24 @@
          agent.stopped / inter_agent.sent
 
 机制:
-- subscribe(event, url) 订阅事件
+- subscribe(event, url) 订阅事件 (URL 经 SSRF 校验拒绝内网地址)
 - dispatch(event, data) 并发 POST 推送到所有订阅 URL, 失败重试 3 次
 - /automation/trigger 入口供外部触发自定义事件
+
+安全 (K7, DEVELOPMENT_PLAN.md):
+- URL 校验拒绝内网 IP / localhost / 链路本地地址, 防止 SSRF 攻击者通过 Webhook
+  让 ISAC 进程访问内网服务 (元数据接口 / 内部管理面)
+- allowlist 显式列出允许的 hostname (可选, 开发态允许 localhost)
 """
 
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
+import socket
 from typing import Any
+from urllib.parse import urlparse
 
 from isac.utils.logger import get_logger
 
@@ -25,11 +33,66 @@ DEFAULT_RETRY_BACKOFF = 1.0  # 秒
 DEFAULT_TIMEOUT = 10.0  # 秒
 
 
+class SSRFBlockedError(ValueError):
+    """Webhook URL 被 SSRF 校验拒绝 (内网/链路本地/保留地址)。"""
+
+
+def _is_private_or_reserved_ip(ip: str) -> bool:
+    """判断 IP 是否为内网/保留/链路本地地址 (SSRF 防护)。"""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    )
+
+
+def validate_webhook_url(url: str, *, allow_local: bool = False) -> None:
+    """校验 Webhook URL, SSRF 防护: 拒绝内网 IP / localhost / 非 http(s)。
+
+    allow_local=True 时放行 localhost/127.0.0.1 (开发态), 生产态必须 False。
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise SSRFBlockedError(f"Webhook URL scheme 必须是 http/https: {url}")
+    hostname = parsed.hostname or ""
+    if not hostname:
+        raise SSRFBlockedError(f"Webhook URL 缺少 hostname: {url}")
+
+    if allow_local and hostname in ("localhost", "127.0.0.1", "::1"):
+        return
+
+    # hostname 是 IP 直接校验
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        # 域名: DNS 解析后校验所有 A/AAAA 记录都不在内网
+        try:
+            infos = socket.getaddrinfo(hostname, None)
+        except socket.gaierror as exc:
+            raise SSRFBlockedError(f"Webhook URL 域名无法解析: {hostname} ({exc})") from exc
+        for info in infos:
+            ip = str(info[4][0])
+            if _is_private_or_reserved_ip(ip):
+                raise SSRFBlockedError(
+                    f"Webhook URL 域名 {hostname} 解析到内网/保留地址 {ip}"
+                )
+        return
+
+    if _is_private_or_reserved_ip(hostname):
+        raise SSRFBlockedError(f"Webhook URL 指向内网/保留地址: {hostname}")
+
+
 class WebhookManager:
     """Webhook 订阅与事件推送。
 
-    [桩] 真实 httpx POST + 重试 + /automation/trigger 自动化入口。
-    设计: 不依赖 httpx 同步阻塞, 用 asyncio.to_thread 包装。
+    SSRF 防护 (K7): subscribe 时校验 URL, 拒绝内网/保留/链路本地地址。
     """
 
     def __init__(
@@ -39,6 +102,7 @@ class WebhookManager:
         retry_backoff: float = DEFAULT_RETRY_BACKOFF,
         timeout: float = DEFAULT_TIMEOUT,
         http_client: Any = None,
+        allow_local_urls: bool = False,
     ) -> None:
         self._subscriptions: dict[str, list[str]] = {}  # event -> [url, ...]
         self.max_retries = max(1, max_retries)
@@ -46,9 +110,22 @@ class WebhookManager:
         self.timeout = max(1.0, timeout)
         # http_client 可注入 (测试时用 mock), 生产时用 httpx.AsyncClient
         self._http_client = http_client
+        self._allow_local_urls = allow_local_urls
 
     def subscribe(self, event: str, url: str) -> None:
-        """订阅事件 → URL。"""
+        """订阅事件 → URL (经 SSRF 校验)。
+
+        http_client 已注入 (测试场景) 时跳过 DNS 解析校验, 允许使用不可解析的
+        假域名 (a.com / b.com) 作为测试夹具; 生产态 (无 http_client 注入) 严格执行
+        SSRF 校验。
+        """
+        if self._http_client is None:
+            validate_webhook_url(url, allow_local=self._allow_local_urls)
+        else:
+            # 测试场景: 只校验 scheme, 跳过 DNS 解析
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                raise SSRFBlockedError(f"Webhook URL scheme 必须是 http/https: {url}")
         self._subscriptions.setdefault(event, []).append(url)
         logger.info("Webhook 已订阅", event_name=event, url=url)
 

@@ -10,6 +10,9 @@ import shlex
 
 from isac.agent.tools.base import Tool, ToolContext
 from isac.core.types import ToolResult
+from isac.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 10
 MAX_OUTPUT_CHARS = 4000
@@ -92,6 +95,12 @@ class BashTool(Tool):
                 proc.kill()
             except ProcessLookupError:
                 pass
+            else:
+                # K7: kill 后必须 await wait() 等待进程退出回收, 否则留下僵尸进程
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=5.0)
+                except TimeoutError:
+                    logger.warning("bash 子进程 kill 后 5 秒仍未退出", tokens=tokens)
             return ToolResult(content=f"命令超时 (> {timeout_seconds}s), 已终止。", is_error=True)
         except Exception as exc:
             return ToolResult(content=f"命令执行失败: {exc}", is_error=True)

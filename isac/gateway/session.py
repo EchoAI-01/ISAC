@@ -2,6 +2,8 @@
 
 会话归属: Session 含 agent_id 字段 (SPECIFICATION.md 1.2)，
 同一会话在不同 Agent 下是相互独立的 Session。
+
+K7: 内存实现 + TTL 回收 + session_id 二级索引 (替代线性扫描)。
 """
 
 from __future__ import annotations
@@ -15,16 +17,21 @@ from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+DEFAULT_TTL_SECONDS = 3600  # 1 小时无活动自动回收
+
 
 class SessionManager:
     """会话管理器。
 
-    [桩] 内存实现; 待 SQLite 持久化 (data/sessions/) 与启动时加载活跃会话落地。
+    K7: 加 session_id 二级索引 + TTL 回收, 长期运行不内存膨胀;
+    get(session_id) 由 O(N) 降为 O(1)。
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
-        self._sessions: dict[str, Session] = {}
+        self._sessions: dict[str, Session] = {}  # session_key -> Session
+        self._by_id: dict[str, str] = {}  # session_id -> session_key (二级索引)
+        self._ttl_seconds = int(self.config.get("session_ttl_seconds", DEFAULT_TTL_SECONDS))
 
     def make_session_key(self, agent_id: str, platform: str, user_id: str, group_id: str | None) -> str:
         """生成会话键: agent + 平台 + (群 或 用户)。"""
@@ -46,18 +53,38 @@ class SessionManager:
                 created_at=unix_now(),
             )
             self._sessions[key] = session
+            self._by_id[session.session_id] = key
             logger.info("创建会话", session_id=session.session_id, key=key)
         session.last_active = unix_now()
         message.session_id = session.session_id
+        # 惰性回收: 每次 get_or_create 顺便清理过期 session
+        self._gc_expired()
         return session
 
     async def get(self, session_id: str) -> Session | None:
-        for session in self._sessions.values():
-            if session.session_id == session_id:
-                return session
-        return None
+        """按 session_id 查找 (O(1) 二级索引)。"""
+        key = self._by_id.get(session_id)
+        if key is None:
+            return None
+        return self._sessions.get(key)
 
     async def close(self, session_id: str) -> None:
-        session = await self.get(session_id)
-        if session:
+        """关闭并移除会话。"""
+        key = self._by_id.pop(session_id, None)
+        if key is None:
+            return
+        session = self._sessions.pop(key, None)
+        if session is not None:
             session.state = "closed"
+
+    def _gc_expired(self) -> None:
+        """惰性清理 TTL 过期会话 (K7: 防止长期运行内存膨胀)。"""
+        if self._ttl_seconds <= 0:
+            return
+        cutoff = unix_now() - self._ttl_seconds
+        expired_keys = [k for k, s in self._sessions.items() if s.last_active < cutoff]
+        for key in expired_keys:
+            session = self._sessions.pop(key, None)
+            if session is not None:
+                self._by_id.pop(session.session_id, None)
+                logger.debug("回收过期会话", session_id=session.session_id, key=key)

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from isac.agent.tools.base import Tool, ToolContext
@@ -57,9 +58,8 @@ class ReadFileTool(Tool):
         end_line = max(start_line, int(context.args.get("end_line", MAX_READ_LINES) or MAX_READ_LINES))
 
         try:
-            data = safe_path.read_bytes()
-            if len(data) > MAX_READ_BYTES:
-                data = data[:MAX_READ_BYTES]
+            # K7: 只读 MAX_READ_BYTES + 1 字节, 不整文件加载到内存后才截断
+            data = await asyncio.to_thread(_read_limited_bytes, safe_path, MAX_READ_BYTES + 1)
             text = data.decode("utf-8", errors="replace")
         except Exception as exc:
             return ToolResult(content=f"读取失败: {exc}", is_error=True)
@@ -81,3 +81,10 @@ def _resolve_safe(workspace_root: str, raw_path: str) -> Path | None:
     except ValueError:
         return None
     return candidate
+
+
+def _read_limited_bytes(path: Path, max_bytes: int) -> bytes:
+    """同步读取最多 max_bytes 字节; 拆 helper 让 async 调用方用 asyncio.to_thread 包装
+    避免 event loop 内 blocking IO (ruff ASYNC230, K7)。"""
+    with open(path, "rb") as f:
+        return f.read(max_bytes)
