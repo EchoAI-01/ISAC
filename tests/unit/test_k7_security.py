@@ -273,7 +273,7 @@ async def test_bash_timeout_kills_and_waits_for_process(monkeypatch: pytest.Monk
         captured_proc_holder["proc"] = fake_proc
         return fake_proc
 
-    async def _fake_wait_for(coro, _timeout=None):  # noqa: ASYNC109
+    async def _fake_wait_for(coro, timeout=None, **_kwargs):  # noqa: ASYNC109
         # 区分: communicate() 的 wait_for 抛 TimeoutError 触发 kill 分支;
         # proc.wait() 的 wait_for 正常 await 让 FakeProc.wait 返回
         # 通过 coro 名字区分
