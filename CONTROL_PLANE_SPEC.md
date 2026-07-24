@@ -405,7 +405,24 @@ GET resource + schema + revision
 
 客户端断线后使用 `Last-Event-ID` 恢复；高频指标采用 5–15 秒聚合快照，日志按需订阅并设置速率和行数上限。实时通道只发送当前 Token scope 可读的资源。
 
-### 8.4 前端工程与体验约束
+### 8.4 SubAgent 任务与日志
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/agents/{agent_id}/subagent-runs` | 创建隔离子任务 |
+| GET | `/agents/{agent_id}/subagent-runs` | 按会话、状态、时间分页列出任务 |
+| GET | `/subagent-runs/{task_id}` | 查询状态、预算、结果和错误摘要 |
+| GET | `/subagent-runs/{task_id}/events` | 分页读取脱敏工作日志与证据引用 |
+| POST | `/subagent-runs/{task_id}/cancel` | 请求取消运行中任务 |
+| GET | `/subagent-runs/{task_id}/artifacts` | 查询当前调用方有权访问的制品 |
+
+权限 scope：`subagent:run`、`subagent:read`、`subagent:cancel`、`subagent:log:read`。父 Agent 只能访问自己创建的任务，管理员按 scope 访问；用户级查询还要满足会话/身份 ACL。
+
+接口不得返回模型原始 reasoning、密钥、Cookie、Authorization Header、完整文件内容或未清洗工具结果。日志默认返回事件摘要和 `evidence_ref`；读取证据需要对应 Artifact/Memory 权限并写审计。取消是幂等请求，任务进入终态后返回原终态，不能伪造成功取消。
+
+WebUI 的 Sessions & Tasks 页面应展示父 Agent、task_id、状态、阶段、耗时、预算、Token、工具次数、错误、证据和时间线，并支持取消；默认折叠参数与结果摘要，敏感字段永不渲染。
+
+### 8.5 前端工程与体验约束
 
 - 采用路由化 SPA 与可复用设计系统；服务端状态集中缓存，筛选/分页写入 URL，避免单个 `app.js` 持续膨胀。
 - 桌面端优先但支持 320/768/1024/1440px；复杂表格在小屏切换为摘要列表，不强制横向挤压。
@@ -439,6 +456,8 @@ GET resource + schema + revision
 | Model Catalog | 可列出模型模态、operation、限制和健康状态，Agent 只能看到授权能力 |
 | Model Router | 根据能力、授权、健康、成本与延迟选择模型并给出可观测选择原因 |
 | Artifact | 生成媒体有权限、大小、保留期和短时下载控制；Channel 不支持时安全降级 |
+| SubAgent | 可创建、查询、取消隔离子任务；主 Agent 可按 task_id 读取脱敏日志与证据且无需重跑 |
+| SubAgent Privacy | 日志不含 reasoning、凭据、完整敏感输入或未清洗工具结果；查询受父 Agent/会话/scope ACL 约束 |
 
 ---
 
@@ -446,6 +465,7 @@ GET resource + schema + revision
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-24 | Architect | 新增 SubAgent 任务创建、状态、日志、证据与取消 API，补充 scope、隐私和 WebUI 时间线要求 |
 | 2026-07-23 | Architect | 新增 WebUI v2 信息架构、配置编辑事务、实时事件、权限、安全、响应式与无障碍约束 |
 | 2026-07-23 | Architect | 新增模型用量资源、查询 API、权限与隐私边界，支持按 Provider/模型/Agent/模态聚合 Token、非 Token 单位与估算成本 |
 | 2026-07-22 | Architect | 新增控制面专项规范，补充资源模型、REST/MCP/Webhook schema、认证、审计与自动化安全默认值 |

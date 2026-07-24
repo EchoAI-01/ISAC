@@ -679,7 +679,96 @@ Agent 通过 `ModelCapabilitiesInjector` 只感知其被授权且当前健康的
 
 媒体输入先进入 `MediaNormalizer` 做类型、大小、时长、来源与安全校验；生成结果写入 `ArtifactStore`，返回 `ArtifactRef`，再由 Channel Adapter 根据平台能力发送或降级为受控下载链接。二进制内容不得直接塞入对话历史、日志或记忆。
 
-### 2.5 并发控制
+### 2.5 SubAgent Runtime — 隔离任务契约
+
+```python
+@dataclass
+class SubAgentPolicy:
+    max_tokens: int = 8_000
+    timeout_seconds: int = 120
+    max_tool_calls: int = 12
+    max_depth: int = 1
+    max_log_bytes: int = 256_000
+    allowed_tools: list[str] = field(default_factory=list)
+    readable_memory_scopes: list[str] = field(default_factory=list)
+    allow_memory_write: bool = False
+    allow_channel_send: bool = False
+    allow_delegate: bool = False
+
+
+@dataclass
+class SubAgentTask:
+    task_id: str
+    parent_agent_id: str
+    session_id: str
+    trace_id: str
+    objective: str
+    output_schema: dict = field(default_factory=dict)
+    context: dict = field(default_factory=dict)  # 最小摘要和授权引用
+    policy: SubAgentPolicy = field(default_factory=SubAgentPolicy)
+    created_at: int = 0
+
+
+@dataclass
+class SubAgentRun:
+    task_id: str
+    status: str = "queued"  # queued | running | waiting_tool | succeeded | failed | cancelled | timed_out
+    phase: str = ""
+    started_at: int = 0
+    updated_at: int = 0
+    finished_at: int = 0
+    tokens_used: int = 0
+    tool_calls_used: int = 0
+    error_code: str = ""
+    error_summary: str = ""
+
+
+@dataclass
+class SubAgentEvent:
+    task_id: str
+    seq: int
+    event_type: str  # status | model | tool | evidence | result | error
+    timestamp: int
+    summary: str
+    tool_name: str = ""
+    usage: TokenUsage | None = None
+    evidence_refs: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)  # 已脱敏、已截断
+
+
+@dataclass
+class SubAgentResult:
+    task_id: str
+    status: str
+    summary: str
+    data: dict = field(default_factory=dict)
+    evidence_refs: list[str] = field(default_factory=list)
+    usage: TokenUsage = field(default_factory=TokenUsage)
+    log_cursor: int = 0
+    completed_at: int = 0
+```
+
+`SubAgentSupervisor` 契约：
+
+```python
+class SubAgentSupervisor:
+    async def submit(self, task: SubAgentTask) -> SubAgentRun: ...
+    async def get_status(self, task_id: str, requester: AgentContext) -> SubAgentRun: ...
+    async def list_runs(self, requester: AgentContext, filters: dict) -> list[SubAgentRun]: ...
+    async def fetch_log(self, task_id: str, after_seq: int, limit: int, requester: AgentContext) -> list[SubAgentEvent]: ...
+    async def cancel(self, task_id: str, requester: AgentContext) -> SubAgentRun: ...
+```
+
+约束：
+
+1. `ContextEnvelope` 不得默认复制主会话全量历史、MoodState、RelationshipState、用户画像或私有记忆正文。
+2. 生效权限是父 Agent 权限、Agent SubAgentPolicy、Channel/全局策略和本次任务限制的交集。
+3. `SubAgentJournal` 按 `(task_id, seq)` 追加持久化；重启后可恢复终态日志，运行中任务按配置恢复或标记中断。
+4. 日志记录可审计事实，不记录模型原始 reasoning；凭据和敏感工具参数必须在持久化前脱敏。
+5. 主 Agent 的默认 ToolResult 只包含 `SubAgentResult`，完整日志必须显式按 task_id 查询。
+6. 取消请求是幂等的，并传播到 Provider、工具调用和子进程；超时任务进入 `timed_out` 而非伪装失败。
+
+### 2.6 并发控制
 
 ```python
 class SessionLockManager:

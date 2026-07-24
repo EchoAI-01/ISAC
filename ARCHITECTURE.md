@@ -1029,6 +1029,46 @@ class ConfigMigrator:
 
 ---
 
+### 3.13 SubAgent Runtime — 隔离任务委派
+
+每个长期 Agent 都具备 SubAgent 能力，用于把检索、工具、文件分析等事务性工作移出主会话上下文。SubAgent 是临时执行单元，不是 Agent Mesh 中的长期独立身份。
+
+```text
+Main Agent
+  │ delegate_task(spec, policy)
+  ▼
+SubAgentSupervisor
+  ├─ PolicyResolver：父权限 ∩ Agent 配置 ∩ Channel 策略 ∩ 子任务策略
+  ├─ ContextPackager：只传任务、最小摘要和授权引用
+  ├─ SubAgentRuntime：独立 Prompt / History / Budget / Workspace
+  ├─ SubAgentJournal：追加式状态、工具、证据和错误日志
+  └─ ResultBroker：结构化结果 + evidence_refs + usage → Main Agent
+```
+
+核心规则：
+
+- 主 Agent 默认只接收 `SubAgentResult`，不接收完整工作历史；结果通过 `task_id` 与日志关联。
+- 子 Agent 默认不继承陪伴人格、关系、情绪、完整聊天历史或长期记忆写权限。
+- 子 Agent 的工具、模型、记忆和网络权限只能比父 Agent 更小，不能自行扩大。
+- 日志记录可审计事实，不记录原始 reasoning；工具参数、结果和外部内容在持久化前脱敏、截断并生成证据引用。
+- `list_subagent_runs` / `get_subagent_status` / `fetch_subagent_log` / `cancel_subagent` 让主 Agent 回答用户追问时复用既有执行记录。
+- 子 Agent 默认不能直接向 Channel 发消息；用户可见进度由主 Agent 的 ProgressReporter 统一表达。
+- `SubAgentSupervisor` 管理并发、递归、Token、墙钟时间、工具调用数、日志字节、工作区和制品保留期。
+
+状态流：
+
+```text
+QUEUED → RUNNING → WAITING_TOOL → RUNNING
+   ├→ SUCCEEDED
+   ├→ FAILED
+   ├→ CANCELLED
+   └→ TIMED_OUT
+```
+
+现有 `TaskRunner` 仅复用主 Loop 和 Session，属于 H3 原型，不能视为该架构的完整实现。J4 将其迁移为独立 `SubAgentSupervisor` 与持久化运行模型。
+
+---
+
 ## 五、消息生命周期
 
 ```
@@ -1217,7 +1257,13 @@ ISAC/
 │   │   ├── assembly.py             # 按 AgentConfig 组装子系统
 │   │   ├── config.py               # AgentConfig / 配置分层加载
 │   │   ├── progress.py             # ProgressEvent / ProgressReporter
-│   │   └── bus.py                  # InterAgentBus (Agent 互联)
+│   │   ├── bus.py                  # InterAgentBus (Agent 互联)
+│   │   └── subagent/               # 隔离子任务运行时
+│   │       ├── models.py           # Task/Run/Event/Result/Policy
+│   │       ├── supervisor.py       # 派发、并发、取消与恢复
+│   │       ├── context.py          # 最小上下文打包
+│   │       ├── journal.py          # 持久化追加日志
+│   │       └── broker.py           # 结果与证据回传
 │   │
 │   ├── memory/                     # Memory System
 │   │   ├── __init__.py

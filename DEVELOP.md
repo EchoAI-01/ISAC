@@ -760,7 +760,20 @@ logger.error("LLM 调用失败", error=str(exc), exc_info=True)
 - Channel Adapter 只负责能力转换：原生媒体、压缩/转码或受控链接；不得自行调用生成模型。
 - 图片、语音和视频生成属于可计费/可能敏感能力，受 Agent × Channel × 全局策略和单任务成本上限共同约束。
 
-### 7.5 工具权限控制
+### 7.5 SubAgent 开发与日志规范
+
+- `SubAgentSupervisor` 必须创建独立消息历史、Prompt、预算与临时工作区；禁止复用父 Session 的可变 `messages`、PromptBuilder 状态或门控状态。
+- `ContextEnvelope` 只传子任务目标、必要事实摘要、允许的 memory/artifact 引用和输出 schema；陪伴人格、情绪、关系与全量聊天历史默认不传。
+- 有效权限 = 父 Agent 权限 ∩ Agent subagent policy ∩ Channel/全局策略 ∩ 本次任务限制；子 Agent 无权自行提权、改策略或创建永久 Agent。
+- 默认禁止子 Agent 直接调用 Channel、写长期记忆或继续派生；需要时必须分别显式授权并受递归深度限制。
+- `SubAgentJournal` 只记录状态、模型/工具名称、耗时、usage、脱敏参数摘要、结果摘要、错误码和 evidence refs；禁止保存或展示模型原始 reasoning。
+- 工具输入/输出持久化前必须按字段脱敏、字节截断和内容类型过滤；凭据、Authorization/Cookie、私钥和完整敏感文件永不写日志。
+- 日志采用追加式事件并带 `task_id`、`parent_agent_id`、`trace_id` 和单调 `seq`；持久化后主 Agent 可分页查询，重启后仍可回答用户追问。
+- 每个任务必须限制 Token、墙钟时间、并发、递归深度、工具调用数、日志字节、工作区和制品保留期；取消必须传播到 Provider、工具和子进程。
+- 主 Agent Prompt 只注入 `SubAgentResult`；完整日志只在显式调用 `fetch_subagent_log` 时按需读取，避免重新污染主上下文。
+- 子任务用量接入 J1 `ModelUsageEvent`，用户可见进度接入 D9 `ProgressReporter`，不得由子 Agent直接发送重复进度。
+
+### 7.6 工具权限控制
 
 | 工具 | 默认状态 | 说明 |
 |------|---------|------|
@@ -773,7 +786,7 @@ logger.error("LLM 调用失败", error=str(exc), exc_info=True)
 | `bash` | ❌ 默认禁用 | 需要在配置中显式启用 |
 | `task` (子Agent) | ⚠️ 受限 | 限制递归深度和预算 |
 
-### 7.4 控制面安全
+### 7.7 控制面安全
 
 - Admin API / MCP Server 默认仅监听 `127.0.0.1`；对外开放必须配置反向代理 + TLS
 - 所有控制面请求必须携带 `api_token` (Bearer 认证)
