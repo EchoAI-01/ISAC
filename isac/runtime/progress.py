@@ -10,6 +10,7 @@ Agent Loop 只提交 ``ProgressEvent``；本模块负责策略判断、频控、
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, fields, replace
 from typing import TYPE_CHECKING
@@ -20,7 +21,12 @@ from isac.utils.logger import get_logger
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from isac.provider.base import LLMProvider
+
 logger = get_logger(__name__)
+
+# LLM 改写超时: 进度是旁路信号, 宁可回退模板也不能拖慢主任务的用户可感知延迟。
+_LLM_RENDER_TIMEOUT_SECONDS = 3.0
 
 # 终态阶段: 不受最小间隔频控约束, 保证用户能收到收尾信号。
 _TERMINAL_STAGES = frozenset({"tool_failed", "completed", "interrupted"})
@@ -59,8 +65,10 @@ class ProgressPolicy:
 class PersonaProgressRenderer:
     """把结构化 ProgressEvent 渲染为符合人设的进度文案。
 
-    骨架: ``template`` / ``plain`` 给出确定性文案, 不调用 LLM；``llm`` 模式留待
-    实现节点接入受预算 / 超时约束的改写, 当前回退到模板渲染。
+    ``template`` / ``plain`` 给出确定性文案, 不调用 LLM；``llm`` 模式在注入了
+    ``llm`` Provider 时受超时约束地请求改写, 超时/异常/空响应均静默回退模板
+    (进度是旁路信号, 渲染失败绝不能影响主任务); 未注入 llm 时保持骨架期零行为
+    变化, 直接回退模板。
     """
 
     # 各阶段默认模板 (人设化词汇由 D9 实现节点结合 persona 扩展)。
@@ -73,16 +81,45 @@ class PersonaProgressRenderer:
         "interrupted": "先停一下, 我看看新消息。",
     }
 
-    def __init__(self, persona: dict | None = None, mode: str = "template") -> None:
+    def __init__(
+        self,
+        persona: dict | None = None,
+        mode: str = "template",
+        llm: LLMProvider | None = None,
+        timeout_seconds: float = _LLM_RENDER_TIMEOUT_SECONDS,
+    ) -> None:
         self._persona = persona or {}
         self._mode = mode
+        self._llm = llm
+        self._timeout_seconds = timeout_seconds
 
-    def render(self, event: ProgressEvent) -> str:
+    async def render(self, event: ProgressEvent) -> str:
         """渲染进度文案。传入的 event.summary 已脱敏, 模板不回显原始参数。"""
-        if self._mode == "llm":
-            # TODO(D9): 接入受预算 / 超时 / 降级约束的 LLM 改写; 当前回退模板。
-            return self._render_template(event)
-        return self._render_template(event)
+        template_text = self._render_template(event)
+        if self._mode != "llm" or self._llm is None:
+            return template_text
+        rewritten = await self._render_with_llm(template_text)
+        return rewritten if rewritten else template_text
+
+    async def _render_with_llm(self, template_text: str) -> str | None:
+        """受超时约束请求 LLM 用人设语气改写模板文案; 任何失败都返回 None 交由回退。"""
+        assert self._llm is not None  # 调用方已判空
+        persona_hint = f"人设参考: {self._persona}" if self._persona else "无特定人设, 保持自然口语。"
+        system = (
+            "你在为一个正在执行任务的 AI 助手改写一句简短的进度提示。"
+            f"{persona_hint} 只输出改写后的一句话, 不超过 30 个字, 不添加原文之外的信息, "
+            "不使用引号或前缀。"
+        )
+        try:
+            response = await asyncio.wait_for(
+                self._llm.chat(system, [{"role": "user", "content": template_text}]),
+                timeout=self._timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning("进度文案 LLM 改写失败, 回退模板", error=str(exc))
+            return None
+        rewritten = (response.content or "").strip()
+        return rewritten or None
 
     def _render_template(self, event: ProgressEvent) -> str:
         tool = event.tool_name or "工具"
@@ -130,7 +167,7 @@ class ProgressReporter:
                 return False
             event = self._merge(event)
             event = self._sanitize(event)
-            text = self.renderer.render(event)
+            text = await self.renderer.render(event)
             await self._dispatch(text, event)
             self._last_emit_at = event.occurred_at or time.time()
             self._visible_count_by_task[event.task_id] = self._visible_count_by_task.get(event.task_id, 0) + 1
@@ -213,10 +250,14 @@ def build_progress_reporter(
     persona: dict | None = None,
     policy_config: dict | None = None,
     sender: Callable[[str, ProgressEvent], Awaitable[None]] | None = None,
+    llm: LLMProvider | None = None,
 ) -> ProgressReporter:
-    """按 Agent 配置构造 ProgressReporter (供 runtime/assembly 注入工厂使用)。"""
+    """按 Agent 配置构造 ProgressReporter (供 runtime/assembly 注入工厂使用)。
+
+    llm: persona_rendering="llm" 时用于改写模板文案; 未传入时该模式回退模板。
+    """
     policy = ProgressPolicy.from_config(policy_config)
-    renderer = PersonaProgressRenderer(persona=persona, mode=policy.persona_rendering)
+    renderer = PersonaProgressRenderer(persona=persona, mode=policy.persona_rendering, llm=llm)
     return ProgressReporter(
         agent_id=agent_id,
         session_id=session_id,

@@ -124,7 +124,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     agent_services = {**services, "memory": memory}
 
     # D9 进度报告: 注入工厂 (默认无 sender → 惰性关闭, 主链路热路径零变化)。
-    # 实现节点在消息处理时用它构造 per-session Reporter 并绑定 Channel sender。
+    # 消息处理时用它构造 per-session Reporter 并绑定 Channel sender; persona_rendering
+    # ="llm" 时复用本 Agent 已解析的 llm Provider 做受超时约束的文案改写。
     def _progress_reporter_factory(session_id, sender=None):  # noqa: ANN001, ANN202
         return build_progress_reporter(
             agent_id=config.agent_id,
@@ -132,6 +133,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
             persona=config.persona,
             policy_config=config.persona.get("progress"),
             sender=sender,
+            llm=llm,
         )
 
     agent_services["progress_reporter_factory"] = _progress_reporter_factory

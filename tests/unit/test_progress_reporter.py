@@ -63,18 +63,65 @@ def test_policy_from_config_ignores_unknown_keys() -> None:
     assert not hasattr(policy, "bogus")
 
 
-def test_renderer_templates_each_stage_without_raw_args() -> None:
+async def test_renderer_templates_each_stage_without_raw_args() -> None:
     renderer = PersonaProgressRenderer(mode="template")
-    text = renderer.render(_event("tool_finished", tool_name="query_memory"))
+    text = await renderer.render(_event("tool_finished", tool_name="query_memory"))
     assert "query_memory" in text
     # 模板不回显原始参数字典
     assert "arguments" not in text
 
 
-def test_renderer_llm_mode_falls_back_to_template() -> None:
-    # 骨架阶段 llm 模式不真正调模型, 回退模板且不抛异常
+async def test_renderer_llm_mode_falls_back_to_template_when_no_llm_configured() -> None:
+    # 未注入 llm 时保持骨架行为: 回退模板且不抛异常, 零行为变化。
     renderer = PersonaProgressRenderer(mode="llm")
-    assert renderer.render(_event("completed")) != ""
+    text = await renderer.render(_event("completed"))
+    assert text != ""
+
+
+async def test_renderer_llm_mode_uses_llm_rewrite_when_available() -> None:
+    provider = FakeLLMProvider(scripted_replies=[make_final_reply("被你这么一说, 我懂了。")])
+    renderer = PersonaProgressRenderer(mode="llm", llm=provider)
+
+    text = await renderer.render(_event("tool_finished", tool_name="query_memory"))
+
+    assert text == "被你这么一说, 我懂了。"
+
+
+async def test_renderer_llm_mode_falls_back_on_timeout() -> None:
+    class _SlowLLM:
+        async def chat(self, system, messages, tools=None, **kwargs):
+            await asyncio.sleep(10)
+            return make_final_reply("太慢了, 不该被用户看到")
+
+    renderer = PersonaProgressRenderer(mode="llm", llm=_SlowLLM(), timeout_seconds=0.05)
+
+    text = await renderer.render(_event("tool_finished", tool_name="query_memory"))
+
+    assert "query_memory" in text
+
+
+async def test_renderer_llm_mode_falls_back_on_provider_error() -> None:
+    class _BrokenLLM:
+        async def chat(self, system, messages, tools=None, **kwargs):
+            raise RuntimeError("provider down")
+
+    renderer = PersonaProgressRenderer(mode="llm", llm=_BrokenLLM())
+
+    text = await renderer.render(_event("tool_finished", tool_name="query_memory"))
+
+    assert "query_memory" in text
+
+
+async def test_renderer_llm_mode_falls_back_on_blank_response() -> None:
+    class _BlankLLM:
+        async def chat(self, system, messages, tools=None, **kwargs):
+            return make_final_reply("   ")
+
+    renderer = PersonaProgressRenderer(mode="llm", llm=_BlankLLM())
+
+    text = await renderer.render(_event("tool_finished", tool_name="query_memory"))
+
+    assert "query_memory" in text
 
 
 async def test_reporter_dispatches_when_enabled() -> None:
