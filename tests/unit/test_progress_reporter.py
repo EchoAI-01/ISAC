@@ -509,6 +509,33 @@ async def test_loop_does_not_emit_tool_started_for_fast_tool() -> None:
     assert "tool_started" not in received
 
 
+async def test_loop_does_not_emit_tool_started_when_report_before_slow_tool_disabled() -> None:
+    """D9-7: progress_report_before_slow_tool=False 时即使工具确实很慢也不报前置事件。"""
+    received: list[str] = []
+
+    async def cb(event: ProgressEvent) -> None:
+        received.append(event.stage)
+
+    provider = FakeLLMProvider(
+        scripted_replies=[make_tool_call_response("query_memory"), make_final_reply("done")]
+    )
+    tools = ToolRegistry()
+    tools.register(_SlowTool(delay=0.05))
+    loop = _make_loop(llm=provider, tools=tools)
+    ctx = _make_context(
+        report_progress=cb,
+        services={
+            "progress_slow_tool_threshold_seconds": 0.01,
+            "progress_report_before_slow_tool": False,
+        },
+    )
+
+    await loop.run([{"role": "user", "content": "hi"}], ctx)
+
+    assert "tool_started" not in received
+    assert "tool_finished" in received
+
+
 async def test_loop_slow_tool_sentinel_does_not_leak_task_when_disabled() -> None:
     """report_progress 为 None 时不应额外创建哨兵任务 (零行为变化)。"""
     provider = FakeLLMProvider(

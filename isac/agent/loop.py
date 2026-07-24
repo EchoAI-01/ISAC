@@ -163,9 +163,10 @@ class ISACAgentLoop:
 
         # D9: 慢工具前置事件 —— 只有当工具执行时间超过阈值才报告 tool_started,
         # 用哨兵任务实现, 工具正常完成后立即 cancel, 未触发时不产生任何进度事件。
-        # report_progress 为 None 时不创建哨兵任务, 保持零行为变化。
+        # report_progress 为 None、或 Agent 配置 report_before_slow_tool=False 时
+        # 不创建哨兵任务 (保持零行为变化 / 尊重显式关闭)。
         slow_tool_task: asyncio.Task[None] | None = None
-        if context.report_progress is not None:
+        if context.report_progress is not None and context.services.get("progress_report_before_slow_tool", True):
             slow_tool_task = asyncio.create_task(self._emit_slow_tool_started(context, tool_call.name))
         try:
             result = await self.tools.execute(tool_call, context, services=self.services)
