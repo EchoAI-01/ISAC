@@ -56,8 +56,8 @@
 ├───────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
 │   ┌────────────────────── CONTROL PLANE (控制面) ───────────────────┐    │
-│   │  Admin REST API  │  ISAC MCP Server  │  Webhooks / Automation  │    │
-│   │  管理 Agent/路由/绑定/插件矩阵 (默认 127.0.0.1 + Token 认证)     │    │
+│   │  WebUI v2 │ Admin REST API │ MCP Server │ Webhooks / Automation │    │
+│   │  管理 Agent/路由/模型/用量/扩展/记忆/任务 (Token + Scope)       │    │
 │   └───────────────────────────┬─────────────────────────────────────┘    │
 │                               │ (管理操作复用各层公开方法，商业化预留)    │
 │   ┌────────────────────── CHANNEL LAYER ────────────────────────────┐    │
@@ -190,8 +190,9 @@
 │                               │                                          │
 │   ┌────────────────── PROVIDER LAYER ───────────────────────────┐    │
 │   │                                                               │    │
-│   │  LLM / Embedding / Reranker / STT / TTS / ImageGen          │    │
+│   │  LLM / Embedding / Reranker / STT / TTS / ImageGen / Video │    │
 │   │  ProviderManager: 共享池, 可按 Agent 配置独立实例            │    │
+│   │  UsageRecorder: 每次物理请求按 Provider/模型/Agent/模态计量  │    │
 │   │  来源: AstrBot (42 providers) + opencode LLM                │    │
 │   │                                                               │    │
 │   └───────────────────────────────────────────────────────────┘    │
@@ -237,6 +238,10 @@ class AgentManager:
 **设计要点**:
 - 每个 AgentInstance 的 Gating / PromptBuilder / Hooks / Memory / Persona 独立实例化
 - Provider 由 ProviderManager 池化共享；AgentConfig.llm 非空时为该 Agent 创建独立实例
+- 所有 Provider 调用通过 `UsageRecorder` 记录 `ModelUsageEvent`；重试与回退按物理请求分别计量，最终聚合时用 `trace_id` 归并
+- 原始用量与成本分离：Provider 只标准化实际 usage，`PricingCatalog` 按调用时价格版本计算估算成本；价格未知不阻断调用
+- `ModelCatalog` 维护文本、视觉、语音、图片、视频、Embedding、Reranker 的能力声明；`ModelRouter` 按 operation、输入/输出模态、Agent 授权、健康状态、成本和延迟选择实现
+- Agent 只看到语义能力工具，不感知具体厂商模型；生成媒体统一写入 `ArtifactStore`，由 Channel Adapter 按平台能力发送或降级为受控链接
 - 配置来源: `data/agents/<agent_id>/config.jsonc`（只写相对全局配置的覆盖项）
 - 注册表持久化: `data/agents/registry.jsonc`，重启后自动恢复 running 状态的 Agent
 - 向后兼容: 无 `data/agents/` 时自动创建默认 Agent，行为同单 Agent 模式
@@ -509,8 +514,13 @@ class ISACAgentLoop:
                         logger.error("工具执行严重错误", tool=tc.name, error=str(exc), exc_info=True)
                         result = ToolResult(content="工具执行内部错误", is_error=True)
 
-                    # POST_TOOL: 触发记忆更新
+                    # POST_TOOL: 触发记忆更新等内部副作用
                     await self.hooks.fire(AgentHookPoint.POST_TOOL, tc, result, context)
+
+                    # 结构化进度事件交给 ProgressReporter；发送失败不影响主循环
+                    await context.report_progress(
+                        ProgressEvent.from_tool_result(tc, result, context)
+                    )
                     messages.append(ToolResultMessage(tc.id, result))
             else:
                 await self.hooks.fire(AgentHookPoint.FINAL_RESPONSE, response, context)
@@ -542,8 +552,8 @@ class ISACAgentLoop:
         reasoning = "".join(c.delta_reasoning for c in chunks)
         tool_calls = [c.tool_call for c in chunks if c.tool_call]
         usage = TokenUsage(
-            prompt_tokens=chunks[-1].usage.prompt_tokens if chunks else 0,
-            completion_tokens=chunks[-1].usage.completion_tokens if chunks else 0,
+            input_tokens=chunks[-1].usage.input_tokens if chunks else 0,
+            output_tokens=chunks[-1].usage.output_tokens if chunks else 0,
         )
         return LLMResponse(
             content=content,
@@ -562,6 +572,7 @@ class ISACAgentLoop:
 | `PRE_LLM` | JargonInjector | 行话匹配注入 |
 | `POST_TOOL` | MemoryEncoder | 工具调用后更新记忆 |
 | `POST_TOOL` | TurnScheduler | 更新话轮频率 |
+| `ProgressEvent` | ProgressReporter | 对工具阶段做频控、脱敏、人格化渲染并经原 Channel 汇报 |
 | `COMPRESS` | MidTermMemoryManager | 触发中期记忆压缩 |
 | `FINAL_RESPONSE` | TurnScheduler | 记录本轮回复 |
 | `FINAL_RESPONSE` | BehaviorLearner | 从回复中学习行为模式 |
@@ -967,6 +978,9 @@ sys.meta_path.insert(0, AstrBotImportFinder())
 - 自动化示例: Webhook 收到事件 → `POST /agents` 创建 Agent → `POST /channels/{platform}/agents/{id}` 绑定 → 设置默认 Agent
 - 认证: `Authorization: Bearer <api_token>`，默认仅监听 127.0.0.1
 - 通过自动化创建的 Agent 使用受限默认配置（deny-by-default 工具策略）
+- WebUI 只作为 Control API 客户端，不直读配置文件或运行时对象；配置修改经过 Schema 校验 → diff → 确认 → `If-Match` 乐观并发 → 审计
+- Provider 密钥只可替换不可回显，管理 Token 不写入浏览器 localStorage；实时状态通过按 scope 过滤、可断线恢复的 SSE/WebSocket 提供
+- WebUI v2 信息架构、配置编辑事务、实时事件与可访问性要求见 `CONTROL_PLANE_SPEC.md` 第八章
 - 详细端点与 MCP 工具清单见 SPECIFICATION.md 4.4 / 4.5
 
 ---
@@ -1060,6 +1074,8 @@ User 发送消息
     │  hook: pre_llm → LLM.chat                              │
     │  if tool_calls:                                        │
     │    hook: pre_tool → exec_tool → hook: post_tool        │
+    │    → ProgressEvent → ProgressReporter → Channel        │
+    │      （频控/合并/脱敏/人格化；失败不阻塞主任务）         │
     │  else:                                                 │
     │    hook: final_response                                │
     │    return                                              │
@@ -1200,6 +1216,7 @@ ISAC/
 │   │   ├── manager.py              # AgentManager (生命周期)
 │   │   ├── assembly.py             # 按 AgentConfig 组装子系统
 │   │   ├── config.py               # AgentConfig / 配置分层加载
+│   │   ├── progress.py             # ProgressEvent / ProgressReporter
 │   │   └── bus.py                  # InterAgentBus (Agent 互联)
 │   │
 │   ├── memory/                     # Memory System
@@ -1259,15 +1276,21 @@ ISAC/
 │   │   ├── __init__.py
 │   │   ├── base.py                 # Provider 基类
 │   │   ├── manager.py              # ProviderManager
-│   │   ├── llm/                    # LLM Providers
-│   │   │   ├── __init__.py
-│   │   │   ├── openai.py
-│   │   │   ├── anthropic.py
-│   │   │   ├── google.py
-│   │   │   └── ...                 # 更多
+│   │   ├── catalog.py              # ModelCatalog / ModelDescriptor
+│   │   ├── router.py               # 按能力/授权/健康/成本/延迟选模型
+│   │   ├── llm/                    # LLM / Vision Providers
 │   │   ├── embed/                  # Embedding Providers
 │   │   ├── rerank/                 # Reranking Providers
-│   │   └── stt_tts/                # STT/TTS Providers
+│   │   ├── speech/                 # STT / TTS Providers
+│   │   ├── image/                  # Image Generation Providers
+│   │   └── video/                  # Video Understanding / Generation Providers
+│   │
+│   ├── artifacts/                  # 多模态制品存储、保留期、授权下载
+│   │   ├── models.py               # ArtifactRef
+│   │   └── store.py                # ArtifactStore
+│   │
+│   ├── observability/              # 指标、告警与模型用量
+│   │   └── usage/                  # recorder/storage/pricing/models
 │   │
 │   ├── control/                    # 控制面 (管理自动化，商业化预留)
 │   │   ├── __init__.py

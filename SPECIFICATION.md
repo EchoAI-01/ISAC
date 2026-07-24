@@ -198,7 +198,54 @@ class MessageStatus(Enum):
     ERROR = "error"                  # 处理出错
 ```
 
-### 1.6 AgentConfig / AgentInstance — Agent 配置与实例
+### 1.6 ProgressEvent / ProgressPolicy — 任务进度
+
+```python
+from dataclasses import dataclass, field
+
+@dataclass
+class ProgressEvent:
+    """Agent 任务的结构化进度事实；不直接承载人格化文案。"""
+    event_id: str
+    task_id: str
+    agent_id: str
+    session_id: str
+    stage: str                    # "planned" | "tool_started" | "tool_finished" | "tool_failed" | "completed" | "interrupted"
+    tool_name: str | None = None
+    summary: str = ""             # 已脱敏的事实摘要
+    occurred_at: float = 0.0
+    visible: bool = True
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class ProgressPolicy:
+    """每个 Agent 可覆盖的进度可见性与发送策略。"""
+    enabled: bool = True
+    report_after_tool: bool = True
+    report_before_slow_tool: bool = True
+    slow_tool_threshold_seconds: float = 2.0
+    min_interval_seconds: float = 2.0
+    merge_window_seconds: float = 1.5
+    max_visible_events_per_task: int = 8
+    persona_rendering: str = "template"  # "template" | "llm" | "plain"
+```
+
+`AgentContext` 提供 `report_progress(event)` 回调，但 Agent Loop 只提交结构化事件，不直接发送 Channel 消息。`ProgressReporter` 负责策略判断、合并、脱敏、Persona 渲染和平台降级。默认在每次工具调用结束后报告；预计耗时超过阈值时，才允许在工具开始前报告。
+
+对普通 IM，进度以 `ISACMessage` 发送，并设置：
+
+```python
+message.metadata.update({
+    "message_kind": "progress",
+    "task_id": event.task_id,
+    "progress_stage": event.stage,
+})
+```
+
+`summary` 和最终文本禁止包含模型 reasoning、密钥、令牌、原始工具参数及未清洗结果。进度发送失败不得中断主任务；进度消息不计入普通回复频率、行为学习和对话记忆正文。
+
+### 1.7 AgentConfig / AgentInstance — Agent 配置与实例
 
 ```python
 @dataclass
@@ -219,6 +266,11 @@ class AgentConfig:
     # LLM: None = 使用全局默认 Provider; 否则该 Agent 独立 Provider 配置
     llm: dict | None = None
 
+    # 模型能力授权；Agent 只能感知并调用允许的语义能力
+    model_capabilities_allow: list[str] = field(default_factory=lambda: ["chat"])
+    model_capabilities_deny: list[str] = field(default_factory=list)
+    model_routing: dict = field(default_factory=dict)
+
     # 路由触发词: 消息以这些词开头时路由到本 Agent
     trigger_words: list[str] = field(default_factory=list)
 
@@ -238,7 +290,7 @@ class AgentInstance:
     status: str = "stopped"           # "running" | "stopped" | "error"
 ```
 
-### 1.7 RoutingRule / ChannelBinding — 路由
+### 1.8 RoutingRule / ChannelBinding — 路由
 
 ```python
 @dataclass
@@ -266,7 +318,7 @@ class RoutingDecision:
     content: str                      # 剥离触发词后的内容
 ```
 
-### 1.8 InterAgentLink / InterAgentMessage — Agent 互联
+### 1.9 InterAgentLink / InterAgentMessage — Agent 互联
 
 ```python
 @dataclass
@@ -292,7 +344,7 @@ class InterAgentMessage:
     trace_id: str = ""
 ```
 
-### 1.9 专项数据模型
+### 1.10 专项数据模型
 
 以下模型在专项文档中定义，核心契约实现时应与对应文档保持一致：
 
@@ -463,11 +515,45 @@ class ToolCall:
 
 @dataclass
 class TokenUsage:
-    """Token 使用情况"""
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
+    """Provider 返回的单次模型用量；未知字段保持 0，不做猜测。"""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
+    audio_input_tokens: int = 0
+    audio_output_tokens: int = 0
     total_tokens: int = 0
+
+
+@dataclass
+class ModelUsageEvent:
+    """一次模型请求的标准计量事件。"""
+    event_id: str
+    trace_id: str
+    request_id: str
+    agent_id: str
+    session_id: str
+    provider: str
+    model: str
+    modality: str                # text | embedding | rerank | stt | tts | image | video
+    operation: str               # chat | embed | rerank | transcribe | synthesize | generate
+    usage: TokenUsage
+    input_units: float = 0.0     # 图片张数、音频秒数、视频秒数等非 Token 单位
+    output_units: float = 0.0
+    unit_name: str = "token"
+    estimated_cost: str | None = None   # Decimal 字符串；无价格快照时为 None
+    currency: str = "USD"
+    pricing_version: str = ""
+    latency_ms: int = 0
+    status: str = "success"      # success | failed | cancelled
+    fallback_from: str | None = None
+    created_at: int = 0
 ```
+
+`TokenUsage` 是 Provider 响应的原始标准化结果，`ModelUsageEvent` 是持久化和聚合边界。每次物理 API 请求（包括重试、回退和多模态生成）必须独立记录，不能只记录最终成功响应；失败请求的用量未知时保持 0，并记录状态，禁止估算 Token 冒充实际值。
+
+成本由独立 `PricingCatalog` 使用“调用时价格快照”计算，不写死在 Provider 代码中。价格未知时保存用量但 `estimated_cost=None`；历史记录不得因后续调价而重算。聚合维度至少包括时间、Provider、模型、Agent、会话、模态、操作、状态和是否回退。
 
 ### 2.4 MemoryRetrievalPipeline — 记忆检索
 
@@ -542,7 +628,56 @@ class RerankerProvider(ABC):
     ) -> list[float]:
         """对候选文本重排序，返回相关性分数列表"""
         ...
+
+
+@dataclass
+class ModelDescriptor:
+    """可发现、可授权、可路由的模型能力描述。"""
+    provider_id: str
+    model_id: str
+    modalities_in: set[str]       # text | image | audio | video
+    modalities_out: set[str]      # text | image | audio | video | embedding | score
+    operations: set[str]          # chat | vision | embed | rerank | stt | tts | image_gen | video_understand | video_gen
+    supports_tools: bool = False
+    supports_streaming: bool = False
+    max_input_bytes: int | None = None
+    max_duration_seconds: float | None = None
+    cost_tier: str = "unknown"
+    latency_tier: str = "standard"
+    safety_tags: set[str] = field(default_factory=set)
+    extra: dict = field(default_factory=dict)
+
+
+class SpeechToTextProvider(ABC):
+    @abstractmethod
+    async def transcribe(self, media: MediaInput, **kwargs) -> TranscriptionResult: ...
+
+
+class TextToSpeechProvider(ABC):
+    @abstractmethod
+    async def synthesize(self, text: str, **kwargs) -> ArtifactRef: ...
+
+
+class ImageGenerationProvider(ABC):
+    @abstractmethod
+    async def generate(self, prompt: str, **kwargs) -> list[ArtifactRef]: ...
+
+
+class VideoUnderstandingProvider(ABC):
+    @abstractmethod
+    async def understand(self, media: MediaInput, prompt: str, **kwargs) -> MediaAnalysisResult: ...
+
+
+class VideoGenerationProvider(ABC):
+    @abstractmethod
+    async def generate(self, prompt: str, **kwargs) -> ArtifactRef: ...
 ```
+
+所有 Provider 必须返回 `ModelDescriptor`，由 `ModelCatalog` 注册。`ModelRouter.select()` 接收所需 operation、输入/输出模态、Agent 授权矩阵、用户偏好、成本上限、延迟目标和健康状态，返回可解释的 `ModelSelection`；业务层不得按模型名硬编码能力。
+
+Agent 通过 `ModelCapabilitiesInjector` 只感知其被授权且当前健康的能力，并以语义工具暴露：`transcribe_audio`、`synthesize_speech`、`generate_image`、`understand_video`、`generate_video`。模型与 Provider 名称默认不进入 Prompt，避免 Agent 绑定具体厂商；工具执行时再由 ModelRouter 选择模型。
+
+媒体输入先进入 `MediaNormalizer` 做类型、大小、时长、来源与安全校验；生成结果写入 `ArtifactStore`，返回 `ArtifactRef`，再由 Channel Adapter 根据平台能力发送或降级为受控下载链接。二进制内容不得直接塞入对话历史、日志或记忆。
 
 ### 2.5 并发控制
 
@@ -783,6 +918,38 @@ class CommandRegistry:
         "temperature": 0.7,
     },
 
+    // Provider 与模型能力目录
+    "providers": {
+        "text_primary": {"type": "openai_compat", "model": "...", "enabled": true},
+        "speech_stt": {"type": "...", "model": "...", "enabled": false},
+        "speech_tts": {"type": "...", "model": "...", "enabled": false},
+        "image_gen": {"type": "...", "model": "...", "enabled": false},
+        "video_understand": {"type": "...", "model": "...", "enabled": false},
+        "video_gen": {"type": "...", "model": "...", "enabled": false}
+    },
+    "model_routing": {
+        "default_policy": "balanced",
+        "max_estimated_cost_per_task": null,
+        "prefer_local": false,
+        "fallback_by_capability": true
+    },
+    "artifacts": {
+        "root": "data/artifacts",
+        "max_bytes": 104857600,
+        "retention_days": 7,
+        "signed_url_ttl_seconds": 900
+    },
+
+    // 模型用量与成本
+    "usage": {
+        "enabled": true,
+        "retention_days": 90,
+        "flush_interval_seconds": 5,
+        "pricing_file": "data/model_pricing.jsonc",
+        "record_session_id": true,
+        "record_content": false
+    },
+
     // 门控配置
     "gating": {
         "reply_necessity_threshold": 80,     // 回复必要性阈值
@@ -1020,6 +1187,19 @@ class AgentHookPoint(Enum):
         "msg_id": "msg_001",
         "chunk": "有什么可以帮你的？",
         "done": true,
+    }
+}
+
+# 服务端 → 客户端（任务进度；独立于最终 response/stream）
+{
+    "type": "progress",
+    "data": {
+        "event_id": "prog_001",
+        "task_id": "task_001",
+        "agent_id": "alice",
+        "stage": "tool_finished",
+        "content": "我刚查完当前位置，接下来看看实时天气。",
+        "timestamp": 1721234568
     }
 }
 ```

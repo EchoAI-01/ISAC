@@ -23,7 +23,7 @@
 - **小节点**：用 A1/A2... 编号，代表可独立完成、可汇报的最小单元。
 - **进度汇报**：每完成一个小节点，在本文档 `[ ]` 改为 `[x]`，并简要汇报。
 - **节点可调整**：如需新增/合并/拆分节点，先更新本文档与 `AGENTS.md`，再继续执行。
-- **完成定义**：小节点完成 = 代码实现 + 单元/集成测试 + 相关文档同步 + `ruff` / `mypy` 通过。
+- **完成定义**：小节点完成 = 非桩代码实现 + 单元测试 + 对应集成/运行验证 + 错误与关闭路径验证 + 相关文档同步 + `ruff` / `mypy` / CI 门禁通过。仅有接口、占位实现、静态文件或 Mock 单测不得标记完成。
 
 ---
 
@@ -34,12 +34,14 @@
 | A | 文档冻结 | 100% | A1-A5 全部完成, A4 持续维护 |
 | B | 基础骨架 | 100% | 全部完成 |
 | C | 连接与路由 | 100% | 全部完成 |
-| D | 单 Agent 核心 | 100% | D1-D8 全部完成 |
+| D | 单 Agent 核心 | 89% | D1-D8 完成，D9 任务进度报告待实现 |
 | E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
 | F | 插件生态 | 100% | F1-F4 全部完成 |
 | G | 控制面与自动化 | 100% | G1-G4 全部完成 |
 | H | 平台与工具扩展 | 100% | H1-H3 全部完成 |
-| I | 生产化与交付 | 100% | I1-I6 完成 (v1.0.0 发布), 联调测试待做 |
+| I | 生产化与交付 | 50% | I1/I3/I4 基础能力完成；I2/I5/I6 待 K 节点重新验收 |
+| J | 模型能力、计量与管理面增强 | 0% | J1-J3 已设计，K1-K8 完成前暂停实现 |
+| K | 稳定化与可用版本闭环 | 0% | K1-K8 为当前最高优先级，完成前项目定位为 Alpha |
 
 ---
 
@@ -68,7 +70,7 @@
   - **验收**：本文件与 `AGENTS.md` 的"当前进度"表每次节点完成后同步更新；新增节点有明确的依赖与验收标准。
   - **产出**：本文档 + `AGENTS.md` 进度表。
   - **依赖**：A1-A3；持续进行。
-  - **当前**：A-I 各节点完成时已同步回填进度表 + 节点 [x] + 文档更新记录; v1.0.0 发布时整体验收通过。
+  - **当前**：2026-07-23 复审发现历史完成状态与真实运行能力不一致，已新增 K 稳定化节点并撤回 I2/I5/I6 完成状态；后续节点只有满足强化后的完成定义才可标记 `[x]`。
 
 - [x] **A5 专项施工图补齐**
   - **验收**：拟人化运行时、记忆系统、路由与 Agent Mesh、插件兼容、控制面五个关键系统有独立专项文档；主文档引用清晰。
@@ -97,10 +99,11 @@
   - **产出**：`utils/config.py`、`utils/logger.py`、`utils/security.py`（SecretStore 桩）、`utils/helpers.py`。
   - **依赖**：B2。
 
-- [x] **B4 入口与调试脚本**
-  - **验收**：`python -m isac` 可启动（无 Channel 时不报错）；`scripts/migrate.py` / `export.py` 有入口。
+- [x] **B4 入口与调试脚本（仅初始化骨架）**
+  - **验收**：`python -m isac` 可执行初始化（无 Channel 时不报错）；`scripts/migrate.py` / `export.py` 有入口。应用常驻、信号处理和优雅关闭由 K1 重新验收。
   - **产出**：`isac/__main__.py`、`isac/main.py`（组装骨架）、`scripts/*`。
   - **依赖**：B3。
+  - **当前边界**：实测 `main()` 打印“启动完成”后立即返回，不能视为持续运行的服务。
 
 ---
 
@@ -187,6 +190,13 @@
   - **依赖**：D2、D3。
   - **当前**：PersonaManager 合并全局/Agent 覆盖并聚合 MoodEngine + BehaviorLearner; MoodEngine 实现 update (valence/arousal 钳制 + 离散 label 映射) 与 decay (按 decay_rate 向中性衰减); BehaviorLearner 注册 FINAL_RESPONSE hook 从回复提取行为特征 (长度/emoji/话题) 写入 UserProfile.behavior_patterns, 带 max_patterns 滚动淘汰。已在 `runtime/assembly.py` 接线 `persona.register_hooks(hooks)`。附 `tests/unit/test_persona.py` (15 测试)。
 
+- [ ] **D9 任务进度报告**
+  - **验收**：Agent Loop 在工具完成/失败后产生 `ProgressEvent`；慢工具可在执行前报告；`ProgressReporter` 完成人格模板渲染、敏感信息过滤、2 秒默认频控、连续事件合并和每任务上限；WebChat 输出原生 `progress` 事件，普通 IM 降级为带 `message_kind=progress` 的文本；发送失败不阻断主任务；中断后不再发送旧任务进度。
+  - **产出**：`runtime/progress.py`、Agent Loop/Runtime/Channel 接线、Persona 进度模板、配置项及单元/集成测试。
+  - **依赖**：D3、D4、D8、C1。
+  - **当前**：架构与协议已写入 `HUMANLIKE_RUNTIME.md`、`ARCHITECTURE.md`、`SPECIFICATION.md`、`DEVELOP.md`；代码待实现。
+  - **边界**：默认模板渲染不额外调用 LLM；可选 LLM 改写必须受预算、超时和降级策略约束。进度不包含 reasoning、原始工具参数或未清洗结果，也不计入普通回复频率和行为学习。
+
 ---
 
 ### E 多 Agent 运行时
@@ -215,10 +225,10 @@
   - **依赖**：E2、F4 骨架、D4。
   - **当前**：`core/policy.py` 新增 `EnableMatrix` 类实现有效权限计算 (Agent ∩ Channel ∩ 全局); `ToolRegistry` 接入 effective_policy (Channel deny/restricted 优先); `CommandRegistry` 启用矩阵注入 enable_checker; `runtime/assembly.py` 把 EnableMatrix 注入 ToolRegistry + 构造 CommandRegistry 注册 4 个内置命令; `runtime/manager.py` 在 handle_message 中接入命令拦截 (/cmd 跳过门控直接执行)。附 `tests/unit/test_enable_matrix.py` (14 测试覆盖 plugin/tool/command/mcp 四类矩阵决策)。
 
-- [ ] **E5 多 Agent 集成测试**
-  - **验收**：2+ Agent × 1 OneBot 连接 + 触发词/默认 Agent 路由 + ask_agent 互联端到端通过。
+- [ ] **E5 多 Agent 集成测试（并入 K6 验收）**
+  - **验收**：2+ Agent × 1 Channel + 触发词/默认 Agent 路由 + ask_agent 互联端到端通过，并验证重启恢复、权限与记忆隔离。
   - **产出**：`tests/integration/test_multi_agent.py`。
-  - **依赖**：C1、E3、E4。
+  - **依赖**：K1-K5、C1、E3、E4。
 
 ---
 
@@ -311,16 +321,16 @@
 **目标**：项目达到生产可用，可部署、可维护、可商业化。
 
 - [x] **I1 WebUI 管理面板**
-  - **验收**：FastAPI + Vue 可管理 Agent/路由/Link/记忆。
+  - **验收**：FastAPI 静态托管的最小 WebUI 可管理 Agent/路由/Link 并查看审计；完整管理面能力由 J3 验收。
   - **产出**：`control/api/` 扩展 + WebUI 前端。
   - **依赖**：G1。
-  - **当前**：采用 FastAPI 静态托管 + Vanilla JS (不依赖 Vue 构建工具链) 实现单页管理面板; control/webui/{index.html, app.js, __init__.py} 含 Agent 管理 (创建/启动/停止/删除)、路由规则更新、互联 Link 添加/删除、审计日志查询四个模块; server.py mount_webui 把 /ui 挂载到 FastAPI app; 前端用 fetch 调 G1 Admin API, Bearer Token 存 localStorage 自动持久化。附 `tests/unit/test_webui.py` (5 测试覆盖 index.html/app.js 静态返回 + 4 个模块齐全 + 端到端 API 工作流)。
+  - **当前**：采用 FastAPI 静态托管 + Vanilla JS (不依赖 Vue 构建工具链) 实现单页管理面板; control/webui/{index.html, app.js, __init__.py} 含 Agent 管理 (创建/启动/停止/删除)、路由规则更新、互联 Link 添加/删除、审计日志查询四个模块; server.py mount_webui 把 /ui 挂载到 FastAPI app。当前 Bearer Token 存在 localStorage 的实现仅作为 v1 开发态遗留，J3 必须迁移到 HttpOnly Session Cookie + CSRF，不得沿用到生产。附 `tests/unit/test_webui.py` (5 测试覆盖 index.html/app.js 静态返回 + 4 个模块齐全 + 端到端 API 工作流)。
 
-- [x] **I2 Docker 部署**
+- [ ] **I2 Docker 部署（K8 重新验收）**
   - **验收**：Dockerfile + docker-compose.yml 一键启动；含控制面端口。
   - **产出**：`Dockerfile`、`docker-compose.yml`、部署脚本。
   - **依赖**：I1（可选）。
-  - **当前**：Dockerfile 多阶段构建 (builder + runtime, python:3.12-slim); uv sync 装运行时依赖 (含 onebot extra); EXPOSE 8765 + HEALTHCHECK + VOLUME /app/data; CMD python -m isac; docker-compose.yml 一键启动, 端口绑 127.0.0.1:8765, isac_data volume 持久化, restart unless-stopped, 环境变量 (ISAC_API_TOKEN / ISAC_LLM_* / ISAC_ONEBOT_*); scripts/docker_deploy.sh 部署脚本 (build/up/down/logs/shell/health/restart/rebuild); .dockerignore 排除缓存与测试。附 `tests/unit/test_docker_deploy.py` (20 测试覆盖 Dockerfile/compose/dockerignore/deploy script)。
+  - **当前**：Dockerfile/Compose/部署脚本和文本级单测已存在，但主进程会立即退出，尚无真实 Docker build/start/health smoke test，因此撤回完成状态。K1 完成常驻生命周期、K8 完成容器实测后重新验收。
 
 - [x] **I3 文档完善**
   - **验收**：使用文档、API 文档、部署文档、插件开发指南、控制面自动化指南齐全。
@@ -334,17 +344,92 @@
   - **依赖**：D5-D7。
   - **当前**：scripts/migrate.py 实现 migrate_from_astrbot (LLM 配置从 cmd_config.json/llm_model.json 解析, 插件目录复制, 写出 ISAC config.jsonc) + migrate_from_maibot (config.toml 解析, 记忆目录备份, 创建默认 Agent 配置); 支持 --dry-run; scripts/export.py 实现 export_data (zip 打包, 默认排除 audit.ndjson + .venv + __pycache__) + import_data (解压恢复, 支持 --overwrite); 子命令模式 (export/import)。附 `tests/unit/test_data_tools.py` (11 测试覆盖 AstrBot LLM 迁移 + dry-run + 插件复制, MaiBot config.toml 解析 + 默认 Agent, export 含/排除日志, import 恢复 + skip/overwrite + 排除 venv/pycache)。
 
-- [x] **I5 监控告警**
+- [ ] **I5 监控告警（K1/K8 重新验收）**
   - **验收**：关键指标 Prometheus 采集；Webhook 告警；审计日志查看。
   - **产出**：监控中间件、告警配置。
   - **依赖**：G1、G4。
-  - **当前**：isac/observability/{__init__.py, metrics.py, alerting.py} 新增 MetricsCollector (Counter/Gauge/Histogram 三种指标, 线程安全 + Prometheus 文本格式输出 + JSON snapshot); get_default_metrics 注册 20+ 预定义指标 (messages/agents/llm/tools/memory/control); AlertManager + AlertRule + AlertLevel(StrEnum) 规则驱动告警 (cooldown 防告警风暴 + 推送到 G3 WebhookManager); get_default_alert_rules 提供 3 个默认规则 (llm_error_rate_high/message_drop_rate_high/no_active_agents); server.py 暴露 /metrics (Prometheus 文本, 不需认证) + /api/v1/metrics (JSON snapshot, 需认证); 审计日志查看已在 G1 /api/v1/audit 落地。附 `tests/unit/test_observability.py` (14 测试覆盖 Counter/Gauge/Histogram + 默认指标 + 告警规则触发 + cooldown + list_rules)。
+  - **当前**：MetricsCollector、AlertManager、默认规则与指标端点已有基础实现，但主进程结束时后台告警任务随事件循环取消，且缺少真实消息→指标→告警→Webhook 的端到端验证。K1/K8 完成后重新验收。
 
-- [x] **I6 最终测试与发布**
+- [ ] **I6 可用版本验收与发布**
   - **验收**：核心模块覆盖率 ≥80%；集成测试通过；v1.0 发布。
   - **产出**：CHANGELOG、Git tag v1.0.0。
   - **依赖**：A-I5。
-  - **当前**：单测 326 passed + ruff/mypy 全绿; 核心模块覆盖率 80%+ (core/types 100%, core/policy 95%, memory/storage/sparse 96%, gating/reply_necessity 98%, gating/turn_scheduler 97%, persona/manager 100%, agent/tools/base 100% 等); 整体覆盖率 68% (受适配器/控制面集成场景限制); CHANGELOG.md 记录 v1.0.0 全部变更; pyproject.toml + isac/__init__.py 版本号 → 1.0.0; Git tag v1.0.0 待推送。集成测试 (E5 多 Agent 端到端联调) 按用户指示待业务全完成后做。
+  - **当前**：2026-07-23 复审实测 378 个单元测试通过、Ruff 通过，但 Mypy 因 `aiocqhttp` 缺类型声明失败；`tests/integration/` 为空；主进程不驻留；真实 LLM Provider 不可用；Docker/WebUI 未做真实运行验收。因此撤回“v1.0 已完成/生产可用”结论，项目定位为 Alpha，待 K1-K8 全部通过后重新确定版本号与发布资格。
+
+---
+
+### J 模型能力、计量与管理面增强
+
+**目标**：统一模型能力接入与选择，完整记录模型用量，并将运行状态和配置安全地暴露到 WebUI。
+
+- [ ] **J1 模型用量与成本计量**
+  - **验收**：LLM/Embedding/Reranker/STT/TTS/ImageGen/Video 的每次物理请求均产生 `ModelUsageEvent`；重试、回退、失败和缓存 Token 可区分；支持按 Provider/模型/Agent/会话/模态/时间聚合；价格快照可追溯；未知价格不伪造成本；写入失败不阻塞主调用。
+  - **产出**：`observability/usage/{models,recorder,storage,pricing}.py`、SQLite Schema、ProviderManager 接线、Usage REST API、指标与测试。
+  - **依赖**：B2、G1、I5。
+  - **当前**：架构、数据契约、API、权限和隐私规范已写入 `ARCHITECTURE.md`、`SPECIFICATION.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；代码待实现。
+
+- [ ] **J2 多模态 Provider 与能力选择**
+  - **验收**：文本、视觉理解、STT、TTS、图片生成、视频理解/生成 Provider 使用统一注册与能力声明；Agent 只感知被授权能力；输入内容、用户意图、成本/延迟策略可选择模型；不可用时按能力回退或明确失败；生成结果经制品存储和 Channel 能力适配发送。
+  - **产出**：Provider 能力目录、ModelRouter、多模态 Provider ABC/适配器、能力 Injector、媒体工具、ArtifactStore、权限与测试。
+  - **依赖**：D2-D4、E1/E4、H1、J1。
+  - **当前**：能力目录、Provider ABC、ModelRouter、Agent 能力授权、语义工具、媒体校验、ArtifactStore 与 Channel 降级设计已写入 `ARCHITECTURE.md`、`SPECIFICATION.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；代码待实现。
+
+- [ ] **J3 WebUI v2 管理与观测**
+  - **验收**：Dashboard、Agent、Channel/路由、Provider/模型、Token/成本、插件/MCP/工具、记忆、会话/任务进度、日志/审计、系统设置页面可用；配置写入支持 Schema 校验、差异预览、二次确认、版本冲突检测和审计；密钥只可替换不可回显。
+  - **产出**：`control/webui/` 前端重构、Control API 扩展、实时事件通道、浏览器端测试与权限测试。
+  - **依赖**：G1-G4、I1/I5、D9、J1-J2。
+  - **当前**：十个页面域、配置编辑事务、Schema/diff/确认/ETag、密钥不回显、实时事件恢复、响应式、WCAG 2.1 AA 与浏览器测试要求已写入 `CONTROL_PLANE_SPEC.md` 和 `ARCHITECTURE.md`；代码待实现。现有 Vanilla JS 四模块面板保留为 v1 最小实现，不视为 J3 完成。
+
+---
+
+### K 稳定化与可用版本闭环
+
+**目标**：先打通“可持续运行、真实模型回复、持久化恢复、端到端可验证”的最小纵向链路，再继续 D9/J1-J3 等横向扩展。K1-K8 是当前最高优先级；完成前项目统一定位为 Alpha，不得宣称生产可用或完成 v1.0 验收。
+
+- [ ] **K1 应用常驻与统一资源生命周期**（P0）
+  - **验收**：`python -m isac` 在无 Channel、仅 Control、启用 Channel 三种模式下均持续驻留；支持 SIGINT/SIGTERM；Channel、Control、Alert、Provider、Storage、Plugin、Webhook 后台任务统一 start/health/close；启动失败能回滚，后台任务异常不会静默丢失，关闭无 pending task/resource warning。
+  - **产出**：`ApplicationRuntime` / `ServiceContainer`、统一 TaskGroup、信号处理、优雅关闭、生命周期单元与进程级 smoke test。
+  - **依赖**：B4、C4、G1、I5。
+  - **已知问题**：当前 `main()` 调用 `channel_registry.start_all()` 后直接返回，Control/Alert 等后台任务随事件循环结束被取消。
+
+- [ ] **K2 真实 LLM Provider 纵向闭环**（P0）
+  - **验收**：至少一个真实 Provider 支持非流式、SSE 流式、Tool Call、usage、超时、429/5xx/非法响应分类、重试与 fallback；配置真实 Provider 时不得回退为 Stub 冒充成功；Provider Client 可健康检查并在关闭时释放连接池。
+  - **产出**：`OpenAICompatProvider` 或等价首个 Provider 的真实实现、HTTP 契约测试、Fake Server 集成测试、错误分类与关闭测试。
+  - **依赖**：K1、D3、ProviderManager。
+  - **阻塞**：未完成前不能验收“真实 AI 对话”。
+
+- [ ] **K3 Storage Schema、记忆写入与恢复**（P0）
+  - **验收**：启动时执行 Schema init/migration；Metadata/FTS/Sparse 按 namespace 初始化；消息或会话结束后真实写入 Episode；重启后可检索；shared namespace 强制 user/group/scope ACL；写入失败不阻塞回复但可观测；关闭时提交并释放连接。
+  - **产出**：StorageLifecycle、schema_version/migration、MemoryEncoder 接线、Sparse 重建/恢复、跨用户隔离与重启测试。
+  - **依赖**：K1、D5-D7。
+  - **边界**：Vector/Graph/Reranker 可继续降级，但必须明确标记 experimental/stub，不能计入 MVP 完成度。
+
+- [ ] **K4 Agent、Session、Identity、Routing 与 Link 持久化恢复**（P0）
+  - **验收**：重启后恢复 AgentConfig/运行状态、Session、UserMapper 绑定、RoutingRules、InterAgentLink；Agent 独立 Provider 配置实际生效；配置写入使用原子替换和版本迁移；非法 ID/路径被拒绝。
+  - **产出**：registry/session/identity 持久化、启动恢复编排、原子配置存储、路径安全与迁移测试。
+  - **依赖**：K1、E1-E3、G1。
+
+- [ ] **K5 单 Channel × 单 Agent 真实 E2E**（P0）
+  - **验收**：进程启动 → Fake/测试 Channel 收消息 → EventBus intercept → Router 剥离触发词 → Session/Gating → 真实 HTTP Mock Provider → Tool Call → Channel 回复全链通过；覆盖打断、超时、错误和重启恢复。
+  - **产出**：`tests/integration/test_single_agent_flow.py`、可复用 Fake Channel/Provider、进程级测试夹具。
+  - **依赖**：K1-K4。
+
+- [ ] **K6 多 Agent、工具、记忆与控制面 E2E**（P1）
+  - **验收**：2+ Agent 共享 1 Channel；显式绑定/触发词/默认 Agent；InterAgentBus deliver + ACL；工具权限；记忆 namespace 隔离；Control 修改配置真实生效并在重启后保留。E5 并入本节点验收。
+  - **产出**：`tests/integration/test_multi_agent.py`、Agent Mesh/权限/记忆/Control 集成测试。
+  - **依赖**：K5、E3-E5、G1-G4。
+
+- [ ] **K7 安全与长期运行基线**（P0/P1）
+  - **验收**：Agent ID/路径穿越防护；Control 空 Token 仅显式开发模式；审计/JSON metrics 鉴权；WebUI 不持久化 Bearer Token；Webhook 与远程媒体防 SSRF；SecretStore 可用；插件明确为兼容层而非安全沙箱或提供进程级隔离；Bash/File/MCP 有字节、时间、进程、路径与 pending 上限；Session/Lock/队列有 TTL/LRU；Discord 分页不丢消息。
+  - **产出**：安全回归测试、资源压力测试、威胁模型与生产安全配置。
+  - **依赖**：K1、K4、G/H/F 相关模块。
+
+- [ ] **K8 CI、Docker、浏览器与发布准入**（P1）
+  - **验收**：CI 启用 branch coverage 与 `--cov-fail-under`；构建 wheel/sdist 并安装 smoke；Docker build/start/health/stop 实测；WebUI 用真实浏览器覆盖登录、Agent/路由/Link/审计黄金路径；Mypy 全绿或对 `aiocqhttp` 做局部明确 override；README/AGENTS/CHANGELOG/版本号与实际能力一致。
+  - **产出**：CI 门禁、Docker smoke、Playwright/浏览器测试、发布检查表、版本状态校准。
+  - **依赖**：K1-K7、I1-I6。
+
+**强制开发顺序**：K1 → K2 → K3/K4 → K5 → K6/K7 → K8。K1-K5 完成前暂停 D9、J1-J3；K8 通过后才允许恢复 I6 发布验收。
 
 ---
 
@@ -363,6 +448,12 @@
 | **契约冻结** | 接口签名、数据模型、配置规范、协议定义稳定，不再随意改动。 |
 | **专项施工图** | 对复杂系统的细化设计文档，如拟人化运行时、记忆、插件兼容、控制面等。 |
 | **ConversationRuntime** | 某个 Agent 在某个会话中的拟人化运行时，管理消息缓存、等待、主动任务、打断与上下文恢复。 |
+| **ProgressEvent** | Agent 任务阶段的结构化事实事件，由 ProgressReporter 统一频控、脱敏、人格化渲染和发送。 |
+| **ModelUsageEvent** | 单次物理模型请求的标准计量事件，记录 Provider、模型、Agent、模态、实际用量和价格快照。 |
+| **ModelDescriptor** | 模型能力声明，描述输入/输出模态、operation、限制、成本/延迟层级和安全标签。 |
+| **ArtifactRef** | 多模态生成制品的受控引用，不把二进制内容直接写入消息历史、日志或记忆。 |
+| **稳定化节点** | K1-K8；修复常驻、真实 Provider、持久化、E2E、安全和发布门禁的最高优先级工作。 |
+| **可用版本准入** | K1-K8 全部完成且真实运行验收通过后，项目才可从 Alpha 提升为可用版本。 |
 | **Observer Agent** | 旁听 Agent，只接收消息用于记忆/学习/候选协作，默认不发送 IM 回复。 |
 
 ---
@@ -371,6 +462,11 @@
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Reviewer | 复审撤回 v1.0/生产可用结论：实测主程序启动后立即返回；真实 Provider、存储恢复、多 Agent E2E 未闭环。新增 K1-K8 稳定化节点为最高优先级，I 节点 100% → 50% |
+| 2026-07-23 | Architect | 新增 J3 WebUI v2 设计：覆盖 Dashboard、Agent、Channel/路由、Provider/模型、用量成本、扩展、记忆、会话任务、日志审计与系统配置；加入安全配置事务、实时事件、响应式与无障碍要求；代码待实现 |
+| 2026-07-23 | Architect | 新增 J2 多模态 Provider 与能力选择设计：统一文本/视觉/STT/TTS/生图/视频理解与生成的能力目录、Agent 授权、ModelRouter、语义工具、ArtifactStore 和 Channel 降级；代码待实现 |
+| 2026-07-23 | Architect | 新增 J1 模型用量与成本计量设计：按物理请求记录 Provider/模型/Agent/会话/模态、缓存与推理 Token、非 Token 计量单位、重试/回退/失败、价格快照与查询权限；代码待实现 |
+| 2026-07-23 | Architect | 新增 D9 任务进度报告设计：工具完成后最低保障汇报，慢工具执行前可选汇报；定义 ProgressEvent/ProgressReporter、人格模板、频控合并、脱敏、WebChat 原生事件与普通 IM 降级。D 节点 100% → 89% |
 | 2026-07-23 | Architect | I6 最终测试与发布 v1.0.0: 单测 326 passed (核心模块 80%+ 覆盖率); CHANGELOG.md 记录 v1.0.0 全部变更; pyproject.toml + isac/__init__.py 版本号 → 1.0.0; A4 标 [x] (持续维护验收); Git tag v1.0.0。I 节点 83% → 100%, A 节点 85% → 100%。项目整体完成 v1.0.0 发布 (集成测试待业务全完成后做) |
 | 2026-07-23 | Architect | I5 监控告警完成: isac/observability/ 新增 MetricsCollector (Counter/Gauge/Histogram + Prometheus 输出 + JSON snapshot); AlertManager + AlertRule 规则驱动告警 (cooldown + 推送 Webhook); 3 个默认告警规则; server.py 暴露 /metrics + /api/v1/metrics。I 节点 67% → 83% |
 | 2026-07-23 | Architect | I4 数据工具完成: scripts/migrate.py AstrBot/MaiBot 迁移 (LLM 配置解析 + 插件复制 + 默认 Agent + --dry-run); scripts/export.py export/import 子命令 (zip 打包 + 排除 audit.ndjson/venv/pycache + overwrite 控制)。I 节点 50% → 67% |
