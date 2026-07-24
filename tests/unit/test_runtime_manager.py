@@ -127,3 +127,83 @@ async def test_agent_lifecycle_records_metrics() -> None:
     assert metrics.gauge("isac_agents_active").value() == 1
     await manager.destroy("agent_x")
     assert metrics.gauge("isac_agents_active").value() == 0
+
+
+@pytest.mark.asyncio
+async def test_load_persisted_agents_restores_enabled_agents(tmp_path) -> None:
+    """重启恢复: data/agents/<id>/config.jsonc 的 enabled=true Agent 自动 create+start
+    (CODE_REVIEW_REPORT.md #2)。"""
+    from isac.runtime.config import save_agent_config
+    from isac.runtime.manager import load_persisted_agents
+
+    agents_dir = tmp_path / "agents"
+    # 写两个 Agent: a 启用, b 禁用
+    save_agent_config(agents_dir / "a" / "config.jsonc", AgentConfig(agent_id="a", display_name="A"))
+    save_agent_config(
+        agents_dir / "b" / "config.jsonc",
+        AgentConfig(agent_id="b", display_name="B", enabled=False),
+    )
+
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    manager = AgentManager(
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        }
+    )
+
+    report = await load_persisted_agents(manager, str(agents_dir))
+
+    assert report["a"] == "running"
+    assert report["b"] == "stopped"
+    inst_a = await manager.get("a")
+    inst_b = await manager.get("b")
+    assert inst_a is not None and inst_a.status == "running"
+    assert inst_b is not None and inst_b.status == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_load_persisted_agents_skips_invalid_config(tmp_path) -> None:
+    """损坏的 config.jsonc 不阻塞其他 Agent 恢复 (CODE_REVIEW_REPORT.md #2)。"""
+    from isac.runtime.manager import load_persisted_agents
+
+    agents_dir = tmp_path / "agents"
+    (agents_dir / "broken" / "config.jsonc").parent.mkdir(parents=True, exist_ok=True)
+    (agents_dir / "broken" / "config.jsonc").write_text("{not valid json", encoding="utf-8")
+
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    manager = AgentManager(
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        }
+    )
+
+    report = await load_persisted_agents(manager, str(agents_dir))
+
+    assert report["broken"].startswith("failed:")
+    # 没有任何 Agent 被加载到内存
+    assert await manager.list_ids() == []
+
+
+@pytest.mark.asyncio
+async def test_load_persisted_agents_missing_dir_returns_empty(tmp_path) -> None:
+    """目录不存在时返回空报告, 不抛异常。"""
+    from isac.runtime.manager import load_persisted_agents
+
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    manager = AgentManager(
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        }
+    )
+
+    report = await load_persisted_agents(manager, str(tmp_path / "nonexistent"))
+    assert report == {}

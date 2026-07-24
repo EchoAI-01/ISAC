@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import builtins
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from isac.core.constants import DEFAULT_AGENT_ID
@@ -77,6 +79,10 @@ class AgentManager:
     async def list(self) -> list[AgentInstance]:
         return list(self._agents.values())
 
+    async def list_ids(self) -> builtins.list[str]:
+        """已加载的 agent_id 列表 (供重启恢复去重用)。"""
+        return list(self._agents.keys())
+
     async def reload_config(self, agent_id: str, config: AgentConfig) -> None:
         """热更新配置 (重建子系统中受配置影响的部分)。
 
@@ -119,10 +125,21 @@ class AgentManager:
 
         # E4: 命令拦截 (在门控前)。/cmd 是用户显式发起, 跳过门控。
         if instance.commands is not None and message.content.startswith("/"):
+            # 命令通过 context.services 访问 Agent 子系统: gating (focus/mute) /
+            # agent_manager (/agents 列表) / session_mgr (mute 状态)。session
+            # 已显式传入 context, 不再重复。所有 service 字段都按 Agent 级绑定,
+            # 避免命令跨 Agent 误用 (CODE_REVIEW_REPORT.md #10)。
             agent_context_for_cmd = AgentContext(
                 session=session,
                 user_profile=user_profile,
                 current_message=message,
+                services={
+                    "gating": instance.gating,
+                    "agent_manager": self,
+                    "session_mgr": self._services.get("session_mgr"),
+                    "bus": instance.services.get("bus") or self._services.get("bus"),
+                    "agent_id": agent_id,
+                },
             )
             cmd_result = await instance.commands.try_execute(message, agent_context_for_cmd)
             if cmd_result is not None:
@@ -204,3 +221,54 @@ async def ensure_default_agent(manager: AgentManager, global_config: dict) -> Ag
     await manager.start(DEFAULT_AGENT_ID)
     logger.info("已创建默认 Agent (单 Agent 兼容模式)", agent_id=DEFAULT_AGENT_ID)
     return instance
+
+
+async def load_persisted_agents(manager: AgentManager, agents_dir: str) -> dict[str, str]:
+    """重启时从 data/agents/*/config.jsonc 恢复所有 enabled=true 的 Agent。
+
+    对每个加载到的 AgentConfig: create() 成功后, 若 enabled=true 自动 start()。
+    单个 Agent 恢复失败不阻塞其他 Agent, 错误记日志并跳过
+    (CODE_REVIEW_REPORT.md #2)。
+
+    返回 {agent_id: "running"/"stopped"/"failed: <error>"} 报告。
+    """
+    from isac.runtime.config import load_agent_config
+
+    root = Path(agents_dir)
+    # 用 to_thread 包装 blocking Path 操作, 避免在 event loop 里直接执行 (ruff ASYNC240)。
+    config_paths = await asyncio.to_thread(_scan_agent_configs, root)
+    if not config_paths:
+        return {}
+    report: dict[str, str] = {}
+    for config_path in config_paths:
+        try:
+            agent_config = await asyncio.to_thread(load_agent_config, config_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Agent 配置加载失败, 跳过", path=str(config_path), error=str(exc))
+            report[config_path.parent.name] = f"failed: {exc}"
+            continue
+        if agent_config.agent_id in await manager.list_ids():
+            report[agent_config.agent_id] = "already-loaded"
+            continue
+        try:
+            await manager.create(agent_config)
+            if agent_config.enabled:
+                await manager.start(agent_config.agent_id)
+                report[agent_config.agent_id] = "running"
+            else:
+                report[agent_config.agent_id] = "stopped"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Agent 恢复失败, 跳过", agent_id=agent_config.agent_id, error=str(exc))
+            report[agent_config.agent_id] = f"failed: {exc}"
+    return report
+
+
+def _scan_agent_configs(root: Path) -> list[Path]:
+    """同步扫描 agents_dir 下所有 config.jsonc, 按目录名排序。
+
+    拆成同步 helper 是为了让 async 调用方用 asyncio.to_thread 包装, 不在 event loop 里
+    执行 blocking Path.glob (ruff ASYNC240)。
+    """
+    if not root.exists():
+        return []
+    return sorted(root.glob("*/config.jsonc"))

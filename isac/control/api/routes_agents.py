@@ -5,6 +5,7 @@ Bearer Token 认证 (依赖注入) + 审计日志 (写操作记录) + AgentConfi
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -24,11 +25,17 @@ def build_router(
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(prefix="/agents", tags=["agents"], dependencies=deps)
+    # agents_dir 是配置传入的字符串, 统一规范化为 Path 后续拼接都用 / 操作符,
+    # 避免字符串拼接绕开 AgentConfig.__post_init__ 对 agent_id 的格式校验
+    # (CODE_REVIEW_REPORT.md #19)。
+    agents_dir_path = Path(agents_dir)
 
     @router.post("")
     async def create_agent(config: dict) -> dict:
         instance = await _do_create_agent(agent_manager, config)
-        save_agent_config(f"{agents_dir}/{instance.agent_id}/config.jsonc", instance.config)
+        # Path / 操作符自然处理分隔符; agent_id 已由 AgentConfig 校验只含 [A-Za-z0-9_-]
+        config_path = agents_dir_path / instance.agent_id / "config.jsonc"
+        save_agent_config(config_path, instance.config)
         await _audit(
             audit_log, "POST", "/api/v1/agents", "create_agent", instance.agent_id
         )

@@ -166,6 +166,9 @@ class AgentContext(RuntimeContext):
     available_prompt_tokens: int = 8000
     streaming: bool = False
     on_chunk: Callable[[LLMChunk], Awaitable[None]] | None = None
+    # 共享服务字典 (runtime/assembly 注入): gating/agent_manager/session_mgr 等
+    # 让 Command 实现能访问 Agent 子系统 (CODE_REVIEW_REPORT.md #10)。
+    services: dict[str, Any] = field(default_factory=dict)
 
     def should_compress(self) -> bool:
         """上下文是否过大需要压缩（触发 COMPRESS hook）。

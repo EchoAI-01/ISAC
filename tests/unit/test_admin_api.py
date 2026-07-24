@@ -183,6 +183,24 @@ class TestRoutingAndLinks:
         content = (tmp_path / "links.jsonc").read_text(encoding="utf-8")
         assert "from_agent" in content and "\"a\"" in content
 
+    def test_add_link_returns_500_when_persist_fails(self, monkeypatch, control_app) -> None:
+        """写盘失败时 API 返回 500, 调用方能感知磁盘/内存态不一致 (CODE_REVIEW_REPORT.md #20)。"""
+        import pathlib
+
+        client, _ = control_app
+
+        def _raise(*_args, **_kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(pathlib.Path, "write_text", _raise)
+        response = client.post(
+            "/api/v1/links",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"from_agent": "a", "to_agent": "b"},
+        )
+        assert response.status_code == 500
+        assert response.json()["detail"]["code"] == "LINK_PERSIST_FAILED"
+
 
 class TestAgentIdValidation:
     def test_path_traversal_agent_id_rejected(self, control_app) -> None:

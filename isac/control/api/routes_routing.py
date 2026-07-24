@@ -67,46 +67,72 @@ def build_router(
     @api.post("/links")
     async def add_link(body: dict) -> dict:
         link = InterAgentLink(**body)
+        # add_link 内部已触发 _trigger_persist; 但 routes_routing 持有独立的
+        # _persist_links 路径, 用它把磁盘写入错误回传 500 (in-memory 状态已变更,
+        # 调用方需要知道不一致) (CODE_REVIEW_REPORT.md #20)。
         bus.add_link(link)
-        _persist_links(bus, Path(links_path))
-        if audit_log is not None:
-            await audit_log.record(
-                actor="authenticated",
-                method="POST",
-                path="/api/v1/links",
-                action="add_link",
-                target=f"{link.from_agent}->{link.to_agent}",
-                status_code=200,
-            )
+        _persist_links_or_raise(bus, Path(links_path))
+        await _audit_link_change(
+            audit_log, method="POST", path="/api/v1/links", action="add_link",
+            target=f"{link.from_agent}->{link.to_agent}",
+        )
         return {"status": "added"}
 
     @api.delete("/links")
     async def remove_link(from_agent: str, to_agent: str) -> dict:
         bus.remove_link(from_agent, to_agent)
-        _persist_links(bus, Path(links_path))
-        if audit_log is not None:
-            await audit_log.record(
-                actor="authenticated",
-                method="DELETE",
-                path="/api/v1/links",
-                action="remove_link",
-                target=f"{from_agent}->{to_agent}",
-                status_code=200,
-            )
+        _persist_links_or_raise(bus, Path(links_path))
+        await _audit_link_change(
+            audit_log, method="DELETE", path="/api/v1/links", action="remove_link",
+            target=f"{from_agent}->{to_agent}",
+        )
         return {"status": "removed"}
 
     return api
 
 
-def _persist_links(bus: InterAgentBus, path: Path) -> None:
-    """把所有 Link 持久化到 data/links.jsonc。"""
-    import json
+def _persist_links_or_raise(bus: InterAgentBus, path: Path) -> None:
+    """持久化失败抛 HTTPException(500), 让 API 层把磁盘/内存不一致暴露给调用方
+    (CODE_REVIEW_REPORT.md #20)。"""
+    from fastapi import HTTPException
 
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        links = [vars(link) for link in bus.list_links()]
-        path.write_text(json.dumps({"links": links}, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:  # noqa: BLE001 持久化失败不应影响 API 返回
-        from isac.utils.logger import get_logger
+        _persist_links(bus, path)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "LINK_PERSIST_FAILED", "message": str(exc)},
+        ) from exc
 
-        get_logger(__name__).warning("Link 持久化失败", path=str(path))
+
+async def _audit_link_change(
+    audit_log: AuditLog | None,
+    *,
+    method: str,
+    path: str,
+    action: str,
+    target: str,
+) -> None:
+    """Link 变更的统一审计记录 (audit_log 为 None 时跳过)。"""
+    if audit_log is None:
+        return
+    await audit_log.record(
+        actor="authenticated",
+        method=method,
+        path=path,
+        action=action,
+        target=target,
+        status_code=200,
+    )
+
+
+def _persist_links(bus: InterAgentBus, path: Path) -> None:
+    """把所有 Link 持久化到 data/links.jsonc。
+
+    失败时抛异常给调用方, 由 API 层返回 500 (CODE_REVIEW_REPORT.md #20)。
+    """
+    import json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    links = [vars(link) for link in bus.list_links()]
+    path.write_text(json.dumps({"links": links}, ensure_ascii=False, indent=2), encoding="utf-8")

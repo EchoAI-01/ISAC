@@ -35,6 +35,10 @@ class Session:
     last_active: int = 0  # 最后活跃时间
     state: str = "active"  # "active" | "idle" | "closed"
 
+    # /mute 命令设置的静音截止时间 (monotonic); 0 表示未静音。
+    # GatingSystem.evaluate 在门控阶段检查它, 直接返回 WAIT。
+    muted_until: float = 0.0
+
     # 运行时状态 (不持久化)
     context: SessionContext | None = None
 

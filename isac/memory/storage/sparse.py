@@ -91,7 +91,14 @@ class SparseBM25Index:
 
     @classmethod
     def _tokenize(cls, text: str) -> list[str]:
+        """分词: 英文/数字按 word-level, 中文按字符级单字。
+
+        旧实现对整个 normalized 文本做相邻 2 字符 bigram, 在 CJK 文档上既让索引膨胀,
+        又让 bigram 词项主导 BM25 分数 (单字 IDF 被 bigram 的高 TF 淹没)。改为字符级
+        单字后, 中文索引规模线性于文本长度, 单字 IDF 也能正常体现区分度
+        (CODE_REVIEW_REPORT.md #22)。
+        """
         normalized = str(text or "").lower()
-        words = re.findall(r"[a-z0-9_]+|[一-鿿]", normalized)
-        bigrams = [normalized[index : index + 2] for index in range(max(0, len(normalized) - 1))]
-        return words + [item for item in bigrams if re.search(r"[一-鿿]", item)]
+        # 英文/数字 word + CJK 单字; CJK 范围扩展到常用汉字 + 兼容一些扩展区
+        words = re.findall(r"[a-z0-9_]+|[一-鿿豈-龥]", normalized)
+        return words
