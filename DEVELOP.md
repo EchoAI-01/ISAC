@@ -37,7 +37,7 @@
 | `memory/` | 记忆管理：存储、检索、注入策略 | 不直接调用 LLM (除非通过注入策略) |
 | `persona/` | 人格配置：风格配置、情绪状态 | 不处理 Agent 逻辑 |
 | `plugin/` | 插件兼容：AstrBot 桥接、原生 SDK | 不处理核心业务逻辑 |
-| `provider/` | 模型适配：LLM/Embedding/Reranker | 不处理业务逻辑 |
+| `provider/` | 模型适配：LLM/Embedding/Reranker/STT/TTS/Image/Video、能力目录与模型路由 | 不处理业务逻辑、不直接发送 Channel 消息 |
 | `utils/` | 公共工具：日志、配置、辅助函数 | 不包含业务逻辑 |
 
 ### 1.2 导入规则
@@ -468,6 +468,8 @@ async def my_final_hook(response: LLMResponse, context: AgentContext) -> None:
 **Hook 注册规范**:
 - 每个 Hook 必须有明确的 priority，同优先级按注册顺序执行
 - Hook 中禁止直接调用 LLM（避免无限递归）
+- Hook 中禁止直接发送 Channel 消息；用户可见进度必须提交 `ProgressEvent`，统一交给 `ProgressReporter`
+- 进度事件只携带已脱敏事实，不得包含 reasoning、密钥、访问令牌、原始工具参数、完整本地路径或未清洗工具结果
 - Hook 执行失败必须不影响主流程（try-except 包裹）
 
 ### 4.3 Memory Injector 开发规范
@@ -684,7 +686,7 @@ class TestMemories:
 | 级别 | 用途 | 示例 |
 |------|------|------|
 | `DEBUG` | 详细调试信息 | 每个 Injector 的 build() 输入输出 |
-| `INFO` | 关键流程节点 | 消息到达、Agent 启动、工具执行 |
+| `INFO` | 关键流程节点 | 消息到达、Agent 启动、工具执行、模型用量事件 |
 | `WARNING` | 可恢复的错误 | 记忆检索失败、Injector 超时 |
 | `ERROR` | 严重错误 | LLM 调用失败、数据库错误 |
 
@@ -737,7 +739,28 @@ logger.error("LLM 调用失败", error=str(exc), exc_info=True)
 }
 ```
 
-### 7.3 工具权限控制
+### 7.3 模型用量记录规范
+
+- 所有 LLM、Embedding、Reranker、STT、TTS、ImageGen、Video Provider 必须在统一调用边界提交 `ModelUsageEvent`，不得由业务层零散计数。
+- 重试、回退和并行生成按物理请求分别记录，用同一 `trace_id` 关联；不能只记录最后一次成功调用。
+- Provider 响应未返回的 usage 字段保持 0；不得用字符数估算后标记为真实 Token。
+- 成本使用 `Decimal` 与调用时 `pricing_version` 快照；价格未知时记录用量并将成本置空。
+- 用量日志默认不保存 Prompt、响应、工具参数和凭据；`session_id` 明细受配置与 `usage:detail` 权限控制。
+- 高频事件先进入有界异步队列并批量写 SQLite；队列满时降级为聚合计数并告警，不能阻塞模型主调用。
+- Prometheus 只暴露低基数标签（provider/model/modality/status），禁止把 agent_id、session_id、request_id 作为指标标签。
+
+### 7.4 多模态 Provider 开发规范
+
+- 新模型适配器必须声明 `ModelDescriptor`，不得在 Agent、工具或 Channel 中根据模型名称猜能力。
+- Agent Prompt 只注入授权后的语义能力；Provider 名称、模型 ID 和凭据不默认暴露给模型。
+- 模型选择统一经过 `ModelRouter`，并记录选择原因、候选淘汰原因和 `ModelUsageEvent`。
+- 媒体输入必须经 `MediaNormalizer` 校验 MIME、扩展名、文件头、大小、时长和来源；远程 URL 必须防 SSRF。
+- 生成结果只返回 `ArtifactRef`；二进制数据不得写入日志、Prompt、普通消息历史或记忆正文。
+- `ArtifactStore` 必须限制目录、总容量、单文件大小、保留期和下载授权；外部对象存储使用短时签名 URL。
+- Channel Adapter 只负责能力转换：原生媒体、压缩/转码或受控链接；不得自行调用生成模型。
+- 图片、语音和视频生成属于可计费/可能敏感能力，受 Agent × Channel × 全局策略和单任务成本上限共同约束。
+
+### 7.5 工具权限控制
 
 | 工具 | 默认状态 | 说明 |
 |------|---------|------|
@@ -816,7 +839,7 @@ main (生产分支)
 | 级别 | 用途 | 示例 |
 |------|------|------|
 | `DEBUG` | 详细调试信息 | 每个 Injector 的 build() 输入输出 |
-| `INFO` | 关键流程节点 | 消息到达、Agent 启动、工具执行 |
+| `INFO` | 关键流程节点 | 消息到达、Agent 启动、工具执行、模型用量事件 |
 | `WARNING` | 可恢复的错误 | 记忆检索失败、Injector 超时 |
 | `ERROR` | 严重错误 | LLM 调用失败、数据库错误 |
 

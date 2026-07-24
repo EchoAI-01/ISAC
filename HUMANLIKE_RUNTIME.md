@@ -234,6 +234,51 @@ class ProactiveTask:
 3. 被打断的响应不发送给用户。
 4. 下一轮 Prompt 中应包含“上一轮被新消息打断”的内部提示。
 
+### 5.4 任务进度与中间态
+
+长任务不能只在结束时发送最终回复。`ISACAgentLoop` 在任务状态变化时产生结构化 `ProgressEvent`，由 `ProgressReporter` 决定是否汇报、按 Agent 人设渲染可见文本，并经原 Channel 发送。
+
+```text
+AgentLoop / ToolRegistry
+  │ ProgressEvent（事实，不含人设文本）
+  ▼
+ProgressReporter
+  ├─ ProgressPolicy：可见性、频控、合并、敏感信息过滤
+  ├─ PersonaRenderer：把事实渲染为 Agent 口吻
+  └─ ChannelSender：按原会话发送 progress 消息
+```
+
+状态流：
+
+```text
+PLANNED
+  │ 预计耗时超过阈值时可见
+  ▼
+TOOL_STARTED
+  │ 工具返回
+  ├───────────────┐
+  ▼               ▼
+TOOL_FINISHED   TOOL_FAILED
+  │ 下一工具 / 最终生成
+  ▼
+COMPLETED / INTERRUPTED
+```
+
+最低保障是每次工具调用完成后产生 `tool_finished` 或 `tool_failed` 事件。工具开始前的“正在查询……”只在预计耗时超过阈值、工具明确声明 `progress_safe=true` 且策略允许时发送；快速连续工具应合并为一条进度，避免刷屏。
+
+人格化遵循“事实与表达分离”：
+
+1. 工具名、阶段、成功/失败和安全摘要由系统提供，Persona 只能改变称呼、语气和措辞，不得改变事实。
+2. 默认使用 Persona 模板渲染，不为每条进度额外调用 LLM；仅在显式开启、预算充足且有超时保护时允许轻量模型改写。
+3. 进度文本不得包含 reasoning、密钥、访问令牌、原始工具参数、文件完整路径或未清洗的工具结果。
+4. `silent`、敏感工具及后台维护任务默认只记录内部事件，不发送用户可见进度。
+5. 同一会话默认最短发送间隔为 2 秒；间隔内事件保留最新事实并合并摘要。
+6. 进度发送失败只记录日志，不中断工具执行和最终回复。
+7. 新消息打断任务时，未发送的进度丢弃；已发送进度可用一条 `interrupted` 收束，但不能发送旧任务的最终结果。
+8. 最终回复独立于进度消息；进度消息不得替代完整结果，也不参与行为学习和普通回复频率统计。
+
+平台降级规则：WebChat 等支持结构化事件的平台发送原生 `progress` 帧；普通 IM 以 `ISACMessage` 文本发送，并设置 `metadata.message_kind="progress"`，以便历史、学习、统计和 WebUI 区分进度与正式回复。
+
 ---
 
 ## 六、关系、情绪与表达学习
@@ -326,6 +371,7 @@ class MoodState:
 | 静默窗口 | 连续消息不会触发多次即时回复 |
 | wait | Agent 可进入等待并由 timeout/message/proactive 恢复 |
 | interrupt | 新消息能打断正在运行的规划，旧回复不发送 |
+| progress | 每次工具完成后产生结构化事件；Reporter 可按人设汇报，支持频控、合并、脱敏和普通 IM 降级 |
 | proactive | 插件/API/记忆可创建主动任务并唤醒会话 |
 | context restore | 重启后恢复最近上下文并注入内部参考 |
 | relationship | 关系深度影响回复频率和称呼风格 |
@@ -337,4 +383,5 @@ class MoodState:
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-07-23 | Architect | 新增任务进度与中间态设计：ProgressEvent、ProgressReporter、Persona 渲染、频控合并、脱敏与平台降级 |
 | 2026-07-22 | Architect | 新增拟人化运行时专项设计，补充 ConversationRuntime、wait、proactive、interrupt、上下文恢复与学习模块 |
