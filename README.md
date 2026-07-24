@@ -51,24 +51,37 @@
 
 ## 项目状态
 
-**Phase 1 中期** — 框架骨架已搭建，使用 StubProvider / NoOpMemoryPipeline 时单 Agent 核心链路可开发态端到端运行。
+**Alpha (K1-K8 稳定化阶段)** — 框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent E2E 已通, 接近可用版本准入。
+
+K1-K7 已完成 (K8 CI/Docker/浏览器测试门禁进行中):
+
+- 应用生命周期 (`ApplicationRuntime` 统一 TaskGroup + SIGINT/SIGTERM 优雅关闭)
+- 真实 LLM Provider (`OpenAICompatProvider` httpx 实现, 含 SSE 流式 + Tool Call + 429/5xx 分类)
+- Storage Schema init + BM25 启动恢复 + shared namespace ACL
+- 原子配置写入 (tmp + fsync + os.replace)
+- 单/多 Agent × Channel 端到端集成测试
+- 安全基线: Webhook SSRF 防护 / SecretStore AES-256-GCM / Session TTL / 队列有界 / bash kill-wait
 
 | 模块 | 状态 |
 |------|------|
 | 核心契约 (types/events/exceptions) | ✅ 完成 |
-| 配置与日志系统 | ✅ 完成 |
+| 配置与日志系统 + 原子写 | ✅ 完成 |
 | 消息路由 (Router + Rules) | ✅ 完成 |
-| Gateway (EventBus/Session/User/Lock) | ✅ 完成 |
-| 门控系统 (Gating/Focus/IdleBackoff) | ✅ 框架（回复必要性评分待精化） |
-| System Prompt 组装器 + 注入器框架 | ✅ 完成 |
-| Agent Loop (LLM 循环 + Hooks + 重试/回退) | ✅ 完成 |
-| OneBot v11 适配器 (QQ) | ✅ 完成（反向 WebSocket） |
-| 工具系统 (ToolRegistry/ToolPermission) | ✅ 框架（内置工具待实现） |
-| 记忆系统 | 🔲 NoOp 兜底（存储/检索/注入待实现） |
-| 人格系统 (Persona/Mood/Drift) | 🔲 配置骨架（逻辑待实现） |
-| 插件生态 (AstrBot/MaiBot/Native) | 🔲 骨架（兼容层/加载器待实现） |
-| 控制面 (Admin API/MCP/Webhooks) | 🔲 骨架（业务逻辑待实现） |
-| WebUI / Docker / 生产化 | 🔲 待实现 |
+| Gateway (EventBus/Session/User/Lock) | ✅ 完成 + TTL + 二级索引 |
+| 门控系统 (Gating/Focus/IdleBackoff) | ✅ 完成 + AgentConfig.gating 覆盖 |
+| System Prompt 组装器 + 注入器 | ✅ 完成 |
+| Agent Loop (LLM 循环 + Hooks + 重试/回退) | ✅ 完成 + tool_calls 消息序列 |
+| OneBot v11 适配器 (QQ) | ✅ 完成 (反向 WebSocket) |
+| 工具系统 (ToolRegistry/ToolPermission) | ✅ 完成 + 内置命令接入 |
+| 记忆系统 (MetadataStore+FTS5+BM25) | ✅ 完成 (Vector/Graph 仍 experimental) |
+| 人格系统 (Persona/Mood/Drift) | ✅ 完成 (BehaviorLearner 接入) |
+| 插件生态 (AstrBot/MaiBot/Native) | ✅ 完成 + PluginManager 接入 main |
+| 控制面 (Admin API/MCP/Webhooks) | ✅ 完成 + 审计 + 持久化恢复 |
+| 监控告警 (Metrics/Alerting) | ✅ 完成 + 接入主链路 |
+| WebUI (Vanilla JS) | ✅ 完成 + sessionStorage |
+| Docker 部署 + CI 门禁 | 🟡 Dockerfile/compose 完成, CI cov-fail-under 进行中 |
+| 真实 LLM Provider | ✅ 完成 (OpenAICompatProvider httpx) |
+| 安全基线 | ✅ K7 完成 |
 
 ---
 
