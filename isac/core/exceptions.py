@@ -10,10 +10,13 @@ class ISACError(Exception):
     code: str = "ISAC_ERROR"
     retriable: bool = False
 
-    def __init__(self, message: str, *, context: dict | None = None):
+    def __init__(self, message: str, *, context: dict | None = None, retriable: bool | None = None):
         super().__init__(message)
         self.message = message
         self.context = context
+        # 允许构造时显式覆盖类级 retriable (默认沿用子类声明)
+        if retriable is not None:
+            self.retriable = retriable
 
 
 class PlatformError(ISACError):
