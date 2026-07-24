@@ -127,12 +127,11 @@ async def _audit_link_change(
 
 
 def _persist_links(bus: InterAgentBus, path: Path) -> None:
-    """把所有 Link 持久化到 data/links.jsonc。
+    """把所有 Link 持久化到 data/links.jsonc (原子替换, K4)。
 
     失败时抛异常给调用方, 由 API 层返回 500 (CODE_REVIEW_REPORT.md #20)。
     """
-    import json
-
-    path.parent.mkdir(parents=True, exist_ok=True)
     links = [vars(link) for link in bus.list_links()]
-    path.write_text(json.dumps({"links": links}, ensure_ascii=False, indent=2), encoding="utf-8")
+    from isac.utils.fs import atomic_write_json
+
+    atomic_write_json(path, {"links": links})

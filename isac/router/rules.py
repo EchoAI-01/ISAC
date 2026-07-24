@@ -36,9 +36,8 @@ def load_rules(path: str | Path) -> RoutingRules:
 
 
 def save_rules(path: str | Path, rules: RoutingRules) -> None:
-    """保存路由规则到 JSONC 文件。"""
+    """保存路由规则到 JSONC 文件 (原子替换, K4)。"""
     file_path = Path(path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
     raw = {
         "bindings": [
             {
@@ -51,5 +50,7 @@ def save_rules(path: str | Path, rules: RoutingRules) -> None:
         ],
         "default_agents": rules.default_agents,
     }
-    file_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    from isac.utils.fs import atomic_write_json
+
+    atomic_write_json(file_path, raw)
     logger.info("路由规则已保存", path=str(file_path))
