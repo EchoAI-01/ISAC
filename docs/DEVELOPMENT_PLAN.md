@@ -29,19 +29,23 @@
 
 ## 三、节点总览
 
-| 大节点 | 名称 | 状态 | 说明 |
-|--------|------|------|------|
-| A | 文档冻结 | 100% | A1-A5 全部完成, A4 持续维护 |
-| B | 基础骨架 | 100% | 全部完成 |
-| C | 连接与路由 | 100% | 全部完成 |
-| D | 单 Agent 核心 | 89% | D1-D8 完成，D9 任务进度报告待实现 |
-| E | 多 Agent 运行时 | 80% | E1-E4 完成, E5 集成测试待业务全完成后做 |
-| F | 插件生态 | 100% | F1-F4 全部完成 |
-| G | 控制面与自动化 | 100% | G1-G4 全部完成 |
-| H | 平台与工具扩展 | 100% | H1-H3 全部完成 |
-| I | 生产化与交付 | 50% | I1/I3/I4 基础能力完成；I2/I5/I6 待 K 节点重新验收 |
-| J | 模型能力、计量与管理面增强 | 0% | J1-J3 已设计，K1-K8 完成前暂停实现 |
-| K | 稳定化与可用版本闭环 | 0% | K1-K8 为当前最高优先级，完成前项目定位为 Alpha |
+各节点进度以 [PROGRESS.md](./PROGRESS.md) 为**唯一事实源**,本文档不再另存进度表,只描述节点定义、依赖与验收。
+
+当前概况(详见 PROGRESS.md): A-C、F-H 已完成;E 经 K6 端到端验收完成;D 待 D9;I 主体完成(WebUI 仅 v1);K1-K8 稳定化代码已落地,项目已达可运行完成度;J1-J4 仅设计待实现。
+
+## 三之二、下一步开发计划
+
+K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可验证。剩余工作按下述优先级推进:
+
+1. **K8 收尾** — 补 WebUI 浏览器黄金路径测试,校准 README/AGENTS/CHANGELOG/版本号,确认发布准入。
+2. **D9 任务进度报告** — 实现 `ProgressEvent`/`ProgressReporter`,工具完成后按人设汇报;是 J4 与 WebUI 任务时间线的前置。
+3. **J1 Token 用量与成本计量** — 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。
+4. **J2 多模态 Provider 与能力选择** — 落地 `ModelDescriptor`/`ModelCatalog`/`ModelRouter`/`ArtifactStore`,填充 `provider/{embed,rerank,stt_tts}` 空目录。
+5. **J4 SubAgent Runtime** — 基于 D9/J1 实现隔离子 Agent 与可追溯 `SubAgentJournal`,把 H3 `TaskRunner` 原型迁移为 `SubAgentSupervisor`。
+6. **J3 WebUI v2** — 汇聚上述能力,提供十域管理与观测面板。
+7. **experimental 桩补齐** — VectorStore(sqlite-vec)、GraphStore、Reranker、MemoryConsolidator、完整 ConversationRuntime。
+
+依赖顺序: K8 → D9 → J1 → J2 → J4 → J3;experimental 桩可并行插入。J1-J4 每项完成后按强化完成定义(非桩实现 + 单元/集成测试 + 运行验证 + 文档同步)更新 PROGRESS.md。
 
 ---
 
