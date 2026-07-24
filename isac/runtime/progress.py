@@ -24,10 +24,15 @@ logger = get_logger(__name__)
 
 # 终态阶段: 不受最小间隔频控约束, 保证用户能收到收尾信号。
 _TERMINAL_STAGES = frozenset({"tool_failed", "completed", "interrupted"})
+# 任务级终结阶段 (与 _TERMINAL_STAGES 不同: tool_failed 只是单步失败, 任务可能
+# 继续尝试别的工具; 只有 completed/interrupted 代表整个任务的故事结束)。
+_TASK_TERMINAL_STAGES = frozenset({"completed", "interrupted"})
 # 脱敏时从 metadata 中剔除的敏感键 (占位清单, 实现节点接入统一脱敏器/SecretStore)。
 _SENSITIVE_METADATA_KEYS = frozenset(
     {"api_key", "token", "authorization", "cookie", "secret", "password", "arguments"}
 )
+# _terminated_tasks 软上限: 超出后整体清空 (D9-5, 防止长期运行会话无界增长)。
+_MAX_TERMINATED_TASKS = 500
 
 
 @dataclass
@@ -112,6 +117,7 @@ class ProgressReporter:
         self._last_emit_at: float = 0.0
         self._visible_count_by_task: dict[str, int] = {}
         self._pending_merge: dict[tuple[str, str], ProgressEvent] = {}
+        self._terminated_tasks: set[str] = set()
 
     def rebind_sender(self, sender: Callable[[str, ProgressEvent], Awaitable[None]] | None) -> None:
         """D9: 复用 per-session 实例时重新绑定 sender (同一 session 后续消息可能来自不同连接)。"""
@@ -128,16 +134,32 @@ class ProgressReporter:
             await self._dispatch(text, event)
             self._last_emit_at = event.occurred_at or time.time()
             self._visible_count_by_task[event.task_id] = self._visible_count_by_task.get(event.task_id, 0) + 1
+            if event.stage in _TASK_TERMINAL_STAGES:
+                self._mark_task_terminated(event.task_id)
             return True
         except Exception as exc:
             logger.warning("进度上报失败, 已忽略", stage=event.stage, error=str(exc))
             return False
 
+    def _mark_task_terminated(self, task_id: str) -> None:
+        """D9-5: 任务收束 (completed/interrupted) 后拉黑 task_id, 丢弃迟到的旧进度;
+        同时清理该 task 在 _visible_count_by_task / _pending_merge 里的记录, 使
+        这两个按 task 累积的字典不会随任务数量无界增长。"""
+        if len(self._terminated_tasks) >= _MAX_TERMINATED_TASKS:
+            self._terminated_tasks.clear()
+        self._terminated_tasks.add(task_id)
+        self._visible_count_by_task.pop(task_id, None)
+        for key in [k for k in self._pending_merge if k[0] == task_id]:
+            del self._pending_merge[key]
+
     def _should_emit(self, event: ProgressEvent) -> bool:
         """频控与每任务可见上限判定。
 
         占位: 简单最小间隔 + 计数上限; 终态阶段绕过间隔约束。跨窗口合并见 ``_merge``。
+        D9-5: 任务已收束 (completed/interrupted) 后, 该 task 的任何迟到事件直接丢弃。
         """
+        if event.task_id in self._terminated_tasks:
+            return False
         if not self.policy.enabled or not event.visible:
             return False
         count = self._visible_count_by_task.get(event.task_id, 0)

@@ -148,6 +148,52 @@ async def test_reporter_swallows_sender_errors() -> None:
     assert await reporter.report(_event("tool_finished")) is False
 
 
+async def test_report_drops_events_for_task_already_completed() -> None:
+    """D9-5: 任务已 completed 收束后, 该 task 的后续旧进度不再发送。"""
+    sent: list[str] = []
+
+    async def sender(text: str, event: ProgressEvent) -> None:
+        sent.append(event.stage)
+
+    reporter = build_progress_reporter(agent_id="a1", session_id="s1", sender=sender)
+    assert await reporter.report(_event("completed", task_id="t1", occurred_at=100.0)) is True
+    # 用 tool_failed (终态, 绕过频控) 作为迟到事件, 排除全局最小间隔这一变量,
+    # 只验证 task 终结黑名单本身在起作用。
+    assert await reporter.report(_event("tool_failed", task_id="t1", occurred_at=100.1)) is False
+
+    assert sent == ["completed"]
+
+
+async def test_report_drops_events_for_task_already_interrupted() -> None:
+    """D9-5: 任务已 interrupted 收束后, 该 task 的后续旧进度不再发送。"""
+    sent: list[str] = []
+
+    async def sender(text: str, event: ProgressEvent) -> None:
+        sent.append(event.stage)
+
+    reporter = build_progress_reporter(agent_id="a1", session_id="s1", sender=sender)
+    assert await reporter.report(_event("interrupted", task_id="t1", occurred_at=100.0)) is True
+    assert await reporter.report(_event("tool_failed", task_id="t1", occurred_at=100.1)) is False
+
+    assert sent == ["interrupted"]
+
+
+async def test_report_still_allows_other_tasks_after_one_terminates() -> None:
+    """D9-5: 一个 task 终结不应影响同一 reporter 上其它 task 的正常上报。"""
+    sent: list[tuple[str, str]] = []
+
+    async def sender(text: str, event: ProgressEvent) -> None:
+        sent.append((event.task_id, event.stage))
+
+    reporter = build_progress_reporter(agent_id="a1", session_id="s1", sender=sender)
+    await reporter.report(_event("completed", task_id="t1", occurred_at=100.0))
+    # occurred_at 相隔 > min_interval_seconds (默认 2.0s), 排除全局频控这一变量,
+    # 只验证 task 终结黑名单不会误伤其它 task。
+    assert await reporter.report(_event("tool_finished", task_id="t2", occurred_at=105.0)) is True
+
+    assert ("t2", "tool_finished") in sent
+
+
 def test_merge_combines_tool_name_for_adjacent_same_stage_same_task_events() -> None:
     reporter = build_progress_reporter(agent_id="a1", session_id="s1")
     first = _event("tool_finished", task_id="t1", tool_name="query_memory", occurred_at=100.0)
