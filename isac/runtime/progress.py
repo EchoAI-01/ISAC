@@ -112,6 +112,10 @@ class ProgressReporter:
         self._last_emit_at: float = 0.0
         self._visible_count_by_task: dict[str, int] = {}
 
+    def rebind_sender(self, sender: Callable[[str, ProgressEvent], Awaitable[None]] | None) -> None:
+        """D9: 复用 per-session 实例时重新绑定 sender (同一 session 后续消息可能来自不同连接)。"""
+        self._sender = sender
+
     async def report(self, event: ProgressEvent) -> bool:
         """提交并按策略发送一个进度事件。返回是否实际发送。"""
         try:

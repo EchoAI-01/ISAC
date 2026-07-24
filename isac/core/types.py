@@ -195,8 +195,9 @@ class AgentContext(RuntimeContext):
     # 让 Command 实现能访问 Agent 子系统 (CODE_REVIEW_REPORT.md #10)。
     services: dict[str, Any] = field(default_factory=dict)
     # 任务进度回调 (D9): Agent Loop 只提交 ProgressEvent，实际发送由 ProgressReporter 负责。
-    # 默认 None 时进度报告关闭，主链路热路径零变化。
-    report_progress: Callable[[ProgressEvent], Awaitable[None]] | None = None
+    # 默认 None 时进度报告关闭，主链路热路径零变化。返回值 (ProgressReporter.report
+    # 返回 bool 表示是否实际发送) 由调用方按需读取, 故声明为 Awaitable[Any]。
+    report_progress: Callable[[ProgressEvent], Awaitable[Any]] | None = None
 
     def should_compress(self) -> bool:
         """上下文是否过大需要压缩（触发 COMPRESS hook）。
