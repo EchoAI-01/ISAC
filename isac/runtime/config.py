@@ -53,6 +53,9 @@ class AgentConfig:
     commands_allow: list[str] = field(default_factory=lambda: ["*"])
     mcp_servers: list[str] = field(default_factory=list)  # 允许使用的 MCP Server 名
 
+    # J3-2: 配置版本号, 用于乐观锁 (If-Match); 每次 save_agent_config +1
+    revision: int = 1
+
     def __post_init__(self) -> None:
         """校验 agent_id，避免其被用于拼接文件路径时发生目录穿越 (SPECIFICATION.md 3.3)。"""
         if not AGENT_ID_PATTERN.match(self.agent_id):
@@ -72,10 +75,11 @@ def load_agent_config(path: str | Path) -> AgentConfig:
 
 
 def save_agent_config(path: str | Path, config: AgentConfig) -> None:
-    """保存 Agent 配置到 JSONC 文件 (原子替换, K4)。"""
+    """保存 Agent 配置到 JSONC 文件 (原子替换, K4); J3-2: revision +1 (乐观锁)。"""
     file_path = Path(path)
+    config.revision = int(config.revision) + 1
     content = json.dumps(asdict(config), ensure_ascii=False, indent=2)
     from isac.utils.fs import atomic_write_text
 
     atomic_write_text(file_path, content)
-    logger.info("Agent 配置已保存", agent_id=config.agent_id, path=str(file_path))
+    logger.info("Agent 配置已保存", agent_id=config.agent_id, path=str(file_path), revision=config.revision)

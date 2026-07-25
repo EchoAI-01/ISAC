@@ -74,7 +74,83 @@ def build_router(
         )
         return {"agent_id": agent_id, "status": "destroyed"}
 
+    @router.patch("/{agent_id}")
+    async def patch_agent(
+        agent_id: str,
+        payload: dict,
+        if_match: str | None = None,
+    ) -> dict:
+        """J3-2: 部分更新 AgentConfig; 支持 If-Match revision 乐观锁。"""
+        return await _do_patch_agent(
+            agent_manager, agent_id, payload, if_match, audit_log, agents_dir_path,
+        )
+
     return router
+
+
+async def _do_patch_agent(
+    agent_manager: AgentManager,
+    agent_id: str,
+    payload: dict,
+    if_match: str | None,
+    audit_log: AuditLog | None,
+    agents_dir_path: Path,
+) -> dict:
+    """J3-2: PATCH /agents/{id} 实现细节 (抽出来降 build_router 圈复杂度)。"""
+    from dataclasses import asdict
+
+    from fastapi import HTTPException
+
+    from isac.runtime.config import AgentConfig, save_agent_config
+
+    instance = await agent_manager.get(agent_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
+    # 乐观锁: 校验 if_match 与当前 revision
+    current_revision = getattr(instance.config, "revision", 1)
+    if if_match is not None:
+        try:
+            expected = int(if_match)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_IF_MATCH", "message": f"If-Match must be int, got: {if_match}"},
+            )
+        if expected != current_revision:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "CONFIG_CONFLICT",
+                    "message": f"revision mismatch: expected {expected}, current {current_revision}",
+                    "current_revision": current_revision,
+                },
+            )
+    # 合并 payload 到现有 config (部分更新; agent_id 不可改)
+    merged = asdict(instance.config)
+    for k, v in payload.items():
+        if k in merged and k != "agent_id":
+            merged[k] = v
+    try:
+        new_config = AgentConfig(**merged)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_CONFIG", "message": str(exc)},
+        ) from exc
+    # 持久化 (save_agent_config 会 revision+1)
+    config_path = agents_dir_path / agent_id / "config.jsonc"
+    save_agent_config(config_path, new_config)
+    # 热更新到 runtime
+    await agent_manager.reload_config(agent_id, new_config)
+    await _audit(
+        audit_log, "PATCH", f"/api/v1/agents/{agent_id}", "patch_agent",
+        agent_id, detail=f"revision={new_config.revision}",
+    )
+    return {
+        "agent_id": agent_id,
+        "status": instance.status,
+        "revision": new_config.revision,
+    }
 
 
 async def _do_create_agent(agent_manager: AgentManager, config: dict) -> Any:

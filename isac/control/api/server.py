@@ -124,6 +124,13 @@ def create_control_app(
             ),
             prefix="/api/v1",
         )
+    # J3-2: 配置编辑事务路由 (validate / diff; PATCH /agents/{id} 已在 routes_agents 内)
+    from isac.control.api import routes_config
+
+    app.include_router(
+        routes_config.build_router(auth_dependency=auth_dependency),
+        prefix="/api/v1",
+    )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
 
