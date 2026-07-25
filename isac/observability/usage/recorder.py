@@ -106,6 +106,232 @@ class UsageRecorder:
         )
         self.record(event)
 
+    # ── J2 多模态计量: 非 token 单位 (image/audio/video/embed/rerank) ─────
+    # 每个方法仿 record_llm 结构: 构造 ModelUsageEvent → self.record() (估算成本 + 缓冲)
+    # input_units/output_units 按 modality 语义填:
+    #   image_gen: input_units=n_images (生成请求次数), output_units=n_images (生成图片数)
+    #   stt:       input_units=duration_seconds (输入音频时长)
+    #   tts:       output_units=duration_seconds (输出音频时长)
+    #   video:     understand→input_units=duration; generate→output_units=duration
+    #   embed:     input_units=n_texts, output_units=dim (向量维度, 不直接计价)
+    #   rerank:    input_units=n_candidates
+    # 失败请求 (status != "success") 用量保持 0 不伪造, 但仍记录事件。
+
+    def record_image_gen(
+        self,
+        *,
+        model: str,
+        provider: str = "",
+        n_images: int = 1,
+        latency_ms: int = 0,
+        status: str = "success",
+        agent_id: str = "",
+        session_id: str = "",
+        trace_id: str = "",
+        request_id: str = "",
+        fallback_from: str | None = None,
+    ) -> None:
+        """图片生成调用计量: modality=image, operation=generate, unit=image。"""
+        event = ModelUsageEvent(
+            event_id=uuid.uuid4().hex,
+            trace_id=trace_id,
+            request_id=request_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+            modality="image",
+            operation="generate",
+            input_units=n_images,
+            output_units=n_images,
+            unit_name="image",
+            latency_ms=latency_ms,
+            status=status,
+            fallback_from=fallback_from,
+            created_at=int(time.time()),
+        )
+        self.record(event)
+
+    def record_stt(
+        self,
+        *,
+        model: str,
+        provider: str = "",
+        duration_seconds: float = 0.0,
+        latency_ms: int = 0,
+        status: str = "success",
+        agent_id: str = "",
+        session_id: str = "",
+        trace_id: str = "",
+        request_id: str = "",
+        fallback_from: str | None = None,
+    ) -> None:
+        """语音转写调用计量: modality=audio, operation=transcribe, unit=second。"""
+        event = ModelUsageEvent(
+            event_id=uuid.uuid4().hex,
+            trace_id=trace_id,
+            request_id=request_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+            modality="audio",
+            operation="transcribe",
+            input_units=duration_seconds,
+            unit_name="second",
+            latency_ms=latency_ms,
+            status=status,
+            fallback_from=fallback_from,
+            created_at=int(time.time()),
+        )
+        self.record(event)
+
+    def record_tts(
+        self,
+        *,
+        model: str,
+        provider: str = "",
+        duration_seconds: float = 0.0,
+        latency_ms: int = 0,
+        status: str = "success",
+        agent_id: str = "",
+        session_id: str = "",
+        trace_id: str = "",
+        request_id: str = "",
+        fallback_from: str | None = None,
+    ) -> None:
+        """语音合成调用计量: modality=audio, operation=synthesize, unit=second。"""
+        event = ModelUsageEvent(
+            event_id=uuid.uuid4().hex,
+            trace_id=trace_id,
+            request_id=request_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+            modality="audio",
+            operation="synthesize",
+            output_units=duration_seconds,
+            unit_name="second",
+            latency_ms=latency_ms,
+            status=status,
+            fallback_from=fallback_from,
+            created_at=int(time.time()),
+        )
+        self.record(event)
+
+    def record_video(
+        self,
+        *,
+        operation: str,
+        model: str,
+        provider: str = "",
+        duration_seconds: float = 0.0,
+        latency_ms: int = 0,
+        status: str = "success",
+        agent_id: str = "",
+        session_id: str = "",
+        trace_id: str = "",
+        request_id: str = "",
+        fallback_from: str | None = None,
+    ) -> None:
+        """视频调用计量: modality=video, unit=second。
+        operation 由调用方传 (understand/generate); understand→input_units=duration,
+        generate→output_units=duration。
+        """
+        event = ModelUsageEvent(
+            event_id=uuid.uuid4().hex,
+            trace_id=trace_id,
+            request_id=request_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+            modality="video",
+            operation=operation,
+            input_units=duration_seconds if operation == "understand" else 0.0,
+            output_units=duration_seconds if operation == "generate" else 0.0,
+            unit_name="second",
+            latency_ms=latency_ms,
+            status=status,
+            fallback_from=fallback_from,
+            created_at=int(time.time()),
+        )
+        self.record(event)
+
+    def record_embed(
+        self,
+        *,
+        model: str,
+        provider: str = "",
+        n_texts: int = 1,
+        dim: int = 0,
+        latency_ms: int = 0,
+        status: str = "success",
+        agent_id: str = "",
+        session_id: str = "",
+        trace_id: str = "",
+        request_id: str = "",
+        fallback_from: str | None = None,
+    ) -> None:
+        """Embedding 调用计量: modality=embedding, operation=embed, unit=vector。
+        input_units=n_texts (向量化文本数), output_units=dim (向量维度, 不直接计价,
+        真实 OpenAI 按 token 计价; 此处用 vector 单位做简化模型)。
+        """
+        event = ModelUsageEvent(
+            event_id=uuid.uuid4().hex,
+            trace_id=trace_id,
+            request_id=request_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+            modality="embedding",
+            operation="embed",
+            input_units=n_texts,
+            output_units=dim,
+            unit_name="vector",
+            latency_ms=latency_ms,
+            status=status,
+            fallback_from=fallback_from,
+            created_at=int(time.time()),
+        )
+        self.record(event)
+
+    def record_rerank(
+        self,
+        *,
+        model: str,
+        provider: str = "",
+        n_candidates: int = 0,
+        latency_ms: int = 0,
+        status: str = "success",
+        agent_id: str = "",
+        session_id: str = "",
+        trace_id: str = "",
+        request_id: str = "",
+        fallback_from: str | None = None,
+    ) -> None:
+        """Reranker 调用计量: modality=rerank, operation=rerank, unit=candidate。"""
+        event = ModelUsageEvent(
+            event_id=uuid.uuid4().hex,
+            trace_id=trace_id,
+            request_id=request_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+            modality="rerank",
+            operation="rerank",
+            input_units=n_candidates,
+            unit_name="candidate",
+            latency_ms=latency_ms,
+            status=status,
+            fallback_from=fallback_from,
+            created_at=int(time.time()),
+        )
+        self.record(event)
+
     async def flush(self) -> None:
         """把缓冲事件一次性批量落库 (insert_many, 避免逐事件提交的 N+1 开销)。
 
