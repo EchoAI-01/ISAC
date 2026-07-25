@@ -253,22 +253,65 @@ class ISACAgentLoop:
         """
         tools_def = self.tools.definitions()
         if context.streaming:
-            # 流式模式暂不支持 chat_with_retry 包装，直接走原 LLM 流式接口
-            chunks: list[LLMChunk] = []
-            async for chunk in self.llm.chat_stream(system_prompt, messages, tools_def):
-                chunks.append(chunk)
-                if context.on_chunk:
-                    await context.on_chunk(chunk)
-            return self._merge_chunks(chunks)
+            # 流式模式暂不支持 chat_with_retry 的重试包装 (chunk 已流式推给 on_chunk,
+            # 中断后无法干净重试), 直接走原 LLM 流式接口; 用量/指标记录见 _call_llm_streaming。
+            return await self._call_llm_streaming(system_prompt, messages, tools_def, context)
 
         if self.provider_manager is not None:
+            agent_id, session_id, trace_id = self._correlation_ids(context)
             return await self.provider_manager.chat_with_retry(
                 self.llm,
+                agent_id=agent_id,
+                session_id=session_id,
+                trace_id=trace_id,
                 system=system_prompt,
                 messages=messages,
                 tools=tools_def,
             )
         return await self.llm.chat(system_prompt, messages, tools_def)
+
+    async def _call_llm_streaming(
+        self, system_prompt: str, messages: list[dict], tools_def: list[dict], context: AgentContext
+    ) -> LLMResponse:
+        """流式 LLM 调用: 逐 chunk 转发 on_chunk, 结束后记录一次用量 (J1, 成功/失败都记录)。"""
+        start = time.monotonic()
+        status = "success"
+        response: LLMResponse | None = None
+        chunks: list[LLMChunk] = []
+        try:
+            async for chunk in self.llm.chat_stream(system_prompt, messages, tools_def):
+                chunks.append(chunk)
+                if context.on_chunk:
+                    await context.on_chunk(chunk)
+            response = self._merge_chunks(chunks)
+            return response
+        except Exception:
+            status = "failed"
+            raise
+        finally:
+            if self.provider_manager is not None:
+                agent_id, session_id, trace_id = self._correlation_ids(context)
+                self.provider_manager.record_stream_result(
+                    self.llm,
+                    response,
+                    latency_ms=int((time.monotonic() - start) * 1000),
+                    status=status,
+                    agent_id=agent_id,
+                    session_id=session_id,
+                    trace_id=trace_id,
+                )
+
+    @staticmethod
+    def _correlation_ids(context: AgentContext) -> tuple[str, str, str]:
+        """J1: 从 context 取 (agent_id, session_id, trace_id), 供用量记录关联同一逻辑调用。
+
+        trace_id 复用 D9 已经为每轮消息生成的 task_id, 不新增字段。
+        """
+        return (
+            str(context.services.get("agent_id", "")),
+            context.session.session_id,
+            str(context.services.get("task_id", "")),
+        )
 
     def _merge_chunks(self, chunks: list[LLMChunk]) -> LLMResponse:
         """将流式 chunks 合并为完整响应。"""

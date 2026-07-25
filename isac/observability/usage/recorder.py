@@ -71,18 +71,21 @@ class UsageRecorder:
         latency_ms: int = 0,
         agent_id: str = "",
         session_id: str = "",
+        trace_id: str = "",
+        request_id: str = "",
         fallback_from: str | None = None,
     ) -> None:
         """从一次 LLM chat 调用构造并缓冲用量事件 (供 ProviderManager 调用)。
 
-        失败请求 (response=None) 用量保持 0 并记录 status。trace_id/request_id 等
-        完整上下文的贯穿由 J1 实现节点补齐。
+        失败请求 (response=None) 用量保持 0 并记录 status。trace_id 由调用方为一次
+        逻辑调用 (含其所有重试/回退尝试) 统一生成; request_id 由调用方为每次物理
+        尝试单独生成, 二者用于聚合时按 trace_id 归并同一逻辑调用的多次物理请求。
         """
         usage = response.usage if response is not None else TokenUsage()
         event = ModelUsageEvent(
             event_id=uuid.uuid4().hex,
-            trace_id="",
-            request_id="",
+            trace_id=trace_id,
+            request_id=request_id,
             agent_id=agent_id,
             session_id=session_id,
             provider=provider,
