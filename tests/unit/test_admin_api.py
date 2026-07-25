@@ -215,6 +215,83 @@ class TestPatchAgentIfMatch:
         assert response.status_code == 409
 
 
+class TestTokenScope:
+    """Fix-12: control.tokens[] 配置多个 {token, scopes} 后, 端点应真正按 scope
+    校验, 而不是所有持有效 Bearer Token 的调用方都拿到全部权限。"""
+
+    def _make_app(self, tmp_path: Path, tokens: list[dict]):
+        from fastapi.testclient import TestClient
+
+        from isac.control.api.server import create_control_app
+        from isac.plugin.runtime.manager import PluginManager
+        from isac.router.router import MessageRouter
+        from isac.router.types import RoutingRules
+        from isac.runtime.bus import InterAgentBus
+        from isac.runtime.manager import AgentManager
+
+        services = {
+            "global_config": {},
+            "provider_manager": _StubProviderManager(),
+            "memory_factory": lambda namespace: _StubMemory(namespace),
+        }
+        agent_manager = AgentManager(services)
+        bus = InterAgentBus()
+        router = MessageRouter(RoutingRules(), agents_provider=agent_manager.routing_infos)
+        plugin_manager = PluginManager({})
+        app = create_control_app(
+            agent_manager=agent_manager,
+            router=router,
+            bus=bus,
+            plugin_manager=plugin_manager,
+            config={
+                "api_token": "fallback-admin-token",
+                "tokens": tokens,
+                "agents_dir": str(tmp_path / "agents"),
+                "routing_rules_path": str(tmp_path / "routing.jsonc"),
+                "links_path": str(tmp_path / "links.jsonc"),
+                "audit_log_path": str(tmp_path / "audit.ndjson"),
+            },
+        )
+        return TestClient(app)
+
+    def test_readonly_scoped_token_can_read_but_not_write_agents(self, tmp_path: Path) -> None:
+        client = self._make_app(
+            tmp_path,
+            tokens=[{"token": "readonly", "scopes": ["agent:read"]}],
+        )
+        read_resp = client.get("/api/v1/agents", headers={"Authorization": "Bearer readonly"})
+        assert read_resp.status_code == 200
+
+        write_resp = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer readonly"},
+            json={"agent_id": "should-fail", "display_name": "x"},
+        )
+        assert write_resp.status_code == 403
+        assert write_resp.json()["detail"]["code"] == "SCOPE_FORBIDDEN"
+
+    def test_admin_wildcard_scope_can_write(self, tmp_path: Path) -> None:
+        client = self._make_app(
+            tmp_path,
+            tokens=[{"token": "admin", "scopes": ["*"]}],
+        )
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer admin"},
+            json={"agent_id": "admin-created", "display_name": "x"},
+        )
+        assert response.status_code == 200
+
+    def test_unrelated_scope_cannot_access_agents_endpoint(self, tmp_path: Path) -> None:
+        """只有 usage:read 的 Token 不应该能读 /agents (无关资源)。"""
+        client = self._make_app(
+            tmp_path,
+            tokens=[{"token": "usage-only", "scopes": ["usage:read"]}],
+        )
+        response = client.get("/api/v1/agents", headers={"Authorization": "Bearer usage-only"})
+        assert response.status_code == 403
+
+
 class TestRoutingAndLinks:
     def test_put_rules_persists(self, control_app) -> None:
         client, tmp_path = control_app

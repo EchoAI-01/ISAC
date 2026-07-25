@@ -18,6 +18,7 @@ def build_router(
     auth_dependency: Any = None,
     audit_log: AuditLog | None = None,
     agents_dir: str = "data/agents",
+    scope_dependency: Any = None,
 ) -> Any:
     from fastapi import APIRouter, Depends, Header, HTTPException
 
@@ -25,12 +26,16 @@ def build_router(
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(prefix="/agents", tags=["agents"], dependencies=deps)
+    # Fix-12: scope_dependency 为 None (未配置 control.tokens[]) 时 read_deps/
+    # write_deps 都是空列表, 只受上面的 auth_dependency 约束, 行为不变。
+    read_deps = [Depends(scope_dependency("agent:read"))] if scope_dependency else []
+    write_deps = [Depends(scope_dependency("agent:write"))] if scope_dependency else []
     # agents_dir 是配置传入的字符串, 统一规范化为 Path 后续拼接都用 / 操作符,
     # 避免字符串拼接绕开 AgentConfig.__post_init__ 对 agent_id 的格式校验
     # (CODE_REVIEW_REPORT.md #19)。
     agents_dir_path = Path(agents_dir)
 
-    @router.post("")
+    @router.post("", dependencies=write_deps)
     async def create_agent(config: dict) -> dict:
         instance = await _do_create_agent(agent_manager, config)
         # Path / 操作符自然处理分隔符; agent_id 已由 AgentConfig 校验只含 [A-Za-z0-9_-]
@@ -41,30 +46,30 @@ def build_router(
         )
         return {"agent_id": instance.agent_id, "status": instance.status}
 
-    @router.get("")
+    @router.get("", dependencies=read_deps)
     async def list_agents() -> list[dict]:
         return [{"agent_id": a.agent_id, "status": a.status} for a in await agent_manager.list()]
 
-    @router.get("/{agent_id}")
+    @router.get("/{agent_id}", dependencies=read_deps)
     async def get_agent(agent_id: str) -> dict:
         instance = await agent_manager.get(agent_id)
         if instance is None:
             raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
         return {"agent_id": instance.agent_id, "status": instance.status}
 
-    @router.post("/{agent_id}/start")
+    @router.post("/{agent_id}/start", dependencies=write_deps)
     async def start_agent(agent_id: str) -> dict:
         await _require_agent(agent_manager, agent_id, "start")
         await _audit(audit_log, "POST", f"/api/v1/agents/{agent_id}/start", "start_agent", agent_id)
         return {"agent_id": agent_id, "status": "running"}
 
-    @router.post("/{agent_id}/stop")
+    @router.post("/{agent_id}/stop", dependencies=write_deps)
     async def stop_agent(agent_id: str) -> dict:
         await _require_agent(agent_manager, agent_id, "stop")
         await _audit(audit_log, "POST", f"/api/v1/agents/{agent_id}/stop", "stop_agent", agent_id)
         return {"agent_id": agent_id, "status": "stopped"}
 
-    @router.delete("/{agent_id}")
+    @router.delete("/{agent_id}", dependencies=write_deps)
     async def destroy_agent(agent_id: str, keep_memory: bool = True) -> dict:
         await _require_agent(agent_manager, agent_id, "destroy")
         await agent_manager.destroy(agent_id, keep_memory=keep_memory)
@@ -74,7 +79,7 @@ def build_router(
         )
         return {"agent_id": agent_id, "status": "destroyed"}
 
-    @router.patch("/{agent_id}")
+    @router.patch("/{agent_id}", dependencies=write_deps)
     async def patch_agent(
         agent_id: str,
         payload: dict,

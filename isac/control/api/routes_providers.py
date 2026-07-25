@@ -26,6 +26,7 @@ def build_router(
     model_catalog: ModelCatalog,
     artifact_store: ArtifactStore | None,
     auth_dependency: Any = None,
+    scope_dependency: Any = None,
 ) -> Any:
     """构造 Providers / Artifacts Control API 路由。"""
     from fastapi import APIRouter, Depends
@@ -33,31 +34,34 @@ def build_router(
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["providers"], dependencies=deps)
 
-    _register_provider_routes(router, provider_manager, model_catalog)
+    _register_provider_routes(router, provider_manager, model_catalog, scope_dependency)
     if artifact_store is not None:
-        _register_artifact_routes(router, artifact_store)
+        _register_artifact_routes(router, artifact_store, scope_dependency)
     return router
 
 
 def _register_provider_routes(
-    router: Any, provider_manager: ProviderManager, model_catalog: ModelCatalog
+    router: Any, provider_manager: ProviderManager, model_catalog: ModelCatalog, scope_dependency: Any = None,
 ) -> None:
     """注册 /providers/* 端点。"""
-    from fastapi import HTTPException
+    from fastapi import Depends, HTTPException
 
-    @router.get("/providers")
+    read_deps = [Depends(scope_dependency("provider:read"))] if scope_dependency else []
+    write_deps = [Depends(scope_dependency("provider:write"))] if scope_dependency else []
+
+    @router.get("/providers", dependencies=read_deps)
     async def list_providers() -> dict:
         providers = []
         for (pid, mid), _provider in provider_manager._multimodal_providers.items():
             providers.append({"provider_id": pid, "model_id": mid})
         return {"providers": providers}
 
-    @router.get("/providers/models")
+    @router.get("/providers/models", dependencies=read_deps)
     async def list_models() -> dict:
         models = [_descriptor_to_dict(d) for d in model_catalog.list_all()]
         return {"models": models}
 
-    @router.post("/providers/{provider_id}/test")
+    @router.post("/providers/{provider_id}/test", dependencies=write_deps)
     async def test_provider(provider_id: str, model_id: str = "") -> dict:
         found = any(
             pid == provider_id and (not model_id or mid == model_id)
@@ -71,16 +75,19 @@ def _register_provider_routes(
         return {"provider_id": provider_id, "status": "ok"}
 
 
-def _register_artifact_routes(router: Any, artifact_store: ArtifactStore) -> None:
+def _register_artifact_routes(router: Any, artifact_store: ArtifactStore, scope_dependency: Any = None) -> None:
     """注册 /artifacts/* 端点 (仅 artifact_store 非 None 时调用)。"""
-    from fastapi import HTTPException
+    from fastapi import Depends, HTTPException
 
-    @router.get("/artifacts")
+    read_deps = [Depends(scope_dependency("artifact:read"))] if scope_dependency else []
+    delete_deps = [Depends(scope_dependency("artifact:delete"))] if scope_dependency else []
+
+    @router.get("/artifacts", dependencies=read_deps)
     async def list_artifacts() -> dict:
         artifacts = await _list_artifacts_from_store(artifact_store)
         return {"artifacts": artifacts}
 
-    @router.get("/artifacts/{artifact_id}")
+    @router.get("/artifacts/{artifact_id}", dependencies=read_deps)
     async def get_artifact(artifact_id: str) -> dict:
         meta = await _get_artifact_meta(artifact_store, artifact_id)
         if meta is None:
@@ -90,7 +97,7 @@ def _register_artifact_routes(router: Any, artifact_store: ArtifactStore) -> Non
             )
         return meta
 
-    @router.delete("/artifacts/{artifact_id}")
+    @router.delete("/artifacts/{artifact_id}", dependencies=delete_deps)
     async def delete_artifact(artifact_id: str) -> dict:
         meta = await _get_artifact_meta(artifact_store, artifact_id)
         if meta is None:
