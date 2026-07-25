@@ -85,6 +85,8 @@ class SubAgentSupervisor:
         try:
             # 超时控制: asyncio.wait_for 在 timeout_seconds 后取消 runner
             result = await asyncio.wait_for(runner, timeout=policy.timeout_seconds)
+            # 成功时把 result.summary 存到 run.result_summary, 供工具直接读取
+            run.result_summary = result.summary
             await self._transition(
                 run, task.task_id, "succeeded", "status", f"succeeded: {result.summary}",
                 finished=True,

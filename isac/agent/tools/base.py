@@ -75,8 +75,8 @@ class ToolPermission:
         "synthesize_speech": "deny",
         "understand_image": "deny",
         "understand_video": "deny",
-        # J4 SubAgent 工具: 派生默认禁用 (需显式授权); 查询类受限于 Supervisor 注入
-        "delegate_task": "deny",
+        # J4 SubAgent 工具: 派生默认 restricted (需显式授权); 查询类受限于 Supervisor 注入
+        "delegate_task": "restricted",
         "list_subagents": "restricted",
         "subagent_status": "restricted",
         "subagent_log": "restricted",
