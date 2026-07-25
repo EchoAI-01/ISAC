@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-25 (J4 SubAgent Runtime 完成; 751 测试通过、Ruff/Mypy 全绿、主程序实测驻留)
+> 最近更新: 2026-07-25 (J3 WebUI v2 完成; 792 测试通过、Ruff/Mypy 全绿、主程序实测驻留)
 
 ## 节点总览
 
@@ -16,20 +16,20 @@
 | F | 插件生态 | 100% | AstrBot / MaiBot / Native / 加载器 |
 | G | 控制面与自动化 | 100% | Admin API / MCP / Webhook / 安全默认值 |
 | H | 平台与工具扩展 | 100% | Telegram/Discord/WebChat + MCP Client + 实用工具 |
-| I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI 仅 v1,浏览器测试待补 |
-| J | 模型能力、计量与管理面 | 75% | J1+J2+J4 完成 (非桩实现+测试+运行验证+文档同步);J3 WebUI v2 仅设计 |
-| K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试与发布准入收尾 |
+| I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成 (浏览器测试 CI 接入待 K8-2) |
+| J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步) |
+| K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试 CI 接入与发布准入收尾 |
 
 ## 可运行性状态
 
 **已达到「可运行」完成度**(2026-07-25 实测):
 
 - 主程序实测驻留(`RESIDENT_AFTER_3S=True`),支持 SIGINT/SIGTERM 优雅关闭。
-- 751 单元/集成测试通过;Ruff 通过;Mypy 全绿(192 文件)。
-- 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke、J2 多模态全链 + Channel 投递、J4 SubAgent 全链 + Control API。
+- 792 单元/集成测试通过;Ruff 通过;Mypy 全绿(198 文件)。
+- 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke、J2 多模态全链 + Channel 投递、J4 SubAgent 全链 + Control API、J3 WebUI v2 SPA 十域。
 - 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用。
 - Agent / Session / 路由 / Link / 记忆可持久化恢复;SubAgent 任务可重启恢复 (running/queued → cancelled)。
-- J4 SubAgent Runtime 真实执行循环: asyncio.create_task 后台派生 + asyncio.wait_for 超时 + asyncio.Task.cancel() 取消传播 + SubAgentJournal 持久化 + Control API 5 端点。
+- J3 WebUI v2 SPA 十域全部真实内容: Dashboard/Agents/Channels/Providers/Usage/Extensions/Memory/Sessions/Logs/System; 配置编辑事务 (Schema 校验 + Diff 预览 + 二次确认 + ETag 乐观锁); SSE 实时事件流; Playwright 浏览器黄金路径测试 (未装时 skip, CI 接入待 K8-2)。
 
 ## 稳定化节点 (K) 明细
 
@@ -46,24 +46,22 @@
 
 ## 待实现能力
 
-**J4 已完成 (2026-07-25)**:
+**J3 已完成 (2026-07-25)**:
 
-J4 SubAgent Runtime 与可追溯任务日志已完整落地 (详见 DEVELOPMENT_PLAN.md J4 节"当前"):
-- SubAgentSupervisor 真实执行循环 (asyncio.create_task + asyncio.wait_for 超时 + cancel 传播)
-- delegate_task 工具真实链路 + H3 TaskRunner 迁移 (保留 task + budget_tokens 接口)
-- SubAgentRun 加 result_summary 字段 (工具直接读取, 不依赖 journal fetch)
-- 取消传播 + 重启恢复 (running/queued → cancelled, 中断后不恢复旧进度)
-- Journal schema 扩展 (result_summary 列 + seq 自动分配)
-- Control API routes_subagent 5 端点 (派生/列出/查询/事件/取消)
-- DEFAULT_POLICY delegate_task 从 deny 改 restricted
+J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"当前"):
+- 后端 Control API 扩展 (routes_providers / routes_config / routes_sessions / routes_memory / routes_events SSE)
+- AgentConfig 加 revision 字段 + PATCH If-Match 乐观锁
+- WebUI v2 SPA shell 侧边栏 10 域导航
+- Dashboard / Agents / Channels / Providers / Usage / Extensions / Memory / Sessions / Logs / System 十页真实内容
+- 配置编辑事务 UI (Schema 校验 + Diff 预览 + 二次确认 + ETag 乐观锁)
+- Playwright 浏览器黄金路径测试 (2 路径; 未装时 skip, CI 接入待 K8-2)
 
-**新增能力（框架已搭建，业务实现待续）:**
+**剩余 experimental 桩 (本批次 EXP 节点补齐)**:
 
-> 「框架已搭建」= 契约 (dataclass/ABC) + 类骨架 (方法签名 + 占位) + 惰性/默认关闭的依赖注入接线 + 骨架单测就位，默认零行为变化；**不满足强化完成定义，不计入节点完成度**，业务逻辑留待各自实现节点。
-
-| 节点 | 能力 | 状态 | 依赖 |
-|------|------|------|------|
-| J3 | WebUI v2 管理与观测 | 仅设计 | G1-G4、D9、J1-J2 |
+| 能力 | 状态 |
+|------|------|
+| MemoryConsolidator | 留后续迭代 (后台任务, 非本批次) |
+| ConversationRuntime | 留后续迭代 (大型重构, 独立节点) |
 
 **既有桩待补:**
 

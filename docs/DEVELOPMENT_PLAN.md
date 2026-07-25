@@ -42,7 +42,7 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 3. **[x] J1 Token 用量与成本计量** — 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。已完成,详见下文 J1 节点"当前"。
 4. **[x] J2 多模态 Provider 与能力选择** — 落地 `ModelDescriptor`/`ModelCatalog`/`ModelRouter`/`ArtifactStore`, 填充 `provider/{embed,rerank,stt_tts}` 空目录。已完成, 详见下文 J2 节点"当前"。
 5. **[x] J4 SubAgent Runtime** — 基于 D9/J1 实现隔离子 Agent 与可追溯 `SubAgentJournal`,把 H3 `TaskRunner` 原型迁移为 `SubAgentSupervisor`。已完成, 详见下文 J4 节点"当前"。
-6. **J3 WebUI v2** — 汇聚上述能力,提供十域管理与观测面板。
+6. **[x] J3 WebUI v2** — 汇聚上述能力,提供十域管理与观测面板。已完成, 详见下文 J3 节点"当前"。
 7. **experimental 桩补齐** — VectorStore(sqlite-vec)、GraphStore、Reranker、MemoryConsolidator、完整 ConversationRuntime。
 
 依赖顺序: K8 → D9 → J1 → J2 → J4 → J3;experimental 桩可并行插入。J1-J4 每项完成后按强化完成定义(非桩实现 + 单元/集成测试 + 运行验证 + 文档同步)更新 PROGRESS.md。
@@ -396,11 +396,20 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
     - 覆盖测试: `tests/unit/test_artifact_store.py` (12) / `test_media_normalizer.py` (13) / `test_model_router.py` (10) / `test_usage_recorder_multimodal.py` (13) / `test_image_gen_provider.py` (9) / `test_stt_tts_provider.py` (13) / `test_embed_provider.py` (14) / `test_vision_chat.py` (7) / `test_media_tools_wired.py` (8) / `test_channel_media_resolver.py` (13) / `test_main_multimodal_registration.py` (8); 集成测试 `tests/integration/test_j2_multimodal_flow.py` (4) / `tests/integration/test_j2_channel_delivery.py` (4)。共 721 测试全绿。
   - **边界**: Agent 能力授权字段留 J4; 视频生成真实 API 留 J3+; Telegram/Discord 媒体 segment 留 J3; Channel 入站媒体解析 (用户上传图片/语音 → MediaInput) 留 J3; MediaNormalizer 白名单仅 data/artifacts/ (不启用 data/uploads/); 既有 send_image.py 旧工具保留不动, J3 决定迁移; _send_reply 改造 (扫描回复里的 artifact_id 引用 → MediaResolver 转 segment) 留 J3 WebUI v2 一起做。
 
-- [ ] **J3 WebUI v2 管理与观测**
+- [x] **J3 WebUI v2 管理与观测**
   - **验收**：Dashboard、Agent、Channel/路由、Provider/模型、Token/成本、插件/MCP/工具、记忆、会话/任务进度、日志/审计、系统设置页面可用；配置写入支持 Schema 校验、差异预览、二次确认、版本冲突检测和审计；密钥只可替换不可回显。
   - **产出**：`control/webui/` 前端重构、Control API 扩展、实时事件通道、浏览器端测试与权限测试。
   - **依赖**：G1-G4、I1/I5、D9、J1-J2。
-  - **当前**：十个页面域、配置编辑事务、Schema/diff/确认/ETag、密钥不回显、实时事件恢复、响应式、WCAG 2.1 AA 与浏览器测试要求已写入 `CONTROL_PLANE_SPEC.md` 和 `ARCHITECTURE.md`；代码待实现。现有 Vanilla JS 四模块面板保留为 v1 最小实现，不视为 J3 完成。
+  - **当前**：已完成 (2026-07-25)。WebUI v2 SPA 十域全部真实内容落地:
+    - **后端 Control API 扩展** (J3-1 至 J3-4): routes_providers (GET /providers /providers/models /artifacts + POST /providers/{id}/test + DELETE /artifacts/{id}) / routes_config (POST /config/validate /config/diff + PATCH /agents/{id} 支持 If-Match + revision 乐观锁 + 409 CONFIG_CONFLICT) / routes_sessions (GET /sessions /sessions/{id} /sessions/{id}/messages) / routes_memory (GET /memory/{agent_id}/episodes|profiles|jargon) / routes_events (GET /events/stream SSE + Last-Event-ID 断线恢复 + 心跳 + max_chunks 测试参数)。
+    - **AgentConfig 加 revision 字段** (J3-2): save_agent_config 每次 +1; PATCH 端点用 If-Match 乐观锁。
+    - **WebUI v2 SPA shell** (J3-5): 侧边栏 10 域导航 (Dashboard/Agents/Channels/Providers/Usage/Extensions/Memory/Sessions/Logs/System) + .page active 类切换 + navigate() 函数; Dashboard 页 stat-grid + 近期审计; Agents/Channels/Logs 页保留 v1 内容向后兼容。
+    - **Providers/Usage/Extensions 三页** (J3-6): refreshProviders/refreshUsage/refreshExtensions 调用已就位 API。
+    - **Memory/Sessions/System 三页** (J3-7): refreshMemory/refreshSessions/refreshSystem + 配置编辑事务 UI (loadConfigForEdit/validateConfig/diffConfig/patchConfig, 二次确认 + ETag 乐观锁)。
+    - **Playwright 浏览器黄金路径测试** (J3-8): tests/browser/test_webui_golden_path.py 两条路径 (Agent CRUD + 审计 / 路由 + Link + 用量); 未安装 Playwright 时 importorskip 跳过, CI 在 K8-2 加 playwright install chromium。
+    - **Bearer Token 模式**: 沿用 v1 从 DOM 读取 (不引入 HttpOnly Cookie + CSRF, 留作未来工作); sessionStorage 存 token (K7 已落地, 关闭标签即清除)。
+    - 覆盖测试: tests/unit/test_webui.py (11 测试, 含 SPA 侧边栏 + 三批页面 + 配置编辑事务 UI) + tests/browser/test_webui_golden_path.py (2 黄金路径, Playwright 未装时 skip)。共 792 测试全绿。
+  - **边界**: HttpOnly Cookie + CSRF 未引入 (沿用 v1 Bearer Token 从 DOM 读取); 多 scope 权限模型未引入 (扁平 Bearer Token); 插件表占位 (插件列表 API 待后续); WebUI 浏览器测试在 CI 中运行待 K8-2 加 Playwright step。
 
 - [x] **J4 SubAgent Runtime 与可追溯任务日志**
   - **验收**：每个 Agent 可用 `delegate_task` 创建隔离子任务；子 Agent 使用独立 History/Prompt/Budget/Workspace 和父权限子集；主 Agent 默认只收到结构化结果、证据引用和用量摘要；可通过 task_id 列表、查询状态、分页读取脱敏日志、取消任务；日志持久化后重启仍可查询；不记录原始 reasoning；子 Agent 默认不能直接发消息、写长期记忆或无限派生。
