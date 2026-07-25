@@ -3,6 +3,8 @@
 
 const API_BASE = "/api/v1";
 
+// Fix-17: 读输入框里的 Bearer Token, 仅用于 login()/legacy fallback, 不再是
+// 每次请求都要读、和 sessionStorage 联动的凭据来源 (见下方 login()/apiCall())。
 function getToken() {
     const token = document.getElementById("api-token").value.trim();
     if (!token) {
@@ -12,16 +14,71 @@ function getToken() {
     return token;
 }
 
-function authHeaders() {
+// Fix-17: 从 document.cookie 读取 csrf_token (非 HttpOnly, 前端本来就应该能读到,
+// 用于按 CONTROL_PLANE_SPEC.md §8.2 第 5 条的双提交校验回填请求头)。
+function getCsrfTokenFromCookie() {
+    const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+}
+
+let usingLegacyBearerAuth = false;
+
+// Fix-17: 用一次性 Bearer Token 换取 HttpOnly 会话 Cookie + CSRF Cookie
+// (CONTROL_PLANE_SPEC.md §8.2 第 5 条), 不再把裸 Token 长期存进 sessionStorage。
+// /auth/session 404 (会话 Cookie 机制未启用, 如 session_auth_enabled=False)
+// 时降级到旧的纯 Bearer Header 方式, 保持向后兼容。
+async function login() {
     const token = getToken();
-    if (!token) return null;
-    return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+    if (!token) return;
+    try {
+        const res = await fetch(API_BASE + "/auth/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+        });
+        if (res.status === 404) {
+            usingLegacyBearerAuth = true;
+            sessionStorage.setItem("isac_token", token);
+            showToast("会话 Cookie 机制未启用, 使用 Bearer Header 兼容模式", "success");
+        } else if (res.ok) {
+            usingLegacyBearerAuth = false;
+            sessionStorage.removeItem("isac_token");
+            showToast("登录成功", "success");
+        } else {
+            showToast("登录失败: Token 无效", "error");
+            return;
+        }
+    } catch (err) {
+        showToast(`网络错误: ${err.message}`, "error");
+        return;
+    }
+    refreshAll();
+}
+
+function authHeaders(method) {
+    const headers = { "Content-Type": "application/json" };
+    // Fix-17: 会话 Cookie 认证下不需要 (也读不到 HttpOnly 的) Bearer Token,
+    // 只有降级到 legacy 模式时才手动带 Authorization 头。
+    if (usingLegacyBearerAuth) {
+        const token = getToken();
+        if (!token) return null;
+        headers["Authorization"] = `Bearer ${token}`;
+    }
+    // Fix-17: 写方法且走会话 Cookie 认证时, 按双提交约定回填 X-CSRF-Token
+    // (安全方法 GET/HEAD/OPTIONS 不需要, 与 CSRFProtectionMiddleware 的校验范围对应)。
+    if (!usingLegacyBearerAuth && method && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+        const csrf = getCsrfTokenFromCookie();
+        if (csrf) headers["X-CSRF-Token"] = csrf;
+    }
+    return headers;
 }
 
 async function apiCall(method, path, body) {
-    const headers = authHeaders();
+    const headers = authHeaders(method);
     if (!headers) return null;
-    const opts = { method, headers };
+    // credentials: "same-origin" 让浏览器把 HttpOnly 会话 Cookie 自动带上
+    // (fetch 默认值已经是 same-origin, 这里显式写出便于阅读)。
+    const opts = { method, headers, credentials: "same-origin" };
     if (body !== undefined) opts.body = JSON.stringify(body);
     try {
         const res = await fetch(API_BASE + path, opts);
@@ -217,7 +274,9 @@ async function refreshAudit() {
 }
 
 async function refreshAll() {
-    if (!getToken()) return;
+    // Fix-17: 会话 Cookie 模式下凭据在 Cookie 里, 不需要 (也不应该要求) 输入框
+    // 有值; 只有降级到 legacy Bearer Header 模式时才需要输入框里的 Token。
+    if (usingLegacyBearerAuth && !getToken()) return;
     await Promise.all([refreshAgents(), refreshRules(), refreshLinks(), refreshAudit(), refreshDashboard()]);
 }
 
@@ -401,20 +460,24 @@ async function refreshExtensions() {
     }
 }
 
-// 页面加载后自动刷新 (如果有保存的 token)
-// K7: 用 sessionStorage 而非 localStorage, 标签页关闭即清除, 不长期持久化 Bearer Token。
-// 生产场景 Bearer Token 应通过短期 Cookie + HttpOnly 或外置密码管理器提供, 这里仅为
-// 开发态便利, 关闭浏览器不会留下凭据。
+// 页面加载后自动恢复会话。
+// Fix-17: 会话 Cookie 是 HttpOnly, 前端读不到, 用同时签发的非 HttpOnly
+// csrf_token Cookie 作为"是否已登录"的判断依据 (存在即尝试刷新; 如果服务端已
+// 重启/Cookie 已过期, 请求会 401, 用户看到错误提示后重新登录即可)。legacy
+// fallback (会话 Cookie 机制未启用时降级到的纯 Bearer Header 模式) 仍用
+// sessionStorage 记住 Token, 标签页关闭即清除, 不长期持久化。
 document.addEventListener("DOMContentLoaded", () => {
+    if (getCsrfTokenFromCookie()) {
+        usingLegacyBearerAuth = false;
+        refreshAll();
+        return;
+    }
     const saved = sessionStorage.getItem("isac_token");
     if (saved) {
+        usingLegacyBearerAuth = true;
         document.getElementById("api-token").value = saved;
         refreshAll();
     }
-});
-
-document.getElementById("api-token").addEventListener("input", (e) => {
-    sessionStorage.setItem("isac_token", e.target.value);
 });
 
 // J3-7: Memory 页
