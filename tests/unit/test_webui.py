@@ -99,6 +99,37 @@ class TestWebUIStatic:
         assert "function refreshDashboard(" in response.text
         assert "refreshDashboard()" in response.text  # 在 refreshAll 里调用
 
+    def test_index_contains_j3_6_providers_usage_extensions_pages(self, webui_client) -> None:
+        """J3-6: Providers / Usage / Extensions 三页真实内容 (非占位)。"""
+        response = webui_client.get("/ui/")
+        # Providers 页
+        assert "已注册 Provider" in response.text
+        assert "模型能力目录" in response.text
+        assert "制品存储" in response.text
+        assert 'id="providers-table"' in response.text
+        assert 'id="models-table"' in response.text
+        assert 'id="artifacts-table"' in response.text
+        # Usage 页
+        assert "用量汇总" in response.text
+        assert "用量明细" in response.text
+        assert 'id="usage-summary-table"' in response.text
+        assert 'id="usage-events-table"' in response.text
+        # Extensions 页
+        assert "插件" in response.text
+        assert "SubAgent 任务" in response.text
+        assert 'id="subagent-runs-table"' in response.text
+
+    def test_app_js_contains_j3_6_refresh_functions(self, webui_client) -> None:
+        """J3-6: app.js 含 refreshProviders/refreshUsage/refreshExtensions。"""
+        response = webui_client.get("/ui/app.js")
+        assert "function refreshProviders(" in response.text
+        assert "function refreshUsage(" in response.text
+        assert "function refreshExtensions(" in response.text
+        # navigate 里调用了这三页
+        assert 'refreshProviders()' in response.text
+        assert 'refreshUsage()' in response.text
+        assert 'refreshExtensions()' in response.text
+
     def test_webui_does_not_require_token(self, webui_client) -> None:
         # WebUI 静态资源不需要 token (前端自己带 token 调 API)
         response = webui_client.get("/ui/")

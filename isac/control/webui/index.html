@@ -183,10 +183,76 @@
                 </section>
             </div>
 
-            <!-- 占位页 (J3-6/J3-7 填充) -->
-            <div id="page-providers" class="page"><div class="placeholder">Providers / 模型 (J3-6 实现)</div></div>
-            <div id="page-usage" class="page"><div class="placeholder">Usage / 成本 (J3-6 实现)</div></div>
-            <div id="page-extensions" class="page"><div class="placeholder">Extensions (J3-6 实现)</div></div>
+            <!-- Providers / 模型 页 (J3-6) -->
+            <div id="page-providers" class="page">
+                <section>
+                    <h2>已注册 Provider</h2>
+                    <table id="providers-table">
+                        <thead><tr><th>provider_id</th><th>model_id</th><th>操作</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+                <section>
+                    <h2>模型能力目录 (ModelCatalog)</h2>
+                    <table id="models-table">
+                        <thead><tr><th>provider</th><th>model</th><th>operations</th><th>modalities_in</th><th>modalities_out</th><th>cost_tier</th><th>latency_tier</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+                <section>
+                    <h2>制品存储 (ArtifactStore)</h2>
+                    <table id="artifacts-table">
+                        <thead><tr><th>artifact_id</th><th>kind</th><th>mime_type</th><th>size_bytes</th><th>created_at</th><th>操作</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+            </div>
+
+            <!-- Usage / 成本 页 (J3-6) -->
+            <div id="page-usage" class="page">
+                <section>
+                    <h2>用量汇总</h2>
+                    <div class="form-row">
+                        <label>group_by</label>
+                        <select id="usage-group-by">
+                            <option value="provider">provider</option>
+                            <option value="model">model</option>
+                            <option value="agent_id">agent_id</option>
+                            <option value="modality">modality</option>
+                        </select>
+                        <button onclick="refreshUsage()">查询</button>
+                    </div>
+                    <table id="usage-summary-table">
+                        <thead><tr><th>分组</th><th>请求数</th><th>prompt_tokens</th><th>completion_tokens</th><th>total_tokens</th><th>估算成本</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+                <section>
+                    <h2>用量明细 (最近事件)</h2>
+                    <table id="usage-events-table">
+                        <thead><tr><th>时间</th><th>provider</th><th>model</th><th>modality</th><th>operation</th><th>tokens</th><th>成本</th><th>status</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+            </div>
+
+            <!-- Extensions 页 (J3-6) -->
+            <div id="page-extensions" class="page">
+                <section>
+                    <h2>插件 (PluginManager)</h2>
+                    <table id="plugins-table">
+                        <thead><tr><th>name</th><th>format</th><th>enabled</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+                <section>
+                    <h2>SubAgent 任务 (SubAgentSupervisor)</h2>
+                    <table id="subagent-runs-table">
+                        <thead><tr><th>task_id</th><th>status</th><th>started_at</th><th>finished_at</th><th>result_summary</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+            </div>
             <div id="page-memory" class="page"><div class="placeholder">Memory (J3-7 实现)</div></div>
             <div id="page-sessions" class="page"><div class="placeholder">Sessions / 任务 (J3-7 实现)</div></div>
             <div id="page-system" class="page"><div class="placeholder">System (J3-7 实现)</div></div>
