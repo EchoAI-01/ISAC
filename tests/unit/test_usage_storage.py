@@ -214,3 +214,166 @@ async def test_list_events_respects_limit_and_offset(tmp_path) -> None:
 async def test_list_events_empty_when_not_started(tmp_path) -> None:
     store = UsageStore(str(tmp_path / "usage.db"))
     assert await store.list_events() == []
+
+
+@pytest.mark.asyncio
+async def test_aggregate_empty_store_returns_empty_list(tmp_path) -> None:
+    """空库且不分组时应返回 [], 而不是一行全 None/0 的幻影汇总。"""
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        assert await store.aggregate() == []
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_aggregate_without_group_by_returns_single_global_summary(tmp_path) -> None:
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        await store.insert_many(
+            [
+                _event(event_id="a", usage=TokenUsage(prompt_tokens=10, completion_tokens=5)),
+                _event(event_id="b", usage=TokenUsage(prompt_tokens=20, completion_tokens=15)),
+            ]
+        )
+        summary = await store.aggregate()
+        assert len(summary) == 1
+        assert summary[0]["request_count"] == 2
+        assert summary[0]["prompt_tokens"] == 30
+        assert summary[0]["completion_tokens"] == 20
+        assert summary[0]["total_tokens"] == 50
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_aggregate_groups_by_agent_id(tmp_path) -> None:
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        await store.insert_many(
+            [
+                _event(event_id="a1", agent_id="agent-a", usage=TokenUsage(total_tokens=10)),
+                _event(event_id="a2", agent_id="agent-a", usage=TokenUsage(total_tokens=5)),
+                _event(event_id="b1", agent_id="agent-b", usage=TokenUsage(total_tokens=7)),
+            ]
+        )
+        rows = await store.aggregate({"group_by": ["agent_id"]})
+        by_agent = {row["agent_id"]: row for row in rows}
+        assert by_agent["agent-a"]["request_count"] == 2
+        assert by_agent["agent-a"]["total_tokens"] == 15
+        assert by_agent["agent-b"]["request_count"] == 1
+        assert by_agent["agent-b"]["total_tokens"] == 7
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_aggregate_groups_by_multiple_dimensions(tmp_path) -> None:
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        await store.insert_many(
+            [
+                _event(event_id="1", provider="P1", model="m1"),
+                _event(event_id="2", provider="P1", model="m2"),
+                _event(event_id="3", provider="P2", model="m1"),
+            ]
+        )
+        rows = await store.aggregate({"group_by": ["provider", "model"]})
+        keys = {(row["provider"], row["model"]) for row in rows}
+        assert keys == {("P1", "m1"), ("P1", "m2"), ("P2", "m1")}
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_aggregate_ignores_non_whitelisted_group_by_keys(tmp_path) -> None:
+    """group_by 里的非白名单条目 (可能是恶意输入) 被忽略, 不拼进 SQL、不报错。"""
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        await store.insert_many([_event(event_id="a", agent_id="agent-a")])
+        rows = await store.aggregate({"group_by": ["agent_id", "id; DROP TABLE model_usage_events; --"]})
+        assert len(rows) == 1
+        assert rows[0]["agent_id"] == "agent-a"
+        assert "id; DROP TABLE model_usage_events; --" not in rows[0]
+        # 确认表真的没被删
+        assert await store.list_events(limit=10) != []
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_aggregate_time_bucket_groups_by_hour(tmp_path) -> None:
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        hour1 = 1_700_000_000  # 任意基准时间戳, 整点
+        hour1_plus_100s = hour1 + 100
+        hour2 = hour1 + 3600
+        await store.insert_many(
+            [
+                _event(event_id="a", created_at=hour1),
+                _event(event_id="b", created_at=hour1_plus_100s),
+                _event(event_id="c", created_at=hour2),
+            ]
+        )
+        rows = await store.aggregate({"group_by": ["time_bucket"], "bucket": "hour"})
+        assert len(rows) == 2
+        counts = sorted(row["request_count"] for row in rows)
+        assert counts == [1, 2]
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_aggregate_combines_where_filters_with_group_by(tmp_path) -> None:
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        await store.insert_many(
+            [
+                _event(event_id="a", agent_id="agent-a", created_at=100),
+                _event(event_id="b", agent_id="agent-a", created_at=999_999),
+                _event(event_id="c", agent_id="agent-b", created_at=999_999),
+            ]
+        )
+        rows = await store.aggregate({"group_by": ["agent_id"], "from_ts": 0, "to_ts": 200})
+        assert len(rows) == 1
+        assert rows[0]["agent_id"] == "agent-a"
+        assert rows[0]["request_count"] == 1
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_aggregate_sums_estimated_cost_across_group(tmp_path) -> None:
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        await store.insert_many(
+            [
+                _event(event_id="a", estimated_cost="0.10"),
+                _event(event_id="b", estimated_cost="0.25"),
+            ]
+        )
+        summary = await store.aggregate()
+        assert float(summary[0]["estimated_cost_sum"]) == pytest.approx(0.35)
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_aggregate_estimated_cost_sum_none_when_all_unknown(tmp_path) -> None:
+    """未知价格不伪造成本: 组内全部 estimated_cost=None 时汇总也应是 None, 不是 0。"""
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        await store.insert_many([_event(event_id="a", estimated_cost=None)])
+        summary = await store.aggregate()
+        assert summary[0]["estimated_cost_sum"] is None
+    finally:
+        await store.stop()

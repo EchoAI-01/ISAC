@@ -235,8 +235,10 @@ async def test_usage_store_roundtrip(tmp_path) -> None:
     await store.start()
     try:
         await store.insert(_event(usage=TokenUsage(prompt_tokens=1, completion_tokens=2)))
-        # 聚合是实现节点范畴, 骨架返回空列表
-        assert await store.aggregate() == []
+        # 聚合多维实现细节见 tests/unit/test_usage_storage.py, 这里只验证 insert 后能查到
+        summary = await store.aggregate()
+        assert summary[0]["request_count"] == 1
+        assert summary[0]["prompt_tokens"] == 1
     finally:
         await store.stop()
 
