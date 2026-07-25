@@ -7,22 +7,35 @@
 
 from __future__ import annotations
 
+from isac.runtime.conversation.debounce import DebounceWindow
 from isac.runtime.conversation.models import (
     ConversationState,
     ForcedTurnState,
+    InterruptState,
     ProactiveTask,
+    TriggerSource,
+    WaitEndReason,
     WaitState,
 )
 from isac.runtime.conversation.proactive import ProactiveTaskQueue
+from isac.runtime.conversation.recovery import ConversationSnapshot, ConversationStateStore
 from isac.runtime.conversation.registry import ConversationRuntimeRegistry
 from isac.runtime.conversation.runtime import ConversationRuntime
+from isac.runtime.conversation.scheduler import ProactiveScheduler
 
 __all__ = [
     "ConversationRuntime",
     "ConversationRuntimeRegistry",
+    "ConversationSnapshot",
     "ConversationState",
+    "ConversationStateStore",
+    "DebounceWindow",
     "ForcedTurnState",
+    "InterruptState",
+    "ProactiveScheduler",
     "ProactiveTask",
     "ProactiveTaskQueue",
+    "TriggerSource",
+    "WaitEndReason",
     "WaitState",
 ]
