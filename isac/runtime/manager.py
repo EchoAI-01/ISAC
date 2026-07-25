@@ -177,6 +177,11 @@ class AgentManager:
     ) -> str | None:
         """在 handle_message 已绑定的日志上下文内执行 门控 → Loop → 回复。"""
         agent_id = instance.agent_id
+        # L1: 会话级拟人运行时 (默认关闭)。启用时缓存消息, 供未来 debounce/状态机接管;
+        # 骨架阶段仅记录, 不改变触发逻辑, 仍走既有门控 → Loop (零行为变化)。
+        conv_registry = instance.services.get("conversation_registry")
+        if conv_registry is not None and self._conversation_enabled():
+            conv_registry.get(agent_id, session.session_id).register_message(message)
         # 每条到达消息都累加注入器的新消息计数 (按 session 隔离, 支撑 max_new_messages 频率控制)。
         instance.prompt_builder.notify_new_message(session.session_id)
 
@@ -261,6 +266,12 @@ class AgentManager:
         return [a.config for a in self._agents.values() if a.status == "running"]
 
     # ── 内部 ────────────────────────────────────────────────
+
+    def _conversation_enabled(self) -> bool:
+        """L1: 是否启用会话级拟人运行时 (默认关闭 → 主链路零行为变化)。"""
+        return bool(
+            self._services.get("global_config", {}).get("conversation", {}).get("enabled", False)
+        )
 
     def _require(self, agent_id: str) -> AgentInstance:
         instance = self._agents.get(agent_id)

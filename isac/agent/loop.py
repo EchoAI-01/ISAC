@@ -115,7 +115,8 @@ class ISACAgentLoop:
             # POST_LLM
             await self.hooks.fire(AgentHookPoint.POST_LLM, response, context)
 
-            # 被新消息打断
+            # 被新消息打断 (TODO(L4): interrupt_requested 由 ConversationRuntime.request_interrupt
+            # 在 thinking 期间收到新消息时写入; 当前仅由外部/测试显式设置)
             if context.interrupt_requested:
                 await self._emit_progress_if_task_started(context, reported_task_progress, "interrupted")
                 return AgentResult(interrupted=True)

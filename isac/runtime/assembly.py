@@ -48,6 +48,7 @@ from isac.memory.injector.mid_term import MidTermMemoryInjector
 from isac.memory.injector.person_profile import PersonProfileInjector
 from isac.persona.manager import PersonaManager
 from isac.runtime.config import AgentConfig
+from isac.runtime.conversation import ConversationRuntimeRegistry
 from isac.runtime.instance import AgentInstance
 from isac.runtime.progress import build_progress_reporter
 from isac.utils.logger import get_logger
@@ -148,6 +149,10 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
         )
 
     agent_services["progress_reporter_factory"] = _progress_reporter_factory
+
+    # L1: 会话级拟人运行时注册表 (每 Agent 独立, 会话间隔离)。默认不接入主链路,
+    # conversation.enabled=True 时由 manager.handle_message 启用消息缓存/状态机。
+    agent_services["conversation_registry"] = ConversationRuntimeRegistry()
 
     loop = ISACAgentLoop(
         llm=llm,
