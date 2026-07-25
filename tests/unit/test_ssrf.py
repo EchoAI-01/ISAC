@@ -1,0 +1,49 @@
+"""SSRF 校验的规范化位置 (isac.utils.ssrf)。
+
+从 isac.control.webhooks 提取出来, 使 provider/ 等更底层模块也能复用 (DEVELOP.md
+导入顺序: control 依赖 provider, provider 不能反向依赖 control)。
+isac.control.webhooks 保留原有名字重新导出, 向后兼容既有调用方。
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from isac.utils.ssrf import SSRFBlockedError, is_private_or_reserved_ip, validate_webhook_url
+
+
+def test_validate_webhook_url_rejects_loopback() -> None:
+    with pytest.raises(SSRFBlockedError):
+        validate_webhook_url("http://127.0.0.1/steal")
+
+
+def test_validate_webhook_url_rejects_cloud_metadata_ip() -> None:
+    """169.254.169.254 是常见云平台元数据接口地址, 是 SSRF 攻击的经典目标。"""
+    with pytest.raises(SSRFBlockedError):
+        validate_webhook_url("http://169.254.169.254/latest/meta-data/")
+
+
+def test_validate_webhook_url_rejects_non_http_scheme() -> None:
+    with pytest.raises(SSRFBlockedError):
+        validate_webhook_url("file:///etc/passwd")
+
+
+def test_validate_webhook_url_allows_public_ip() -> None:
+    validate_webhook_url("https://1.1.1.1/webhook")  # 不抛异常即通过
+
+
+def test_is_private_or_reserved_ip_true_for_link_local() -> None:
+    assert is_private_or_reserved_ip("169.254.169.254") is True
+
+
+def test_is_private_or_reserved_ip_false_for_public() -> None:
+    assert is_private_or_reserved_ip("8.8.8.8") is False
+
+
+def test_webhooks_module_reexports_for_backward_compat() -> None:
+    """isac.control.webhooks 必须继续能导出这三个名字, 不破坏既有调用方。"""
+    from isac.control.webhooks import SSRFBlockedError as ReExportedError
+    from isac.control.webhooks import validate_webhook_url as reexported_validate
+
+    assert ReExportedError is SSRFBlockedError
+    assert reexported_validate is validate_webhook_url
