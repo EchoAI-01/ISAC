@@ -20,6 +20,11 @@ Fix-13: CONTROL_PLANE_SPEC.md §8.3 "实时通道只发送当前 Token scope 可
 channel.status_changed) 视为不需要 scope 收窄, 直接放行, 不臆造 spec 没有定义的
 scope 名称。tokens 未配置 (纯扁平 api_token) 时不做任何过滤, 与引入本机制前
 完全一致。
+
+Fix-14: SSE 连接数上限。之前 _EventStreamState 对新连接无限制接受, 单个失控/
+恶意客户端可以开任意多个长连接耗尽服务端连接池/内存 (未认领的 DoS 面); 现在
+超过 max_connections (默认 100, 可通过 build_router(max_connections=...) 配置)
+时新连接直接返回 429, 不进入 generator。
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_HEARTBEAT_SECONDS = 10.0
+_DEFAULT_MAX_CONNECTIONS = 100
 
 # CONTROL_PLANE_SPEC.md §8.3 列出的实时事件类型 → 所需 scope。
 _EVENT_TYPE_SCOPES: dict[str, str] = {
@@ -49,19 +55,21 @@ def build_router(
     event_bus: EventBus,
     auth_dependency: Any = None,
     tokens: list[TokenScope] | None = None,
+    max_connections: int = _DEFAULT_MAX_CONNECTIONS,
 ) -> Any:
     """构造 Events SSE Control API 路由。
 
     tokens: Fix-12 的 control.tokens[] 解析结果; None (未配置 scope 模型) 时
     事件流不做任何按 scope 过滤, 向后兼容。
+    max_connections: Fix-14 同时在线的 SSE 连接数上限; 超过时新连接返回 429。
     """
-    from fastapi import APIRouter, Depends, Header
+    from fastapi import APIRouter, Depends, Header, HTTPException
     from fastapi.responses import StreamingResponse
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["events"], dependencies=deps)
 
-    state = _EventStreamState()
+    state = _EventStreamState(max_connections=max_connections)
     _subscribe_all_events(event_bus, state)
 
     @router.get("/events/stream")
@@ -78,9 +86,18 @@ def build_router(
         heartbeat = max(0.1, heartbeat_seconds if heartbeat_seconds is not None else _DEFAULT_HEARTBEAT_SECONDS)
         caller_scopes = _resolve_caller_scopes(tokens, authorization)
 
+        if not state.acquire_connection():
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "TOO_MANY_CONNECTIONS", "message": "SSE 连接数已达上限, 请稍后重试"},
+            )
+
         async def _gen():
-            async for chunk in state.generate(header_id, heartbeat, max_chunks, caller_scopes):
-                yield chunk
+            try:
+                async for chunk in state.generate(header_id, heartbeat, max_chunks, caller_scopes):
+                    yield chunk
+            finally:
+                state.release_connection()
 
         return StreamingResponse(
             _gen(),
@@ -114,11 +131,29 @@ def _event_visible(event_type: str, caller_scopes: frozenset[str] | None) -> boo
 
 
 class _EventStreamState:
-    """事件流共享状态: seq 计数器 + 内存缓冲 (供 SSE generator 读取)。"""
+    """事件流共享状态: seq 计数器 + 内存缓冲 (供 SSE generator 读取) + 连接计数
+    (Fix-14: 上限保护, 防止无限制接受 SSE 长连接耗尽服务端资源)。
 
-    def __init__(self) -> None:
+    acquire_connection/release_connection 都是不含 await 的同步方法, 在 asyncio
+    单线程协作调度下不会被其它协程打断, 不需要额外加锁。
+    """
+
+    def __init__(self, max_connections: int = _DEFAULT_MAX_CONNECTIONS) -> None:
         self.seq_counter = 0
         self.buffer: list[dict[str, Any]] = []
+        self._max_connections = max_connections
+        self._active_connections = 0
+
+    def acquire_connection(self) -> bool:
+        """尝试占用一个连接名额; 已达上限返回 False (调用方应拒绝连接)。"""
+        if self._active_connections >= self._max_connections:
+            return False
+        self._active_connections += 1
+        return True
+
+    def release_connection(self) -> None:
+        """释放一个连接名额 (幂等下界保护, 不会减到负数)。"""
+        self._active_connections = max(0, self._active_connections - 1)
 
     def append(self, payload: Any) -> None:
         self.seq_counter += 1

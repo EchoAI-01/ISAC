@@ -23,6 +23,7 @@ def _make_app(
     event_bus: EventBus | None = None,
     api_token: str = "test-token",
     tokens: list[dict] | None = None,
+    max_connections: int | None = None,
 ) -> Any:
     class _StubAM:
         async def list(self): return []
@@ -37,9 +38,12 @@ def _make_app(
 
     parsed_tokens = parse_token_scopes({"tokens": tokens}) if tokens else None
     auth_dep = make_token_only_dependency(parsed_tokens) if parsed_tokens else make_auth_dependency(api_token)
+    kwargs: dict[str, Any] = {}
+    if max_connections is not None:
+        kwargs["max_connections"] = max_connections
     app.include_router(
         routes_events.build_router(
-            event_bus or EventBus(), auth_dependency=auth_dep, tokens=parsed_tokens,
+            event_bus or EventBus(), auth_dependency=auth_dep, tokens=parsed_tokens, **kwargs,
         ),
         prefix="/api/v1",
     )
@@ -114,6 +118,66 @@ def test_token_auth_required() -> None:
     client = TestClient(app)
     with client.stream("GET", "/api/v1/events/stream") as resp:
         assert resp.status_code in (401, 403)
+
+
+class TestConnectionLimit:
+    """Fix-14: _EventStreamState 之前无限制接受 SSE 连接; 单个恶意或失控客户端
+    可以开无限多个长连接耗尽服务端连接/内存资源 (无认领的 DoS 面)。"""
+
+    def test_acquire_connection_succeeds_under_limit(self) -> None:
+        state = routes_events._EventStreamState(max_connections=2)
+        assert state.acquire_connection() is True
+        assert state.acquire_connection() is True
+
+    def test_acquire_connection_fails_at_limit(self) -> None:
+        state = routes_events._EventStreamState(max_connections=2)
+        state.acquire_connection()
+        state.acquire_connection()
+        assert state.acquire_connection() is False
+
+    def test_release_connection_frees_a_slot(self) -> None:
+        state = routes_events._EventStreamState(max_connections=1)
+        assert state.acquire_connection() is True
+        assert state.acquire_connection() is False
+        state.release_connection()
+        assert state.acquire_connection() is True
+
+    def test_stream_rejected_with_429_when_at_capacity(self) -> None:
+        """走真实 HTTP 路径: max_connections=0 (容量已耗尽的等价状态) 时, 新连接
+        必须被直接拒绝 (429), 而不是被无限制接受。
+
+        (不用两个嵌套的 client.stream() 模拟"已有一个连接占用名额": httpx
+        TestClient 的 BlockingPortal 是单线程模型, 嵌套长连接请求会互相阻塞
+        导致测试挂起, 与 acquire_connection() 本身的行为无关; max_connections=0
+        直接命中同一段 "已达上限 → 429" 代码路径, 更快也更确定。)"""
+        app = _make_app(max_connections=0)
+        client = TestClient(app)
+        with client.stream(
+            "GET",
+            "/api/v1/events/stream?heartbeat_seconds=5",
+            headers={"Authorization": "Bearer test-token"},
+        ) as resp:
+            assert resp.status_code == 429
+
+    def test_slot_freed_after_stream_completes_allows_new_connection(self) -> None:
+        """一个连接正常结束 (这里用 max_chunks 模拟客户端读完/断开) 后释放的名额
+        可以被新连接复用, 不会永久占用。"""
+        app = _make_app(max_connections=1)
+        client = TestClient(app)
+        with client.stream(
+            "GET",
+            "/api/v1/events/stream?heartbeat_seconds=0.05&max_chunks=1",
+            headers={"Authorization": "Bearer test-token"},
+        ) as first:
+            assert first.status_code == 200
+            list(first.iter_text())  # 耗尽 generator, 触发 finally 释放连接名额
+
+        with client.stream(
+            "GET",
+            "/api/v1/events/stream?heartbeat_seconds=5&max_chunks=1",
+            headers={"Authorization": "Bearer test-token"},
+        ) as second:
+            assert second.status_code == 200
 
 
 class TestScopeFiltering:
