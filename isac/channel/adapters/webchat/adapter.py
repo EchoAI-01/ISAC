@@ -99,19 +99,41 @@ class WebChatAdapter(PlatformAdapter):
         K7: 队列长度上限, 超出时丢弃最旧的 (FIFO), 防止客户端长期不 poll 时内存无限增长。
         D9: metadata.message_kind=="progress" 时作为原生 progress 帧携带
         task_id/progress_stage, 其余回复标记 kind="message"。
+        J2: 非 text segment (image/audio/video/file) 降级为占位文本
+        ``[<type>: <artifact_id[:8]>]`` 追加到 content, WebChat 不支持富媒体。
         """
         session_id = message.session_id or message.group_id or message.user_id
         if not session_id:
             logger.warning("WebChat send 缺少 session_id")
             return False
+        content = self._render_content_with_segments(message)
         frame_extra = self._build_frame_extra(message)
         async with self._lock:
             queue = self._pending_replies.setdefault(session_id, [])
-            queue.append((time.time(), message.content, frame_extra))
+            queue.append((time.time(), content, frame_extra))
             # 超出上限时丢弃最旧的
             while len(queue) > self._max_pending_replies:
                 queue.pop(0)
         return True
+
+    @staticmethod
+    def _render_content_with_segments(message: ISACMessage) -> str:
+        """把 message.content + segments 合并为 WebChat 可显示的纯文本。
+
+        非 text/at/reply 段降级为占位文本 ``[<type>: <artifact_id[:8]>]`` 追加到
+        content 末尾; 不支持的 segment 类型在 content 里仍能让用户感知到有制品。
+        """
+        content = message.content
+        for seg in message.segments:
+            if seg.type in ("text", "at", "reply"):
+                continue  # text 已在 content, at/reply 不影响渲染
+            artifact_id = str(seg.data.get("artifact_id", ""))
+            if artifact_id:
+                placeholder = f"[{seg.type}: {artifact_id[:8]}]"
+            else:
+                placeholder = f"[{seg.type}]"
+            content = f"{content} {placeholder}".strip() if content else placeholder
+        return content
 
     @staticmethod
     def _build_frame_extra(message: ISACMessage) -> dict[str, Any]:
