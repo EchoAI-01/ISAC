@@ -234,6 +234,9 @@ function navigate(page) {
     if (page === "agents") refreshAgents();
     if (page === "channels") { refreshRules(); refreshLinks(); }
     if (page === "logs") refreshAudit();
+    if (page === "providers") refreshProviders();
+    if (page === "usage") refreshUsage();
+    if (page === "extensions") refreshExtensions();
 }
 
 // J3-5: Dashboard 数据加载
@@ -265,6 +268,132 @@ async function refreshDashboard() {
         if ((audit || []).length === 0) {
             tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无审计记录</td></tr>';
         }
+    }
+}
+
+// J3-6: Providers / Models / Artifacts
+async function refreshProviders() {
+    const [providers, models, artifacts] = await Promise.all([
+        apiCall("GET", "/providers"),
+        apiCall("GET", "/providers/models"),
+        apiCall("GET", "/artifacts").catch(() => ({ artifacts: [] })),
+    ]);
+    if (providers === null) return;
+    // providers 表
+    clearTableBody("providers-table");
+    (providers?.providers || []).forEach(p => {
+        addRow("providers-table", [p.provider_id, p.model_id], (td) => {
+            const btn = document.createElement("button");
+            btn.textContent = "测试";
+            btn.className = "secondary";
+            btn.onclick = () => testProvider(p.provider_id, p.model_id);
+            td.appendChild(btn);
+        });
+    });
+    if ((providers?.providers || []).length === 0) {
+        addRow("providers-table", ["(无 Provider)", ""]);
+    }
+    // models 表
+    clearTableBody("models-table");
+    (models?.models || []).forEach(m => {
+        addRow("models-table", [
+            m.provider_id, m.model_id,
+            (m.operations || []).join(","),
+            (m.modalities_in || []).join(","),
+            (m.modalities_out || []).join(","),
+            m.cost_tier, m.latency_tier,
+        ]);
+    });
+    if ((models?.models || []).length === 0) {
+        addRow("models-table", ["(无模型)", "", "", "", "", "", ""]);
+    }
+    // artifacts 表
+    clearTableBody("artifacts-table");
+    (artifacts?.artifacts || []).forEach(a => {
+        addRow("artifacts-table", [
+            a.artifact_id?.slice(0, 12),
+            a.kind, a.mime_type, a.size_bytes,
+            a.created_at ? new Date(a.created_at * 1000).toLocaleString() : "",
+        ], (td) => {
+            const btn = document.createElement("button");
+            btn.textContent = "删除";
+            btn.className = "danger";
+            btn.onclick = () => deleteArtifact(a.artifact_id);
+            td.appendChild(btn);
+        });
+    });
+    if ((artifacts?.artifacts || []).length === 0) {
+        addRow("artifacts-table", ["(无制品)", "", "", "", "", ""]);
+    }
+}
+
+async function testProvider(providerId, modelId) {
+    const result = await apiCall("POST", `/providers/${providerId}/test?model_id=${encodeURIComponent(modelId)}`);
+    if (result) showToast(`Provider ${providerId} 测试通过`);
+}
+
+async function deleteArtifact(artifactId) {
+    if (!confirm(`确认删除制品 ${artifactId.slice(0, 12)}?`)) return;
+    if (await apiCall("DELETE", `/artifacts/${artifactId}`)) {
+        showToast("制品已删除");
+        await refreshProviders();
+    }
+}
+
+// J3-6: Usage / 成本
+async function refreshUsage() {
+    const groupBy = document.getElementById("usage-group-by")?.value || "provider";
+    const [summary, events] = await Promise.all([
+        apiCall("GET", `/usage/models/summary?group_by=${groupBy}`).catch(() => []),
+        apiCall("GET", "/usage/models/events?limit=50").catch(() => ({ events: [] })),
+    ]);
+    if (summary === null) return;
+    // summary 表
+    clearTableBody("usage-summary-table");
+    (summary || []).forEach(s => {
+        const groupKey = s[groupBy] || s.provider || s.model || "unknown";
+        addRow("usage-summary-table", [
+            groupKey, s.request_count || 0,
+            s.prompt_tokens || 0, s.completion_tokens || 0, s.total_tokens || 0,
+            s.estimated_cost_sum || "-",
+        ]);
+    });
+    if ((summary || []).length === 0) {
+        addRow("usage-summary-table", ["(无数据)", "", "", "", "", ""]);
+    }
+    // events 表
+    clearTableBody("usage-events-table");
+    (events?.events || []).forEach(e => {
+        addRow("usage-events-table", [
+            e.created_at ? new Date(e.created_at * 1000).toLocaleString() : "",
+            e.provider, e.model, e.modality, e.operation,
+            e.total_tokens || 0, e.estimated_cost || "-", e.status,
+        ]);
+    });
+    if ((events?.events || []).length === 0) {
+        addRow("usage-events-table", ["(无事件)", "", "", "", "", "", "", ""]);
+    }
+}
+
+// J3-6: Extensions (插件 + SubAgent)
+async function refreshExtensions() {
+    // 插件列表 (无专门 API, 暂用 /agents 占位; 实际插件 API 待 J3 后续)
+    clearTableBody("plugins-table");
+    addRow("plugins-table", ["(插件 API 待实现)", "", ""]);
+    // SubAgent 任务
+    const runs = await apiCall("GET", "/agents/_/subagent-runs").catch(() => []);
+    if (runs === null) return;
+    clearTableBody("subagent-runs-table");
+    (runs || []).forEach(r => {
+        addRow("subagent-runs-table", [
+            r.task_id?.slice(0, 12), r.status,
+            r.started_at ? new Date(r.started_at * 1000).toLocaleString() : "",
+            r.finished_at ? new Date(r.finished_at * 1000).toLocaleString() : "",
+            (r.result_summary || "").slice(0, 60),
+        ]);
+    });
+    if ((runs || []).length === 0) {
+        addRow("subagent-runs-table", ["(无 SubAgent 任务)", "", "", "", ""]);
     }
 }
 
