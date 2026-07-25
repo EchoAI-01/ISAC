@@ -22,19 +22,20 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from isac.agent.tools.base import Tool, ToolContext
-from isac.artifacts.models import MediaInput
-from isac.core.exceptions import LLMError
+from isac.core.exceptions import LLMError, MediaValidationError
 from isac.core.types import ToolResult
 
 if TYPE_CHECKING:
     from isac.artifacts.models import ArtifactRef
     from isac.artifacts.store import ArtifactStore
     from isac.provider.router import ModelRouter
+    from isac.utils.media import MediaNormalizer
 
 _NOT_WIRED = "多模态能力尚未接入 (J2 实现节点补齐)。"
 _NO_ROUTER = "未配置多模态模型路由, 无法使用该能力。"
 _NO_PROVIDER = "模型未注册, 无法使用该能力。"
 _NO_SELECTION = "无可用模型满足要求, 请检查配置或更换能力。"
+_NO_NORMALIZER = "未配置媒体输入校验器, 无法安全处理该媒体输入。"
 
 
 class _MediaToolBase(Tool):
@@ -175,11 +176,16 @@ class TranscribeAudioTool(_MediaToolBase):
     async def _call_provider(
         self, provider: Any, context: ToolContext, artifact_store: Any
     ) -> ToolResult:
+        normalizer: MediaNormalizer | None = context.services.get("media_normalizer")
+        if normalizer is None:
+            return ToolResult(content=_NO_NORMALIZER, is_error=True)
         media_uri = str(context.args.get("media_uri", ""))
-        mime_type = str(context.args.get("mime_type", "audio/mpeg"))
-        media: MediaInput = MediaInput(
-            kind="audio", uri=media_uri, mime_type=mime_type, source="tool_input",
-        )
+        try:
+            # normalize() 校验白名单/大小/MIME 并返回真实探测出的 mime_type,
+            # 不信任 LLM 工具调用参数里可能附带的 mime_type (安全边界)。
+            media = normalizer.normalize(media_uri, expected_kind="audio")
+        except MediaValidationError as exc:
+            return ToolResult(content=f"媒体输入校验失败: {exc.message}", is_error=True)
         result = await provider.transcribe(media)
         return ToolResult(content=result.text, is_error=False)
 
@@ -289,11 +295,14 @@ class VisionUnderstandTool(_MediaToolBase):
     async def _call_provider(
         self, provider: Any, context: ToolContext, artifact_store: Any
     ) -> ToolResult:
+        normalizer: MediaNormalizer | None = context.services.get("media_normalizer")
+        if normalizer is None:
+            return ToolResult(content=_NO_NORMALIZER, is_error=True)
         media_uri = str(context.args.get("media_uri", ""))
         prompt = str(context.args.get("prompt", ""))
-        mime_type = str(context.args.get("mime_type", "image/png"))
-        media: MediaInput = MediaInput(
-            kind="image", uri=media_uri, mime_type=mime_type, source="tool_input",
-        )
+        try:
+            media = normalizer.normalize(media_uri, expected_kind="image")
+        except MediaValidationError as exc:
+            return ToolResult(content=f"媒体输入校验失败: {exc.message}", is_error=True)
         response = await provider.vision_chat(media, prompt)
         return ToolResult(content=response.content, is_error=False)

@@ -356,10 +356,15 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     # register_multimodal_providers 实例化 Provider 并注册到 catalog + provider_manager。
     from isac.artifacts.store import ArtifactStore
     from isac.provider.router import ModelRouter
+    from isac.utils.media import MediaNormalizer
 
     model_catalog = ModelCatalog()
     model_router = ModelRouter(model_catalog)
     artifact_store = ArtifactStore(str(DATA_DIR / "artifacts"))
+    # 安全修复: transcribe_audio/understand_image 等工具必须先经 MediaNormalizer
+    # 校验 media_uri (白名单目录 + MIME + 大小上限), 不能直接信任 LLM 工具调用参数
+    # 里的任意绝对路径 (否则可读取白名单外的任意本地文件, 如 ~/.ssh/id_rsa)。
+    media_normalizer = MediaNormalizer(global_config.get("media_normalizer") or {})
 
     # J2: 按 global_config.multimodal_providers[] 注册真实 Provider + ModelDescriptor
     # 缺 api_key/model/未知 kind 跳过 + 警告, 不阻塞主链路
@@ -392,6 +397,7 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         "model_catalog": model_catalog,
         "model_router": model_router,
         "artifact_store": artifact_store,
+        "media_normalizer": media_normalizer,
         # J4: SubAgent 监督器 (常驻) 与日志句柄 (未启用时为 None)。
         "subagent_supervisor": subagent_supervisor,
         "subagent_journal": subagent_journal,
