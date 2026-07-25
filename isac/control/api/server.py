@@ -95,7 +95,7 @@ def create_control_app(
     _mount_optional_routers(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
-        scope_dependency, parsed_tokens, config.get("events_max_connections"),
+        scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -205,6 +205,7 @@ def _mount_optional_routers(
     scope_dependency: Any = None,
     tokens: Any = None,
     events_max_connections: int | None = None,
+    audit_log: Any = None,
 ) -> None:
     """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events)。"""
     if usage_store is not None:
@@ -232,6 +233,7 @@ def _mount_optional_routers(
             routes_providers.build_router(
                 provider_manager, model_catalog, artifact_store,
                 auth_dependency=auth_dependency, scope_dependency=scope_dependency,
+                audit_log=audit_log,
             ),
             prefix="/api/v1",
         )
