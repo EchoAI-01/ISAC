@@ -193,6 +193,51 @@ async def test_cancel_running_task_marks_cancelled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cancel_timeout_is_observable_and_late_result_does_not_overwrite(tmp_path) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _stubborn_runner(task: SubAgentTask) -> SubAgentResult:
+        started.set()
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            await release.wait()
+        return SubAgentResult(task_id=task.task_id, status="succeeded", summary="late")
+
+    journal = SubAgentJournal(str(tmp_path / "journal.db"))
+    await journal.start()
+    try:
+        supervisor = SubAgentSupervisor(
+            journal=journal,
+            runner_factory=_stubborn_runner,
+            cancel_grace_seconds=0.01,
+        )
+        await supervisor.submit(_task("stubborn"))
+        await asyncio.wait_for(started.wait(), timeout=1.0)
+
+        cancelled = await supervisor.cancel("stubborn")
+
+        assert cancelled is not None
+        assert cancelled.status == "cancelled"
+        assert cancelled.error_code == "CANCEL_TIMEOUT"
+        events = await supervisor.fetch_log("stubborn", 0, 100)
+        assert any(event.event_type == "error" and "未在" in event.summary for event in events)
+
+        release.set()
+        bg_task = supervisor._tasks.get("stubborn")
+        if bg_task is not None:
+            await asyncio.wait_for(bg_task, timeout=1.0)
+        final = await supervisor.get_status("stubborn")
+        assert final is not None
+        assert final.status == "cancelled"
+        assert final.result_summary == ""
+    finally:
+        release.set()
+        await journal.stop()
+
+
+@pytest.mark.asyncio
 async def test_submit_without_runner_keeps_skeleton_behavior() -> None:
     """未注入 runner_factory 时保持骨架行为: 返回 queued 不启动后台 task。"""
     supervisor = SubAgentSupervisor()  # 无 runner_factory
