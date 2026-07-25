@@ -525,6 +525,7 @@ async def main() -> None:
             services.get("usage_store"), services.get("subagent_supervisor"),
             services.get("provider_manager"), services.get("model_catalog"),
             services.get("artifact_store"),
+            services.get("session_mgr"), services.get("metadata_store"),
         )
     runtime.register_lifecycle(
         "alerts",
@@ -592,6 +593,8 @@ async def _register_control_plane(
     provider_manager: Any = None,
     model_catalog: Any = None,
     artifact_store: Any = None,
+    session_manager: Any = None,
+    metadata_store: Any = None,
 ) -> None:
     """把控制面 (uvicorn Server) 注册到 runtime 的生命周期管理。
 
@@ -633,6 +636,8 @@ async def _register_control_plane(
             provider_manager=provider_manager,
             model_catalog=model_catalog,
             artifact_store=artifact_store,
+            session_manager=session_manager,
+            metadata_store=metadata_store,
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))

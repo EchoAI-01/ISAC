@@ -29,6 +29,8 @@ def create_control_app(
     provider_manager: Any = None,
     model_catalog: Any = None,
     artifact_store: Any = None,
+    session_manager: Any = None,
+    metadata_store: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -53,7 +55,6 @@ def create_control_app(
     except ImportError as exc:
         raise RuntimeError("控制面需要 fastapi: uv sync --all-extras") from exc
 
-    from isac.control.api import routes_agents, routes_plugins, routes_routing
     from isac.control.audit import AuditLog
     from isac.control.auth import make_auth_dependency
     from isac.observability import get_default_metrics
@@ -68,68 +69,13 @@ def create_control_app(
 
     app = FastAPI(title="ISAC Admin API", version="0.1.0", docs_url="/docs")
 
-    app.include_router(
-        routes_agents.build_router(
-            agent_manager,
-            auth_dependency=auth_dependency,
-            audit_log=audit_log,
-            agents_dir=agents_dir,
-        ),
-        prefix="/api/v1",
+    _mount_core_routers(
+        app, agent_manager, router, bus, plugin_manager, config,
+        auth_dependency, audit_log, agents_dir, routing_rules_path, links_path,
     )
-    app.include_router(
-        routes_routing.build_router(
-            router,
-            bus,
-            auth_dependency=auth_dependency,
-            audit_log=audit_log,
-            routing_rules_path=routing_rules_path,
-            links_path=links_path,
-        ),
-        prefix="/api/v1",
-    )
-    app.include_router(
-        routes_plugins.build_router(
-            agent_manager,
-            plugin_manager,
-            auth_dependency=auth_dependency,
-            audit_log=audit_log,
-            agents_dir=agents_dir,
-        ),
-        prefix="/api/v1",
-    )
-    if usage_store is not None:
-        from isac.control.api import routes_usage
-
-        app.include_router(
-            routes_usage.build_router(usage_store, auth_dependency=auth_dependency),
-            prefix="/api/v1",
-        )
-    # J4: SubAgent 监督器路由 (仅启用时挂载)
-    if subagent_supervisor is not None:
-        from isac.control.api import routes_subagent
-
-        app.include_router(
-            routes_subagent.build_router(subagent_supervisor, auth_dependency=auth_dependency),
-            prefix="/api/v1",
-        )
-    # J3: Providers / Artifacts 路由 (provider_manager 和 model_catalog 都注入时挂载)
-    if provider_manager is not None and model_catalog is not None:
-        from isac.control.api import routes_providers
-
-        app.include_router(
-            routes_providers.build_router(
-                provider_manager, model_catalog, artifact_store,
-                auth_dependency=auth_dependency,
-            ),
-            prefix="/api/v1",
-        )
-    # J3-2: 配置编辑事务路由 (validate / diff; PATCH /agents/{id} 已在 routes_agents 内)
-    from isac.control.api import routes_config
-
-    app.include_router(
-        routes_config.build_router(auth_dependency=auth_dependency),
-        prefix="/api/v1",
+    _mount_optional_routers(
+        app, usage_store, subagent_supervisor, provider_manager, model_catalog,
+        artifact_store, session_manager, metadata_store, auth_dependency,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -171,3 +117,110 @@ def create_control_app(
         _get_logger(__name__).warning("WebUI 挂载失败", error=str(exc))
 
     return app
+
+
+def _mount_core_routers(
+    app: Any,
+    agent_manager: AgentManager,
+    router: MessageRouter,
+    bus: InterAgentBus,
+    plugin_manager: PluginManager,
+    config: dict[str, Any],
+    auth_dependency: Any,
+    audit_log: Any,
+    agents_dir: str,
+    routing_rules_path: str,
+    links_path: str,
+) -> None:
+    """挂载核心路由 (agents / routing / plugins)。"""
+    from isac.control.api import routes_agents, routes_plugins, routes_routing
+
+    app.include_router(
+        routes_agents.build_router(
+            agent_manager,
+            auth_dependency=auth_dependency,
+            audit_log=audit_log,
+            agents_dir=agents_dir,
+        ),
+        prefix="/api/v1",
+    )
+    app.include_router(
+        routes_routing.build_router(
+            router,
+            bus,
+            auth_dependency=auth_dependency,
+            audit_log=audit_log,
+            routing_rules_path=routing_rules_path,
+            links_path=links_path,
+        ),
+        prefix="/api/v1",
+    )
+    app.include_router(
+        routes_plugins.build_router(
+            agent_manager,
+            plugin_manager,
+            auth_dependency=auth_dependency,
+            audit_log=audit_log,
+            agents_dir=agents_dir,
+        ),
+        prefix="/api/v1",
+    )
+
+
+def _mount_optional_routers(
+    app: Any,
+    usage_store: Any,
+    subagent_supervisor: Any,
+    provider_manager: Any,
+    model_catalog: Any,
+    artifact_store: Any,
+    session_manager: Any,
+    metadata_store: Any,
+    auth_dependency: Any,
+) -> None:
+    """挂载可选路由 (usage / subagent / providers / config / sessions / memory)。"""
+    if usage_store is not None:
+        from isac.control.api import routes_usage
+
+        app.include_router(
+            routes_usage.build_router(usage_store, auth_dependency=auth_dependency),
+            prefix="/api/v1",
+        )
+    if subagent_supervisor is not None:
+        from isac.control.api import routes_subagent
+
+        app.include_router(
+            routes_subagent.build_router(subagent_supervisor, auth_dependency=auth_dependency),
+            prefix="/api/v1",
+        )
+    if provider_manager is not None and model_catalog is not None:
+        from isac.control.api import routes_providers
+
+        app.include_router(
+            routes_providers.build_router(
+                provider_manager, model_catalog, artifact_store,
+                auth_dependency=auth_dependency,
+            ),
+            prefix="/api/v1",
+        )
+    # J3-2: 配置编辑事务路由 (无条件挂载; validate/diff 不依赖外部服务)
+    from isac.control.api import routes_config
+
+    app.include_router(
+        routes_config.build_router(auth_dependency=auth_dependency),
+        prefix="/api/v1",
+    )
+    # J3-3: Sessions 路由 (session_manager 注入时挂载)
+    if session_manager is not None:
+        from isac.control.api import routes_sessions
+
+        app.include_router(
+            routes_sessions.build_router(session_manager, metadata_store, auth_dependency=auth_dependency),
+            prefix="/api/v1",
+        )
+    # J3-3: Memory 路由 (metadata_store 注入时挂载; 无则返回 None 不挂载)
+    from isac.control.api import routes_memory
+
+    memory_router = routes_memory.build_router(metadata_store, auth_dependency=auth_dependency)
+    if memory_router is not None:
+        app.include_router(memory_router, prefix="/api/v1")
