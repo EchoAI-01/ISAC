@@ -177,6 +177,24 @@ class TestWebUIStatic:
         response = webui_client.get("/ui/")
         assert response.status_code == 200
 
+    def test_app_js_does_not_render_audit_fields_via_innerhtml(self, webui_client) -> None:
+        """Fix-16: 审计日志的 action/target 字段来自用户可控输入 (如
+        InterAgentLink 的 from_agent/to_agent), 之前用 innerHTML 模板字符串拼接
+        渲染 (tr.innerHTML = 反引号模板字符串), 一个含 <script> 的值会在
+        Dashboard 渲染时被执行, 构成存储型 XSS。修复后必须改用 addRow() (内部用
+        textContent 逐格赋值), 不再对审计字段调用 innerHTML。
+
+        本项目未预装可用的 Playwright Chromium 二进制 (playwright install 缺失,
+        是既有的环境缺口, 非本次修复范围), 无法在真实浏览器里执行 app.js 验证
+        DOM 输出; 这里改用静态源码断言锁定"不再对不可信字段用 innerHTML 拼接"
+        这一具体回归点, 由 isac/runtime/bus.py 的 InterAgentLink 格式校验
+        (tests/unit/test_interagent_link_validation.py) 提供纵深防御的第二层。
+        """
+        response = webui_client.get("/ui/app.js")
+        js = response.text
+        assert "tr.innerHTML = `<td>${ts}</td>" not in js
+        assert "addRow(\"dashboard-audit-table\", [ts, e.action" in js
+
 
 class TestWebUIIntegrationWithAPI:
     def test_full_workflow_via_api(self, webui_client) -> None:
