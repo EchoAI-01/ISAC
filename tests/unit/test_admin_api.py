@@ -151,6 +151,70 @@ class TestAgentLifecycleWithAudit:
         assert all(e["action"] == "create_agent" for e in entries)
 
 
+class TestPatchAgentIfMatch:
+    """Fix-11: PATCH /agents/{id} 的 If-Match 乐观锁必须真正读 HTTP Header
+    (CONTROL_PLANE_SPEC.md 规范的方式), 而不是只认 ?if_match= query 参数。
+
+    save_agent_config() 每次保存都 +1 revision (isac/runtime/config.py), 所以
+    create() 落盘一次后 revision 已经是 2, 不是 dataclass 默认值 1。
+    """
+
+    def _create(self, client, agent_id: str = "patch-target") -> None:
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"agent_id": agent_id, "display_name": "Before"},
+        )
+        assert response.status_code == 200
+
+    def test_patch_with_correct_if_match_header_succeeds(self, control_app) -> None:
+        client, _ = control_app
+        self._create(client)
+        response = client.patch(
+            "/api/v1/agents/patch-target",
+            headers={"Authorization": "Bearer secret-token-123", "If-Match": "2"},
+            json={"display_name": "After"},
+        )
+        assert response.status_code == 200
+        assert response.json()["revision"] == 3
+
+    def test_patch_with_stale_if_match_header_returns_409(self, control_app) -> None:
+        """之前 if_match 是 query 参数, HTTP Header 会被静默忽略、PATCH 无条件
+        覆盖; 修复后必须真正读 Header 并在版本不匹配时拒绝。"""
+        client, _ = control_app
+        self._create(client)
+        response = client.patch(
+            "/api/v1/agents/patch-target",
+            headers={"Authorization": "Bearer secret-token-123", "If-Match": "99"},
+            json={"display_name": "Should not apply"},
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "CONFIG_CONFLICT"
+
+    def test_patch_with_legacy_query_param_still_works(self, control_app) -> None:
+        """向后兼容: WebUI 目前仍用 ?if_match= query 参数, Header 缺失时应回退到它。"""
+        client, _ = control_app
+        self._create(client)
+        response = client.patch(
+            "/api/v1/agents/patch-target?if_match=2",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"display_name": "After"},
+        )
+        assert response.status_code == 200
+        assert response.json()["revision"] == 3
+
+    def test_patch_header_takes_precedence_over_stale_query_param(self, control_app) -> None:
+        """Header 优先于 query 参数 (防止两者不一致时产生歧义)。"""
+        client, _ = control_app
+        self._create(client)
+        response = client.patch(
+            "/api/v1/agents/patch-target?if_match=2",
+            headers={"Authorization": "Bearer secret-token-123", "If-Match": "99"},
+            json={"display_name": "After"},
+        )
+        assert response.status_code == 409
+
+
 class TestRoutingAndLinks:
     def test_put_rules_persists(self, control_app) -> None:
         client, tmp_path = control_app

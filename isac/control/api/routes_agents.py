@@ -19,7 +19,7 @@ def build_router(
     audit_log: AuditLog | None = None,
     agents_dir: str = "data/agents",
 ) -> Any:
-    from fastapi import APIRouter, Depends, HTTPException
+    from fastapi import APIRouter, Depends, Header, HTTPException
 
     from isac.runtime.config import save_agent_config
 
@@ -79,10 +79,17 @@ def build_router(
         agent_id: str,
         payload: dict,
         if_match: str | None = None,
+        if_match_header: str | None = Header(default=None, alias="If-Match"),
     ) -> dict:
-        """J3-2: 部分更新 AgentConfig; 支持 If-Match revision 乐观锁。"""
+        """J3-2: 部分更新 AgentConfig; 支持 If-Match revision 乐观锁。
+
+        Fix-11: CONTROL_PLANE_SPEC.md 规定 If-Match 是 HTTP Header, 但此前只绑定
+        了 query 参数, 真按规范发 Header 的客户端会被静默忽略、PATCH 无条件覆盖。
+        Header 优先; 没有 Header 时回退到 query 参数 (WebUI 当前仍用 ?if_match=)。
+        """
+        effective_if_match = if_match_header if if_match_header is not None else if_match
         return await _do_patch_agent(
-            agent_manager, agent_id, payload, if_match, audit_log, agents_dir_path,
+            agent_manager, agent_id, payload, effective_if_match, audit_log, agents_dir_path,
         )
 
     return router

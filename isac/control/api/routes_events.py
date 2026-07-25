@@ -34,7 +34,7 @@ def build_router(
     auth_dependency: Any = None,
 ) -> Any:
     """构造 Events SSE Control API 路由。"""
-    from fastapi import APIRouter, Depends
+    from fastapi import APIRouter, Depends, Header
     from fastapi.responses import StreamingResponse
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -48,8 +48,11 @@ def build_router(
         last_event_id: int | None = None,
         heartbeat_seconds: float | None = None,
         max_chunks: int | None = None,
+        last_event_id_header: str | None = Header(default=None, alias="Last-Event-ID"),
     ) -> Any:
-        header_id = _safe_int(last_event_id)
+        # Fix-11: 真实浏览器 EventSource 断线重连时按 SSE 规范发 Last-Event-ID
+        # 请求头 (不是 query 参数); Header 优先, 缺失时回退 query (手动/测试场景)。
+        header_id = _safe_int(last_event_id_header) if last_event_id_header is not None else _safe_int(last_event_id)
         heartbeat = max(0.1, heartbeat_seconds if heartbeat_seconds is not None else _DEFAULT_HEARTBEAT_SECONDS)
 
         async def _gen():
