@@ -15,12 +15,15 @@ import asyncio
 
 import pytest
 
+from isac.core.types import LLMResponse, TokenUsage
+from isac.runtime.config import AgentConfig
 from isac.runtime.subagent.journal import SubAgentJournal
 from isac.runtime.subagent.models import (
     SubAgentPolicy,
     SubAgentResult,
     SubAgentTask,
 )
+from isac.runtime.subagent.runner import configure_subagent_runner
 from isac.runtime.subagent.supervisor import SubAgentSupervisor
 
 
@@ -200,3 +203,69 @@ async def test_submit_without_runner_keeps_skeleton_behavior() -> None:
     cur = await supervisor.get_status("no-runner")
     assert cur is not None
     assert cur.status == "queued"
+
+
+async def test_configured_production_runner_executes_with_isolated_context_and_tools() -> None:
+    from isac.runtime.manager import AgentManager
+    from tests.fixtures.fakes import FakeLLMProvider
+
+    provider = FakeLLMProvider(
+        scripted_replies=[
+            LLMResponse(
+                content="isolated result",
+                usage=TokenUsage(prompt_tokens=2, completion_tokens=3),
+            )
+        ]
+    )
+
+    class _ProviderManager:
+        def for_agent(self, config):
+            return provider
+
+        async def chat_with_retry(self, llm, *, system, messages, tools, **kwargs):
+            return await llm.chat(system, messages, tools)
+
+    services = {
+        "global_config": {},
+        "provider_manager": _ProviderManager(),
+        "memory_factory": lambda namespace: _Memory(),
+    }
+    manager = AgentManager(services)
+    await manager.create(AgentConfig(agent_id="parent"))
+    await manager.start("parent")
+    supervisor = SubAgentSupervisor()
+    configure_subagent_runner(supervisor, manager)
+    task = SubAgentTask(
+        task_id="production",
+        parent_agent_id="parent",
+        session_id="main-session",
+        trace_id="trace",
+        objective="read-only task",
+        policy=SubAgentPolicy(
+            max_tokens=42,
+            allowed_tools=["query_memory", "bash", "delegate_task"],
+            readable_memory_scopes=["parent"],
+        ),
+    )
+
+    await supervisor.submit(task)
+    bg_task = supervisor._tasks[task.task_id]
+    await asyncio.wait_for(bg_task, timeout=1.0)
+
+    run = await supervisor.get_status(task.task_id)
+    assert run is not None
+    assert run.status == "succeeded"
+    assert run.result_summary == "isolated result"
+    assert provider.calls[0]["messages"] == [{"role": "user", "content": "read-only task"}]
+    assert {tool["name"] for tool in provider.calls[0]["tools"]} == {"query_memory"}
+
+
+class _Memory:
+    async def query_person_profile(self, *args, **kwargs):
+        return None
+
+    async def query_jargon(self, *args, **kwargs):
+        return []
+
+    async def search(self, *args, **kwargs):
+        return []

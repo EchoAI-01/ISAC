@@ -24,6 +24,13 @@ from isac.agent.tools.social.send_image import SendImageTool
 from isac.agent.tools.social.switch_chat import SwitchChatTool
 from isac.agent.tools.social.view_forward_message import ViewForwardMessageTool
 from isac.agent.tools.social.wait import WaitTool
+from isac.agent.tools.subagent import (
+    CancelSubagentTool,
+    DelegateTaskTool,
+    ListSubagentsTool,
+    SubagentLogTool,
+    SubagentStatusTool,
+)
 from isac.agent.tools.utility.bash import BashTool
 from isac.agent.tools.utility.read_file import ReadFileTool
 from isac.agent.tools.utility.task import TaskTool
@@ -55,9 +62,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
         config: Agent 独立配置
         services: 共享服务 {"provider_manager", "memory_factory", "global_config", ...}
 
-    [已完成] memory_factory / 人格注入器 / 记忆注入器 / BehaviorLearner hooks;
-    待落地: attention_drift/expression_style/mood/skill_selector 注入器接入 PersonaManager,
-            AgentConfig.llm 非空时创建独立 Provider。
+    [已完成] memory_factory / 人格注入器 / 记忆注入器 / BehaviorLearner hooks / SubAgent 工具;
+    待落地: attention_drift/expression_style/mood/skill_selector 注入器接入 PersonaManager。
     """
     global_config: dict = services.get("global_config", {})
 
@@ -99,6 +105,11 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(WriteFileTool())
     tools.register(WebSearchTool())
     tools.register(TaskTool())
+    tools.register(DelegateTaskTool())
+    tools.register(ListSubagentsTool())
+    tools.register(SubagentStatusTool())
+    tools.register(SubagentLogTool())
+    tools.register(CancelSubagentTool())
     prompt_builder.register(ToolsAvailableInjector(tools))
 
     # E4 命令注册表: commands_allow 矩阵在 try_execute 时生效
