@@ -37,6 +37,7 @@ class SubAgentSupervisor:
         *,
         parent_policy: SubAgentPolicy | None = None,
         runner_factory: Callable[[SubAgentTask], Awaitable[SubAgentResult]] | None = None,
+        cancel_grace_seconds: float = 0.5,
     ) -> None:
         self._journal = journal
         # 父 Agent / 全局默认策略, 与任务策略求交集得到生效权限。
@@ -44,6 +45,7 @@ class SubAgentSupervisor:
         # J4-1: 子 Agent 执行循环工厂, 由 main.py / AgentManager 注入。
         # None 时 submit() 保持骨架行为 (返回 queued, 不启动后台 task)。
         self._runner_factory = runner_factory
+        self._cancel_grace_seconds = cancel_grace_seconds
         self._runs: dict[str, SubAgentRun] = {}
         # 后台 task 索引 (task_id → asyncio.Task), 用于 cancel 传播
         self._tasks: dict[str, asyncio.Task[Any]] = {}
@@ -98,7 +100,10 @@ class SubAgentSupervisor:
         try:
             # 超时控制: asyncio.wait_for 在 timeout_seconds 后取消 runner
             result = await asyncio.wait_for(runner, timeout=policy.timeout_seconds)
-            # 成功时把 result.summary 存到 run.result_summary, 供工具直接读取
+            # cancel() 可能已把 run 置为终态；吞掉 CancelledError 的 runner 晚到结果
+            # 不得把 cancelled 覆盖成 succeeded。
+            if run.status in TERMINAL_STATUSES:
+                return
             run.result_summary = result.summary
             await self._transition(
                 run, task.task_id, "succeeded", "status", f"succeeded: {result.summary}",
@@ -211,11 +216,29 @@ class SubAgentSupervisor:
         bg_task = self._tasks.get(task_id)
         if bg_task is not None and not bg_task.done():
             bg_task.cancel()
-            # 等待 task 真正取消 (不阻塞太久, 0.5s 超时兜底)
             try:
-                await asyncio.wait_for(bg_task, timeout=0.5)
-            except (asyncio.CancelledError, TimeoutError, Exception):  # noqa: BLE001
+                await asyncio.wait_for(asyncio.shield(bg_task), timeout=self._cancel_grace_seconds)
+            except asyncio.CancelledError:
                 pass
+            except TimeoutError:
+                run.error_code = "CANCEL_TIMEOUT"
+                run.error_summary = (
+                    f"取消请求已发出，但执行器未在 {self._cancel_grace_seconds}s 内退出"
+                )
+                if self._journal is not None:
+                    await self._journal.upsert_run(run)
+                    await self._journal.append(
+                        self._make_event(task_id, "error", run.error_summary)
+                    )
+                logger.warning(
+                    "子任务取消宽限期超时",
+                    task_id=task_id,
+                    grace_seconds=self._cancel_grace_seconds,
+                )
+            except Exception as exc:  # noqa: BLE001
+                run.error_code = "CANCEL_FAILED"
+                run.error_summary = str(exc)[:500]
+                logger.warning("子任务取消等待失败", task_id=task_id, error=str(exc))
         return run
 
     def _effective_policy(self, task: SubAgentTask) -> SubAgentPolicy:
