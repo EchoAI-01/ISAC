@@ -259,17 +259,18 @@ async function refreshDashboard() {
     document.getElementById("stat-messages").textContent = "-";  // TODO J3-6 接入 metrics
     document.getElementById("stat-health").textContent = health?.status || "-";
     // 近期审计
-    const tbody = document.querySelector("#dashboard-audit-table tbody");
-    if (tbody) {
-        tbody.innerHTML = "";
-        (audit || []).slice(0, 10).forEach(e => {
-            const tr = document.createElement("tr");
+    if (document.querySelector("#dashboard-audit-table tbody")) {
+        clearTableBody("dashboard-audit-table");
+        const recent = (audit || []).slice(0, 10);
+        recent.forEach(e => {
             const ts = e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : "";
-            tr.innerHTML = `<td>${ts}</td><td>${e.action || ""}</td><td>${e.target || ""}</td>`;
-            tbody.appendChild(tr);
+            // Fix-16: 审计字段 (action/target) 来自用户可控输入 (如 InterAgentLink
+            // 的 from_agent/to_agent), 必须用 textContent 逐格赋值, 不能用
+            // innerHTML 字符串拼接 (会执行嵌入的 <script>, 构成存储型 XSS)。
+            addRow("dashboard-audit-table", [ts, e.action || "", e.target || ""]);
         });
-        if ((audit || []).length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无审计记录</td></tr>';
+        if (recent.length === 0) {
+            addRow("dashboard-audit-table", ["暂无审计记录", "", ""]);
         }
     }
 }

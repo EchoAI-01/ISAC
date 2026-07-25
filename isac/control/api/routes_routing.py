@@ -71,7 +71,14 @@ def build_router(
 
     @api.post("/links", dependencies=link_write_deps)
     async def add_link(body: dict) -> dict:
-        link = InterAgentLink(**body)
+        from fastapi import HTTPException
+
+        try:
+            link = InterAgentLink(**body)
+        except (ValueError, TypeError) as exc:
+            # Fix-16: from_agent/to_agent 格式非法 (含 XSS payload) 在构造期就被
+            # InterAgentLink.__post_init__ 拒绝; 转 400 而不是让 500 泄露内部异常。
+            raise HTTPException(status_code=400, detail={"code": "INVALID_CONFIG", "message": str(exc)}) from exc
         # add_link 内部已触发 _trigger_persist; 但 routes_routing 持有独立的
         # _persist_links 路径, 用它把磁盘写入错误回传 500 (in-memory 状态已变更,
         # 调用方需要知道不一致) (CODE_REVIEW_REPORT.md #20)。
