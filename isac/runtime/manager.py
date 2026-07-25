@@ -18,6 +18,7 @@ from isac.runtime.assembly import assemble_agent
 from isac.runtime.config import AgentConfig
 from isac.runtime.instance import AgentInstance
 from isac.utils.logger import get_logger
+from isac.utils.logging_context import bind_log_context
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -155,6 +156,27 @@ class AgentManager:
             logger.warning("Agent 不存在或未运行，消息忽略", agent_id=agent_id)
             return None
 
+        # 可观测性: trace_id/session_id/agent_id 经 contextvars 贯穿整段处理,
+        # 其后所有日志 (门控 → Loop → 工具 → 记忆 → 回复) 自动携带这三个字段,
+        # 便于按一次消息处理串联排查。退出 with 时精确还原, 不污染后续。
+        with bind_log_context(
+            trace_id=uuid.uuid4().hex,
+            session_id=session.session_id,
+            agent_id=agent_id,
+        ):
+            logger.debug("消息进入 Agent 处理", content_len=len(message.content))
+            return await self._dispatch_message(instance, message, session, user_profile, progress_sender)
+
+    async def _dispatch_message(
+        self,
+        instance: AgentInstance,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+        progress_sender: Callable[[str, ProgressEvent], Awaitable[None]] | None,
+    ) -> str | None:
+        """在 handle_message 已绑定的日志上下文内执行 门控 → Loop → 回复。"""
+        agent_id = instance.agent_id
         # 每条到达消息都累加注入器的新消息计数 (按 session 隔离, 支撑 max_new_messages 频率控制)。
         instance.prompt_builder.notify_new_message(session.session_id)
 

@@ -421,7 +421,15 @@ async def main() -> None:
       结束被取消的 bug 已修 (CODE_REVIEW_REPORT.md #12/#13)
     """
     global_config = load_config(DATA_DIR / "config.jsonc")
-    setup_logger(debug=bool(global_config.get("debug", False)))
+    _logging_cfg = global_config.get("logging", {}) or {}
+    # debug=true 视为全局 DEBUG; 否则用 log_level / logging.level; 均缺省时 setup_logger 落 INFO。
+    _level = "debug" if global_config.get("debug") else (global_config.get("log_level") or _logging_cfg.get("level"))
+    setup_logger(
+        debug=bool(global_config.get("debug", False)),
+        log_format=_logging_cfg.get("format", "console"),
+        level=_level,
+        per_module=_logging_cfg.get("per_module"),
+    )
     logger.info("ISAC 启动中", version=_get_version())
 
     runtime = ApplicationRuntime()
