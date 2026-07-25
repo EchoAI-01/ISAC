@@ -92,7 +92,7 @@ class SubAgentSupervisor:
         if run is None:
             return
         # 状态 → running + 写 journal
-        await self._transition(run, task.task_id, "running", "status", "running")
+        await self._transition(run, task.task_id, "running", "status", "running", max_log_bytes=policy.max_log_bytes)
 
         runner = self._runner_factory(task) if self._runner_factory is not None else None
         if runner is None:
@@ -107,7 +107,7 @@ class SubAgentSupervisor:
             run.result_summary = result.summary
             await self._transition(
                 run, task.task_id, "succeeded", "status", f"succeeded: {result.summary}",
-                finished=True,
+                finished=True, max_log_bytes=policy.max_log_bytes,
             )
         except TimeoutError:
             await self._transition(
@@ -115,17 +115,22 @@ class SubAgentSupervisor:
                 f"timed_out: 任务超时 ({policy.timeout_seconds}s)",
                 finished=True, error_code="TIMEOUT",
                 error_summary=f"任务超时 ({policy.timeout_seconds}s)",
+                max_log_bytes=policy.max_log_bytes,
             )
             logger.warning("子任务超时", task_id=task.task_id, timeout=policy.timeout_seconds)
         except asyncio.CancelledError:
             # 被 cancel() 主动取消 (run.status 已被 cancel() 置为 cancelled)
             if self._journal is not None:
-                await self._journal.append(self._make_event(task.task_id, "status", "cancelled"))
+                await self._journal.append(
+                    self._make_event(task.task_id, "status", "cancelled"),
+                    max_log_bytes=policy.max_log_bytes,
+                )
             raise  # CancelledError 必须向上传播 (asyncio 约定)
         except Exception as exc:  # noqa: BLE001
             await self._transition(
                 run, task.task_id, "failed", "error", f"failed: {str(exc)[:500]}",
                 finished=True, error_code=type(exc).__name__, error_summary=str(exc)[:500],
+                max_log_bytes=policy.max_log_bytes,
             )
             logger.warning("子任务失败", task_id=task.task_id, error=str(exc))
         finally:
@@ -142,6 +147,7 @@ class SubAgentSupervisor:
         finished: bool = False,
         error_code: str = "",
         error_summary: str = "",
+        max_log_bytes: int | None = None,
     ) -> None:
         """状态转移 + journal 写入 (upsert_run + append event)。"""
         now = int(time.time())
@@ -157,7 +163,7 @@ class SubAgentSupervisor:
             return
         try:
             await self._journal.upsert_run(run)
-            await self._journal.append(self._make_event(task_id, event_type, summary))
+            await self._journal.append(self._make_event(task_id, event_type, summary), max_log_bytes=max_log_bytes)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Journal 写入失败, 不阻塞 _run_task", task_id=task_id, error=str(exc))
 

@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from isac.agent.tools.base import ToolContext, ToolPermission
 from isac.agent.tools.subagent import CancelSubagentTool, DelegateTaskTool, SubagentStatusTool
 from isac.runtime.subagent.journal import SubAgentJournal
@@ -138,6 +140,69 @@ async def test_journal_sanitizes_sensitive_metadata(tmp_path) -> None:
         )
         events = await journal.fetch_after("t1", 0, 10)
         assert events[0].metadata == {"safe": "ok"}
+    finally:
+        await journal.stop()
+
+
+async def test_journal_truncates_summary_to_max_log_bytes(tmp_path) -> None:
+    """Fix-9: summary 之前完全不受 max_log_bytes 约束, 超长/异常内容可以无限
+    占用日志存储; 落库前必须按 (调用方传入的, 或默认策略值) 上限截断。"""
+    journal = SubAgentJournal(str(tmp_path / "journal.db"))
+    await journal.start()
+    try:
+        long_summary = "A" * 1000
+        await journal.append(
+            SubAgentEvent(task_id="t1", seq=1, event_type="status", timestamp=1, summary=long_summary),
+            max_log_bytes=100,
+        )
+        events = await journal.fetch_after("t1", 0, 10)
+        assert len(events[0].summary.encode("utf-8")) <= 100
+    finally:
+        await journal.stop()
+
+
+async def test_journal_default_max_log_bytes_when_not_specified(tmp_path) -> None:
+    """未显式传 max_log_bytes 时应用 SubAgentPolicy 的默认上限, 而不是完全不限制。"""
+    journal = SubAgentJournal(str(tmp_path / "journal.db"))
+    await journal.start()
+    try:
+        short_summary = "正常长度的摘要"
+        await journal.append(
+            SubAgentEvent(task_id="t1", seq=1, event_type="status", timestamp=1, summary=short_summary)
+        )
+        events = await journal.fetch_after("t1", 0, 10)
+        # 默认上限远大于这条短摘要, 不应被误截断
+        assert events[0].summary == short_summary
+    finally:
+        await journal.stop()
+
+
+async def test_supervisor_persists_events_truncated_by_task_effective_policy(tmp_path) -> None:
+    """端到端: Supervisor 内部产生的状态事件也要按该任务的生效策略截断, 不能只在
+    journal 单测层面截断而 Supervisor 从不传这个参数。"""
+    journal = SubAgentJournal(str(tmp_path / "journal.db"))
+    await journal.start()
+    try:
+        supervisor = SubAgentSupervisor(journal=journal)
+        long_objective = "x" * 2000
+
+        async def _runner(task: SubAgentTask):
+            from isac.runtime.subagent.models import SubAgentResult
+
+            return SubAgentResult(task_id=task.task_id, status="succeeded", summary=long_objective)
+
+        supervisor.set_runner_factory(_runner)
+        task = _task("t-trunc", SubAgentPolicy(max_log_bytes=50))
+        await supervisor.submit(task)
+        for _ in range(50):
+            run = await supervisor.get_status("t-trunc")
+            if run is not None and run.status == "succeeded":
+                break
+            await asyncio.sleep(0.01)
+        events = await journal.fetch_after("t-trunc", 0, 10)
+        succeeded_events = [e for e in events if "succeeded" in e.summary]
+        assert succeeded_events
+        assert len(succeeded_events[0].summary.encode("utf-8")) <= 50
     finally:
         await journal.stop()
 
