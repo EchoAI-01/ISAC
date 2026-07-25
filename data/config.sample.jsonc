@@ -1,0 +1,128 @@
+// ISAC 全局配置模板 (J2, DEVELOPMENT_PLAN.md)
+//
+// 复制为 config.jsonc 后按需修改; 真实 API Key 必须自行填入, 不要提交到 git。
+// 支持的 modality: chat (LLM 文本对话) / image_gen / stt / tts / embed / vision
+// Provider 接入策略: 通用 OpenAI 兼容 API (任意 api_base + api_key + model)。
+{
+  "debug": false,
+  "bot_id": "",
+
+  // 主 LLM (文生文): K2 已落地, OpenAI 兼容 chat/completions
+  "llm": {
+    "provider": "openai",
+    "api_key": "sk-your-key",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  },
+
+  // J2 多模态 Provider 数组: 用户可配置任意 OpenAI 兼容端点
+  // 每个 Provider 接受 api_base + api_key + model + 可选 cost_tier/latency_tier
+  // cost_tier: free | low | standard | high (ModelRouter 按成本过滤)
+  // latency_tier: fast | standard | slow
+  // kind 必填, 取值: image_gen | stt | tts | embed | vision
+  "multimodal_providers": [
+    // {
+    //   "kind": "image_gen",
+    //   "provider": "openai",
+    //   "api_key": "sk-your-key",
+    //   "base_url": "https://api.openai.com/v1",
+    //   "model": "dall-e-3",
+    //   "cost_tier": "low",
+    //   "latency_tier": "standard"
+    // },
+    // {
+    //   "kind": "stt",
+    //   "provider": "openai",
+    //   "api_key": "sk-your-key",
+    //   "base_url": "https://api.openai.com/v1",
+    //   "model": "whisper-1"
+    // },
+    // {
+    //   "kind": "tts",
+    //   "provider": "openai",
+    //   "api_key": "sk-your-key",
+    //   "base_url": "https://api.openai.com/v1",
+    //   "model": "tts-1"
+    // },
+    // {
+    //   "kind": "embed",
+    //   "provider": "openai",
+    //   "api_key": "sk-your-key",
+    //   "base_url": "https://api.openai.com/v1",
+    //   "model": "text-embedding-3-small"
+    // },
+    // {
+    //   "kind": "vision",
+    //   "provider": "openai",
+    //   "api_key": "sk-your-key",
+    //   "base_url": "https://api.openai.com/v1",
+    //   "model": "gpt-4o"
+    // }
+    // 自托管 OpenAI 兼容端点示例 (如 vLLM / Ollama / 阿里通义 / 智谱):
+    // {
+    //   "kind": "image_gen",
+    //   "provider": "custom",
+    //   "api_key": "your-internal-key",
+    //   "base_url": "https://internal.example.com/v1",
+    //   "model": "your-image-model",
+    //   "cost_tier": "free",
+    //   "latency_tier": "fast"
+    // }
+  ],
+
+  // 制品存储 (本地 FS, sha256 分桶)
+  "artifacts": {
+    "ttl_days": 7
+  },
+
+  // 控制面 (G1 Admin API)
+  "control": {
+    "enabled": false,
+    "host": "127.0.0.1",
+    "port": 8091,
+    "agents_dir": "data/agents",
+    "auth_token": ""
+  },
+
+  // Channel 适配器
+  "channels": {
+    "onebot": {
+      "enabled": false,
+      "ws_reverse_url": "ws://127.0.0.1:8080"
+    },
+    "telegram": {
+      "enabled": false,
+      "bot_token": ""
+    },
+    "discord": {
+      "enabled": false,
+      "bot_token": ""
+    },
+    "webchat": {
+      "enabled": true,
+      "bind_host": "127.0.0.1",
+      "bind_port": 8090,
+      "max_message_age_seconds": 300
+    }
+  },
+
+  // 监控告警 (I5)
+  "alerting": {
+    "enabled": true,
+    "check_interval_seconds": 30,
+    "webhook_url": ""
+  },
+
+  // J1 计量 (用量与成本)
+  "observability": {
+    "usage": {
+      "enabled": false,
+      "flush_interval_seconds": 30
+    }
+  },
+
+  // J4 SubAgent (默认关闭)
+  "subagent": {
+    "enabled": false
+  }
+}
