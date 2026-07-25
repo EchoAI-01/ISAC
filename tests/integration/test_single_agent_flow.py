@@ -42,13 +42,17 @@ async def _build_e2e(
     trigger_words: list[str] | None = None,
     default_agent: str | None = None,
     provider: Any | None = None,
+    usage_recorder: Any | None = None,
 ) -> tuple[
     AgentManager, MessageRouter, EventBus, SessionManager,
     UserMapper, ChannelRegistry, FakeChannel, FakeLLMProvider,
 ]:
-    """构造 E2E 夹具: 返回所有 main.process_message 需要的组件。"""
+    """构造 E2E 夹具: 返回所有 main.process_message 需要的组件。
+
+    usage_recorder: J1 用量记录器, 默认 None (不计量, 与生产默认关闭一致)。
+    """
     metrics = get_default_metrics()
-    provider_manager = ProviderManager({}, metrics=metrics)
+    provider_manager = ProviderManager({}, metrics=metrics, usage_recorder=usage_recorder)
     fake_provider = provider or FakeLLMProvider()
     provider_manager.register(fake_provider)
 
@@ -347,3 +351,45 @@ async def test_intercept_payload_replaces_message_content() -> None:
     last_call = provider.calls[-1]
     user_msg = last_call["messages"][-1]
     assert user_msg["content"] == "rewritten content"
+
+
+@pytest.mark.asyncio
+async def test_full_chain_records_usage_queryable_by_agent_id() -> None:
+    """J1: process_message 全链路 (Router → AgentManager.handle_message →
+    ISACAgentLoop → ProviderManager.chat_with_retry) 产生的用量事件应带正确
+    agent_id/session_id, flush 落库后可按 agent_id 聚合查到——验证的是 D9 打通的
+    services["agent_id"]/context.session.session_id 传递路径与 J1 的 ProviderManager
+    关联 ID 贯穿是否真的接上了, 而不是单元测试里各自模拟的假设。
+    """
+    from isac.observability.usage.recorder import UsageRecorder
+    from isac.observability.usage.storage import UsageStore
+
+    store = UsageStore(":memory:")
+    await store.start()
+    try:
+        recorder = UsageRecorder(store=store)
+        provider = FakeLLMProvider(scripted_replies=[make_final_reply("hello")])
+        (am, router, eb, sm, um, cr, channel, _) = await _build_e2e(
+            default_agent="default", provider=provider, usage_recorder=recorder,
+        )
+
+        msg = _msg("@bot 你好", at_bot=True)
+        await _run(
+            msg, agent_manager=am, router=router, event_bus=eb,
+            session_mgr=sm, user_mapper=um, channel_registry=cr,
+        )
+
+        assert recorder.pending_count == 1
+        await recorder.flush()
+
+        summary = await store.aggregate({"group_by": ["agent_id"]})
+        assert len(summary) == 1
+        assert summary[0]["agent_id"] == "default"
+        assert summary[0]["request_count"] == 1
+
+        events = await store.list_events({"agent_id": "default"})
+        assert len(events) == 1
+        assert events[0]["session_id"] != ""
+        assert events[0]["trace_id"] != ""
+    finally:
+        await store.stop()

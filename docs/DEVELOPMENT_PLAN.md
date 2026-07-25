@@ -39,8 +39,8 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 1. **K8 收尾** — 补 WebUI 浏览器黄金路径测试,校准 README/AGENTS/版本号,发版时再重建变更记录,确认发布准入。
 2. **[x] D9 任务进度报告** — 实现 `ProgressEvent`/`ProgressReporter`,工具完成后按人设汇报;是 J4 与 WebUI 任务时间线的前置。已完成,详见上文 D9 节点"当前"。
-3. **J1 Token 用量与成本计量**（下一项）— 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。
-4. **J2 多模态 Provider 与能力选择** — 落地 `ModelDescriptor`/`ModelCatalog`/`ModelRouter`/`ArtifactStore`,填充 `provider/{embed,rerank,stt_tts}` 空目录。
+3. **[x] J1 Token 用量与成本计量** — 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。已完成,详见下文 J1 节点"当前"。
+4. **J2 多模态 Provider 与能力选择**（下一项）— 落地 `ModelDescriptor`/`ModelCatalog`/`ModelRouter`/`ArtifactStore`,填充 `provider/{embed,rerank,stt_tts}` 空目录。
 5. **J4 SubAgent Runtime** — 基于 D9/J1 实现隔离子 Agent 与可追溯 `SubAgentJournal`,把 H3 `TaskRunner` 原型迁移为 `SubAgentSupervisor`。
 6. **J3 WebUI v2** — 汇聚上述能力,提供十域管理与观测面板。
 7. **experimental 桩补齐** — VectorStore(sqlite-vec)、GraphStore、Reranker、MemoryConsolidator、完整 ConversationRuntime。
@@ -366,11 +366,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 **目标**：统一模型能力接入与选择，完整记录模型用量，并将运行状态和配置安全地暴露到 WebUI。
 
-- [ ] **J1 模型用量与成本计量**
+- [x] **J1 模型用量与成本计量**
   - **验收**：LLM/Embedding/Reranker/STT/TTS/ImageGen/Video 的每次物理请求均产生 `ModelUsageEvent`；重试、回退、失败和缓存 Token 可区分；支持按 Provider/模型/Agent/会话/模态/时间聚合；价格快照可追溯；未知价格不伪造成本；写入失败不阻塞主调用。
   - **产出**：`observability/usage/{models,recorder,storage,pricing}.py`、SQLite Schema、ProviderManager 接线、Usage REST API、指标与测试。
   - **依赖**：B2、G1、I5。
-  - **当前**：架构、数据契约、API、权限和隐私规范已写入 `ARCHITECTURE.md`、`SPECIFICATION.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；**能力框架 (scaffolding) 已落地**——`observability/usage/{models,pricing,storage,recorder}.py`（`ModelUsageEvent`/`PricingCatalog`/`UsageStore`/`UsageRecorder`）、`ProviderManager` 成功/失败双路径受 `None` 保护的用量记录、`main` 计量子系统按 `observability.usage.enabled` 默认关闭并注册 Journal 生命周期，附 `tests/unit/test_usage_recorder.py`。`TokenUsage` 扩展字段（cache/reasoning/audio）、多维聚合查询、Usage REST API 与周期性 flush 待实现节点补齐。
+  - **当前**：已完成 (2026-07-25)。`TokenUsage`（`core/types.py`）补齐 `cache_read/cache_write/reasoning/audio_{input,output}_tokens` 明细字段；`OpenAICompatProvider` 从 `prompt_tokens_details`/`completion_tokens_details` 解析这些字段（非流式 + SSE 流式）。`PricingCatalog.estimate_cost()` 按分档单价计算缓存/音频 Token 成本（子集扣除，避免重复计价），未配置分档价时回退基础 input/output 价。`ProviderManager.chat_with_retry()`/`_call_and_record()` 贯穿 `agent_id`/`session_id`/`trace_id`（复用 D9 的 `task_id`）/`request_id`（每次物理尝试独立生成）/`fallback_from`；新增 `record_stream_result()` 补齐此前完全绕过计量的流式调用路径（`agent/loop.py::_call_llm_streaming()`，成功/失败都记录）。`UsageStore`：Schema 迁移（`_ensure_column` 补 5 个明细列）、`insert_many()` 批量提交替代逐事件 commit、`list_events()` 分页查询、`aggregate()` 真实多维聚合（`group_by` 走固定白名单防注入，`time_bucket` 按 hour/day 分桶，全空结果返回 `[]` 而非幻影汇总行）。`UsageRecorder` 新增 `start()`/`stop()`/`_flush_loop()` 周期性 flush（仿 `AlertManager._check_loop`），`main.py` 按 `observability.usage.flush_interval_seconds` 配置并保证 start/stop 顺序不丢最后一批事件。新增 `control/api/routes_usage.py` 提供 `GET /usage/models/{summary,events,timeseries}`，`create_control_app()` 仅在 `usage_store` 非 `None` 时挂载。测试：`tests/unit/test_usage_recorder.py`、`tests/unit/test_usage_storage.py`、`tests/unit/test_control_api_usage.py`、`tests/unit/test_provider_manager.py`、`tests/unit/test_openai_compat_provider.py`、`tests/unit/test_core_types.py`、`tests/integration/test_single_agent_flow.py`（全链路 process_message → ... → chat_with_retry → flush → aggregate 按 agent_id 查得用量）。Embedding/Reranker/STT/TTS/ImageGen/Video 的 `ModelUsageEvent` 埋点留给 J2（真实多模态调用路径落地时一起补，当前这些 Provider 仍是 J2 范畴的桩，没有可埋点的真实调用链路）。
 
 - [ ] **J2 多模态 Provider 与能力选择**
   - **验收**：文本、视觉理解、STT、TTS、图片生成、视频理解/生成 Provider 使用统一注册与能力声明；Agent 只感知被授权能力；输入内容、用户意图、成本/延迟策略可选择模型；不可用时按能力回退或明确失败；生成结果经制品存储和 Channel 能力适配发送。
