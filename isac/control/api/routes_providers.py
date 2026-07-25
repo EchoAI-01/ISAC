@@ -9,6 +9,10 @@
 - DELETE /artifacts/{id}           删除制品 (文件 + DB 行)
 
 Bearer Token 认证; 无 artifact_store 时 /artifacts/* 不挂载 (404)。
+
+Fix-15: CONTROL_PLANE_SPEC.md §6.2 "所有写操作必须产生 AuditEvent"; test_provider
+(触发外部健康检查) 与 delete_artifact (不可逆删除) 之前没有写审计日志, audit_log
+为 None (未配置) 时静默跳过, 与其它路由文件 (routes_agents.py 等) 的既有约定一致。
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from isac.artifacts.store import ArtifactStore
+    from isac.control.audit import AuditLog
     from isac.provider.catalog import ModelCatalog
     from isac.provider.manager import ProviderManager
 
@@ -27,6 +32,7 @@ def build_router(
     artifact_store: ArtifactStore | None,
     auth_dependency: Any = None,
     scope_dependency: Any = None,
+    audit_log: AuditLog | None = None,
 ) -> Any:
     """构造 Providers / Artifacts Control API 路由。"""
     from fastapi import APIRouter, Depends
@@ -34,14 +40,18 @@ def build_router(
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["providers"], dependencies=deps)
 
-    _register_provider_routes(router, provider_manager, model_catalog, scope_dependency)
+    _register_provider_routes(router, provider_manager, model_catalog, scope_dependency, audit_log)
     if artifact_store is not None:
-        _register_artifact_routes(router, artifact_store, scope_dependency)
+        _register_artifact_routes(router, artifact_store, scope_dependency, audit_log)
     return router
 
 
 def _register_provider_routes(
-    router: Any, provider_manager: ProviderManager, model_catalog: ModelCatalog, scope_dependency: Any = None,
+    router: Any,
+    provider_manager: ProviderManager,
+    model_catalog: ModelCatalog,
+    scope_dependency: Any = None,
+    audit_log: AuditLog | None = None,
 ) -> None:
     """注册 /providers/* 端点。"""
     from fastapi import Depends, HTTPException
@@ -72,10 +82,19 @@ def _register_provider_routes(
                 status_code=404,
                 detail={"code": "PROVIDER_NOT_FOUND", "message": f"{provider_id}/{model_id}"},
             )
+        await _audit(
+            audit_log, "POST", f"/api/v1/providers/{provider_id}/test",
+            "test_provider", f"{provider_id}/{model_id}" if model_id else provider_id,
+        )
         return {"provider_id": provider_id, "status": "ok"}
 
 
-def _register_artifact_routes(router: Any, artifact_store: ArtifactStore, scope_dependency: Any = None) -> None:
+def _register_artifact_routes(
+    router: Any,
+    artifact_store: ArtifactStore,
+    scope_dependency: Any = None,
+    audit_log: AuditLog | None = None,
+) -> None:
     """注册 /artifacts/* 端点 (仅 artifact_store 非 None 时调用)。"""
     from fastapi import Depends, HTTPException
 
@@ -106,7 +125,28 @@ def _register_artifact_routes(router: Any, artifact_store: ArtifactStore, scope_
                 detail={"code": "ARTIFACT_NOT_FOUND", "message": artifact_id},
             )
         await _delete_artifact(artifact_store, artifact_id)
+        await _audit(audit_log, "DELETE", f"/api/v1/artifacts/{artifact_id}", "delete_artifact", artifact_id)
         return {"artifact_id": artifact_id, "status": "deleted"}
+
+
+async def _audit(
+    audit_log: AuditLog | None,
+    method: str,
+    path: str,
+    action: str,
+    target: str,
+) -> None:
+    """记录审计日志 (audit_log 为 None 时跳过, 与 routes_agents.py 的既有约定一致)。"""
+    if audit_log is None:
+        return
+    await audit_log.record(
+        actor="authenticated",
+        method=method,
+        path=path,
+        action=action,
+        target=target,
+        status_code=200,
+    )
 
 
 def _descriptor_to_dict(d: Any) -> dict:
