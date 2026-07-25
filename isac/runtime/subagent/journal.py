@@ -78,17 +78,32 @@ class SubAgentJournal:
             self._db = None
 
     async def append(self, event: SubAgentEvent) -> None:
-        """追加一条已脱敏事件。未 start 时静默跳过 (不阻塞主任务)。"""
+        """追加一条已脱敏事件。未 start 时静默跳过 (不阻塞主任务)。
+
+        seq 自动分配: event.seq<=0 时由 DB 查 MAX(seq)+1 分配; >0 时保留调用方值
+        (用于测试或幂等重放)。
+        """
         if self._db is None:
             return
         event = self._sanitize(event)
+        # seq<=0 视为"自动分配", 避免覆盖同 (task_id, 0) 的旧行
+        if event.seq <= 0:
+            cursor = await self._db.execute(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM subagent_events WHERE task_id = ?",
+                (event.task_id,),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+            seq = int(row[0]) if row is not None else 1
+        else:
+            seq = event.seq
         await self._db.execute(
             "INSERT OR REPLACE INTO subagent_events "
             "(task_id, seq, event_type, timestamp, summary, tool_name, usage_total, evidence_refs, metadata) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
             (
                 event.task_id,
-                event.seq,
+                seq,
                 event.event_type,
                 event.timestamp,
                 event.summary,
