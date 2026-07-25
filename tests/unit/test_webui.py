@@ -69,10 +69,35 @@ class TestWebUIStatic:
 
     def test_index_contains_all_sections(self, webui_client) -> None:
         response = webui_client.get("/ui/")
+        # J3-5: v1 四 section 保留向后兼容
         assert "Agent 管理" in response.text
         assert "路由规则" in response.text
         assert "互联 Link" in response.text
         assert "审计日志" in response.text
+
+    def test_index_contains_j3_spa_sidebar(self, webui_client) -> None:
+        """J3-5: 新增 10 域侧边栏导航。"""
+        response = webui_client.get("/ui/")
+        assert "Dashboard" in response.text
+        assert "Channels" in response.text
+        assert "Providers" in response.text
+        assert "Usage" in response.text
+        assert "Extensions" in response.text
+        assert "Memory" in response.text
+        assert "Sessions" in response.text
+        assert "Logs" in response.text
+        assert "System" in response.text
+        # 侧边栏导航 data-page 属性
+        assert 'data-page="dashboard"' in response.text
+        assert 'data-page="agents"' in response.text
+        assert 'data-page="channels"' in response.text
+
+    def test_app_js_contains_navigate_function(self, webui_client) -> None:
+        """J3-5: app.js 含 navigate() + refreshDashboard() 函数。"""
+        response = webui_client.get("/ui/app.js")
+        assert "function navigate(" in response.text
+        assert "function refreshDashboard(" in response.text
+        assert "refreshDashboard()" in response.text  # 在 refreshAll 里调用
 
     def test_webui_does_not_require_token(self, webui_client) -> None:
         # WebUI 静态资源不需要 token (前端自己带 token 调 API)
