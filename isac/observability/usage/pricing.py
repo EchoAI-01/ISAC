@@ -19,7 +19,11 @@ if TYPE_CHECKING:
 
 @dataclass
 class PriceSnapshot:
-    """某模型在某价格版本下的单价快照 (Decimal 字符串, 避免浮点误差)。"""
+    """某模型在某价格版本下的单价快照 (Decimal 字符串, 避免浮点误差)。
+
+    cache_read/cache_write/audio_{input,output}_price_per_unit 为 None 时回退到
+    对应的基础 input/output 价, 向后兼容未配置分档价的旧快照。
+    """
 
     provider: str
     model: str
@@ -27,6 +31,10 @@ class PriceSnapshot:
     pricing_version: str
     input_price_per_unit: str = "0"
     output_price_per_unit: str = "0"
+    cache_read_price_per_unit: str | None = None
+    cache_write_price_per_unit: str | None = None
+    audio_input_price_per_unit: str | None = None
+    audio_output_price_per_unit: str | None = None
     unit_name: str = "token"
     currency: str = "USD"
 
@@ -51,13 +59,32 @@ class PricingCatalog:
     def estimate_cost(self, event: ModelUsageEvent) -> str | None:
         """按调用时价格快照估算成本 (Decimal 字符串)。未知价格返回 None。
 
-        骨架: 仅按 prompt/completion token 粗算。
-        TODO(J1): 用 Decimal 分别计价 cache/reasoning/audio 与非 Token 单位, 并区分档位。
+        cache_read_tokens/audio_input_tokens 是 prompt_tokens 的子集, audio_output_tokens
+        是 completion_tokens 的子集 (OpenAI 语义): 从基础档中减去后单独按 (专属价或回退到
+        基础价) 计价, 避免重复计数。reasoning_tokens 同样是 completion_tokens 子集, 但
+        OpenAI 按输出价整体计费, 故只做可观测拆分, 不参与计价公式。cache_write_tokens
+        当前没有 Provider 产生非 0 值, 不是任何字段的子集, 按额外加项计入。
         """
         snapshot = self.lookup(event.provider, event.model, event.modality)
         if snapshot is None:
             return None
-        total = Decimal(snapshot.input_price_per_unit) * Decimal(event.usage.prompt_tokens) + Decimal(
-            snapshot.output_price_per_unit
-        ) * Decimal(event.usage.completion_tokens)
+        usage = event.usage
+        input_price = Decimal(snapshot.input_price_per_unit)
+        output_price = Decimal(snapshot.output_price_per_unit)
+        cache_read_price = Decimal(snapshot.cache_read_price_per_unit or snapshot.input_price_per_unit)
+        cache_write_price = Decimal(snapshot.cache_write_price_per_unit or snapshot.input_price_per_unit)
+        audio_input_price = Decimal(snapshot.audio_input_price_per_unit or snapshot.input_price_per_unit)
+        audio_output_price = Decimal(snapshot.audio_output_price_per_unit or snapshot.output_price_per_unit)
+
+        base_prompt_tokens = usage.prompt_tokens - usage.cache_read_tokens - usage.audio_input_tokens
+        base_completion_tokens = usage.completion_tokens - usage.audio_output_tokens
+
+        total = (
+            Decimal(base_prompt_tokens) * input_price
+            + Decimal(usage.cache_read_tokens) * cache_read_price
+            + Decimal(usage.audio_input_tokens) * audio_input_price
+            + Decimal(base_completion_tokens) * output_price
+            + Decimal(usage.audio_output_tokens) * audio_output_price
+            + Decimal(usage.cache_write_tokens) * cache_write_price
+        )
         return str(total)
