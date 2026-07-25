@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-25 (基于 dev 分支实测复审: 593 测试通过、Ruff/Mypy 全绿、主程序实测驻留)
+> 最近更新: 2026-07-25 (J2 多模态 Provider 与能力选择完成; 721 测试通过、Ruff/Mypy 全绿、主程序实测驻留)
 
 ## 节点总览
 
@@ -17,7 +17,7 @@
 | G | 控制面与自动化 | 100% | Admin API / MCP / Webhook / 安全默认值 |
 | H | 平台与工具扩展 | 100% | Telegram/Discord/WebChat + MCP Client + 实用工具 |
 | I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI 仅 v1,浏览器测试待补 |
-| J | 模型能力、计量与管理面 | 25% | J1 完成(非桩实现+测试+运行验证+文档同步);J2/J4 能力框架已搭建(契约/骨架/惰性接线 + 骨架测试);J3 WebUI v2 仅设计 |
+| J | 模型能力、计量与管理面 | 56% | J1+J2 完成 (非桩实现+测试+运行验证+文档同步);J3 WebUI v2 仅设计;J4 能力框架已搭建 |
 | K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试与发布准入收尾 |
 
 ## 可运行性状态
@@ -25,10 +25,11 @@
 **已达到「可运行」完成度**(2026-07-25 实测):
 
 - 主程序实测驻留(`RESIDENT_AFTER_3S=True`),支持 SIGINT/SIGTERM 优雅关闭。
-- 593 单元/集成测试通过;Ruff 通过;Mypy 全绿(186 文件)。
-- 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke。
+- 721 单元/集成测试通过;Ruff 通过;Mypy 全绿(192 文件)。
+- 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke、J2 多模态全链 + Channel 投递。
 - 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用。
 - Agent / Session / 路由 / Link / 记忆可持久化恢复。
+- J2 多模态 Provider 框架: 通用 OpenAI 兼容端点 (api_base + api_key + model), 覆盖 image_gen / stt / tts / embed / vision; 测试用 httpx.MockTransport 不依赖真实 Key, 用户配置凭据即可接入真实 API。
 
 ## 稳定化节点 (K) 明细
 
@@ -45,13 +46,25 @@
 
 ## 待实现能力
 
+**J2 已完成 (2026-07-25)**:
+
+J2 多模态 Provider 与能力选择已完整落地 (详见 DEVELOPMENT_PLAN.md J2 节"当前"):
+- ModelRouter 打分排序 (cost/latency/health/preference) + reason 含各因子
+- ArtifactStore 本地 FS + TTL (sha256 分桶 + SQLite 元数据 + 周期 sweep)
+- MediaNormalizer (MIME 推断 + 路径白名单 + 大小上限 + expected_kind 校验)
+- 4 个多模态 Provider 真实实现 (image_gen/stt/tts/embed) + LLM vision_chat 扩展
+- memory/{embedder,reranker} 注入 Provider 实例 (向后兼容降级)
+- UsageRecorder 6 个多模态计量方法 + PricingCatalog 非文本 modality 计价
+- 媒体工具真实接线 + 新增 VisionUnderstandTool
+- Channel 媒体 segment (OneBot image/voice/video/file + WebChat 文本占位)
+- main.py register_multimodal_providers 注册循环 + data/config.sample.jsonc 模板
+
 **新增能力（框架已搭建，业务实现待续）:**
 
 > 「框架已搭建」= 契约 (dataclass/ABC) + 类骨架 (方法签名 + 占位) + 惰性/默认关闭的依赖注入接线 + 骨架单测就位，默认零行为变化；**不满足强化完成定义，不计入节点完成度**，业务逻辑留待各自实现节点。
 
 | 节点 | 能力 | 状态 | 依赖 |
 |------|------|------|------|
-| J2 | 多模态 Provider 与能力选择 (ModelRouter/ArtifactStore) | 框架已搭建 | D2-D4、J1 |
 | J3 | WebUI v2 管理与观测 | 仅设计 | G1-G4、D9、J1-J2 |
 | J4 | 每个 Agent 的隔离 SubAgent 与可追溯日志 | 框架已搭建 | K1-K5、D9、J1 |
 
