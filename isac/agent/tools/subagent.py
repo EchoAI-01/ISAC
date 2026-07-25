@@ -68,6 +68,14 @@ class DelegateTaskTool(_SupervisorToolBase):
             return ToolResult(content="缺少 objective, 无法派生子任务。", is_error=True)
 
         summary = str(context.args.get("summary", "") or "")
+        depth = int(context.services.get("task_depth", 0) or 0)
+        max_depth = int(context.services.get("task_max_depth", 1) or 1)
+        if depth >= max_depth:
+            return ToolResult(
+                content=f"子任务递归深度已达上限 ({max_depth}), 拒绝继续委派。",
+                is_error=True,
+            )
+
         # 构造 SubAgentTask
         agent_ctx = context.agent_context
         task_id = f"sub-{uuid.uuid4().hex[:12]}"
@@ -77,8 +85,8 @@ class DelegateTaskTool(_SupervisorToolBase):
             session_id=getattr(agent_ctx.session, "session_id", ""),
             trace_id=str(agent_ctx.services.get("task_id", "") or task_id),
             objective=objective,
-            context={"summary": summary},
-            policy=SubAgentPolicy(),  # 默认策略; J4 后续接入父/Channel/全局交集
+            context={"summary": summary, "task_depth": depth + 1},
+            policy=SubAgentPolicy(max_depth=max_depth),
             created_at=int(time.time()),
         )
         # submit → 等终态 → 返回摘要

@@ -120,6 +120,21 @@ async def test_task_tool_delegates_to_supervisor() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delegate_task_depth_limit_rejects() -> None:
+    services = _make_supervisor_services(_runner_success)
+    services["task_depth"] = 1
+    services["task_max_depth"] = 1
+    tool = DelegateTaskTool()
+    ctx = _make_ctx(services, {"objective": "查天气"})
+
+    result = await tool.execute(ctx)
+
+    assert result.is_error
+    assert "递归深度" in result.content or "上限" in result.content
+    assert await services["subagent_supervisor"].list_runs() == []
+
+
+@pytest.mark.asyncio
 async def test_task_tool_depth_limit_rejects() -> None:
     """递归深度上限 (默认 3): task_depth >= max_depth 时拒绝继续委派。"""
     services = _make_supervisor_services(_runner_success)

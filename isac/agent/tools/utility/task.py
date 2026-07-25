@@ -63,7 +63,7 @@ class TaskTool(Tool):
         # J4-2: 优先走 SubAgentSupervisor; 无 supervisor 时回退到 task_runner (向后兼容)
         supervisor: SubAgentSupervisor | None = context.services.get("subagent_supervisor")
         if supervisor is not None:
-            return await self._delegate_to_supervisor(context, task_text, budget, depth)
+            return await self._delegate_to_supervisor(context, task_text, budget, depth, max_depth)
         # 向后兼容: 旧 task_runner 路径
         runner = context.services.get("task_runner")
         if runner is None:
@@ -81,7 +81,7 @@ class TaskTool(Tool):
         return ToolResult(content=f"【子任务结果】\n{content[:4000]}")
 
     async def _delegate_to_supervisor(
-        self, context: ToolContext, objective: str, budget: int, depth: int
+        self, context: ToolContext, objective: str, budget: int, depth: int, max_depth: int
     ) -> ToolResult:
         """委托 supervisor.submit + 等终态 + 返回结果摘要。"""
         supervisor = context.services["subagent_supervisor"]
@@ -93,7 +93,8 @@ class TaskTool(Tool):
             session_id=getattr(agent_ctx.session, "session_id", ""),
             trace_id=str(agent_ctx.services.get("task_id", "") or task_id),
             objective=objective,
-            policy=SubAgentPolicy(max_tokens=budget),
+            context={"task_depth": depth + 1},
+            policy=SubAgentPolicy(max_tokens=budget, max_depth=max_depth),
             created_at=int(time.time()),
         )
         run = await supervisor.submit(task)

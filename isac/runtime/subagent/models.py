@@ -11,13 +11,17 @@ from dataclasses import dataclass, field
 
 from isac.core.types import TokenUsage
 
+# Fix-5: SubAgentPolicy() 裸默认值 (未显式配置策略时) 使用的安全只读工具子集,
+# 不含 bash/write_file/send_* 等有副作用/高风险的工具。_merge_allowlist 改成
+# 严格交集后, 如果默认值仍是空列表, 两侧都用默认值时交集恒为空集,
+# delegate_task 会变成零工具、功能报废——所以默认值本身就必须是"交集后仍然
+# 有效"的安全基线, 而不是依赖 fail-open 隐式继承另一方。
+DEFAULT_ALLOWED_TOOLS = ("query_memory", "web_search", "read_file", "fetch_history")
+
 
 def _merge_allowlist(a: list[str], b: list[str]) -> list[str]:
-    """合并两个 allow-list: 任一为空视为"该层不额外约束", 取另一方; 两方非空取交集。"""
-    if not a:
-        return list(b)
-    if not b:
-        return list(a)
+    """求两个 allow-list 的严格交集 (空集拒绝全部, 无特殊情况; DEVELOPMENT_PLAN.md
+    的"空集拒绝全部"承诺)。"""
     return sorted(set(a) & set(b))
 
 
@@ -30,7 +34,9 @@ class SubAgentPolicy:
     max_tool_calls: int = 12
     max_depth: int = 1
     max_log_bytes: int = 256_000
-    allowed_tools: list[str] = field(default_factory=list)
+    allowed_tools: list[str] = field(default_factory=lambda: list(DEFAULT_ALLOWED_TOOLS))
+    # 记忆访问默认空 (不同于 allowed_tools): "不默认复制主会话...私有记忆正文"
+    # 本身就是安全默认值, 不需要一个非空基线才有意义。
     readable_memory_scopes: list[str] = field(default_factory=list)
     allow_memory_write: bool = False
     allow_channel_send: bool = False

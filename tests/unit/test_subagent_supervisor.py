@@ -33,11 +33,32 @@ def test_policy_intersect_takes_stricter() -> None:
     assert effective.allow_channel_send is False
 
 
-def test_policy_intersect_empty_allowlist_inherits() -> None:
+def test_policy_intersect_explicit_empty_allowlist_denies_all() -> None:
+    """Fix-5: 显式空 allowlist 必须是"拒绝全部"而不是"该层不约束"; 之前的 fail-open
+    实现会让任一侧空列表就继承另一方, 与 DEVELOPMENT_PLAN.md 承诺的"空集拒绝
+    全部"相反, 且 allowed_tools 算出来的交集从未在任何地方真正被执行, 一旦有
+    调用方显式传空列表表示收紧权限, fail-open 会悄悄放行本该被拒绝的工具。"""
     parent = SubAgentPolicy(allowed_tools=["read_file"])
     task = SubAgentPolicy(allowed_tools=[])
-    # 任务侧空表示该层不额外约束 → 继承父允许
-    assert parent.intersect(task).allowed_tools == ["read_file"]
+    assert parent.intersect(task).allowed_tools == []
+
+
+def test_policy_default_allowed_tools_is_a_safe_nonempty_baseline() -> None:
+    """严格交集修复后, 如果 SubAgentPolicy() 裸默认值仍是空列表, 两个都用默认值
+    的策略求交集会恒为空集, delegate_task 功能等于报废。默认值必须是一个明确
+    写出来的安全只读工具子集, 不含 bash/write_file/send_* 等高风险工具。"""
+    policy = SubAgentPolicy()
+    assert policy.allowed_tools  # 非空
+    assert "bash" not in policy.allowed_tools
+    assert "write_file" not in policy.allowed_tools
+    assert not any(name.startswith("send_") for name in policy.allowed_tools)
+
+
+def test_policy_intersect_of_two_defaults_is_still_the_safe_baseline() -> None:
+    """两侧都不显式配置策略 (纯默认值) 时, 严格交集不能因为"看起来都是默认值"
+    就退化成空集——默认值本身就该是交集后仍然有效的安全基线。"""
+    effective = SubAgentPolicy().intersect(SubAgentPolicy())
+    assert effective.allowed_tools == sorted(SubAgentPolicy().allowed_tools)
 
 
 async def test_submit_returns_queued_run() -> None:
@@ -46,6 +67,19 @@ async def test_submit_returns_queued_run() -> None:
     assert run.status == "queued"
     assert run.task_id == "t1"
     assert (await supervisor.get_status("t1")) is run
+
+
+async def test_submit_rejects_task_beyond_policy_max_depth() -> None:
+    supervisor = SubAgentSupervisor(parent_policy=SubAgentPolicy(max_depth=1))
+    task = _task("too-deep", SubAgentPolicy(max_depth=3))
+    task.context["task_depth"] = 2
+
+    try:
+        await supervisor.submit(task)
+    except ValueError as exc:
+        assert "递归深度" in str(exc)
+    else:
+        raise AssertionError("超过 max_depth 的任务必须被 Supervisor 拒绝")
 
 
 async def test_cancel_is_idempotent() -> None:

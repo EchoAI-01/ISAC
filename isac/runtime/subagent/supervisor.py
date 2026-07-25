@@ -64,6 +64,11 @@ class SubAgentSupervisor:
         """
         effective = self._effective_policy(task)
         task.policy = effective
+        depth = int(task.context.get("task_depth", 0) or 0)
+        if depth > effective.max_depth:
+            raise ValueError(
+                f"子任务递归深度 {depth} 超过策略上限 {effective.max_depth}"
+            )
         now = int(time.time())
         run = SubAgentRun(task_id=task.task_id, status="queued", started_at=now, updated_at=now)
         self._runs[task.task_id] = run
