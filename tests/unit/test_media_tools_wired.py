@@ -105,7 +105,11 @@ def _make_vision_provider() -> OpenAICompatProvider:
 
 
 def _build_services(tmp_path: Path) -> dict[str, Any]:
-    """构造完整接线的 services dict: router + provider_manager + artifact_store。"""
+    """构造完整接线的 services dict: router + provider_manager + artifact_store +
+    media_normalizer (白名单限定到 tmp_path, 让测试自己写的媒体文件能通过校验,
+    同时仍能验证白名单外的路径被拒绝)。"""
+    from isac.utils.media import MediaNormalizer
+
     artifact_store = ArtifactStore(str(tmp_path / "artifacts"))
     catalog = ModelCatalog()
     catalog.register(ModelDescriptor(
@@ -137,6 +141,7 @@ def _build_services(tmp_path: Path) -> dict[str, Any]:
         "model_router": router,
         "provider_manager": pm,
         "artifact_store": artifact_store,
+        "media_normalizer": MediaNormalizer({"allowed_dirs": [str(tmp_path)]}),
     }
 
 
@@ -239,5 +244,48 @@ async def test_vision_understand_tool_no_provider_returns_error(tmp_path: Path) 
     img_path.write_bytes(b"\x89PNG fake")
     tool = VisionUnderstandTool()
     ctx = _make_ctx(services, {"media_uri": str(img_path), "prompt": "what?"})
+    result = await tool.execute(ctx)
+    assert result.is_error
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_tool_rejects_path_outside_whitelist(tmp_path: Path) -> None:
+    """安全修复: media_uri 必须先经 MediaNormalizer 白名单校验, 不能直接信任
+    LLM 工具调用传入的任意绝对路径 (否则可读取白名单外的任意本地文件)。"""
+    services = _build_services(tmp_path)
+    # 白名单外的绝对路径 (真实存在的文件, 证明不是"文件不存在"这种无关原因拒绝)
+    outside_dir = tmp_path.parent / "outside-whitelist"
+    outside_dir.mkdir(exist_ok=True)
+    secret_path = outside_dir / "secret.mp3"
+    secret_path.write_bytes(b"ID3fake mp3 data")
+    tool = TranscribeAudioTool()
+    ctx = _make_ctx(services, {"media_uri": str(secret_path)})
+    result = await tool.execute(ctx)
+    assert result.is_error
+    assert "白名单" in result.content or "MediaValidationError" in result.content or "校验" in result.content
+
+
+@pytest.mark.asyncio
+async def test_vision_understand_tool_rejects_path_outside_whitelist(tmp_path: Path) -> None:
+    services = _build_services(tmp_path)
+    outside_dir = tmp_path.parent / "outside-whitelist-2"
+    outside_dir.mkdir(exist_ok=True)
+    secret_path = outside_dir / "secret.png"
+    secret_path.write_bytes(b"\x89PNG\r\n\x1a\nfake image")
+    tool = VisionUnderstandTool()
+    ctx = _make_ctx(services, {"media_uri": str(secret_path), "prompt": "what?"})
+    result = await tool.execute(ctx)
+    assert result.is_error
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_tool_without_normalizer_configured_rejects(tmp_path: Path) -> None:
+    """media_normalizer 未注入时应拒绝 (fail-closed), 不能悄悄跳过校验直接信任路径。"""
+    services = _build_services(tmp_path)
+    services["media_normalizer"] = None
+    audio_path = tmp_path / "voice.mp3"
+    audio_path.write_bytes(b"ID3fake mp3 data")
+    tool = TranscribeAudioTool()
+    ctx = _make_ctx(services, {"media_uri": str(audio_path)})
     result = await tool.execute(ctx)
     assert result.is_error

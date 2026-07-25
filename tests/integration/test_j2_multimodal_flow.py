@@ -149,9 +149,12 @@ async def test_vision_understand_full_chain_returns_text(tmp_path: Path) -> None
     vision_provider = _make_vision_provider()
     pm = ProviderManager({})
     pm.register_multimodal(vision_provider, provider_id="openai", model_id="gpt-4o")
+    from isac.utils.media import MediaNormalizer
+
     services = {
         "model_router": router, "provider_manager": pm,
         "artifact_store": artifact_store,
+        "media_normalizer": MediaNormalizer({"allowed_dirs": [str(tmp_path)]}),
     }
 
     img_path = tmp_path / "test.png"
