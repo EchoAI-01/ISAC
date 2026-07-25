@@ -253,9 +253,86 @@
                     </table>
                 </section>
             </div>
-            <div id="page-memory" class="page"><div class="placeholder">Memory (J3-7 实现)</div></div>
-            <div id="page-sessions" class="page"><div class="placeholder">Sessions / 任务 (J3-7 实现)</div></div>
-            <div id="page-system" class="page"><div class="placeholder">System (J3-7 实现)</div></div>
+            <div id="page-memory" class="page">
+                <section>
+                    <h2>记忆命名空间</h2>
+                    <div class="form-row">
+                        <label>agent_id</label>
+                        <input type="text" id="memory-agent-id" placeholder="如 default" />
+                        <button onclick="refreshMemory()">查询</button>
+                    </div>
+                </section>
+                <section>
+                    <h2>Episode (最近 50 条)</h2>
+                    <table id="memory-episodes-table">
+                        <thead><tr><th>memory_id</th><th>session_id</th><th>content</th><th>importance</th><th>created_at</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+                <section>
+                    <h2>人物画像</h2>
+                    <table id="memory-profiles-table">
+                        <thead><tr><th>person_id</th><th>name</th><th>relationship_depth</th><th>interaction_count</th><th>last_seen</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+                <section>
+                    <h2>术语 (Jargon)</h2>
+                    <table id="memory-jargon-table">
+                        <thead><tr><th>word</th><th>meaning</th><th>usage_count</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+            </div>
+            <div id="page-sessions" class="page">
+                <section>
+                    <h2>活跃会话</h2>
+                    <table id="sessions-table">
+                        <thead><tr><th>session_id</th><th>agent_id</th><th>user_id</th><th>platform</th><th>state</th><th>last_active</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+                <section>
+                    <h2>会话消息历史</h2>
+                    <div class="form-row">
+                        <label>session_id</label>
+                        <input type="text" id="session-messages-id" placeholder="如 sess-xxx" />
+                        <button onclick="refreshSessionMessages()">查询</button>
+                    </div>
+                    <table id="session-messages-table">
+                        <thead><tr><th>memory_id</th><th>content</th><th>created_at</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
+            </div>
+            <div id="page-system" class="page">
+                <section>
+                    <h2>系统信息</h2>
+                    <div class="stat-grid">
+                        <div class="stat-card"><div class="label">版本</div><div class="value" id="sys-version">-</div></div>
+                        <div class="stat-card"><div class="label">健康</div><div class="value" id="sys-health">-</div></div>
+                        <div class="stat-card"><div class="label">指标</div><div class="value" id="sys-metrics">-</div></div>
+                    </div>
+                </section>
+                <section>
+                    <h2>配置编辑事务 (Schema 校验 + Diff + ETag)</h2>
+                    <div class="form-row">
+                        <label>agent_id</label>
+                        <input type="text" id="config-edit-agent-id" placeholder="如 default" />
+                        <button onclick="loadConfigForEdit()">加载配置</button>
+                    </div>
+                    <div class="form-row">
+                        <label>当前 revision</label>
+                        <input type="text" id="config-revision" readonly />
+                        <label>新 display_name</label>
+                        <input type="text" id="config-new-name" />
+                        <button onclick="validateConfig()">校验</button>
+                        <button onclick="diffConfig()" class="secondary">Diff 预览</button>
+                        <button onclick="patchConfig()" class="secondary">PATCH 提交</button>
+                    </div>
+                    <pre id="config-diff-output" style="background:#f9fafb;padding:1rem;border-radius:4px;font-size:0.8rem;max-height:300px;overflow:auto;display:none;"></pre>
+                </section>
+            </div>
         </main>
     </div>
 

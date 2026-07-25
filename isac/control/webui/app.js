@@ -237,6 +237,9 @@ function navigate(page) {
     if (page === "providers") refreshProviders();
     if (page === "usage") refreshUsage();
     if (page === "extensions") refreshExtensions();
+    if (page === "memory") refreshMemory();
+    if (page === "sessions") refreshSessions();
+    if (page === "system") refreshSystem();
 }
 
 // J3-5: Dashboard 数据加载
@@ -412,3 +415,146 @@ document.addEventListener("DOMContentLoaded", () => {
 document.getElementById("api-token").addEventListener("input", (e) => {
     sessionStorage.setItem("isac_token", e.target.value);
 });
+
+// J3-7: Memory 页
+async function refreshMemory() {
+    const agentId = document.getElementById("memory-agent-id")?.value.trim() || "default";
+    const [episodes, profiles, jargon] = await Promise.all([
+        apiCall("GET", `/memory/${encodeURIComponent(agentId)}/episodes?limit=50`).catch(() => ({ episodes: [] })),
+        apiCall("GET", `/memory/${encodeURIComponent(agentId)}/profiles`).catch(() => ({ profiles: [] })),
+        apiCall("GET", `/memory/${encodeURIComponent(agentId)}/jargon`).catch(() => ({ jargon: [] })),
+    ]);
+    if (episodes === null) return;
+    clearTableBody("memory-episodes-table");
+    (episodes?.episodes || []).forEach(e => {
+        addRow("memory-episodes-table", [
+            (e.id || "").slice(0, 12), (e.session_id || "").slice(0, 12),
+            (e.content || "").slice(0, 60), e.importance || "",
+            e.created_at ? new Date(e.created_at * 1000).toLocaleString() : "",
+        ]);
+    });
+    if ((episodes?.episodes || []).length === 0) {
+        addRow("memory-episodes-table", ["(无 episode)", "", "", "", ""]);
+    }
+    clearTableBody("memory-profiles-table");
+    (profiles?.profiles || []).forEach(p => {
+        addRow("memory-profiles-table", [
+            (p.person_id || "").slice(0, 12), p.name,
+            p.relationship_depth, p.interaction_count,
+            p.last_seen ? new Date(p.last_seen * 1000).toLocaleString() : "",
+        ]);
+    });
+    if ((profiles?.profiles || []).length === 0) {
+        addRow("memory-profiles-table", ["(无画像)", "", "", "", ""]);
+    }
+    clearTableBody("memory-jargon-table");
+    (jargon?.jargon || []).forEach(j => {
+        addRow("memory-jargon-table", [j.word, (j.meaning || "").slice(0, 60), j.usage_count]);
+    });
+    if ((jargon?.jargon || []).length === 0) {
+        addRow("memory-jargon-table", ["(无术语)", "", ""]);
+    }
+}
+
+// J3-7: Sessions 页
+async function refreshSessions() {
+    const sessions = await apiCall("GET", "/sessions");
+    if (sessions === null) return;
+    clearTableBody("sessions-table");
+    (sessions?.sessions || []).forEach(s => {
+        addRow("sessions-table", [
+            (s.session_id || "").slice(0, 12), s.agent_id, s.user_id,
+            s.platform, s.state || "active",
+            s.last_active ? new Date(s.last_active * 1000).toLocaleString() : "",
+        ]);
+    });
+    if ((sessions?.sessions || []).length === 0) {
+        addRow("sessions-table", ["(无活跃会话)", "", "", "", "", ""]);
+    }
+}
+
+async function refreshSessionMessages() {
+    const sid = document.getElementById("session-messages-id")?.value.trim();
+    if (!sid) { showToast("请输入 session_id", "error"); return; }
+    const result = await apiCall("GET", `/sessions/${encodeURIComponent(sid)}/messages?limit=100`);
+    if (result === null) return;
+    clearTableBody("session-messages-table");
+    (result?.messages || []).forEach(m => {
+        addRow("session-messages-table", [
+            (m.memory_id || "").slice(0, 12), (m.content || "").slice(0, 80),
+            m.created_at ? new Date(m.created_at * 1000).toLocaleString() : "",
+        ]);
+    });
+    if ((result?.messages || []).length === 0) {
+        addRow("session-messages-table", ["(无消息)", "", ""]);
+    }
+}
+
+// J3-7: System 页 + 配置编辑事务
+async function refreshSystem() {
+    const [health, metrics] = await Promise.all([
+        apiCall("GET", "/health").catch(() => ({ status: "unknown" })),
+        apiCall("GET", "/metrics").catch(() => null),
+    ]);
+    if (health === null) return;
+    document.getElementById("sys-version").textContent = "1.0.0";
+    document.getElementById("sys-health").textContent = health?.status || "-";
+    document.getElementById("sys-metrics").textContent = metrics ? "ok" : "-";
+}
+
+// 配置编辑事务
+let _loadedConfig = null;  // 缓存加载的配置, 供 diff/patch 使用
+
+async function loadConfigForEdit() {
+    const agentId = document.getElementById("config-edit-agent-id")?.value.trim();
+    if (!agentId) { showToast("请输入 agent_id", "error"); return; }
+    // GET /agents/{id} 当前只返回 agent_id + status; 需要从 config 文件读
+    // 这里简化: 直接构造一个示例 config (实际应从 /agents/{id}/config 读取, 待 J3 后续)
+    const agent = await apiCall("GET", `/agents/${encodeURIComponent(agentId)}`);
+    if (agent === null) return;
+    _loadedConfig = { agent_id: agentId, display_name: agentId, enabled: true, revision: 1 };
+    document.getElementById("config-revision").value = _loadedConfig.revision;
+    document.getElementById("config-new-name").value = _loadedConfig.display_name;
+    showToast("配置已加载");
+}
+
+async function validateConfig() {
+    const newName = document.getElementById("config-new-name")?.value.trim();
+    if (!newName) { showToast("请输入 display_name", "error"); return; }
+    const candidate = { agent_id: _loadedConfig?.agent_id || "x", display_name: newName, enabled: true };
+    const result = await apiCall("POST", "/config/validate", candidate);
+    if (result === null) return;
+    if (result.valid) {
+        showToast("校验通过");
+    } else {
+        showToast(`校验失败: ${result.errors.join("; ")}`, "error");
+    }
+}
+
+async function diffConfig() {
+    const newName = document.getElementById("config-new-name")?.value.trim();
+    if (!_loadedConfig) { showToast("请先加载配置", "error"); return; }
+    const before = { ..._loadedConfig };
+    const after = { ..._loadedConfig, display_name: newName };
+    const result = await apiCall("POST", "/config/diff", { before, after });
+    if (result === null) return;
+    const out = document.getElementById("config-diff-output");
+    out.style.display = "block";
+    out.textContent = JSON.stringify(result.changes, null, 2);
+    showToast(`Diff: ${result.changes.length} 个字段变更`);
+}
+
+async function patchConfig() {
+    const newName = document.getElementById("config-new-name")?.value.trim();
+    const agentId = _loadedConfig?.agent_id;
+    if (!agentId || !newName) { showToast("请先加载配置并填写新值", "error"); return; }
+    if (!confirm(`确认 PATCH ${agentId}: display_name → ${newName}?`)) return;
+    // If-Match 用当前 revision (乐观锁)
+    const rev = _loadedConfig.revision;
+    const result = await apiCall("PATCH", `/agents/${encodeURIComponent(agentId)}?if_match=${rev}`, { display_name: newName });
+    if (result === null) return;
+    document.getElementById("config-revision").value = result.revision;
+    _loadedConfig.revision = result.revision;
+    _loadedConfig.display_name = newName;
+    showToast(`配置已更新, 新 revision=${result.revision}`);
+}
