@@ -440,6 +440,12 @@ async def main() -> None:
     await storage_start()
     runtime.register_lifecycle("storage", _noop_start, _noop_start)
 
+    # J2: 制品存储生命周期 (启动 schema 初始化 + 周期 TTL 扫描; 关闭时 sweep 兜底)。
+    # ArtifactStore 在 build_services 中无条件构造, 这里无条件注册: 即使无多模态
+    # Provider 注册, start_ttl_sweep 也只是周期扫描空 DB, 开销可忽略。
+    artifact_store = services["artifact_store"]
+    runtime.register_lifecycle("artifact_store", artifact_store.start, artifact_store.stop)
+
     # J1: 用量存储生命周期 (仅启用计量时注册; stop 时先 flush 缓冲再关连接)。
     _register_usage_lifecycle(runtime, services)
     # J4: 子任务日志生命周期 (仅启用 subagent.enabled 时注册)。
