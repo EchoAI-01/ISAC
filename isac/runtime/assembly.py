@@ -17,6 +17,10 @@ from isac.agent.tools.base import ToolPermission
 from isac.agent.tools.registry import ToolRegistry
 from isac.agent.tools.social.ask_agent import AskAgentTool
 from isac.agent.tools.social.fetch_history import FetchHistoryTool
+from isac.agent.tools.social.handoff_conversation import HandoffConversationTool
+from isac.agent.tools.social.list_available_agents import ListAvailableAgentsTool
+from isac.agent.tools.social.memory_query_agent import MemoryQueryAgentTool
+from isac.agent.tools.social.notify_agent import NotifyAgentTool
 from isac.agent.tools.social.query_memory import QueryMemoryTool
 from isac.agent.tools.social.query_person_profile import QueryPersonProfileTool
 from isac.agent.tools.social.send_emoji import SendEmojiTool
@@ -95,6 +99,12 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(QueryPersonProfileTool())
     tools.register(WaitTool())
     tools.register(AskAgentTool())
+    # M2 Agent Mesh 协作工具骨架: DEFAULT_POLICY 里默认 deny → definitions() 过滤,
+    # LLM 不可见, 主链路零行为变化; M2 实现节点接入 MeshActionBroker 后开放。
+    tools.register(NotifyAgentTool())
+    tools.register(HandoffConversationTool())
+    tools.register(ListAvailableAgentsTool())
+    tools.register(MemoryQueryAgentTool())
     tools.register(SendEmojiTool())
     tools.register(SendImageTool())
     tools.register(FetchHistoryTool())
