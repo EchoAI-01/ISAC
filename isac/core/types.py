@@ -46,6 +46,13 @@ class TokenUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    # J1: 明细字段是 prompt_tokens/completion_tokens 的子集 (OpenAI 语义), 只用于
+    # 可观测拆分与分档计价, 不参与 total_tokens 计算, 避免重复计数。
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
+    audio_input_tokens: int = 0
+    audio_output_tokens: int = 0
 
     def __post_init__(self) -> None:
         if self.total_tokens == 0:
