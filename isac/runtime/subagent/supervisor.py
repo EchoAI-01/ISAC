@@ -48,6 +48,13 @@ class SubAgentSupervisor:
         # 后台 task 索引 (task_id → asyncio.Task), 用于 cancel 传播
         self._tasks: dict[str, asyncio.Task[Any]] = {}
 
+    def set_runner_factory(
+        self,
+        runner_factory: Callable[[SubAgentTask], Awaitable[SubAgentResult]],
+    ) -> None:
+        """在 AgentManager 就绪后绑定生产 runner。"""
+        self._runner_factory = runner_factory
+
     async def submit(self, task: SubAgentTask) -> SubAgentRun:
         """登记一个子任务并返回 queued 状态。
 
@@ -56,6 +63,7 @@ class SubAgentSupervisor:
         超时通过 asyncio.wait_for 控制。未注入时保持骨架行为。
         """
         effective = self._effective_policy(task)
+        task.policy = effective
         now = int(time.time())
         run = SubAgentRun(task_id=task.task_id, status="queued", started_at=now, updated_at=now)
         self._runs[task.task_id] = run

@@ -374,7 +374,7 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     )
 
     # J4: SubAgent 运行时。Supervisor 轻量常驻 (纯内存); Journal 持久化默认关闭,
-    # subagent.enabled=true 时才创建 DB 与生命周期。执行循环留待 J4 实现节点。
+    # subagent.enabled=true 时才创建 DB 与生命周期。生产 runner 在 AgentManager 创建后绑定。
     from isac.runtime.subagent.supervisor import SubAgentSupervisor
 
     subagent_journal: Any = None
@@ -434,6 +434,9 @@ async def main() -> None:
 
     # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
     agent_manager = AgentManager(services)
+    from isac.runtime.subagent.runner import configure_subagent_runner
+
+    configure_subagent_runner(services["subagent_supervisor"], agent_manager)
     bus = InterAgentBus()
     # 投递回调: 把 InterAgentMessage 路由到目标 Agent 的 handle_message。
     # 命令 (ask_agent) 现在能拿到 response 而不是恒 None (CODE_REVIEW_REPORT.md #3)。
