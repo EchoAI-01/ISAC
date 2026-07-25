@@ -568,6 +568,9 @@ async def main() -> None:
 
     # ── 进入 runtime (启动 TaskGroup + 触发所有 register_lifecycle.start) ──
     await runtime.start()
+    # J4-3: SubAgent 重启恢复 — 把 running/queued 标记为 cancelled (中断后不恢复旧进度)。
+    # 必须在 runtime.start() 之后调用 (subagent_journal 已 start, DB 连接就绪)。
+    await _restore_subagent_interrupts(services)
     logger.info("ISAC 启动完成")
     await runtime.serve_forever()
     await runtime.shutdown()
@@ -685,6 +688,23 @@ def _register_subagent_lifecycle(runtime: ApplicationRuntime, services: dict[str
     if journal is None:
         return
     runtime.register_lifecycle("subagent_journal", journal.start, journal.stop)
+
+
+async def _restore_subagent_interrupts(services: dict[str, Any]) -> None:
+    """J4-3: SubAgent 重启恢复, 把 running/queued 标记为 cancelled。
+
+    必须在 runtime.start() 之后调用 (subagent_journal 已 start, DB 连接就绪);
+    journal 未启用或 supervisor 不存在时 no-op。
+    """
+    supervisor = services.get("subagent_supervisor")
+    if supervisor is None:
+        return
+    try:
+        marked = await supervisor.restore_interrupted()
+        if marked > 0:
+            logger.info("SubAgent 重启恢复: 已标记中断任务", marked=marked)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SubAgent 重启恢复失败, 不阻塞启动", error=str(exc))
 
 
 def _get_version() -> str:
