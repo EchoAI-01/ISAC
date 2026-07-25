@@ -4,8 +4,8 @@ Agent Loop 只提交 ``ProgressEvent``；本模块负责策略判断、频控、
 人格化渲染与平台降级发送。默认关闭 (``policy.enabled=False`` 或未注入 sender
 时全程惰性)，主链路热路径零变化。
 
-骨架说明: 控制流与接口已就位；跨窗口合并、LLM 改写、丰富人设模板等复杂逻辑
-以占位 / ``TODO(D9)`` 标注，留待 D9 实现节点补齐。
+D9-1~D9-7 已完整实现: 端到端接线、Loop 阶段覆盖、跨窗口合并 (``_merge``)、
+Channel 侧降级输出、中断语义收束、``PersonaProgressRenderer`` 的 LLM 改写模式。
 """
 
 from __future__ import annotations
@@ -192,7 +192,7 @@ class ProgressReporter:
     def _should_emit(self, event: ProgressEvent) -> bool:
         """频控与每任务可见上限判定。
 
-        占位: 简单最小间隔 + 计数上限; 终态阶段绕过间隔约束。跨窗口合并见 ``_merge``。
+        策略: 最小间隔 + 计数上限; 终态阶段绕过间隔约束。跨窗口合并见 ``_merge``。
         D9-5: 任务已收束 (completed/interrupted) 后, 该 task 的任何迟到事件直接丢弃。
         """
         if event.task_id in self._terminated_tasks:
