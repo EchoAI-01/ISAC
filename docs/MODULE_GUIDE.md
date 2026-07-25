@@ -169,6 +169,24 @@ L1 是本范式的最新范例,可直接对照源码学习。
 
 依赖方向: `runtime/conversation` → core + gateway(Session) + utils;被 `runtime/manager`、`assembly` 使用,无反向依赖、无环。
 
+### 更多 scaffolding 范例 (L/M/N/O 全部 14 子节点)
+
+同一范式已应用到全部 14 个待建子节点,可对照学习不同层的落法:
+
+| 节点 | 模块 | 要点 |
+|------|------|------|
+| L2-L5 | `runtime/conversation/{debounce,scheduler,recovery}.py` + `models.py` 枚举/InterruptState | 在既有包内扩展骨架文件 |
+| M1/M2 | `runtime/mesh/` + `agent/tools/social/{notify,handoff,list,memory_query}_agent.py` | **新增 sibling 契约**避免改 `RoutingDecision`/`InterAgentLink`;工具默认 `deny` → LLM 不可见 |
+| N1 | `isac/memory/model/memory_item.py` | 纯契约 + 适配桩,不动既有存储表 |
+| N2 | `memory/model/governance.py` + `control/api/routes_memory_admin.py` | 控制面路由 store-None 时不挂载 |
+| N3 | `isac/gateway/identity/` | **组合**既有 `UserMapper` 而非改动它 |
+| O1/O3 | `runtime/{tenancy,workflow}/` | 默认单租户 passthrough / 引擎 no-op |
+| O2 | `plugin/isolation/` | 不接管既有进程内 `loader.py` |
+| O4 | `channel/adapters/template/` | 文档化模板,**不自动注册** |
+| O5 | `provider/video_gen/` | 实现 ABC,`generate` 抛 `NotImplementedError` |
+
+要点总结: **能新增就不改既有契约** (M1/M2/N3),**默认关闭/不注册/no-op** 保证零行为变化,每个节点用 `TODO(节点)` 标注挂接点。
+
 ## 六、检查清单 (合入前自查)
 
 - [ ] 契约字段与专项设计文档一致,无自创字段
