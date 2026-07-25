@@ -218,7 +218,54 @@ async function refreshAudit() {
 
 async function refreshAll() {
     if (!getToken()) return;
-    await Promise.all([refreshAgents(), refreshRules(), refreshLinks(), refreshAudit()]);
+    await Promise.all([refreshAgents(), refreshRules(), refreshLinks(), refreshAudit(), refreshDashboard()]);
+}
+
+// J3-5: SPA 导航 (10 域, 当前页 active)
+function navigate(page) {
+    document.querySelectorAll(".page").forEach(el => el.classList.remove("active"));
+    document.querySelectorAll("nav.sidebar a").forEach(el => el.classList.remove("active"));
+    const pageEl = document.getElementById(`page-${page}`);
+    if (pageEl) pageEl.classList.add("active");
+    const navEl = document.querySelector(`nav.sidebar a[data-page="${page}"]`);
+    if (navEl) navEl.classList.add("active");
+    // 进入页面时刷新对应数据
+    if (page === "dashboard") refreshDashboard();
+    if (page === "agents") refreshAgents();
+    if (page === "channels") { refreshRules(); refreshLinks(); }
+    if (page === "logs") refreshAudit();
+}
+
+// J3-5: Dashboard 数据加载
+async function refreshDashboard() {
+    // 并发加载 agents + sessions + audit + health
+    const [agents, sessions, audit, health] = await Promise.all([
+        apiCall("GET", "/agents"),
+        apiCall("GET", "/sessions").catch(() => ({ sessions: [] })),
+        apiCall("GET", "/audit?limit=10"),
+        apiCall("GET", "/health").catch(() => ({ status: "unknown" })),
+    ]);
+    if (agents === null) return;  // token 错误
+    // 统计
+    const running = (agents || []).filter(a => a.status === "running").length;
+    document.getElementById("stat-agents").textContent = running;
+    document.getElementById("stat-sessions").textContent = (sessions?.sessions || []).length;
+    document.getElementById("stat-messages").textContent = "-";  // TODO J3-6 接入 metrics
+    document.getElementById("stat-health").textContent = health?.status || "-";
+    // 近期审计
+    const tbody = document.querySelector("#dashboard-audit-table tbody");
+    if (tbody) {
+        tbody.innerHTML = "";
+        (audit || []).slice(0, 10).forEach(e => {
+            const tr = document.createElement("tr");
+            const ts = e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : "";
+            tr.innerHTML = `<td>${ts}</td><td>${e.action || ""}</td><td>${e.target || ""}</td>`;
+            tbody.appendChild(tr);
+        });
+        if ((audit || []).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无审计记录</td></tr>';
+        }
+    }
 }
 
 // 页面加载后自动刷新 (如果有保存的 token)
