@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from isac.core.exceptions import InterAgentLinkDeniedError
+from isac.runtime.config import AGENT_ID_PATTERN
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -31,6 +32,24 @@ class InterAgentLink:
     to_agent: str
     direction: str = "both"  # "both" | "oneway"
     enabled: bool = True
+
+    def __post_init__(self) -> None:
+        """校验 from_agent/to_agent 格式 (Fix-16)。
+
+        之前未经任何校验就原样写入 data/links.jsonc 并进入审计日志 target 字段
+        (routes_routing.py); WebUI 用 innerHTML 拼接渲染这些字段, 一个含
+        <script> 的值可以构成存储型 XSS。复用 AgentConfig 已验证过的
+        AGENT_ID_PATTERN, 在构造期直接拒绝, 让恶意/非法内容连审计日志里都不会
+        出现。
+        """
+        if not AGENT_ID_PATTERN.match(self.from_agent):
+            raise ValueError(
+                f"from_agent 非法: {self.from_agent!r}，只允许 1-64 位字母/数字/下划线/短横线"
+            )
+        if not AGENT_ID_PATTERN.match(self.to_agent):
+            raise ValueError(
+                f"to_agent 非法: {self.to_agent!r}，只允许 1-64 位字母/数字/下划线/短横线"
+            )
 
 
 @dataclass

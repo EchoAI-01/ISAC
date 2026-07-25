@@ -15,12 +15,13 @@ from isac.core.events import EventType
 from isac.gateway.event_bus import EventBus
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
-from isac.main import process_message, register_llm_provider
+from isac.main import _register_usage_lifecycle, process_message, register_llm_provider
 from isac.provider.llm.openai_compat import OpenAICompatProvider
 from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
 from isac.router.router import MessageRouter
 from isac.router.types import RoutingRules
+from isac.runtime.application import ApplicationRuntime
 from isac.runtime.config import AgentConfig
 
 
@@ -30,7 +31,7 @@ class _RecordingAgentManager:
     def __init__(self) -> None:
         self.received_messages: list[ISACMessage] = []
 
-    async def handle_message(self, agent_id, message, session, user_profile):
+    async def handle_message(self, agent_id, message, session, user_profile, progress_sender=None):
         self.received_messages.append(message)
         return None
 
@@ -105,6 +106,71 @@ async def test_trigger_word_stripped_content_reaches_agent() -> None:
 
     assert len(agent_manager.received_messages) == 1
     assert agent_manager.received_messages[0].content == "你好呀"
+
+
+class TestRegisterUsageLifecycle:
+    """_register_usage_lifecycle() 覆盖 J1: start/stop 顺序必须保证 DB 连接与周期
+    flush 任务不错序, 否则会丢最后一批缓冲事件或周期任务第一次 tick 时连接未就位。
+    """
+
+    class _FakeStore:
+        def __init__(self, calls: list[str]) -> None:
+            self._calls = calls
+
+        async def start(self) -> None:
+            self._calls.append("store.start")
+
+        async def stop(self) -> None:
+            self._calls.append("store.stop")
+
+    class _FakeRecorder:
+        def __init__(self, calls: list[str]) -> None:
+            self._calls = calls
+
+        async def start(self) -> None:
+            self._calls.append("recorder.start")
+
+        async def stop(self) -> None:
+            self._calls.append("recorder.stop")
+
+    @pytest.mark.asyncio
+    async def test_start_opens_store_before_starting_periodic_flush(self) -> None:
+        calls: list[str] = []
+        services = {
+            "usage_store": self._FakeStore(calls),
+            "usage_recorder": self._FakeRecorder(calls),
+        }
+        runtime = ApplicationRuntime()
+        _register_usage_lifecycle(runtime, services)
+
+        await runtime.start()
+        try:
+            assert calls == ["store.start", "recorder.start"]
+        finally:
+            await runtime.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_stop_flushes_recorder_before_closing_store_connection(self) -> None:
+        """recorder.stop() (含最终 flush) 必须先于 store.stop() (关连接), 否则最后
+        一批缓冲事件落库时连接已关闭。"""
+        calls: list[str] = []
+        services = {
+            "usage_store": self._FakeStore(calls),
+            "usage_recorder": self._FakeRecorder(calls),
+        }
+        runtime = ApplicationRuntime()
+        _register_usage_lifecycle(runtime, services)
+
+        await runtime.start()
+        calls.clear()
+        await runtime.shutdown()
+
+        assert calls == ["recorder.stop", "store.stop"]
+
+    def test_no_registration_when_usage_disabled(self) -> None:
+        runtime = ApplicationRuntime()
+        _register_usage_lifecycle(runtime, {"usage_store": None})
+        assert runtime._lifecycle == []
 
 
 class TestRegisterLLMProvider:

@@ -8,7 +8,7 @@
 | AstrBot | `metadata.yaml` / Star 子类插件 | P0 EventType + FunctionTool 桥接 |
 | MaiBot | `config.toml` / Plugin 基类插件 | Action → Tool / Command → ISAC Command |
 
-插件权限遵循最小权限原则（DEVELOP.md 7.2），在 manifest 中声明所需权限。兼容范围、权限模型、生命周期、热重载和测试插件集合见 [../PLUGIN_COMPATIBILITY.md](../PLUGIN_COMPATIBILITY.md)。
+插件权限遵循最小权限原则（DEVELOP.md 7.2），在 manifest 中声明所需权限。兼容范围、权限模型、生命周期、热重载和测试插件集合见 [../docs/PLUGIN_COMPATIBILITY.md](../docs/PLUGIN_COMPATIBILITY.md)。
 
 ## 开发入口
 

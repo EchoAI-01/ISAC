@@ -60,8 +60,10 @@ class WebChatAdapter(PlatformAdapter):
         # K7: 每个 session 的待消费回复队列上限; 超出时丢弃最旧的 (FIFO), 不让内存无限增长
         self._max_pending_replies = int(config.get("max_pending_replies", DEFAULT_MAX_PENDING_REPLIES))
         self._running = False
-        # session_id -> 待消费的回复列表 [(timestamp, content)]
-        self._pending_replies: dict[str, list[tuple[float, str]]] = {}
+        # session_id -> 待消费的回复列表 [(timestamp, content, frame_extra)];
+        # frame_extra 至少含 "kind" ("message" | "progress"), D9 progress 帧额外带
+        # "task_id"/"progress_stage", 供客户端不解析文本即可区分渲染。
+        self._pending_replies: dict[str, list[tuple[float, str, dict[str, Any]]]] = {}
         self._lock = asyncio.Lock()
         self._http_server: Any = None
 
@@ -95,18 +97,53 @@ class WebChatAdapter(PlatformAdapter):
         """把 Bot 回复存入 session 的待消费队列。
 
         K7: 队列长度上限, 超出时丢弃最旧的 (FIFO), 防止客户端长期不 poll 时内存无限增长。
+        D9: metadata.message_kind=="progress" 时作为原生 progress 帧携带
+        task_id/progress_stage, 其余回复标记 kind="message"。
+        J2: 非 text segment (image/audio/video/file) 降级为占位文本
+        ``[<type>: <artifact_id[:8]>]`` 追加到 content, WebChat 不支持富媒体。
         """
         session_id = message.session_id or message.group_id or message.user_id
         if not session_id:
             logger.warning("WebChat send 缺少 session_id")
             return False
+        content = self._render_content_with_segments(message)
+        frame_extra = self._build_frame_extra(message)
         async with self._lock:
             queue = self._pending_replies.setdefault(session_id, [])
-            queue.append((time.time(), message.content))
+            queue.append((time.time(), content, frame_extra))
             # 超出上限时丢弃最旧的
             while len(queue) > self._max_pending_replies:
                 queue.pop(0)
         return True
+
+    @staticmethod
+    def _render_content_with_segments(message: ISACMessage) -> str:
+        """把 message.content + segments 合并为 WebChat 可显示的纯文本。
+
+        非 text/at/reply 段降级为占位文本 ``[<type>: <artifact_id[:8]>]`` 追加到
+        content 末尾; 不支持的 segment 类型在 content 里仍能让用户感知到有制品。
+        """
+        content = message.content
+        for seg in message.segments:
+            if seg.type in ("text", "at", "reply"):
+                continue  # text 已在 content, at/reply 不影响渲染
+            artifact_id = str(seg.data.get("artifact_id", ""))
+            if artifact_id:
+                placeholder = f"[{seg.type}: {artifact_id[:8]}]"
+            else:
+                placeholder = f"[{seg.type}]"
+            content = f"{content} {placeholder}".strip() if content else placeholder
+        return content
+
+    @staticmethod
+    def _build_frame_extra(message: ISACMessage) -> dict[str, Any]:
+        if message.metadata.get("message_kind") != "progress":
+            return {"kind": "message"}
+        return {
+            "kind": "progress",
+            "task_id": message.metadata.get("task_id", ""),
+            "progress_stage": message.metadata.get("progress_stage", ""),
+        }
 
     async def receive_from_client(self, session_id: str, user_id: str, content: str) -> None:
         """HTTP /webchat/send 调用: 把用户消息转成 ISACMessage 触发 on_message。"""
@@ -134,9 +171,9 @@ class WebChatAdapter(PlatformAdapter):
         async with self._lock:
             queue = self._pending_replies.get(session_id, [])
             # 过滤掉超时的
-            valid = [(ts, content) for ts, content in queue if now - ts < self._max_age]
+            valid = [(ts, content, extra) for ts, content, extra in queue if now - ts < self._max_age]
             self._pending_replies[session_id] = []
-        return [{"timestamp": ts, "content": content} for ts, content in valid]
+        return [{"timestamp": ts, "content": content, **extra} for ts, content, extra in valid]
 
     async def _handle_connection(
         self,

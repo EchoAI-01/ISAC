@@ -13,6 +13,8 @@ import json
 import pytest
 
 from isac.core.types import LLMResponse, TokenUsage
+from isac.observability.usage.models import ModelUsageEvent
+from isac.observability.usage.recorder import UsageRecorder
 from isac.provider.manager import DEGRADED_REPLY, ProviderManager
 
 
@@ -86,6 +88,29 @@ async def test_non_llm_error_without_fallback_degrades_gracefully() -> None:
 
     assert result.content == DEGRADED_REPLY
     assert primary.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_retries_share_trace_id_but_have_distinct_request_ids() -> None:
+    """J1: 每次物理尝试 (含重试与回退) 独立记录、request_id 各不相同, 但共享同一
+    trace_id (ARCHITECTURE.md: 最终聚合时用 trace_id 归并); 回退到 fallback 时记录
+    原 primary 的模型名为 fallback_from。"""
+    captured: list[ModelUsageEvent] = []
+    recorder = UsageRecorder(store=None)
+    recorder.record = lambda e: captured.append(e)  # type: ignore[method-assign]
+    manager = ProviderManager({}, usage_recorder=recorder)
+    primary = _AlwaysRaisesProvider(ValueError("boom"))
+    fallback = _StubReplyProvider("fallback-ok")
+    manager.register(fallback, fallback=True)
+
+    await manager.chat_with_retry(primary, agent_id="a1", session_id="s1", trace_id="t1", system="s", messages=[])
+
+    assert len(captured) == 4  # 3 次失败尝试 + 1 次 fallback 成功
+    assert all(event.trace_id == "t1" for event in captured)
+    assert all(event.agent_id == "a1" and event.session_id == "s1" for event in captured)
+    assert len({event.request_id for event in captured}) == 4
+    assert all(event.fallback_from is None for event in captured[:3])
+    assert captured[3].fallback_from == "always-raises"
 
 
 class _FakeAgentConfig:

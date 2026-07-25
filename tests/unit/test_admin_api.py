@@ -151,6 +151,147 @@ class TestAgentLifecycleWithAudit:
         assert all(e["action"] == "create_agent" for e in entries)
 
 
+class TestPatchAgentIfMatch:
+    """Fix-11: PATCH /agents/{id} 的 If-Match 乐观锁必须真正读 HTTP Header
+    (CONTROL_PLANE_SPEC.md 规范的方式), 而不是只认 ?if_match= query 参数。
+
+    save_agent_config() 每次保存都 +1 revision (isac/runtime/config.py), 所以
+    create() 落盘一次后 revision 已经是 2, 不是 dataclass 默认值 1。
+    """
+
+    def _create(self, client, agent_id: str = "patch-target") -> None:
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"agent_id": agent_id, "display_name": "Before"},
+        )
+        assert response.status_code == 200
+
+    def test_patch_with_correct_if_match_header_succeeds(self, control_app) -> None:
+        client, _ = control_app
+        self._create(client)
+        response = client.patch(
+            "/api/v1/agents/patch-target",
+            headers={"Authorization": "Bearer secret-token-123", "If-Match": "2"},
+            json={"display_name": "After"},
+        )
+        assert response.status_code == 200
+        assert response.json()["revision"] == 3
+
+    def test_patch_with_stale_if_match_header_returns_409(self, control_app) -> None:
+        """之前 if_match 是 query 参数, HTTP Header 会被静默忽略、PATCH 无条件
+        覆盖; 修复后必须真正读 Header 并在版本不匹配时拒绝。"""
+        client, _ = control_app
+        self._create(client)
+        response = client.patch(
+            "/api/v1/agents/patch-target",
+            headers={"Authorization": "Bearer secret-token-123", "If-Match": "99"},
+            json={"display_name": "Should not apply"},
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "CONFIG_CONFLICT"
+
+    def test_patch_with_legacy_query_param_still_works(self, control_app) -> None:
+        """向后兼容: WebUI 目前仍用 ?if_match= query 参数, Header 缺失时应回退到它。"""
+        client, _ = control_app
+        self._create(client)
+        response = client.patch(
+            "/api/v1/agents/patch-target?if_match=2",
+            headers={"Authorization": "Bearer secret-token-123"},
+            json={"display_name": "After"},
+        )
+        assert response.status_code == 200
+        assert response.json()["revision"] == 3
+
+    def test_patch_header_takes_precedence_over_stale_query_param(self, control_app) -> None:
+        """Header 优先于 query 参数 (防止两者不一致时产生歧义)。"""
+        client, _ = control_app
+        self._create(client)
+        response = client.patch(
+            "/api/v1/agents/patch-target?if_match=2",
+            headers={"Authorization": "Bearer secret-token-123", "If-Match": "99"},
+            json={"display_name": "After"},
+        )
+        assert response.status_code == 409
+
+
+class TestTokenScope:
+    """Fix-12: control.tokens[] 配置多个 {token, scopes} 后, 端点应真正按 scope
+    校验, 而不是所有持有效 Bearer Token 的调用方都拿到全部权限。"""
+
+    def _make_app(self, tmp_path: Path, tokens: list[dict]):
+        from fastapi.testclient import TestClient
+
+        from isac.control.api.server import create_control_app
+        from isac.plugin.runtime.manager import PluginManager
+        from isac.router.router import MessageRouter
+        from isac.router.types import RoutingRules
+        from isac.runtime.bus import InterAgentBus
+        from isac.runtime.manager import AgentManager
+
+        services = {
+            "global_config": {},
+            "provider_manager": _StubProviderManager(),
+            "memory_factory": lambda namespace: _StubMemory(namespace),
+        }
+        agent_manager = AgentManager(services)
+        bus = InterAgentBus()
+        router = MessageRouter(RoutingRules(), agents_provider=agent_manager.routing_infos)
+        plugin_manager = PluginManager({})
+        app = create_control_app(
+            agent_manager=agent_manager,
+            router=router,
+            bus=bus,
+            plugin_manager=plugin_manager,
+            config={
+                "api_token": "fallback-admin-token",
+                "tokens": tokens,
+                "agents_dir": str(tmp_path / "agents"),
+                "routing_rules_path": str(tmp_path / "routing.jsonc"),
+                "links_path": str(tmp_path / "links.jsonc"),
+                "audit_log_path": str(tmp_path / "audit.ndjson"),
+            },
+        )
+        return TestClient(app)
+
+    def test_readonly_scoped_token_can_read_but_not_write_agents(self, tmp_path: Path) -> None:
+        client = self._make_app(
+            tmp_path,
+            tokens=[{"token": "readonly", "scopes": ["agent:read"]}],
+        )
+        read_resp = client.get("/api/v1/agents", headers={"Authorization": "Bearer readonly"})
+        assert read_resp.status_code == 200
+
+        write_resp = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer readonly"},
+            json={"agent_id": "should-fail", "display_name": "x"},
+        )
+        assert write_resp.status_code == 403
+        assert write_resp.json()["detail"]["code"] == "SCOPE_FORBIDDEN"
+
+    def test_admin_wildcard_scope_can_write(self, tmp_path: Path) -> None:
+        client = self._make_app(
+            tmp_path,
+            tokens=[{"token": "admin", "scopes": ["*"]}],
+        )
+        response = client.post(
+            "/api/v1/agents",
+            headers={"Authorization": "Bearer admin"},
+            json={"agent_id": "admin-created", "display_name": "x"},
+        )
+        assert response.status_code == 200
+
+    def test_unrelated_scope_cannot_access_agents_endpoint(self, tmp_path: Path) -> None:
+        """只有 usage:read 的 Token 不应该能读 /agents (无关资源)。"""
+        client = self._make_app(
+            tmp_path,
+            tokens=[{"token": "usage-only", "scopes": ["usage:read"]}],
+        )
+        response = client.get("/api/v1/agents", headers={"Authorization": "Bearer usage-only"})
+        assert response.status_code == 403
+
+
 class TestRoutingAndLinks:
     def test_put_rules_persists(self, control_app) -> None:
         client, tmp_path = control_app

@@ -191,6 +191,48 @@ async def test_chat_structure_missing_choices_raises() -> None:
 
 
 @pytest.mark.asyncio
+async def test_chat_parses_cache_reasoning_audio_usage_details() -> None:
+    """J1: prompt_tokens_details/completion_tokens_details 解析为 TokenUsage 明细字段。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _ok_response(
+            usage={
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "prompt_tokens_details": {"cached_tokens": 80, "audio_tokens": 5},
+                "completion_tokens_details": {"reasoning_tokens": 20, "audio_tokens": 3},
+            }
+        )
+        return httpx.Response(200, content=body)
+
+    provider = _make_provider(handler)
+    resp = await provider.chat(system="", messages=[{"role": "user", "content": "hi"}])
+    assert resp.usage.cache_read_tokens == 80
+    assert resp.usage.audio_input_tokens == 5
+    assert resp.usage.reasoning_tokens == 20
+    assert resp.usage.audio_output_tokens == 3
+    assert resp.usage.total_tokens == 150
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_chat_usage_details_absent_keeps_zero() -> None:
+    """未返回 *_tokens_details 时明细字段保持 0, 不猜测。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_ok_response())
+
+    provider = _make_provider(handler)
+    resp = await provider.chat(system="", messages=[{"role": "user", "content": "hi"}])
+    assert resp.usage.cache_read_tokens == 0
+    assert resp.usage.reasoning_tokens == 0
+    assert resp.usage.audio_input_tokens == 0
+    assert resp.usage.audio_output_tokens == 0
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_sse_parsing() -> None:
     """chat_stream: SSE data: <json>\\n\\n 多 chunk + [DONE] 正确解析。"""
     chunk1 = b'data: {"choices":[{"delta":{"content":"hel"}}]}\n\n'
@@ -217,6 +259,35 @@ async def test_chat_stream_sse_parsing() -> None:
     assert chunks[1].delta_content == "lo"
     assert chunks[2].finish_reason == "stop"
     assert chunks[2].usage.total_tokens == 5
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_parses_usage_details() -> None:
+    """J1: 流式最终 chunk 的 usage 明细字段也要解析 (与非流式同路径)。"""
+    chunk1 = b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
+    chunk2 = (
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
+        b'"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,'
+        b'"prompt_tokens_details":{"cached_tokens":80,"audio_tokens":5},'
+        b'"completion_tokens_details":{"reasoning_tokens":20,"audio_tokens":3}}}\n\n'
+    )
+    done = b"data: [DONE]\n\n"
+    sse_body = chunk1 + chunk2 + done
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=sse_body, headers={"content-type": "text/event-stream"})
+
+    provider = _make_provider(handler)
+    chunks = []
+    async for chunk in provider.chat_stream(system="", messages=[]):
+        chunks.append(chunk)
+
+    final_usage = chunks[-1].usage
+    assert final_usage.cache_read_tokens == 80
+    assert final_usage.audio_input_tokens == 5
+    assert final_usage.reasoning_tokens == 20
+    assert final_usage.audio_output_tokens == 3
     await provider.aclose()
 
 

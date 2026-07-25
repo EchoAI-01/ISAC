@@ -68,6 +68,13 @@ class SessionManager:
             return None
         return self._sessions.get(key)
 
+    async def list_sessions(self, *, agent_id: str | None = None) -> list[Session]:
+        """列出活跃会话 (可选按 agent_id 过滤); J3-3 供 Control API。"""
+        sessions = list(self._sessions.values())
+        if agent_id:
+            sessions = [s for s in sessions if s.agent_id == agent_id]
+        return sessions
+
     async def close(self, session_id: str) -> None:
         """关闭并移除会话。"""
         key = self._by_id.pop(session_id, None)

@@ -252,6 +252,6 @@ PluginManager 错误隔离:
 
 ## 相关文档
 
-- [原生 SDK v2 设计](../PLUGIN_COMPATIBILITY.md)
+- [原生 SDK v2 设计](./PLUGIN_COMPATIBILITY.md)
 - [API 文档](./api.md) (含插件矩阵管理端点)
 - [使用文档](./usage.md)

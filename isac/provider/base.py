@@ -5,9 +5,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from isac.core.types import LLMChunk, LLMResponse
+
+if TYPE_CHECKING:
+    from isac.artifacts.models import ArtifactRef, MediaAnalysisResult, MediaInput, TranscriptionResult
 
 
 @dataclass
@@ -86,9 +89,60 @@ class RerankerProvider(ABC):
 
 
 class ImageGenProvider(ABC):
-    """图片生成提供商契约 (预留)"""
+    """图片生成提供商契约 (旧预留, 返回原始字节; J2 统一契约见 ImageGenerationProvider)"""
 
     @abstractmethod
     async def generate(self, prompt: str, **kwargs: Any) -> bytes:
         """生成图片，返回图片字节"""
+        ...
+
+
+# ── J2 多模态 Provider 契约 (SPECIFICATION.md 2.4) ──────────────
+# 所有多模态 Provider 统一注册到 ModelCatalog, 由 ModelRouter 按 operation / 输入输出
+# 模态 / Agent 授权 / 成本 / 延迟 / 健康状态选择。二进制输入先经 MediaNormalizer 校验;
+# 生成结果写入 ArtifactStore 并返回 ArtifactRef, 不把二进制塞进历史 / 日志 / 记忆。
+
+
+class SpeechToTextProvider(ABC):
+    """语音转文字 (STT) 提供商契约。"""
+
+    @abstractmethod
+    async def transcribe(self, media: MediaInput, **kwargs: Any) -> TranscriptionResult:
+        """把音频转写为文本。"""
+        ...
+
+
+class TextToSpeechProvider(ABC):
+    """文字转语音 (TTS) 提供商契约。"""
+
+    @abstractmethod
+    async def synthesize(self, text: str, **kwargs: Any) -> ArtifactRef:
+        """把文本合成为语音, 返回制品引用。"""
+        ...
+
+
+class ImageGenerationProvider(ABC):
+    """图片生成提供商契约 (J2; 返回 ArtifactRef 列表)。"""
+
+    @abstractmethod
+    async def generate(self, prompt: str, **kwargs: Any) -> list[ArtifactRef]:
+        """按提示词生成一张或多张图片。"""
+        ...
+
+
+class VideoUnderstandingProvider(ABC):
+    """视频理解提供商契约。"""
+
+    @abstractmethod
+    async def understand(self, media: MediaInput, prompt: str, **kwargs: Any) -> MediaAnalysisResult:
+        """理解视频内容并按提示作答。"""
+        ...
+
+
+class VideoGenerationProvider(ABC):
+    """视频生成提供商契约。"""
+
+    @abstractmethod
+    async def generate(self, prompt: str, **kwargs: Any) -> ArtifactRef:
+        """按提示词生成视频, 返回制品引用。"""
         ...
