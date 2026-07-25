@@ -417,7 +417,7 @@ async def main() -> None:
     control_config = global_config.get("control", {}) or {}
     if control_config.get("enabled"):
         await _register_control_plane(
-            runtime, control_config, agent_manager, router, bus, metrics
+            runtime, control_config, agent_manager, router, bus, metrics, services.get("usage_store")
         )
     runtime.register_lifecycle(
         "alerts",
@@ -471,6 +471,7 @@ async def _register_control_plane(
     router: MessageRouter,
     bus: InterAgentBus,
     metrics: MetricsCollector,
+    usage_store: Any = None,
 ) -> None:
     """把控制面 (uvicorn Server) 注册到 runtime 的生命周期管理。
 
@@ -507,6 +508,7 @@ async def _register_control_plane(
             plugin_manager,
             control_config,
             metrics=metrics,
+            usage_store=usage_store,
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))

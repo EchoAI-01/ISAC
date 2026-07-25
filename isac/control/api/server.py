@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from isac.observability.metrics import MetricsCollector
+    from isac.observability.usage.storage import UsageStore
     from isac.plugin.runtime.manager import PluginManager
     from isac.router.router import MessageRouter
     from isac.runtime.bus import InterAgentBus
@@ -23,6 +24,7 @@ def create_control_app(
     plugin_manager: PluginManager,
     config: dict[str, Any],
     metrics: MetricsCollector | None = None,
+    usage_store: UsageStore | None = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -35,6 +37,9 @@ def create_control_app(
 
     metrics: 应用生命周期内唯一的 MetricsCollector 实例 (由 main.build_services()
     创建并注入给核心组件); 未传入时兜底创建独立实例, 保证测试 fixture 不必更新。
+
+    usage_store: J1 用量存储; 为 None (计量未启用) 时不挂载 /usage/models/* 路由,
+    404 而不是暴露一个看起来有效但永远空的接口。
     """
     try:
         from fastapi import Depends, FastAPI
@@ -86,6 +91,13 @@ def create_control_app(
         ),
         prefix="/api/v1",
     )
+    if usage_store is not None:
+        from isac.control.api import routes_usage
+
+        app.include_router(
+            routes_usage.build_router(usage_store, auth_dependency=auth_dependency),
+            prefix="/api/v1",
+        )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
 
