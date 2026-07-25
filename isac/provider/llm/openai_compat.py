@@ -11,14 +11,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 from collections.abc import AsyncIterator
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from isac.core.exceptions import LLMError, RateLimitError
 from isac.core.types import LLMChunk, LLMResponse, TokenUsage, ToolCall
 from isac.provider.base import LLMProvider, ModelCapabilities
 from isac.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from isac.artifacts.models import MediaInput
 
 logger = get_logger(__name__)
 
@@ -111,6 +117,57 @@ class OpenAICompatProvider(LLMProvider):
 
     def get_capabilities(self) -> ModelCapabilities:
         return ModelCapabilities(supports_tools=True, supports_streaming=True)
+
+    async def vision_chat(
+        self,
+        media: MediaInput,
+        prompt: str,
+        *,
+        system: str = "",
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """视觉理解: 把 image 作为 image_url content 与 prompt 一起发给多模态 LLM。
+
+        要求模型支持视觉输入 (gpt-4o / gpt-4-vision 等)。media.kind 必须是 "image",
+        media.uri 必须是本地绝对路径 (MediaNormalizer 已校验), 这里读文件转 base64
+        data URL 内联到请求体 (避免 LLM 端二次 HTTP 下载; 适合 < 5MB 的图)。
+
+        Args:
+            media: 输入图片 (kind="image", uri 为本地绝对路径)
+            prompt: 关于图片的自然语言提问
+            system: 可选 system prompt (默认空, 调用方可设行为约束)
+        """
+        if media.kind != "image":
+            raise LLMError(
+                f"vision_chat 只支持 kind=image, 收到 kind={media.kind}",
+                retriable=False,
+            )
+        img_path = Path(media.uri)
+        try:
+            img_bytes = await asyncio.to_thread(img_path.read_bytes)
+        except FileNotFoundError as exc:
+            raise LLMError(
+                f"vision_chat 输入图片不存在: {media.uri}",
+                retriable=False,
+            ) from exc
+        except OSError as exc:
+            raise LLMError(
+                f"vision_chat 输入图片读取失败: {exc}",
+                retriable=False,
+            ) from exc
+        mime = media.mime_type or "image/png"
+        b64 = base64.b64encode(img_bytes).decode("ascii")
+        data_url = f"data:{mime};base64,{b64}"
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ]
+        return await self.chat(system=system, messages=messages, **kwargs)
 
     async def aclose(self) -> None:
         """关闭 httpx.AsyncClient, 释放连接池 (ApplicationRuntime 关闭时调用)。"""
