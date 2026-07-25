@@ -26,6 +26,9 @@ def create_control_app(
     metrics: MetricsCollector | None = None,
     usage_store: UsageStore | None = None,
     subagent_supervisor: Any = None,
+    provider_manager: Any = None,
+    model_catalog: Any = None,
+    artifact_store: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -108,6 +111,17 @@ def create_control_app(
 
         app.include_router(
             routes_subagent.build_router(subagent_supervisor, auth_dependency=auth_dependency),
+            prefix="/api/v1",
+        )
+    # J3: Providers / Artifacts 路由 (provider_manager 和 model_catalog 都注入时挂载)
+    if provider_manager is not None and model_catalog is not None:
+        from isac.control.api import routes_providers
+
+        app.include_router(
+            routes_providers.build_router(
+                provider_manager, model_catalog, artifact_store,
+                auth_dependency=auth_dependency,
+            ),
             prefix="/api/v1",
         )
 
