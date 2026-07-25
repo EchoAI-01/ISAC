@@ -73,6 +73,7 @@ class ToolPermission:
         "generate_video": "deny",
         "transcribe_audio": "deny",
         "synthesize_speech": "deny",
+        "understand_image": "deny",
         "understand_video": "deny",
         # J4 SubAgent 工具: 派生默认禁用 (需显式授权); 查询类受限于 Supervisor 注入
         "delegate_task": "deny",

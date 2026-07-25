@@ -42,6 +42,9 @@ class ProviderManager:
         self._metrics = metrics
         # J1: 模型用量记录器 (默认 None → 不计量, 主链路热路径零变化)。
         self._usage_recorder = usage_recorder
+        # J2: 多模态 Provider 池 (按 (provider_id, model_id) 索引)
+        # 媒体工具通过 multimodal_provider(provider_id, model_id) 取实例。
+        self._multimodal_providers: dict[tuple[str, str], Any] = {}
 
     def register(self, provider: LLMProvider, *, fallback: bool = False) -> None:
         """注册全局 Provider (main.py 组装时调用)。"""
@@ -50,13 +53,38 @@ class ProviderManager:
         else:
             self._primary = provider
 
+    def register_multimodal(
+        self,
+        provider: Any,
+        *,
+        provider_id: str,
+        model_id: str,
+    ) -> None:
+        """J2: 注册多模态 Provider (image_gen/stt/tts/embed/vision 等)。
+
+        按 (provider_id, model_id) 索引, 与 ModelDescriptor 字段对齐。
+        媒体工具通过 model_router.select 拿到 descriptor 后, 调
+        multimodal_provider(descriptor.provider_id, descriptor.model_id) 取实例。
+        """
+        self._multimodal_providers[(provider_id, model_id)] = provider
+
+    def multimodal_provider(self, provider_id: str, model_id: str) -> Any | None:
+        """J2: 按 (provider_id, model_id) 查询多模态 Provider; 未注册返回 None。"""
+        return self._multimodal_providers.get((provider_id, model_id))
+
     async def aclose(self) -> None:
         """关闭所有已注册 Provider 的底层连接池 (ApplicationRuntime 关闭时调用)。
 
         对没有 aclose() 的 Provider (如 StubProvider) 静默跳过。
         """
         seen: set[int] = set()
-        for provider in [self._primary, self._fallback, *self._agent_providers.values()]:
+        all_providers = [
+            self._primary,
+            self._fallback,
+            *self._agent_providers.values(),
+            *self._multimodal_providers.values(),
+        ]
+        for provider in all_providers:
             if provider is None or id(provider) in seen:
                 continue
             seen.add(id(provider))
