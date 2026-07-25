@@ -10,6 +10,7 @@
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 多 Agent 架构蓝图 v3.0 + ADR |
 | [SPECIFICATION.md](./SPECIFICATION.md) | 数据模型与接口契约 (规范冻结) |
 | [DEVELOP.md](./DEVELOP.md) | 开发规范 (目录/导入/命名/测试) |
+| [MODULE_GUIDE.md](./MODULE_GUIDE.md) | 模块开发指南 (scaffolding 框架先行范式 + ConversationRuntime 范例) |
 | [REQUIREMENTS.md](./REQUIREMENTS.md) | 统一需求清单 |
 | [../AGENTS.md](../AGENTS.md) | Agent 协作指南 (根目录约定文件) |
 
@@ -17,7 +18,8 @@
 
 | 文档 | 用途 |
 |------|------|
-| [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) | 开发 SOW / TODO 清单 / 下一步计划 |
+| [ROADMAP.md](./ROADMAP.md) | 技术路线图 (阶段 0-4、里程碑、依赖关系、"进度 0" 能力目标形态) |
+| [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) | 开发 SOW / TODO 清单 / 下一步计划 (含 L/M/N/O 节点定义) |
 | [PROGRESS.md](./PROGRESS.md) | 各节点唯一进度事实源 |
 | [CODE_REVIEW_REPORT.md](./CODE_REVIEW_REPORT.md) | 已修复缺陷追溯档案 (源码 `#N` 引用锚点) |
 
@@ -37,6 +39,8 @@
 |------|------|
 | [使用文档](./usage.md) | 快速开始、配置详解、运行、维护 |
 | [Docker 部署](./deployment.md) | 容器化部署、数据持久化、生产建议 |
+| [维护运维手册](./MAINTENANCE.md) | 部署后运维、日志排查树、常见故障、备份恢复、升级迁移 |
+| [日志与可观测性](./LOGGING.md) | 日志分级、结构化字段、trace 贯穿、按模块开关、排查树 |
 | [API 文档](./api.md) | Admin REST API 端点与示例 |
 | [插件开发指南](./plugin_development.md) | 三种插件格式开发 (Native/AstrBot/MaiBot) |
 | [控制面自动化指南](./control_automation.md) | REST API / MCP / Webhooks 自动化集成 |
@@ -44,7 +48,8 @@
 ## 阅读建议
 
 - **新加入开发者**: ../README → ARCHITECTURE → DEVELOP → SPECIFICATION → DEVELOPMENT_PLAN → PROGRESS
-- **运维 / 部署**: usage → deployment → control_automation
+- **新增子系统的开发者**: MODULE_GUIDE (scaffolding 范式) → ROADMAP → DEVELOPMENT_PLAN (对应节点) → 对应专项施工图
+- **运维 / 部署**: usage → deployment → MAINTENANCE → LOGGING → control_automation
 - **API 集成方**: api → control_automation
 - **插件开发者**: plugin_development → PLUGIN_COMPATIBILITY → SPECIFICATION (2.6 Manifest)
-- **架构研究**: ARCHITECTURE → 五个专项施工图 → ADR (在 ARCHITECTURE.md 末尾)
+- **架构研究**: ARCHITECTURE → 五个专项施工图 → ROADMAP → ADR (在 ARCHITECTURE.md 末尾)
