@@ -21,6 +21,7 @@ def build_router(
     audit_log: AuditLog | None = None,
     routing_rules_path: str = "data/routing.jsonc",
     links_path: str = "data/links.jsonc",
+    scope_dependency: Any = None,
 ) -> Any:
     from fastapi import APIRouter, Depends
 
@@ -32,6 +33,10 @@ def build_router(
         tags=["routing"],
         dependencies=[Depends(auth_dependency)] if auth_dependency else [],
     )
+    # Fix-12: spec §6.1 只给了 routing:write/link:write, 没有对应的 :read scope;
+    # 读操作维持"只要 auth_dependency 认证通过即可", 不额外收窄。
+    routing_write_deps = [Depends(scope_dependency("routing:write"))] if scope_dependency else []
+    link_write_deps = [Depends(scope_dependency("link:write"))] if scope_dependency else []
 
     @api.get("/routing/rules")
     async def get_rules() -> dict:
@@ -41,7 +46,7 @@ def build_router(
             "default_agents": rules.default_agents,
         }
 
-    @api.put("/routing/rules")
+    @api.put("/routing/rules", dependencies=routing_write_deps)
     async def put_rules(body: dict) -> dict:
         rules = RoutingRules(
             bindings=[ChannelBinding(**b) for b in body.get("bindings", [])],
@@ -64,7 +69,7 @@ def build_router(
     async def list_links() -> list[dict]:
         return [vars(link) for link in bus.list_links()]
 
-    @api.post("/links")
+    @api.post("/links", dependencies=link_write_deps)
     async def add_link(body: dict) -> dict:
         link = InterAgentLink(**body)
         # add_link 内部已触发 _trigger_persist; 但 routes_routing 持有独立的
@@ -78,7 +83,7 @@ def build_router(
         )
         return {"status": "added"}
 
-    @api.delete("/links")
+    @api.delete("/links", dependencies=link_write_deps)
     async def remove_link(from_agent: str, to_agent: str) -> dict:
         bus.remove_link(from_agent, to_agent)
         _persist_links_or_raise(bus, Path(links_path))

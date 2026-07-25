@@ -57,11 +57,26 @@ def create_control_app(
         raise RuntimeError("控制面需要 fastapi: uv sync --all-extras") from exc
 
     from isac.control.audit import AuditLog
-    from isac.control.auth import make_auth_dependency
+    from isac.control.auth import (
+        make_auth_dependency,
+        make_scope_dependency_factory,
+        make_token_only_dependency,
+        parse_token_scopes,
+    )
     from isac.observability import get_default_metrics
 
     api_token = config.get("api_token", "")
-    auth_dependency = make_auth_dependency(api_token) if api_token else None
+    # Fix-12: control.tokens[] 未配置时 scope_dependency 为 None, 各路由端点的
+    # scope 校验整体跳过, 行为与引入本模型之前完全一致 (只有扁平 api_token 认证)。
+    parsed_tokens = parse_token_scopes(config)
+    scope_dependency = make_scope_dependency_factory(parsed_tokens) if parsed_tokens else None
+    # tokens[] 配置生效时, 路由级基线认证必须按 tokens[] 校验 (而不是继续用扁平
+    # api_token), 否则任何合法 scoped token 会在到达端点级 scope_dependency 检查
+    # 之前就被拒绝 (401) —— 见 make_token_only_dependency 文档字符串。
+    if parsed_tokens:
+        auth_dependency = make_token_only_dependency(parsed_tokens)
+    else:
+        auth_dependency = make_auth_dependency(api_token) if api_token else None
     audit_log = AuditLog(log_path=config.get("audit_log_path", "data/audit.ndjson"))
     agents_dir = config.get("agents_dir", "data/agents")
     routing_rules_path = config.get("routing_rules_path", "data/routing.jsonc")
@@ -73,10 +88,12 @@ def create_control_app(
     _mount_core_routers(
         app, agent_manager, router, bus, plugin_manager, config,
         auth_dependency, audit_log, agents_dir, routing_rules_path, links_path,
+        scope_dependency,
     )
     _mount_optional_routers(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
+        scope_dependency,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -132,6 +149,7 @@ def _mount_core_routers(
     agents_dir: str,
     routing_rules_path: str,
     links_path: str,
+    scope_dependency: Any = None,
 ) -> None:
     """挂载核心路由 (agents / routing / plugins)。"""
     from isac.control.api import routes_agents, routes_plugins, routes_routing
@@ -142,6 +160,7 @@ def _mount_core_routers(
             auth_dependency=auth_dependency,
             audit_log=audit_log,
             agents_dir=agents_dir,
+            scope_dependency=scope_dependency,
         ),
         prefix="/api/v1",
     )
@@ -153,6 +172,7 @@ def _mount_core_routers(
             audit_log=audit_log,
             routing_rules_path=routing_rules_path,
             links_path=links_path,
+            scope_dependency=scope_dependency,
         ),
         prefix="/api/v1",
     )
@@ -163,6 +183,7 @@ def _mount_core_routers(
             auth_dependency=auth_dependency,
             audit_log=audit_log,
             agents_dir=agents_dir,
+            scope_dependency=scope_dependency,
         ),
         prefix="/api/v1",
     )
@@ -179,20 +200,25 @@ def _mount_optional_routers(
     metadata_store: Any,
     event_bus: Any,
     auth_dependency: Any,
+    scope_dependency: Any = None,
 ) -> None:
     """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events)。"""
     if usage_store is not None:
         from isac.control.api import routes_usage
 
         app.include_router(
-            routes_usage.build_router(usage_store, auth_dependency=auth_dependency),
+            routes_usage.build_router(
+                usage_store, auth_dependency=auth_dependency, scope_dependency=scope_dependency,
+            ),
             prefix="/api/v1",
         )
     if subagent_supervisor is not None:
         from isac.control.api import routes_subagent
 
         app.include_router(
-            routes_subagent.build_router(subagent_supervisor, auth_dependency=auth_dependency),
+            routes_subagent.build_router(
+                subagent_supervisor, auth_dependency=auth_dependency, scope_dependency=scope_dependency,
+            ),
             prefix="/api/v1",
         )
     if provider_manager is not None and model_catalog is not None:
@@ -201,7 +227,7 @@ def _mount_optional_routers(
         app.include_router(
             routes_providers.build_router(
                 provider_manager, model_catalog, artifact_store,
-                auth_dependency=auth_dependency,
+                auth_dependency=auth_dependency, scope_dependency=scope_dependency,
             ),
             prefix="/api/v1",
         )

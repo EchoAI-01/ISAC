@@ -23,12 +23,15 @@ if TYPE_CHECKING:
 def build_router(
     supervisor: SubAgentSupervisor,
     auth_dependency: Any = None,
+    scope_dependency: Any = None,
 ) -> Any:
     """构造 SubAgent Control API 路由。
 
     Args:
         supervisor: SubAgentSupervisor 实例 (必传; None 时不应调用本函数)
         auth_dependency: Bearer Token 认证依赖 (None 时跳过认证, 仅开发模式)
+        scope_dependency: Fix-12, CONTROL_PLANE_SPEC.md §8.4 定义的
+            subagent:run/read/cancel/log:read 四档 scope; None 时不做 scope 校验。
     """
     from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -36,8 +39,12 @@ def build_router(
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["subagent"], dependencies=deps)
+    run_deps = [Depends(scope_dependency("subagent:run"))] if scope_dependency else []
+    read_deps = [Depends(scope_dependency("subagent:read"))] if scope_dependency else []
+    cancel_deps = [Depends(scope_dependency("subagent:cancel"))] if scope_dependency else []
+    log_read_deps = [Depends(scope_dependency("subagent:log:read"))] if scope_dependency else []
 
-    @router.post("/agents/{agent_id}/subagent-runs")
+    @router.post("/agents/{agent_id}/subagent-runs", dependencies=run_deps)
     async def create_subagent_run(agent_id: str, payload: dict) -> dict:
         objective = str(payload.get("objective", "") or "").strip()
         if not objective:
@@ -57,19 +64,19 @@ def build_router(
         run = await supervisor.submit(task)
         return {"task_id": run.task_id, "status": run.status}
 
-    @router.get("/agents/{agent_id}/subagent-runs")
+    @router.get("/agents/{agent_id}/subagent-runs", dependencies=read_deps)
     async def list_subagent_runs(agent_id: str) -> list[dict]:
         runs = await supervisor.list_runs(filters={"parent_agent_id": agent_id})
         return [_run_to_dict(run) for run in runs]
 
-    @router.get("/subagent-runs/{task_id}")
+    @router.get("/subagent-runs/{task_id}", dependencies=read_deps)
     async def get_subagent_run(task_id: str) -> dict:
         run = await supervisor.get_status(task_id)
         if run is None:
             raise HTTPException(status_code=404, detail={"code": "SUBAGENT_NOT_FOUND", "message": task_id})
         return _run_to_dict(run)
 
-    @router.get("/subagent-runs/{task_id}/events")
+    @router.get("/subagent-runs/{task_id}/events", dependencies=log_read_deps)
     async def get_subagent_events(
         task_id: str,
         after_seq: int = Query(0, ge=0),
@@ -90,7 +97,7 @@ def build_router(
             ],
         }
 
-    @router.post("/subagent-runs/{task_id}/cancel")
+    @router.post("/subagent-runs/{task_id}/cancel", dependencies=cancel_deps)
     async def cancel_subagent_run(task_id: str) -> dict:
         run = await supervisor.cancel(task_id)
         if run is None:

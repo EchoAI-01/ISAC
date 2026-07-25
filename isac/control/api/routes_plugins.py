@@ -20,6 +20,7 @@ def build_router(
     auth_dependency: Any = None,
     audit_log: AuditLog | None = None,
     agents_dir: str = "data/agents",
+    scope_dependency: Any = None,
 ) -> Any:
     from fastapi import APIRouter, Depends, HTTPException
 
@@ -30,6 +31,7 @@ def build_router(
         tags=["plugins"],
         dependencies=[Depends(auth_dependency)] if auth_dependency else [],
     )
+    write_deps = [Depends(scope_dependency("plugin:write"))] if scope_dependency else []
 
     @router.get("")
     async def get_matrix(agent_id: str) -> dict:
@@ -41,7 +43,7 @@ def build_router(
             "plugins_deny": instance.config.plugins_deny,
         }
 
-    @router.put("")
+    @router.put("", dependencies=write_deps)
     async def put_matrix(agent_id: str, body: dict) -> dict:
         instance = await agent_manager.get(agent_id)
         if instance is None:

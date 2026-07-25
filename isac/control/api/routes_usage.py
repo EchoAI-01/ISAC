@@ -1,11 +1,12 @@
 """模型用量查询端点 (SPECIFICATION.md 2.3 / CONTROL_PLANE_SPEC.md 3.5)。
 
-只读; 认证沿用与其余控制面路由相同的扁平 Bearer Token (auth_dependency)。
-CONTROL_PLANE_SPEC.md §6.1 描述了 usage:read/usage:detail 两档 scope, 但控制面
-目前没有任何路由实现过按 scope 校验 (全部是单 Token 全权限) —— 细粒度 scope 是
-控制面整体的未来工作, 不在本路由单独引入, 避免只有 usage 这一个资源的鉴权模式
-与其它资源不一致。计量关闭时 create_control_app() 不挂载本路由 (见 server.py),
-不会对外暴露一个看起来有效但永远空的接口。
+认证沿用与其余控制面路由相同的扁平 Bearer Token (auth_dependency)。Fix-12:
+CONTROL_PLANE_SPEC.md §6.1 描述的 usage:read/usage:detail 两档 scope 现已接入
+(scope_dependency 由 server.py 按 control.tokens[] 配置构造; 未配置时为 None,
+scope 校验整体跳过, 行为与之前完全一致)。聚合数据 (/summary、/timeseries) 需要
+usage:read; 逐条物理请求明细 (/events) 需要更高权限的 usage:detail。计量关闭时
+create_control_app() 不挂载本路由 (见 server.py), 不会对外暴露一个看起来有效
+但永远空的接口。
 """
 
 from __future__ import annotations
@@ -16,13 +17,15 @@ if TYPE_CHECKING:
     from isac.observability.usage.storage import UsageStore
 
 
-def build_router(usage_store: UsageStore, auth_dependency: Any = None) -> Any:
+def build_router(usage_store: UsageStore, auth_dependency: Any = None, scope_dependency: Any = None) -> Any:
     from fastapi import APIRouter, Depends, Query
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(prefix="/usage/models", tags=["usage"], dependencies=deps)
+    read_deps = [Depends(scope_dependency("usage:read"))] if scope_dependency else []
+    detail_deps = [Depends(scope_dependency("usage:detail"))] if scope_dependency else []
 
-    @router.get("/summary")
+    @router.get("/summary", dependencies=read_deps)
     async def summary(
         from_: int | None = Query(default=None, alias="from"),
         to: int | None = None,
@@ -47,7 +50,7 @@ def build_router(usage_store: UsageStore, auth_dependency: Any = None) -> Any:
         )
         return await usage_store.aggregate(filters)
 
-    @router.get("/events")
+    @router.get("/events", dependencies=detail_deps)
     async def events(
         from_: int | None = Query(default=None, alias="from"),
         to: int | None = None,
@@ -72,7 +75,7 @@ def build_router(usage_store: UsageStore, auth_dependency: Any = None) -> Any:
         )
         return await usage_store.list_events(filters, limit=limit, offset=offset)
 
-    @router.get("/timeseries")
+    @router.get("/timeseries", dependencies=read_deps)
     async def timeseries(
         from_: int | None = Query(default=None, alias="from"),
         to: int | None = None,
