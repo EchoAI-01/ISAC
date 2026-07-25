@@ -100,6 +100,7 @@ class SubAgentRun:
     tool_calls_used: int = 0
     error_code: str = ""
     error_summary: str = ""
+    result_summary: str = ""  # J4-2: succeeded 时存 runner 返回的 SubAgentResult.summary
 
 
 @dataclass

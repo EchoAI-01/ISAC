@@ -147,5 +147,6 @@ async def test_status_and_cancel_tools_delegate_to_supervisor() -> None:
 
 def test_subagent_tool_default_policy() -> None:
     permission = ToolPermission()
-    assert permission.check("delegate_task") == "deny"
+    # J4-2: delegate_task 从 deny 改 restricted (需显式授权, 但不再是默认禁用)
+    assert permission.check("delegate_task") == "restricted"
     assert permission.check("subagent_status") == "restricted"

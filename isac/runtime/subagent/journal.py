@@ -48,9 +48,13 @@ CREATE TABLE IF NOT EXISTS subagent_runs (
     tokens_used    INTEGER,
     tool_calls_used INTEGER,
     error_code     TEXT,
-    error_summary  TEXT
+    error_summary  TEXT,
+    result_summary TEXT
 );
 """
+
+# J4-2: result_summary 列由 _ensure_column() 按需 ALTER TABLE 补齐 (旧库无此列)
+_NEW_RUN_COLUMNS: tuple[tuple[str, str], ...] = (("result_summary", "TEXT"),)
 
 
 class SubAgentJournal:
@@ -67,8 +71,21 @@ class SubAgentJournal:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(self.db_path)
         await self._db.executescript(SCHEMA_SQL)
+        # J4-2: 旧库迁移补 result_summary 列
+        for col, decl in _NEW_RUN_COLUMNS:
+            await self._ensure_column(self._db, "subagent_runs", col, decl)
         await self._db.commit()
         logger.info("SubAgentJournal schema 已初始化", path=self.db_path)
+
+    @staticmethod
+    async def _ensure_column(db: Any, table: str, column: str, decl_type: str) -> None:
+        """SQLite ALTER TABLE ADD COLUMN 没有 IF NOT EXISTS, 需先探测再决定是否执行。"""
+        cursor = await db.execute(f"PRAGMA table_info({table})")
+        rows = await cursor.fetchall()
+        await cursor.close()
+        existing = {row[1] for row in rows}
+        if column not in existing:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl_type}")
 
     async def stop(self) -> None:
         """提交并关闭连接 (生命周期 stop)。"""
@@ -135,7 +152,7 @@ class SubAgentJournal:
         await self._db.execute(
             "INSERT OR REPLACE INTO subagent_runs "
             "(task_id, status, phase, started_at, updated_at, finished_at, tokens_used, tool_calls_used, "
-            "error_code, error_summary) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "error_code, error_summary, result_summary) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (
                 run.task_id,
                 run.status,
@@ -147,6 +164,7 @@ class SubAgentJournal:
                 run.tool_calls_used,
                 run.error_code,
                 run.error_summary,
+                run.result_summary,
             ),
         )
         await self._db.commit()
@@ -160,7 +178,7 @@ class SubAgentJournal:
             return []
         cursor = await self._db.execute(
             "SELECT task_id, status, phase, started_at, updated_at, finished_at, tokens_used, tool_calls_used, "
-            "error_code, error_summary FROM subagent_runs"
+            "error_code, error_summary, result_summary FROM subagent_runs"
         )
         rows = await cursor.fetchall()
         await cursor.close()
@@ -176,6 +194,7 @@ class SubAgentJournal:
                 tool_calls_used=row[7],
                 error_code=row[8],
                 error_summary=row[9],
+                result_summary=row[10] if len(row) > 10 else "",
             )
             for row in rows
         ]
