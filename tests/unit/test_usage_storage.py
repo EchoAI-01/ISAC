@@ -290,6 +290,30 @@ async def test_aggregate_groups_by_multiple_dimensions(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_aggregate_groups_by_fallback(tmp_path) -> None:
+    """Fix-18: group_by=["fallback"] 之前无测试覆盖 (_GROUP_BY_EXPRESSIONS 里
+    "fallback" 映射到 SQL 表达式 "(fallback_from IS NOT NULL)", 属于唯一一个
+    不是"列名原样输出"的分组维度, 结果行还要经过 bool() 转换, 值得单独锁定)。"""
+    store = UsageStore(str(tmp_path / "usage.db"))
+    await store.start()
+    try:
+        await store.insert_many(
+            [
+                _event(event_id="1", fallback_from=None),
+                _event(event_id="2", fallback_from=None),
+                _event(event_id="3", fallback_from="provider-a/model-x"),
+            ]
+        )
+        rows = await store.aggregate({"group_by": ["fallback"]})
+        by_fallback = {row["fallback"]: row for row in rows}
+        assert by_fallback[False]["request_count"] == 2
+        assert by_fallback[True]["request_count"] == 1
+        assert isinstance(next(iter(by_fallback)), bool)
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
 async def test_aggregate_ignores_non_whitelisted_group_by_keys(tmp_path) -> None:
     """group_by 里的非白名单条目 (可能是恶意输入) 被忽略, 不拼进 SQL、不报错。"""
     store = UsageStore(str(tmp_path / "usage.db"))
