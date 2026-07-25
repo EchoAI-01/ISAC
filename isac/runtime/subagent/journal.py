@@ -55,8 +55,12 @@ CREATE TABLE IF NOT EXISTS subagent_runs (
 );
 """
 
-# J4-2: result_summary 列由 _ensure_column() 按需 ALTER TABLE 补齐 (旧库无此列)
-_NEW_RUN_COLUMNS: tuple[tuple[str, str], ...] = (("result_summary", "TEXT"),)
+# J4-2/Fix-10: result_summary/parent_agent_id 列由 _ensure_column() 按需
+# ALTER TABLE 补齐 (旧库无这些列)。
+_NEW_RUN_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("result_summary", "TEXT"),
+    ("parent_agent_id", "TEXT"),
+)
 
 
 class SubAgentJournal:
@@ -155,7 +159,7 @@ class SubAgentJournal:
         await self._db.execute(
             "INSERT OR REPLACE INTO subagent_runs "
             "(task_id, status, phase, started_at, updated_at, finished_at, tokens_used, tool_calls_used, "
-            "error_code, error_summary, result_summary) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "error_code, error_summary, result_summary, parent_agent_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 run.task_id,
                 run.status,
@@ -168,6 +172,7 @@ class SubAgentJournal:
                 run.error_code,
                 run.error_summary,
                 run.result_summary,
+                run.parent_agent_id,
             ),
         )
         await self._db.commit()
@@ -181,7 +186,7 @@ class SubAgentJournal:
             return []
         cursor = await self._db.execute(
             "SELECT task_id, status, phase, started_at, updated_at, finished_at, tokens_used, tool_calls_used, "
-            "error_code, error_summary, result_summary FROM subagent_runs"
+            "error_code, error_summary, result_summary, parent_agent_id FROM subagent_runs"
         )
         rows = await cursor.fetchall()
         await cursor.close()
@@ -198,6 +203,7 @@ class SubAgentJournal:
                 error_code=row[8],
                 error_summary=row[9],
                 result_summary=row[10] if len(row) > 10 else "",
+                parent_agent_id=row[11] if len(row) > 11 and row[11] else "",
             )
             for row in rows
         ]

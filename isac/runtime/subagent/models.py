@@ -107,6 +107,9 @@ class SubAgentRun:
     error_code: str = ""
     error_summary: str = ""
     result_summary: str = ""  # J4-2: succeeded 时存 runner 返回的 SubAgentResult.summary
+    # Fix-10: 创建该子任务的父 Agent, 用于跨 Agent 鉴权 (_authorize) 与
+    # Control API 按 agent_id 过滤 (routes_subagent.py::list_subagent_runs)。
+    parent_agent_id: str = ""
 
 
 @dataclass

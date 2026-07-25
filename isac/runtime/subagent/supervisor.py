@@ -72,7 +72,10 @@ class SubAgentSupervisor:
                 f"子任务递归深度 {depth} 超过策略上限 {effective.max_depth}"
             )
         now = int(time.time())
-        run = SubAgentRun(task_id=task.task_id, status="queued", started_at=now, updated_at=now)
+        run = SubAgentRun(
+            task_id=task.task_id, status="queued", started_at=now, updated_at=now,
+            parent_agent_id=task.parent_agent_id,
+        )
         self._runs[task.task_id] = run
         if self._journal is not None:
             await self._journal.upsert_run(run)
@@ -188,12 +191,20 @@ class SubAgentSupervisor:
     async def list_runs(
         self, requester: AgentContext | None = None, filters: dict[str, Any] | None = None
     ) -> list[SubAgentRun]:
-        """列出子任务 (可选按 status 过滤)。"""
+        """列出子任务 (可选按 status/parent_agent_id 过滤)。
+
+        list 没有单一 task_id 可交给 _authorize 做存在性校验, 跨 Agent 边界改为
+        直接按 parent_agent_id 过滤结果集 (调用方按需传入, 不强制)。
+        """
         self._authorize(requester, None)
         runs = list(self._runs.values())
-        status = (filters or {}).get("status")
+        filters = filters or {}
+        status = filters.get("status")
         if status:
             runs = [r for r in runs if r.status == status]
+        parent_agent_id = filters.get("parent_agent_id")
+        if parent_agent_id:
+            runs = [r for r in runs if r.parent_agent_id == parent_agent_id]
         return runs
 
     async def fetch_log(
@@ -255,11 +266,24 @@ class SubAgentSupervisor:
         return self._parent_policy.intersect(task.policy)
 
     def _authorize(self, requester: AgentContext | None, task_id: str | None) -> None:
-        """请求方鉴权占位。
+        """请求方鉴权: 拒绝一个 Agent 查询/操作另一个 Agent 创建的子任务。
 
-        TODO(J4): 校验 requester 是否有权查询 / 操作该 task_id (跨 Agent 边界); 当前放行。
+        requester=None 表示控制面/管理员调用 (不代表某个具体 Agent 身份), 放行,
+        由 Control API 自己的 scope 校验负责; requester 有值但对应的 run 不存在
+        (task_id 未知) 时也放行, 交给调用方的 "run is None" 分支处理 404, 这里
+        只做已存在任务的归属校验, 避免把"资源不存在"和"无权访问"混为一谈。
         """
-        return None
+        if requester is None or task_id is None:
+            return
+        run = self._runs.get(task_id)
+        if run is None or not run.parent_agent_id:
+            return
+        # getattr 防御: requester 理论上总是真实 AgentContext (由 loop/tool 层构造),
+        # 但保留兜底避免调用方传入不完整占位对象时直接抛 AttributeError 崩掉主链路。
+        services = getattr(requester, "services", None) or {}
+        requester_agent_id = str(services.get("agent_id", "") or "")
+        if requester_agent_id and requester_agent_id != run.parent_agent_id:
+            raise PermissionError(f"无权访问其它 Agent 创建的子任务: {task_id}")
 
     async def restore_interrupted(self) -> int:
         """J4-3: 重启恢复。从 Journal 读出所有持久化 run, 把 running/queued 标记为

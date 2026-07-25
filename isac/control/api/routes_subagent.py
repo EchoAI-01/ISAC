@@ -59,15 +59,8 @@ def build_router(
 
     @router.get("/agents/{agent_id}/subagent-runs")
     async def list_subagent_runs(agent_id: str) -> list[dict]:
-        runs = await supervisor.list_runs(filters=None)
-        # 过滤出该 agent_id 的子任务 (parent_agent_id 匹配)
-        result = []
-        for run in runs:
-            # SubAgentRun 没有 parent_agent_id 字段, 这里只能返回全部;
-            # 调用方按 agent_id 过滤的需求暂不支持 (SubAgentRun 不存 parent_agent_id)
-            # TODO(J4-后续): SubAgentRun 加 parent_agent_id 字段后过滤
-            result.append(_run_to_dict(run))
-        return result
+        runs = await supervisor.list_runs(filters={"parent_agent_id": agent_id})
+        return [_run_to_dict(run) for run in runs]
 
     @router.get("/subagent-runs/{task_id}")
     async def get_subagent_run(task_id: str) -> dict:
@@ -111,6 +104,7 @@ def _run_to_dict(run: Any) -> dict:
     """SubAgentRun → dict (供 API 响应)。"""
     return {
         "task_id": run.task_id,
+        "parent_agent_id": getattr(run, "parent_agent_id", ""),
         "status": run.status,
         "phase": run.phase,
         "started_at": run.started_at,

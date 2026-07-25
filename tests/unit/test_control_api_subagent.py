@@ -91,6 +91,28 @@ def test_list_subagent_runs() -> None:
     assert any(r["task_id"] == "t1" for r in data)
 
 
+def test_list_subagent_runs_excludes_other_agents_tasks() -> None:
+    """Fix-10: GET /agents/{a1}/subagent-runs 不应该混进 agent a2 的子任务。"""
+    import asyncio
+
+    supervisor = _make_supervisor()
+    asyncio.run(supervisor.submit(SubAgentTask(
+        task_id="owned-by-a1", parent_agent_id="a1", session_id="s1", trace_id="tr1", objective="x",
+    )))
+    asyncio.run(supervisor.submit(SubAgentTask(
+        task_id="owned-by-a2", parent_agent_id="a2", session_id="s1", trace_id="tr1", objective="x",
+    )))
+    app = _make_app(supervisor)
+    client = TestClient(app)
+    resp = client.get(
+        "/api/v1/agents/a1/subagent-runs",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert resp.status_code == 200
+    task_ids = {r["task_id"] for r in resp.json()}
+    assert task_ids == {"owned-by-a1"}
+
+
 def test_get_subagent_run_status() -> None:
     """GET /subagent-runs/{task_id} 返回单个子任务状态。"""
     import asyncio
