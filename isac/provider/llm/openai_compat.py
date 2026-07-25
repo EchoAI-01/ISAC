@@ -173,12 +173,7 @@ class OpenAICompatProvider(LLMProvider):
             content = str(message.get("content", "") or "")
             reasoning = str(message.get("reasoning_content", "") or "")
             tool_calls = self._parse_tool_calls(message.get("tool_calls", []))
-            usage_data = data.get("usage", {}) or {}
-            usage = TokenUsage(
-                prompt_tokens=int(usage_data.get("prompt_tokens", 0) or 0),
-                completion_tokens=int(usage_data.get("completion_tokens", 0) or 0),
-                total_tokens=int(usage_data.get("total_tokens", 0) or 0),
-            )
+            usage = self._parse_usage(data.get("usage", {}) or {})
             return LLMResponse(
                 content=content,
                 reasoning=reasoning,
@@ -192,6 +187,25 @@ class OpenAICompatProvider(LLMProvider):
                 retriable=False,
                 context={"body": json.dumps(data)[:500]},
             ) from exc
+
+    @staticmethod
+    def _parse_usage(usage_data: dict[str, Any]) -> TokenUsage:
+        """解析 usage 及其 J1 明细子字段 (prompt/completion_tokens_details)。
+
+        cached_tokens/reasoning_tokens/audio_tokens 是 prompt_tokens/completion_tokens
+        的子集 (OpenAI 语义), 字段不存在时保持 0, 不猜测。
+        """
+        prompt_details = usage_data.get("prompt_tokens_details") or {}
+        completion_details = usage_data.get("completion_tokens_details") or {}
+        return TokenUsage(
+            prompt_tokens=int(usage_data.get("prompt_tokens", 0) or 0),
+            completion_tokens=int(usage_data.get("completion_tokens", 0) or 0),
+            total_tokens=int(usage_data.get("total_tokens", 0) or 0),
+            cache_read_tokens=int(prompt_details.get("cached_tokens", 0) or 0),
+            reasoning_tokens=int(completion_details.get("reasoning_tokens", 0) or 0),
+            audio_input_tokens=int(prompt_details.get("audio_tokens", 0) or 0),
+            audio_output_tokens=int(completion_details.get("audio_tokens", 0) or 0),
+        )
 
     @staticmethod
     def _parse_tool_calls(raw_tool_calls: list[dict[str, Any]]) -> list[ToolCall]:
@@ -261,11 +275,7 @@ class OpenAICompatProvider(LLMProvider):
             finish_reason = choice.get("finish_reason")
         usage_data = chunk_json.get("usage")
         if usage_data:
-            usage = TokenUsage(
-                prompt_tokens=int(usage_data.get("prompt_tokens", 0) or 0),
-                completion_tokens=int(usage_data.get("completion_tokens", 0) or 0),
-                total_tokens=int(usage_data.get("total_tokens", 0) or 0),
-            )
+            usage = OpenAICompatProvider._parse_usage(usage_data)
         return LLMChunk(
             delta_content=delta_content,
             delta_reasoning=delta_reasoning,
