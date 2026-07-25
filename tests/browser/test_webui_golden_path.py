@@ -93,14 +93,14 @@ def test_server():
 
 @pytest.fixture
 def browser_page(test_server: str):
-    """打开浏览器页面, 注入 token, 返回 Page。"""
+    """打开浏览器页面, 走真实登录流程 (Fix-17: /auth/session 换会话 Cookie), 返回 Page。"""
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto(f"{test_server}/ui/")
-        # 注入 token (sessionStorage, 与 app.js 行为一致)
-        page.evaluate("sessionStorage.setItem('isac_token', 'e2e-token')")
         page.fill("#api-token", "e2e-token")
+        page.click('button:has-text("登录")')
+        page.wait_for_selector(".toast", timeout=2000)
         yield page
         browser.close()
 

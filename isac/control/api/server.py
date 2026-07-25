@@ -43,6 +43,9 @@ def create_control_app(
     - links_path: 互联 Link 文件 (默认 data/links.jsonc)
     - audit_log_path: 审计日志 NDJSON 文件 (默认 data/audit.ndjson)
     - events_max_connections: Fix-14 SSE 同时在线连接数上限 (默认 100)
+    - session_auth_enabled: Fix-17 是否启用 /auth/session 会话 Cookie + CSRF
+      机制 (默认 True; 未配置 api_token 也未配置 tokens[] 的纯开发模式下这个
+      开关没有实际意义, 因为 make_auth_dependency 本身就会跳过认证)
 
     metrics: 应用生命周期内唯一的 MetricsCollector 实例 (由 main.build_services()
     创建并注入给核心组件); 未传入时兜底创建独立实例, 保证测试 fixture 不必更新。
@@ -60,6 +63,7 @@ def create_control_app(
 
     from isac.control.audit import AuditLog
     from isac.control.auth import (
+        generate_session_secret,
         make_auth_dependency,
         make_scope_dependency_factory,
         make_token_only_dependency,
@@ -71,14 +75,22 @@ def create_control_app(
     # Fix-12: control.tokens[] 未配置时 scope_dependency 为 None, 各路由端点的
     # scope 校验整体跳过, 行为与引入本模型之前完全一致 (只有扁平 api_token 认证)。
     parsed_tokens = parse_token_scopes(config)
-    scope_dependency = make_scope_dependency_factory(parsed_tokens) if parsed_tokens else None
+    # Fix-17: 认证根本没启用 (开发模式, 没配 api_token 也没配 tokens[]) 时会话
+    # Cookie 机制没有意义 (没有 Token 可换); 否则默认启用, 可通过
+    # session_auth_enabled=False 显式关闭 (如纯 API 网关场景不需要 WebUI)。
+    session_secret: bytes | None = None
+    if (api_token or parsed_tokens) and config.get("session_auth_enabled", True):
+        session_secret = generate_session_secret()
+    scope_dependency = (
+        make_scope_dependency_factory(parsed_tokens, session_secret) if parsed_tokens else None
+    )
     # tokens[] 配置生效时, 路由级基线认证必须按 tokens[] 校验 (而不是继续用扁平
     # api_token), 否则任何合法 scoped token 会在到达端点级 scope_dependency 检查
     # 之前就被拒绝 (401) —— 见 make_token_only_dependency 文档字符串。
     if parsed_tokens:
-        auth_dependency = make_token_only_dependency(parsed_tokens)
+        auth_dependency = make_token_only_dependency(parsed_tokens, session_secret)
     else:
-        auth_dependency = make_auth_dependency(api_token) if api_token else None
+        auth_dependency = make_auth_dependency(api_token, session_secret) if api_token else None
     audit_log = AuditLog(log_path=config.get("audit_log_path", "data/audit.ndjson"))
     agents_dir = config.get("agents_dir", "data/agents")
     routing_rules_path = config.get("routing_rules_path", "data/routing.jsonc")
@@ -86,6 +98,19 @@ def create_control_app(
     metrics = metrics or get_default_metrics()
 
     app = FastAPI(title="ISAC Admin API", version="0.1.0", docs_url="/docs")
+    if session_secret is not None:
+        # Fix-17: CSRF 双提交校验只对"靠会话 Cookie 认证"的写请求生效, 纯 Bearer
+        # Header 认证的 API 客户端不受影响 (见 CSRFProtectionMiddleware 文档字符串)。
+        from isac.control.auth import CSRFProtectionMiddleware
+
+        app.add_middleware(CSRFProtectionMiddleware)
+
+        from isac.control.api import routes_auth
+
+        app.include_router(
+            routes_auth.build_router(api_token, parsed_tokens, session_secret),
+            prefix="/api/v1",
+        )
 
     _mount_core_routers(
         app, agent_manager, router, bus, plugin_manager, config,
