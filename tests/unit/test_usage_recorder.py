@@ -183,6 +183,31 @@ def test_record_llm_failure_keeps_zero_usage() -> None:
     assert captured[0].latency_ms == 12
 
 
+def test_record_llm_passes_through_correlation_ids_and_fallback() -> None:
+    """J1: trace_id/request_id/agent_id/session_id/fallback_from 不再恒为空/None。"""
+    captured: list[ModelUsageEvent] = []
+    recorder = UsageRecorder(store=None)
+    recorder.record = lambda e: captured.append(e)  # type: ignore[method-assign]
+    recorder.record_llm(
+        model="m",
+        provider="P",
+        response=None,
+        status="success",
+        latency_ms=5,
+        agent_id="a1",
+        session_id="s1",
+        trace_id="t1",
+        request_id="r1",
+        fallback_from="primary-model",
+    )
+    event = captured[0]
+    assert event.agent_id == "a1"
+    assert event.session_id == "s1"
+    assert event.trace_id == "t1"
+    assert event.request_id == "r1"
+    assert event.fallback_from == "primary-model"
+
+
 async def test_recorder_flush_without_store_clears_buffer() -> None:
     recorder = UsageRecorder(store=None)
     recorder.record(_event())
@@ -231,3 +256,125 @@ async def test_provider_manager_records_on_failure() -> None:
     with pytest.raises(RuntimeError):
         await manager._call_and_record(_FakeProvider(fail=True))
     assert recorder.pending_count == 1
+
+
+async def test_chat_with_retry_passes_agent_session_trace_id_to_usage_event() -> None:
+    """J1: loop.py 传入的 agent_id/session_id/trace_id 要贯穿到记录的 ModelUsageEvent。"""
+    captured: list[ModelUsageEvent] = []
+    recorder = UsageRecorder(store=None)
+    recorder.record = lambda e: captured.append(e)  # type: ignore[method-assign]
+    manager = ProviderManager({}, usage_recorder=recorder)
+
+    await manager.chat_with_retry(
+        _FakeProvider(), agent_id="a1", session_id="s1", trace_id="t1", system="s", messages=[]
+    )
+
+    assert len(captured) == 1
+    assert captured[0].agent_id == "a1"
+    assert captured[0].session_id == "s1"
+    assert captured[0].trace_id == "t1"
+    assert captured[0].request_id != ""
+
+
+async def test_streaming_call_records_usage_via_record_stream_result() -> None:
+    """J1: loop.py 流式分支此前完全绕过计量; 补齐后流式调用也应记录一次用量。"""
+    from types import SimpleNamespace
+
+    from isac.agent.hooks import AgentHooks
+    from isac.agent.loop import ISACAgentLoop
+    from isac.agent.prompt_builder import SystemPromptBuilder
+    from isac.agent.tools.registry import ToolRegistry
+    from isac.core.types import AgentContext, LLMChunk
+    from tests.fixtures.fakes import FakeLLMProvider
+
+    captured: list[ModelUsageEvent] = []
+    recorder = UsageRecorder(store=None)
+    recorder.record = lambda e: captured.append(e)  # type: ignore[method-assign]
+    manager = ProviderManager({}, usage_recorder=recorder)
+
+    provider = FakeLLMProvider(
+        scripted_chunks=[
+            [LLMChunk(delta_content="hi", finish_reason="stop", usage=TokenUsage(prompt_tokens=3, completion_tokens=2))]
+        ]
+    )
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=ToolRegistry(),
+        provider_manager=manager,
+    )
+    ctx = AgentContext(
+        session=SimpleNamespace(session_id="s1"),
+        user_profile=None,
+        current_message=object(),
+        streaming=True,
+        services={"agent_id": "a1", "task_id": "t1"},
+    )
+
+    result = await loop.run([{"role": "user", "content": "hi"}], ctx)
+
+    assert result.content == "hi"
+    assert len(captured) == 1
+    assert captured[0].agent_id == "a1"
+    assert captured[0].session_id == "s1"
+    assert captured[0].trace_id == "t1"
+    assert captured[0].status == "success"
+    assert captured[0].usage.total_tokens == 5
+
+
+async def test_streaming_call_records_failed_status_when_stream_raises() -> None:
+    """流式过程中抛异常时也要记一条 status=failed 的用量事件, 而不是完全不记录。"""
+    from types import SimpleNamespace
+
+    from isac.agent.hooks import AgentHooks
+    from isac.agent.loop import ISACAgentLoop
+    from isac.agent.prompt_builder import SystemPromptBuilder
+    from isac.agent.tools.registry import ToolRegistry
+    from isac.core.types import AgentContext
+
+    captured: list[ModelUsageEvent] = []
+    recorder = UsageRecorder(store=None)
+    recorder.record = lambda e: captured.append(e)  # type: ignore[method-assign]
+    manager = ProviderManager({}, usage_recorder=recorder)
+
+    loop = ISACAgentLoop(
+        llm=_RaisingStreamProvider(),
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=ToolRegistry(),
+        provider_manager=manager,
+    )
+    ctx = AgentContext(
+        session=SimpleNamespace(session_id="s1"),
+        user_profile=None,
+        current_message=object(),
+        streaming=True,
+        services={"agent_id": "a1", "task_id": "t1"},
+    )
+
+    with pytest.raises(RuntimeError):
+        await loop.run([{"role": "user", "content": "hi"}], ctx)
+
+    assert len(captured) == 1
+    assert captured[0].status == "failed"
+    assert captured[0].usage.total_tokens == 0
+
+
+class _RaisingStreamProvider:
+    """chat_stream() 产出一个 chunk 后抛异常, 模拟流式过程中失败。"""
+
+    async def chat(self, **kwargs):
+        raise NotImplementedError
+
+    async def chat_stream(self, *a, **k):
+        from isac.core.types import LLMChunk
+
+        yield LLMChunk(delta_content="partial")
+        raise RuntimeError("stream broke")
+
+    def get_model_name(self) -> str:
+        return "raising-stream"
+
+    def get_capabilities(self):
+        return None
