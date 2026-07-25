@@ -31,6 +31,7 @@ def create_control_app(
     artifact_store: Any = None,
     session_manager: Any = None,
     metadata_store: Any = None,
+    event_bus: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -75,7 +76,7 @@ def create_control_app(
     )
     _mount_optional_routers(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
-        artifact_store, session_manager, metadata_store, auth_dependency,
+        artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -176,9 +177,10 @@ def _mount_optional_routers(
     artifact_store: Any,
     session_manager: Any,
     metadata_store: Any,
+    event_bus: Any,
     auth_dependency: Any,
 ) -> None:
-    """挂载可选路由 (usage / subagent / providers / config / sessions / memory)。"""
+    """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events)。"""
     if usage_store is not None:
         from isac.control.api import routes_usage
 
@@ -224,3 +226,11 @@ def _mount_optional_routers(
     memory_router = routes_memory.build_router(metadata_store, auth_dependency=auth_dependency)
     if memory_router is not None:
         app.include_router(memory_router, prefix="/api/v1")
+    # J3-4: Events SSE 路由 (event_bus 注入时挂载)
+    if event_bus is not None:
+        from isac.control.api import routes_events
+
+        app.include_router(
+            routes_events.build_router(event_bus, auth_dependency=auth_dependency),
+            prefix="/api/v1",
+        )
