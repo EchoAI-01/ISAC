@@ -198,7 +198,11 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         from isac.observability.usage.storage import UsageStore
 
         usage_store = UsageStore(str(DATA_DIR / "usage" / "usage.db"))
-        usage_recorder = UsageRecorder(store=usage_store, pricing=PricingCatalog())
+        usage_recorder = UsageRecorder(
+            store=usage_store,
+            pricing=PricingCatalog(),
+            flush_interval_seconds=float(usage_config.get("flush_interval_seconds", 30)),
+        )
 
     provider_manager = ProviderManager(global_config.get("llm", {}), metrics=metrics, usage_recorder=usage_recorder)
     memory_config = global_config.get("memory", {})
@@ -535,21 +539,29 @@ async def _register_control_plane(
 
 
 def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
-    """J1: 仅在启用计量时注册用量存储生命周期 (stop 时先 flush 缓冲再关连接)。
+    """J1: 仅在启用计量时注册用量存储 + 周期性 flush 的生命周期。
 
     未启用计量 (usage_store 为 None) 时直接返回, 不注册任何生命周期, 主链路零变化。
+    start: 先打开 DB 连接再启动周期任务 (避免周期任务第一次 tick 时连接还没就位);
+    stop: 先停周期任务 (内部已含最终 flush) 再关连接, 顺序反过来会导致最后一批
+    缓冲事件在落库前连接已关闭而丢失。
     """
     usage_store = services.get("usage_store")
     if usage_store is None:
         return
     usage_recorder = services.get("usage_recorder")
 
+    async def _usage_start() -> None:
+        await usage_store.start()
+        if usage_recorder is not None:
+            await usage_recorder.start()
+
     async def _usage_stop() -> None:
         if usage_recorder is not None:
-            await usage_recorder.flush()
+            await usage_recorder.stop()
         await usage_store.stop()
 
-    runtime.register_lifecycle("usage_store", usage_store.start, _usage_stop)
+    runtime.register_lifecycle("usage_store", _usage_start, _usage_stop)
 
 
 def _register_subagent_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
