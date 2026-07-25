@@ -73,3 +73,10 @@ class InterAgentLinkDeniedError(ISACError):
 
     code = "INTER_AGENT_DENIED"
     retriable = False
+
+
+class MediaValidationError(ISACError):
+    """媒体输入校验失败 (路径越权 / 大小超限 / MIME 未知 / kind 不匹配)"""
+
+    code = "MEDIA_VALIDATION_ERROR"
+    retriable = False
