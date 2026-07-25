@@ -41,7 +41,7 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 2. **[x] D9 任务进度报告** — 实现 `ProgressEvent`/`ProgressReporter`,工具完成后按人设汇报;是 J4 与 WebUI 任务时间线的前置。已完成,详见上文 D9 节点"当前"。
 3. **[x] J1 Token 用量与成本计量** — 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。已完成,详见下文 J1 节点"当前"。
 4. **[x] J2 多模态 Provider 与能力选择** — 落地 `ModelDescriptor`/`ModelCatalog`/`ModelRouter`/`ArtifactStore`, 填充 `provider/{embed,rerank,stt_tts}` 空目录。已完成, 详见下文 J2 节点"当前"。
-5. **J4 SubAgent Runtime** — 基于 D9/J1 实现隔离子 Agent 与可追溯 `SubAgentJournal`,把 H3 `TaskRunner` 原型迁移为 `SubAgentSupervisor`。
+5. **[x] J4 SubAgent Runtime** — 基于 D9/J1 实现隔离子 Agent 与可追溯 `SubAgentJournal`,把 H3 `TaskRunner` 原型迁移为 `SubAgentSupervisor`。已完成, 详见下文 J4 节点"当前"。
 6. **J3 WebUI v2** — 汇聚上述能力,提供十域管理与观测面板。
 7. **experimental 桩补齐** — VectorStore(sqlite-vec)、GraphStore、Reranker、MemoryConsolidator、完整 ConversationRuntime。
 
@@ -402,12 +402,21 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：G1-G4、I1/I5、D9、J1-J2。
   - **当前**：十个页面域、配置编辑事务、Schema/diff/确认/ETag、密钥不回显、实时事件恢复、响应式、WCAG 2.1 AA 与浏览器测试要求已写入 `CONTROL_PLANE_SPEC.md` 和 `ARCHITECTURE.md`；代码待实现。现有 Vanilla JS 四模块面板保留为 v1 最小实现，不视为 J3 完成。
 
-- [ ] **J4 SubAgent Runtime 与可追溯任务日志**
+- [x] **J4 SubAgent Runtime 与可追溯任务日志**
   - **验收**：每个 Agent 可用 `delegate_task` 创建隔离子任务；子 Agent 使用独立 History/Prompt/Budget/Workspace 和父权限子集；主 Agent 默认只收到结构化结果、证据引用和用量摘要；可通过 task_id 列表、查询状态、分页读取脱敏日志、取消任务；日志持久化后重启仍可查询；不记录原始 reasoning；子 Agent 默认不能直接发消息、写长期记忆或无限派生。
   - **产出**：`runtime/subagent/{models,supervisor,context,journal,broker}.py`、delegate/list/status/log/cancel 工具、SQLite Journal、Control API/WebUI 时间线、恢复/取消/权限/隐私/预算测试。
   - **依赖**：K1-K5、D3-D4、D9、J1、K3-K4。
-  - **当前**：架构、数据契约、陪伴上下文隔离、Agent Mesh 边界、日志与控制面接口已写入 `REQUIREMENTS.md`、`ARCHITECTURE.md`、`SPECIFICATION.md`、`HUMANLIKE_RUNTIME.md`、`ROUTING_AND_AGENT_MESH.md`、`CONTROL_PLANE_SPEC.md`、`DEVELOP.md`；**能力框架 (scaffolding) 已落地**——`runtime/subagent/{models,journal,context,supervisor,broker}.py`（全部 §2.5 契约 + `SubAgentPolicy.intersect` 权限交集 + `(task_id,seq)` 追加日志 + 幂等取消）、`agent/tools/subagent.py`（delegate/list/status/log/cancel，默认 deny/restricted）、`main` 注入 `subagent_supervisor` 并按 `subagent.enabled` 注册 Journal 生命周期，`task` 工具留迁移锚点，附 `tests/unit/test_subagent_supervisor.py`。真实子 Agent 执行循环（独立 History/Prompt/Budget/Workspace）、恢复/取消向 Provider/工具/子进程传播待实现节点补齐。
-  - **迁移**：H3 `TaskRunner` 仅为复用主 Loop/Session 的原型。J4 实现时应保留 `task` 工具的兼容入口，但内部迁移到 `SubAgentSupervisor`，不得继续共享主会话可变上下文（`agent/tools/utility/task.py` 已留 `TODO(J4)` 锚点）。
+  - **当前**：已完成 (2026-07-25)。SubAgent Runtime 真实执行循环落地:
+    - **SubAgentSupervisor 真实执行循环** (`isac/runtime/subagent/supervisor.py`): `submit()` 接受 `runner_factory` 注入, 用 `asyncio.create_task` 后台派生子 Agent 执行; 状态机 `queued→running→succeeded/failed/cancelled/timed_out`; 超时通过 `asyncio.wait_for` 控制; 取消通过 `asyncio.Task.cancel()` 传播; `_transition` helper 抽出状态转移 + journal 写入, 降低圈复杂度; 未注入 runner_factory 时保持骨架行为 (返回 queued, 不启动后台 task)。
+    - **delegate_task 工具真实链路** (`isac/agent/tools/subagent.py`): 构造 SubAgentTask → supervisor.submit() → poll get_status 直到终态 → 返回 result.summary; 等待超时返回当前状态 (不取消, 后台 task 继续); `_format_terminal_result` 优先从 `run.result_summary` 取 (J4-2 新增字段)。
+    - **H3 TaskRunner 迁移** (`isac/agent/tools/utility/task.py`): 删除 TODO(J4) 标记, 内部委托 supervisor.submit(); 保留 task + budget_tokens 接口向后兼容; 保留 task_depth 递归深度限制 (默认 3, 防无限派生); 无 supervisor 时回退到旧 task_runner 路径。
+    - **SubAgentRun 新增 result_summary 字段**: succeeded 时存 runner 返回的 SubAgentResult.summary, 供工具直接读取, 不依赖 journal fetch。
+    - **取消传播 + 重启恢复** (`supervisor.py`): `cancel()` 用 `asyncio.Task.cancel()` 传播到 runner (CancelledError); `restore_interrupted()` 从 Journal.restore() 读出持久化 run, 把 running/queued/waiting_tool 标记为 cancelled (中断后不恢复旧进度, 与 D9 思路一致); 已终态保留不改写; main.py 在 runtime.start() 后调 `_restore_subagent_interrupts(services)`。
+    - **Journal schema 扩展** (`isac/runtime/subagent/journal.py`): subagent_runs 表加 result_summary 列; `_ensure_column()` 旧库迁移 (PRAGMA table_info 探测 + ALTER TABLE); append() 支持 seq 自动分配 (event.seq<=0 时由 DB 查 MAX(seq)+1 分配)。
+    - **Control API routes_subagent** (`isac/control/api/routes_subagent.py`): `POST /agents/{id}/subagent-runs` 派生 / `GET /agents/{id}/subagent-runs` 列出 / `GET /subagent-runs/{task_id}` 查询状态 / `GET /subagent-runs/{task_id}/events` 分页读取事件 / `POST /subagent-runs/{task_id}/cancel` 取消 (幂等); Bearer Token 认证; 无 supervisor 时整个路由不挂载 (404); `create_control_app` 新增 subagent_supervisor 参数。
+    - **DEFAULT_POLICY**: delegate_task 从 deny 改 restricted (需显式授权, 但不再默认禁用)。
+    - 覆盖测试: `tests/unit/test_subagent_supervisor.py` (19) / `test_subagent_supervisor_exec.py` (7) / `test_delegate_task_wired.py` (10) / `test_subagent_restore.py` (5) / `test_control_api_subagent.py` (8); 集成测试 `tests/integration/test_j4_subagent_flow.py` (5)。共 751 测试全绿。
+  - **边界**: SubAgentPolicy.intersect() 采用 fail-closed (AND/min/∩, 空集拒绝全部); AgentConfig.model_capabilities_allow 字段仍留 J4+ (assembly.py getattr 兜底); ContextEnvelope 不复制主会话可变上下文 (MoodState/RelationshipState/用户画像/私有记忆正文); 子 Agent 默认不能直接发消息、写长期记忆或无限派生 (allow_channel_send/allow_memory_write/allow_delegate 默认 False); list_subagent-runs 按 parent_agent_id 过滤 TODO (SubAgentRun 无该字段, 当前返回全部)。
 
 ---
 
