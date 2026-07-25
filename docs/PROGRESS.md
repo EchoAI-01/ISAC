@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-26 (J2/J3/J4 五维度代码评审补充修复 Fix-1~Fix-19 + 阶段 0/1 地基: 可观测性增强落地 + L1 ConversationRuntime 框架 scaffolding + 文档体系补齐)
+> 最近更新: 2026-07-26 (L/M/N/O 全部 14 子节点框架 scaffolding 落地 + 可观测性增强 + 文档体系;957 单测通过)
 
 ## 节点总览
 
@@ -19,10 +19,10 @@
 | I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成 (浏览器测试 CI 接入待 K8-2) |
 | J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步);2026-07-26 五维度代码评审发现的 J2/J3/J4 缺口 (媒体校验未接线、J4 执行循环未接线、Token Scope/SSE scope 过滤/CSRF 会话缺失等 20 项) 已逐项修复,详见下方"J2/J3/J4 补充修复"|
 | K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试 CI 接入与发布准入收尾 |
-| L | 拟人化运行时落地 | 15% | L1 ConversationRuntime 框架 scaffolding 已落地;L2-L5 待续 |
-| M | 路由与 Agent Mesh 深化 | 0% | 仅设计蓝图 (observer/candidate 路由、handoff/notify/memory_query) |
-| N | 记忆深化 | 0% | 仅设计蓝图 (统一 MemoryItem、记忆治理、身份归一) |
-| O | 企业化与平台扩展 | 0% | 仅设计蓝图 (多租户、进程隔离、Workflow、平台扩展、Video Provider) |
+| L | 拟人化运行时落地 | 框架就位 | L1-L5 全部 scaffolding 已落地 (契约+骨架+惰性接线);业务实现 (debounce/主动/打断/恢复) 待续 |
+| M | 路由与 Agent Mesh 深化 | 框架就位 | M1/M2 scaffolding 已落地 (runtime/mesh/ + A2A 工具骨架, 默认 deny);仲裁/投递待续 |
+| N | 记忆深化 | 框架就位 | N1/N2/N3 scaffolding 已落地 (MemoryItem/MemoryGovernor/IdentityResolver);迁移/治理/归一待续 |
+| O | 企业化与平台扩展 | 框架就位 | O1-O5 scaffolding 已落地 (多租户/插件隔离/Workflow/平台模板/Video Provider);业务实现待续 |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
 ## 可运行性状态
@@ -30,7 +30,7 @@
 **已达到「可运行」完成度**(2026-07-25 实测):
 
 - 主程序实测驻留(`RESIDENT_AFTER_3S=True`),支持 SIGINT/SIGTERM 优雅关闭。
-- 914 单元/集成测试通过;Ruff 通过;Mypy 全绿(207 文件)。
+- 957 单元/集成测试通过;Ruff 通过;Mypy 全绿。
 - 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke、J2 多模态全链 + Channel 投递、J4 SubAgent 全链 + Control API、J3 WebUI v2 SPA 十域。
 - 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用。
 - Agent / Session / 路由 / Link / 记忆可持久化恢复;SubAgent 任务可重启恢复 (running/queued → cancelled)。
@@ -74,13 +74,16 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 | 能力 | 状态 |
 |------|------|
 | MemoryConsolidator | 留后续迭代 (后台任务, 非本批次) |
-| ConversationRuntime | 框架已搭建 (scaffolding, L1);业务实现 L2-L5 待续,见 DEVELOPMENT_PLAN.md §四 L 节点 |
+| L 拟人化运行时 (L1-L5) | 框架已搭建 (scaffolding);ConversationRuntime + debounce/scheduler/interrupt/recovery 骨架就位, 业务实现待续 |
+| M 路由 Mesh (M1-M2) | 框架已搭建 (scaffolding);MeshRouter/MeshActionBroker + A2A 工具骨架就位, 仲裁/投递待续 |
+| N 记忆深化 (N1-N3) | 框架已搭建 (scaffolding);MemoryItem/MemoryGovernor/IdentityResolver 骨架就位, 迁移/治理/归一待续 |
+| O 企业化 (O1-O5) | 框架已搭建 (scaffolding);多租户/插件隔离/Workflow/平台模板/Video Provider 骨架就位, 业务实现待续 |
 
 **既有桩待补:**
 
 - Reranker 真实后端 (`RerankerProvider` 目前只有 `StubRerankerProvider`)
 - MemoryConsolidator
-- 完整 ConversationRuntime 业务逻辑 (L2 Wait 闭环/debounce、L3 主动任务、L4 打断、L5 上下文恢复);L1 框架已 scaffolding
+- L/M/N/O 全部 14 子节点的**业务实现** (契约 + 骨架已 scaffolding, 见上表);各节点 TODO(节点) 标注挂接点
 
 ## 编号约定
 

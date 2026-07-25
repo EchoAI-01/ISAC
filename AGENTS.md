@@ -46,7 +46,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-D9/J1/J2/J3/J4 能力框架已落地;可观测性增强 (trace 贯穿 + 分级日志) 已横切落地。拟人化地基 L1 ConversationRuntime 已 scaffolding,L2-L5 (Wait 闭环/主动/打断/上下文恢复) 待续;后续大节点 M (路由 Mesh) / N (记忆深化) / O (企业化) 仅规划。experimental 桩见 VectorStore/GraphStore/Reranker/MemoryConsolidator。详见 [docs/PROGRESS.md](./docs/PROGRESS.md) 与 [docs/ROADMAP.md](./docs/ROADMAP.md)。
+D9/J1/J2/J3/J4 能力框架已落地;可观测性增强 (trace 贯穿 + 分级日志) 已横切落地。拟人化/协作/记忆/企业化四大节点 **L/M/N/O 全部 14 子节点框架已搭建 (scaffolding)**——契约 + 骨架类 + 惰性默认关闭接线就位,主链路零行为变化,各节点 `TODO(节点)` 标注挂接点,业务实现待续。experimental 桩见 VectorStore/GraphStore/Reranker/MemoryConsolidator。详见 [docs/PROGRESS.md](./docs/PROGRESS.md) 与 [docs/ROADMAP.md](./docs/ROADMAP.md)。
 
 ## 目录速查
 
