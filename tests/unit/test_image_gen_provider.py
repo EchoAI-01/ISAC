@@ -88,11 +88,17 @@ async def test_generate_b64_success_stores_to_artifact_store(
 async def test_generate_url_downloads_and_stores(
     artifact_store: ArtifactStore,
 ) -> None:
+    """url 响应格式: 用字面量公网 IP 而不是域名, 避免测试触发真实 DNS 解析
+    (SSRF 校验对域名会做 socket.getaddrinfo, 对 IP 字面量走纯本地判断)。"""
+
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if "/images/generations" in url:
-            return httpx.Response(200, content=_url_response(n=1))
-        # 图片下载请求 (https://cdn.openai.com/image-0.png)
+            return httpx.Response(200, content=json.dumps({
+                "created": 1234567890,
+                "data": [{"url": "https://93.184.216.34/image-0.png"}],
+            }).encode("utf-8"))
+        # 图片下载请求
         return httpx.Response(200, content=b"\x89PNG\r\n\x1a\ndownloaded image bytes")
 
     provider = _make_provider(handler, artifact_store=artifact_store)
@@ -100,6 +106,30 @@ async def test_generate_url_downloads_and_stores(
     assert len(refs) == 1
     got = await artifact_store.get(refs[0].artifact_id)
     assert got == b"\x89PNG\r\n\x1a\ndownloaded image bytes"
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_generate_url_pointing_to_cloud_metadata_is_blocked(
+    artifact_store: ArtifactStore,
+) -> None:
+    """安全修复: 图片生成 API 返回的 url 必须经 SSRF 校验; 169.254.169.254 是
+    常见云平台元数据接口地址, 是 SSRF 攻击的经典目标。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "/images/generations" in url:
+            return httpx.Response(200, content=json.dumps({
+                "created": 1234567890,
+                "data": [{"url": "http://169.254.169.254/latest/meta-data/"}],
+            }).encode("utf-8"))
+        # 不应该真的发出这个下载请求
+        return httpx.Response(200, content=b"leaked metadata")
+
+    provider = _make_provider(handler, artifact_store=artifact_store)
+    with pytest.raises(LLMError) as exc_info:
+        await provider.generate(prompt="a dog", n=1)
+    assert exc_info.value.retriable is False
     await provider.aclose()
 
 

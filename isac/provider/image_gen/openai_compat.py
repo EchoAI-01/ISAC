@@ -21,6 +21,7 @@ from isac.core.exceptions import LLMError
 from isac.provider.base import ImageGenerationProvider
 from isac.provider.llm.openai_compat import OpenAICompatProvider
 from isac.utils.logger import get_logger
+from isac.utils.ssrf import SSRFBlockedError, validate_webhook_url
 
 if TYPE_CHECKING:
     from isac.artifacts.store import ArtifactStore
@@ -162,7 +163,16 @@ class OpenAICompatImageGenProvider(ImageGenerationProvider):
         return refs
 
     async def _download_url(self, url: str) -> bytes:
-        """下载远程图片为 bytes (用于 url 响应格式)。"""
+        """下载远程图片为 bytes (用于 url 响应格式)。
+
+        安全: url 来自 Provider 的响应, 不是本进程写死的地址; 图片生成端点若被
+        配置错误/劫持指向内网, 裸下载会让本进程被用作 SSRF 跳板 (读取云平台
+        元数据接口等)。下载前必须复用与 Webhook 相同的 SSRF 校验。
+        """
+        try:
+            validate_webhook_url(url, allow_local=False)
+        except SSRFBlockedError as exc:
+            raise LLMError(f"图片下载 URL 被 SSRF 校验拒绝: {exc}", retriable=False) from exc
         client = self._get_client()
         try:
             response = await client.get(url)
