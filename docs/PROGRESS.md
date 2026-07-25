@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-26 (阶段 0/1 地基: 可观测性增强落地 + L1 ConversationRuntime 框架 scaffolding + 文档体系补齐)
+> 最近更新: 2026-07-26 (J2/J3/J4 五维度代码评审补充修复 Fix-1~Fix-19 + 阶段 0/1 地基: 可观测性增强落地 + L1 ConversationRuntime 框架 scaffolding + 文档体系补齐)
 
 ## 节点总览
 
@@ -17,7 +17,7 @@
 | G | 控制面与自动化 | 100% | Admin API / MCP / Webhook / 安全默认值 |
 | H | 平台与工具扩展 | 100% | Telegram/Discord/WebChat + MCP Client + 实用工具 |
 | I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成 (浏览器测试 CI 接入待 K8-2) |
-| J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步) |
+| J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步);2026-07-26 五维度代码评审发现的 J2/J3/J4 缺口 (媒体校验未接线、J4 执行循环未接线、Token Scope/SSE scope 过滤/CSRF 会话缺失等 20 项) 已逐项修复,详见下方"J2/J3/J4 补充修复"|
 | K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试 CI 接入与发布准入收尾 |
 | L | 拟人化运行时落地 | 15% | L1 ConversationRuntime 框架 scaffolding 已落地;L2-L5 待续 |
 | M | 路由与 Agent Mesh 深化 | 0% | 仅设计蓝图 (observer/candidate 路由、handoff/notify/memory_query) |
@@ -51,6 +51,14 @@
 
 ## 待实现能力
 
+**J2/J3/J4 补充修复 (2026-07-26)**:
+
+对 J2/J3/J4 做五维度代码评审后发现 7 项 Critical + 8 项 Required 缺口 (均已直接
+读代码确认, 非道听途说), 逐项 TDD 修复并独立提交:
+- J2: `MediaNormalizer` 接入 `TranscribeAudioTool`/`VisionUnderstandTool` 生产路径 (此前授权这两个工具的 Agent 可读任意本地文件); 图片生成下载 URL 补 SSRF 校验。
+- J4: 子 Agent 真实执行循环接入生产 (此前 `delegate_task` 永远停在 `queued`); `SubAgentPolicy` 空集改严格交集 (此前 fail-open); 递归深度限制; 取消超时不再静默; Journal 脱敏补 `summary`/`max_log_bytes`; `_authorize` 补跨 Agent 校验。
+- J3: `PATCH /agents/{id}` If-Match 改读 HTTP Header (原来是 query 参数, 会被静默忽略) + `AgentManager` 按 agent_id 加配置锁修复并发竞态; `CONTROL_PLANE_SPEC.md` §6.1 描述的 Token Scope 模型 (`control.tokens[]`) 落地; SSE 事件按 scope 过滤 + 连接数上限; Provider 测试/制品删除端点补审计日志; `InterAgentLink` 格式校验 + WebUI 审计日志渲染改用 `textContent` (修复存储型 XSS); `POST /auth/session` 会话 Cookie + CSRF 双提交校验 (§8.2 第 5 条)。
+
 **J3 已完成 (2026-07-25)**:
 
 J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"当前"):
@@ -70,9 +78,7 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 
 **既有桩待补:**
 
-- 记忆向量检索 (VectorStore / sqlite-vec)
-- 记忆图谱 (GraphStore)
-- Reranker 真实后端
+- Reranker 真实后端 (`RerankerProvider` 目前只有 `StubRerankerProvider`)
 - MemoryConsolidator
 - 完整 ConversationRuntime 业务逻辑 (L2 Wait 闭环/debounce、L3 主动任务、L4 打断、L5 上下文恢复);L1 框架已 scaffolding
 
