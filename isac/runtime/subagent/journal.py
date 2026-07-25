@@ -1,10 +1,8 @@
 """J4 子任务追加式日志 (SPECIFICATION.md 2.5)。
 
 按 ``(task_id, seq)`` 追加持久化; 重启后可恢复终态日志。日志记录可审计事实, 不记录
-模型原始 reasoning; 凭据和敏感工具参数必须在持久化前脱敏。
-
-骨架状态: Schema + append/fetch_after/upsert_run/restore 就位, append/fetch 已可用于
-测试; 脱敏为基础键名过滤占位, 统一脱敏器与 max_log_bytes 截断留待 J4 实现节点。
+模型原始 reasoning; 凭据和敏感工具参数在持久化前按键名过滤脱敏, summary 按
+max_log_bytes 截断。
 """
 
 from __future__ import annotations
@@ -24,6 +22,10 @@ logger = get_logger(__name__)
 
 # 脱敏时从 metadata 中剔除的敏感键 (占位; 实现节点接入统一脱敏器 / SecretStore)。
 _SENSITIVE_KEYS = frozenset({"api_key", "token", "authorization", "cookie", "secret", "password", "arguments"})
+# Fix-9: append() 未显式传 max_log_bytes 时的兜底上限, 与 SubAgentPolicy.max_log_bytes
+# 的裸默认值保持一致 (未接策略上下文的调用点, 如测试/旧调用点, 仍有一个合理上限)。
+_DEFAULT_MAX_LOG_BYTES = 256_000
+_TRUNCATION_SUFFIX = "...(已截断)"
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS subagent_events (
@@ -94,15 +96,16 @@ class SubAgentJournal:
             await self._db.close()
             self._db = None
 
-    async def append(self, event: SubAgentEvent) -> None:
-        """追加一条已脱敏事件。未 start 时静默跳过 (不阻塞主任务)。
+    async def append(self, event: SubAgentEvent, *, max_log_bytes: int | None = None) -> None:
+        """追加一条已脱敏 (且已按 max_log_bytes 截断) 事件。未 start 时静默跳过。
 
         seq 自动分配: event.seq<=0 时由 DB 查 MAX(seq)+1 分配; >0 时保留调用方值
-        (用于测试或幂等重放)。
+        (用于测试或幂等重放)。max_log_bytes 未传时用 _DEFAULT_MAX_LOG_BYTES 兜底
+        (调用方知道任务生效策略时应显式传入该任务的 policy.max_log_bytes)。
         """
         if self._db is None:
             return
-        event = self._sanitize(event)
+        event = self._sanitize(event, max_log_bytes=max_log_bytes)
         # seq<=0 视为"自动分配", 避免覆盖同 (task_id, 0) 的旧行
         if event.seq <= 0:
             cursor = await self._db.execute(
@@ -199,10 +202,22 @@ class SubAgentJournal:
             for row in rows
         ]
 
-    def _sanitize(self, event: SubAgentEvent) -> SubAgentEvent:
-        """剔除敏感 metadata 键 (占位; 不记录 reasoning, max_log_bytes 截断留待实现节点)。"""
+    def _sanitize(self, event: SubAgentEvent, *, max_log_bytes: int | None = None) -> SubAgentEvent:
+        """剔除敏感 metadata 键, 并按 max_log_bytes 截断 summary (防止单条日志无限
+        占用存储; 调用方知道任务生效策略时应传该任务的 policy.max_log_bytes,
+        否则用 _DEFAULT_MAX_LOG_BYTES 兜底)。不记录模型原始 reasoning。
+        """
         if event.metadata:
             event.metadata = {k: v for k, v in event.metadata.items() if k.lower() not in _SENSITIVE_KEYS}
+        limit = max_log_bytes if max_log_bytes is not None else _DEFAULT_MAX_LOG_BYTES
+        if event.summary:
+            encoded = event.summary.encode("utf-8")
+            if len(encoded) > limit:
+                # 按字节截断后用 errors="ignore" 丢弃被截断多字节字符的残余部分,
+                # 再拼后缀 (后缀本身也计入上限, 避免拼接后又超限)。
+                suffix_bytes = _TRUNCATION_SUFFIX.encode("utf-8")
+                truncated = encoded[: max(0, limit - len(suffix_bytes))].decode("utf-8", errors="ignore")
+                event.summary = truncated + _TRUNCATION_SUFFIX
         return event
 
     @staticmethod
