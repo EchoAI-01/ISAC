@@ -16,7 +16,10 @@
 - 架构: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)(多 Agent v3.0 + ADR + 目录结构)
 - 规范: [docs/SPECIFICATION.md](./docs/SPECIFICATION.md)(数据模型与接口契约,冻结)
 - 开发: [docs/DEVELOP.md](./docs/DEVELOP.md)(目录/导入/命名/测试/安全规范)
-- 计划: [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md)(节点 SOW/TODO/下一步)
+- 模块指南: [docs/MODULE_GUIDE.md](./docs/MODULE_GUIDE.md)(scaffolding 框架先行范式,新增子系统必读)
+- 计划: [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md)(节点 SOW/TODO/下一步,含 L/M/N/O)
+- 路线: [docs/ROADMAP.md](./docs/ROADMAP.md)(阶段 0-4、里程碑、"进度 0" 能力目标形态)
+- 运维: [docs/MAINTENANCE.md](./docs/MAINTENANCE.md)(排查树/备份/升级) · [docs/LOGGING.md](./docs/LOGGING.md)(日志分级/trace 贯穿)
 - 专项施工图: [HUMANLIKE_RUNTIME](./docs/HUMANLIKE_RUNTIME.md) / [MEMORY_DESIGN](./docs/MEMORY_DESIGN.md) / [ROUTING_AND_AGENT_MESH](./docs/ROUTING_AND_AGENT_MESH.md) / [PLUGIN_COMPATIBILITY](./docs/PLUGIN_COMPATIBILITY.md) / [CONTROL_PLANE_SPEC](./docs/CONTROL_PLANE_SPEC.md)
 
 ## 环境命令
@@ -43,7 +46,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-新增能力 D9(进度报告)/J1(用量计量)/J2(多模态)/J3(WebUI v2)/J4(SubAgent)仅设计待实现;experimental 桩见 VectorStore/GraphStore/MemoryConsolidator。详见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
+D9/J1/J2/J3/J4 能力框架已落地;可观测性增强 (trace 贯穿 + 分级日志) 已横切落地。拟人化地基 L1 ConversationRuntime 已 scaffolding,L2-L5 (Wait 闭环/主动/打断/上下文恢复) 待续;后续大节点 M (路由 Mesh) / N (记忆深化) / O (企业化) 仅规划。experimental 桩见 VectorStore/GraphStore/Reranker/MemoryConsolidator。详见 [docs/PROGRESS.md](./docs/PROGRESS.md) 与 [docs/ROADMAP.md](./docs/ROADMAP.md)。
 
 ## 目录速查
 

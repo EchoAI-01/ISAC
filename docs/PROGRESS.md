@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-25 (J3 WebUI v2 完成; 792 测试通过、Ruff/Mypy 全绿、主程序实测驻留)
+> 最近更新: 2026-07-26 (阶段 0/1 地基: 可观测性增强落地 + L1 ConversationRuntime 框架 scaffolding + 文档体系补齐)
 
 ## 节点总览
 
@@ -19,6 +19,11 @@
 | I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成 (浏览器测试 CI 接入待 K8-2) |
 | J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步) |
 | K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试 CI 接入与发布准入收尾 |
+| L | 拟人化运行时落地 | 15% | L1 ConversationRuntime 框架 scaffolding 已落地;L2-L5 待续 |
+| M | 路由与 Agent Mesh 深化 | 0% | 仅设计蓝图 (observer/candidate 路由、handoff/notify/memory_query) |
+| N | 记忆深化 | 0% | 仅设计蓝图 (统一 MemoryItem、记忆治理、身份归一) |
+| O | 企业化与平台扩展 | 0% | 仅设计蓝图 (多租户、进程隔离、Workflow、平台扩展、Video Provider) |
+| 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
 ## 可运行性状态
 
@@ -61,7 +66,7 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 | 能力 | 状态 |
 |------|------|
 | MemoryConsolidator | 留后续迭代 (后台任务, 非本批次) |
-| ConversationRuntime | 留后续迭代 (大型重构, 独立节点) |
+| ConversationRuntime | 框架已搭建 (scaffolding, L1);业务实现 L2-L5 待续,见 DEVELOPMENT_PLAN.md §四 L 节点 |
 
 **既有桩待补:**
 
@@ -69,9 +74,10 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 - 记忆图谱 (GraphStore)
 - Reranker 真实后端
 - MemoryConsolidator
-- 完整 ConversationRuntime(主动任务、等待、打断闭环)
+- 完整 ConversationRuntime 业务逻辑 (L2 Wait 闭环/debounce、L3 主动任务、L4 打断、L5 上下文恢复);L1 框架已 scaffolding
 
 ## 编号约定
 
 - 大节点 A/B/C… 为里程碑;小节点如 D9、K1 为最小可交付单元。
 - 完成定义 = 非桩实现 + 单元/集成测试 + 实际运行验证 + 文档同步 + Ruff/Mypy 通过。
+- **scaffolding (框架已搭建)** = 契约 + 骨架 + 惰性默认关闭接线 + 骨架单测 + 主链路零行为变化;**不满足完成定义,不标 100%/`[x]`**。技术路线见 [ROADMAP.md](./ROADMAP.md),范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
