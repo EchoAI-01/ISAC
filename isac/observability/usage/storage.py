@@ -1,8 +1,8 @@
 """J1 用量事件持久化 (SQLite / aiosqlite)。
 
-Schema + 连接生命周期 + 批量落库 (insert_many) + 分页查询 (list_events) 已实现;
-多维聚合查询 (aggregate) 是下一个提交的重点, 当前仍返回空列表。计量默认关闭,
-未启用时本类不会被构造, 也不会创建任何 DB 文件。
+Schema + 连接生命周期 + 批量落库 (insert_many) + 分页查询 (list_events) + 多维
+聚合 (aggregate) 均已实现。计量默认关闭, 未启用时本类不会被构造, 也不会创建
+任何 DB 文件。
 """
 
 from __future__ import annotations
@@ -83,6 +83,37 @@ _FILTER_COLUMNS = {
     "operation": "operation",
     "status": "status",
 }
+
+# J1: aggregate() 的 group_by 白名单 (REST 查询参数 → SQL 表达式; "time_bucket" 走
+# 单独分支, 见 _BUCKET_FORMATS)。分组维度不能参数化, 必须靠白名单校验后再拼接 SQL。
+_GROUP_BY_EXPRESSIONS = {
+    "provider": "provider",
+    "model": "model",
+    "agent_id": "agent_id",
+    "session_id": "session_id",
+    "modality": "modality",
+    "operation": "operation",
+    "status": "status",
+    "fallback": "(fallback_from IS NOT NULL)",
+}
+
+_BUCKET_FORMATS = {
+    "hour": "%Y-%m-%d %H:00:00",
+    "day": "%Y-%m-%d",
+}
+
+# J1: aggregate() 按这些列 SUM (created_at 单位 Token 与非 Token 用量); estimated_cost
+# 单独处理 (Decimal 字符串, 不能直接 SUM, 见 aggregate() 内注释)。
+_SUM_COLUMNS = (
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "cache_read_tokens",
+    "cache_write_tokens",
+    "reasoning_tokens",
+    "audio_input_tokens",
+    "audio_output_tokens",
+)
 
 
 class UsageStore:
@@ -203,9 +234,55 @@ class UsageStore:
         return " WHERE " + " AND ".join(clauses), params
 
     async def aggregate(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        """按维度聚合用量与成本。
+        """按维度聚合用量与成本 (供 /usage/models/summary、/usage/models/timeseries)。
 
-        TODO(J1): 按时间 / Provider / 模型 / Agent / 会话 / 模态 / 操作 / 状态 / 回退
-        聚合 token、非 Token 单位与成本; 支持时间范围与分组维度参数。
+        ``filters["group_by"]`` 只接受 ``_GROUP_BY_EXPRESSIONS``/``"time_bucket"`` 白名单
+        内的维度, 非白名单条目直接忽略 (分组列名无法参数化, 必须靠白名单校验后再拼接
+        SQL, 防注入); ``"time_bucket"`` 额外读 ``filters["bucket"]`` ("hour"|"day",
+        默认 "hour") 按 ``created_at`` 分桶。不传 ``group_by`` 时返回一行全局汇总;
+        全库/全部过滤后为空时返回 ``[]`` 而不是一行全 0/None 的幻影汇总行。
+
+        ``estimated_cost_sum`` 是 SQL 端浮点 SUM 后四舍五入到 6 位小数的字符串——
+        是仪表盘展示用的近似汇总, 不是精确记账 (单条事件的 ``estimated_cost`` 仍是
+        精确的 Decimal 字符串, 通过 ``list_events()`` 不受影响); 组内价格全未知
+        (全部 ``estimated_cost IS NULL``) 时 SUM 结果是 ``None``, 不伪造成 0。
         """
-        return []
+        if self._db is None:
+            return []
+        filters = filters or {}
+        where_sql, params = self._build_where(filters)
+        group_keys = [
+            key for key in (filters.get("group_by") or []) if key in _GROUP_BY_EXPRESSIONS or key == "time_bucket"
+        ]
+
+        select_parts: list[str] = []
+        group_exprs: list[str] = []
+        for key in group_keys:
+            if key == "time_bucket":
+                bucket = str(filters.get("bucket") or "hour")
+                fmt = _BUCKET_FORMATS.get(bucket, _BUCKET_FORMATS["hour"])
+                expr = f"strftime('{fmt}', created_at, 'unixepoch')"
+            else:
+                expr = _GROUP_BY_EXPRESSIONS[key]
+            select_parts.append(f"{expr} AS {key}")
+            group_exprs.append(expr)
+
+        measure_parts = ["COUNT(*) AS request_count"]
+        measure_parts += [f"SUM({column}) AS {column}" for column in _SUM_COLUMNS]
+        measure_parts.append("SUM(CAST(estimated_cost AS REAL)) AS estimated_cost_sum")
+
+        query = f"SELECT {', '.join(select_parts + measure_parts)} FROM model_usage_events{where_sql}"  # noqa: S608
+        if group_exprs:
+            query += " GROUP BY " + ", ".join(group_exprs)
+
+        cursor = await self._db.execute(query, params)
+        rows = [dict(row) for row in await cursor.fetchall()]
+
+        if not group_exprs and rows and rows[0]["request_count"] == 0:
+            return []
+        for row in rows:
+            if row.get("estimated_cost_sum") is not None:
+                row["estimated_cost_sum"] = format(round(row["estimated_cost_sum"], 6), ".6f")
+            if "fallback" in row:
+                row["fallback"] = bool(row["fallback"])
+        return rows
