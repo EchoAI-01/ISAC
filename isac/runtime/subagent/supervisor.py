@@ -218,3 +218,33 @@ class SubAgentSupervisor:
         TODO(J4): 校验 requester 是否有权查询 / 操作该 task_id (跨 Agent 边界); 当前放行。
         """
         return None
+
+    async def restore_interrupted(self) -> int:
+        """J4-3: 重启恢复。从 Journal 读出所有持久化 run, 把 running/queued 标记为
+        cancelled (中断后不恢复旧进度, 与 D9 ProgressReporter 思路一致); 已终态保留。
+
+        返回标记为 cancelled 的 run 数量。无 Journal 时返回 0 (no-op)。
+        """
+        if self._journal is None:
+            return 0
+        # 先从 DB 读出所有持久化 run, 重建内存索引
+        persisted = await self._journal.restore()
+        if not persisted:
+            return 0
+        now = int(time.time())
+        marked = 0
+        for run in persisted:
+            # 重建内存索引 (重启后 _runs 是空的)
+            self._runs[run.task_id] = run
+            # running/queued 视为中断, 标记 cancelled
+            if run.status in ("running", "queued", "waiting_tool"):
+                run.status = "cancelled"
+                run.updated_at = now
+                run.finished_at = now
+                run.error_code = "INTERRUPTED"
+                run.error_summary = "进程重启, 任务中断"
+                marked += 1
+                await self._journal.upsert_run(run)
+        if marked > 0:
+            logger.info("SubAgent 重启恢复完成", marked_cancelled=marked, total=len(persisted))
+        return marked
