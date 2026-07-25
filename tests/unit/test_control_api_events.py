@@ -72,6 +72,38 @@ def test_events_stream_with_last_event_id_header() -> None:
         assert len(chunks) >= 1
 
 
+def test_events_stream_last_event_id_header_actually_skips_seen_events() -> None:
+    """Fix-11: last_event_id 之前只绑定 query 参数, 真实 EventSource 重连时发的
+    Last-Event-ID 请求头会被忽略, 导致断线恢复重复推送已经收到过的事件。这里
+    预先写入 3 条事件, 用 Header (不是 query) 声明"已看到 id=2", 断言只收到
+    id=3 之后的事件, 而不是把 3 条全部重推一遍。"""
+    import asyncio
+
+    from isac.core.events import EventType
+
+    event_bus = EventBus()
+    app = _make_app(event_bus)
+
+    async def _fire_three() -> None:
+        for i in range(3):
+            await event_bus.fire_async(EventType.POST_MESSAGE, {"event_type": "agent.status_changed", "n": i})
+
+    asyncio.run(_fire_three())
+
+    client = TestClient(app)
+    with client.stream(
+        "GET",
+        "/api/v1/events/stream?heartbeat_seconds=5&max_chunks=1",
+        headers={"Authorization": "Bearer test-token", "Last-Event-ID": "2"},
+    ) as resp:
+        assert resp.status_code == 200
+        chunks = list(resp.iter_text())
+        assert len(chunks) == 1
+        assert '"n": 2' in chunks[0]
+        assert '"n": 0' not in chunks[0]
+        assert '"n": 1' not in chunks[0]
+
+
 def test_token_auth_required() -> None:
     app = _make_app()
     client = TestClient(app)
