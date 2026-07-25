@@ -59,15 +59,31 @@ class PricingCatalog:
     def estimate_cost(self, event: ModelUsageEvent) -> str | None:
         """按调用时价格快照估算成本 (Decimal 字符串)。未知价格返回 None。
 
-        cache_read_tokens/audio_input_tokens 是 prompt_tokens 的子集, audio_output_tokens
-        是 completion_tokens 的子集 (OpenAI 语义): 从基础档中减去后单独按 (专属价或回退到
-        基础价) 计价, 避免重复计数。reasoning_tokens 同样是 completion_tokens 子集, 但
-        OpenAI 按输出价整体计费, 故只做可观测拆分, 不参与计价公式。cache_write_tokens
-        当前没有 Provider 产生非 0 值, 不是任何字段的子集, 按额外加项计入。
+        text modality (token 单位) 用分档公式:
+          cache_read_tokens/audio_input_tokens 是 prompt_tokens 的子集,
+          audio_output_tokens 是 completion_tokens 的子集 (OpenAI 语义):
+          从基础档中减去后单独按 (专属价或回退到基础价) 计价, 避免重复计数。
+          reasoning_tokens 同样是 completion_tokens 子集, 但 OpenAI 按输出价
+          整体计费, 故只做可观测拆分, 不参与计价公式。cache_write_tokens
+          当前没有 Provider 产生非 0 值, 不是任何字段的子集, 按额外加项计入。
+
+        非文本 modality (image/audio_stt/audio_tts/embed/rerank/video 等):
+          按 input_units * input_price + output_units * output_price 计算,
+          unit_name 由 PriceSnapshot 配置 (image/second/vector/candidate)。
         """
         snapshot = self.lookup(event.provider, event.model, event.modality)
         if snapshot is None:
             return None
+        # 非文本 modality: 按 input_units/output_units 计价
+        if event.modality != "text":
+            input_price = Decimal(snapshot.input_price_per_unit)
+            output_price = Decimal(snapshot.output_price_per_unit)
+            total = (
+                Decimal(event.input_units) * input_price
+                + Decimal(event.output_units) * output_price
+            )
+            return str(total)
+        # text modality: 走分档 token 公式 (含 cache/audio 明细)
         usage = event.usage
         input_price = Decimal(snapshot.input_price_per_unit)
         output_price = Decimal(snapshot.output_price_per_unit)
