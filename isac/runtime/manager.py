@@ -47,6 +47,11 @@ class AgentManager:
         """
         self._agents: dict[str, AgentInstance] = {}
         self._services = services
+        # Fix-2: 按 agent_id 的配置锁, 用于 PATCH 时把"读 revision → 校验 if_match →
+        # 合并 → 持久化 → reload_config"整段串行化, 避免并发 PATCH 静默丢更新。
+        # agent_id 数量受限于实际创建过的 Agent 数 (不像 session 那样量级无界),
+        # 不需要 SessionLockManager 那种引用计数回收, destroy() 时清理即可。
+        self._config_locks: dict[str, asyncio.Lock] = {}
 
     # ── 生命周期 (控制面暴露) ──────────────────────────────
 
@@ -90,9 +95,23 @@ class AgentManager:
         """销毁 Agent。keep_memory=True 时保留记忆数据。"""
         self._require(agent_id)
         del self._agents[agent_id]
+        self._config_locks.pop(agent_id, None)
         self._update_active_gauge()
         # TODO: keep_memory=False 时清理 data/agents/<id>/memory/
         logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
+
+    def acquire_config_lock(self, agent_id: str) -> asyncio.Lock:
+        """按 agent_id 取配置锁 (Fix-2, 不存在则创建)。
+
+        供控制面 PATCH 端点 ``async with manager.acquire_config_lock(agent_id):``
+        包住整段"读取当前配置 → 校验 If-Match → 合并 → 持久化 → reload_config",
+        使同一 agent_id 的并发 PATCH 严格串行, 不会互相用过期的基线覆盖对方的改动。
+        """
+        lock = self._config_locks.get(agent_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._config_locks[agent_id] = lock
+        return lock
 
     async def get(self, agent_id: str) -> AgentInstance | None:
         return self._agents.get(agent_id)
