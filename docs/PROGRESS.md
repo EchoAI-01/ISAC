@@ -30,7 +30,7 @@
 **已达到「可运行」完成度**(2026-07-25 实测):
 
 - 主程序实测驻留(`RESIDENT_AFTER_3S=True`),支持 SIGINT/SIGTERM 优雅关闭。
-- 792 单元/集成测试通过;Ruff 通过;Mypy 全绿(198 文件)。
+- 914 单元/集成测试通过;Ruff 通过;Mypy 全绿(207 文件)。
 - 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke、J2 多模态全链 + Channel 投递、J4 SubAgent 全链 + Control API、J3 WebUI v2 SPA 十域。
 - 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用。
 - Agent / Session / 路由 / Link / 记忆可持久化恢复;SubAgent 任务可重启恢复 (running/queued → cancelled)。
