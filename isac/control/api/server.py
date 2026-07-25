@@ -93,7 +93,7 @@ def create_control_app(
     _mount_optional_routers(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
-        scope_dependency,
+        scope_dependency, parsed_tokens,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -201,6 +201,7 @@ def _mount_optional_routers(
     event_bus: Any,
     auth_dependency: Any,
     scope_dependency: Any = None,
+    tokens: Any = None,
 ) -> None:
     """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events)。"""
     if usage_store is not None:
@@ -257,6 +258,6 @@ def _mount_optional_routers(
         from isac.control.api import routes_events
 
         app.include_router(
-            routes_events.build_router(event_bus, auth_dependency=auth_dependency),
+            routes_events.build_router(event_bus, auth_dependency=auth_dependency, tokens=tokens),
             prefix="/api/v1",
         )
