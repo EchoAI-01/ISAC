@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import pytest
 
+from isac.agent.loop import AgentResult
 from isac.channel.model import ISACMessage, MessageSegment
+from isac.core.types import ProgressEvent
 from isac.gateway.models import Session
 from isac.memory.pipeline import NoOpMemoryPipeline
 from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
 from isac.runtime.config import AgentConfig
 from isac.runtime.manager import AgentManager
+from tests.fixtures.fakes import FakeLLMProvider, make_final_reply, make_tool_call_response
 
 AGENT_ID = "agent_a"
 
@@ -23,6 +26,21 @@ AGENT_ID = "agent_a"
 async def _make_running_agent_manager() -> AgentManager:
     provider_manager = ProviderManager({})
     provider_manager.register(StubProvider())
+    manager = AgentManager(
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        }
+    )
+    await manager.create(AgentConfig(agent_id=AGENT_ID))
+    await manager.start(AGENT_ID)
+    return manager
+
+
+async def _make_running_agent_manager_with_provider(provider: object) -> AgentManager:
+    provider_manager = ProviderManager({})
+    provider_manager.register(provider)  # type: ignore[arg-type]
     manager = AgentManager(
         {
             "provider_manager": provider_manager,
@@ -207,3 +225,77 @@ async def test_load_persisted_agents_missing_dir_returns_empty(tmp_path) -> None
 
     report = await load_persisted_agents(manager, str(tmp_path / "nonexistent"))
     assert report == {}
+
+
+@pytest.mark.asyncio
+async def test_handle_message_wires_progress_reporter_and_reuses_per_session() -> None:
+    """D9-1: handle_message() 消费 instance.services["progress_reporter_factory"]
+    构造/复用 per-session ProgressReporter, 绑定传入的 progress_sender, 赋值
+    agent_context.report_progress, 且正确填充 agent_id (此前恒为空字符串)。
+
+    同一 session 两次调用应复用同一个 ProgressReporter 实例 (per-session, 非
+    per-message), 使 min_interval_seconds 频控能跨消息生效。
+    """
+    provider = FakeLLMProvider(
+        scripted_replies=[
+            make_tool_call_response("query_memory", arguments={"query": "hi"}),
+            make_final_reply("first done"),
+            make_tool_call_response("query_memory", arguments={"query": "again"}),
+            make_final_reply("second done"),
+        ]
+    )
+    manager = await _make_running_agent_manager_with_provider(provider)
+    session = Session(session_id="sess_p1", user_id="u_p1", agent_id=AGENT_ID)
+
+    captured: list[ProgressEvent] = []
+
+    async def sender(text: str, event: ProgressEvent) -> None:
+        captured.append(event)
+
+    await manager.handle_message(
+        AGENT_ID, _at_message("m1", "u_p1"), session, None, progress_sender=sender
+    )
+    await manager.handle_message(
+        AGENT_ID, _at_message("m2", "u_p1"), session, None, progress_sender=sender
+    )
+
+    planned_events = [e for e in captured if e.stage == "planned"]
+    # message2 的 planned 被跨消息的 min_interval_seconds (默认 2.0s) 频控吞掉
+    # (message1 的 completed 刚更新过 _last_emit_at); 这恰恰证明两次 handle_message
+    # 复用的是同一个 ProgressReporter, 而非各自新建、频控互不干扰的实例——若是
+    # per-message 新建, 两条 planned 都会因 _last_emit_at 重置为 0 而通过。
+    assert len(planned_events) == 1
+    assert planned_events[0].agent_id == AGENT_ID
+    assert planned_events[0].session_id == "sess_p1"
+
+
+@pytest.mark.asyncio
+async def test_handle_message_passes_configured_slow_tool_policy_to_context() -> None:
+    """D9-7: services 里的慢工具阈值/开关应来自 Agent 配置的 ProgressPolicy,
+    而不是 loop.py 内部硬编码的默认值 (此前是死配置)。"""
+    manager = await _make_running_agent_manager()
+    instance = await manager.get(AGENT_ID)
+    assert instance is not None
+
+    captured_services: list[dict] = []
+
+    class _CapturingLoop:
+        async def run(self, messages, context):
+            captured_services.append(context.services)
+            return AgentResult(content="done")
+
+    instance.loop = _CapturingLoop()  # type: ignore[assignment]
+    instance.config.persona = {
+        "progress": {"slow_tool_threshold_seconds": 0.5, "report_before_slow_tool": False}
+    }
+
+    session = Session(session_id="sess_policy", user_id="u1", agent_id=AGENT_ID)
+    await manager.handle_message(AGENT_ID, _at_message("m1", "u1"), session, None)
+
+    assert len(captured_services) == 1
+    assert captured_services[0]["progress_slow_tool_threshold_seconds"] == 0.5
+    assert captured_services[0]["progress_report_before_slow_tool"] is False
+
+    instance = await manager.get(AGENT_ID)
+    assert instance is not None
+    assert len(instance.progress_reporters) == 1

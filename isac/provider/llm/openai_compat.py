@@ -11,14 +11,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 from collections.abc import AsyncIterator
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from isac.core.exceptions import LLMError, RateLimitError
 from isac.core.types import LLMChunk, LLMResponse, TokenUsage, ToolCall
 from isac.provider.base import LLMProvider, ModelCapabilities
 from isac.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from isac.artifacts.models import MediaInput
 
 logger = get_logger(__name__)
 
@@ -112,6 +118,57 @@ class OpenAICompatProvider(LLMProvider):
     def get_capabilities(self) -> ModelCapabilities:
         return ModelCapabilities(supports_tools=True, supports_streaming=True)
 
+    async def vision_chat(
+        self,
+        media: MediaInput,
+        prompt: str,
+        *,
+        system: str = "",
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """视觉理解: 把 image 作为 image_url content 与 prompt 一起发给多模态 LLM。
+
+        要求模型支持视觉输入 (gpt-4o / gpt-4-vision 等)。media.kind 必须是 "image",
+        media.uri 必须是本地绝对路径 (MediaNormalizer 已校验), 这里读文件转 base64
+        data URL 内联到请求体 (避免 LLM 端二次 HTTP 下载; 适合 < 5MB 的图)。
+
+        Args:
+            media: 输入图片 (kind="image", uri 为本地绝对路径)
+            prompt: 关于图片的自然语言提问
+            system: 可选 system prompt (默认空, 调用方可设行为约束)
+        """
+        if media.kind != "image":
+            raise LLMError(
+                f"vision_chat 只支持 kind=image, 收到 kind={media.kind}",
+                retriable=False,
+            )
+        img_path = Path(media.uri)
+        try:
+            img_bytes = await asyncio.to_thread(img_path.read_bytes)
+        except FileNotFoundError as exc:
+            raise LLMError(
+                f"vision_chat 输入图片不存在: {media.uri}",
+                retriable=False,
+            ) from exc
+        except OSError as exc:
+            raise LLMError(
+                f"vision_chat 输入图片读取失败: {exc}",
+                retriable=False,
+            ) from exc
+        mime = media.mime_type or "image/png"
+        b64 = base64.b64encode(img_bytes).decode("ascii")
+        data_url = f"data:{mime};base64,{b64}"
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ]
+        return await self.chat(system=system, messages=messages, **kwargs)
+
     async def aclose(self) -> None:
         """关闭 httpx.AsyncClient, 释放连接池 (ApplicationRuntime 关闭时调用)。"""
         if self._client is not None:
@@ -173,12 +230,7 @@ class OpenAICompatProvider(LLMProvider):
             content = str(message.get("content", "") or "")
             reasoning = str(message.get("reasoning_content", "") or "")
             tool_calls = self._parse_tool_calls(message.get("tool_calls", []))
-            usage_data = data.get("usage", {}) or {}
-            usage = TokenUsage(
-                prompt_tokens=int(usage_data.get("prompt_tokens", 0) or 0),
-                completion_tokens=int(usage_data.get("completion_tokens", 0) or 0),
-                total_tokens=int(usage_data.get("total_tokens", 0) or 0),
-            )
+            usage = self._parse_usage(data.get("usage", {}) or {})
             return LLMResponse(
                 content=content,
                 reasoning=reasoning,
@@ -192,6 +244,25 @@ class OpenAICompatProvider(LLMProvider):
                 retriable=False,
                 context={"body": json.dumps(data)[:500]},
             ) from exc
+
+    @staticmethod
+    def _parse_usage(usage_data: dict[str, Any]) -> TokenUsage:
+        """解析 usage 及其 J1 明细子字段 (prompt/completion_tokens_details)。
+
+        cached_tokens/reasoning_tokens/audio_tokens 是 prompt_tokens/completion_tokens
+        的子集 (OpenAI 语义), 字段不存在时保持 0, 不猜测。
+        """
+        prompt_details = usage_data.get("prompt_tokens_details") or {}
+        completion_details = usage_data.get("completion_tokens_details") or {}
+        return TokenUsage(
+            prompt_tokens=int(usage_data.get("prompt_tokens", 0) or 0),
+            completion_tokens=int(usage_data.get("completion_tokens", 0) or 0),
+            total_tokens=int(usage_data.get("total_tokens", 0) or 0),
+            cache_read_tokens=int(prompt_details.get("cached_tokens", 0) or 0),
+            reasoning_tokens=int(completion_details.get("reasoning_tokens", 0) or 0),
+            audio_input_tokens=int(prompt_details.get("audio_tokens", 0) or 0),
+            audio_output_tokens=int(completion_details.get("audio_tokens", 0) or 0),
+        )
 
     @staticmethod
     def _parse_tool_calls(raw_tool_calls: list[dict[str, Any]]) -> list[ToolCall]:
@@ -261,11 +332,7 @@ class OpenAICompatProvider(LLMProvider):
             finish_reason = choice.get("finish_reason")
         usage_data = chunk_json.get("usage")
         if usage_data:
-            usage = TokenUsage(
-                prompt_tokens=int(usage_data.get("prompt_tokens", 0) or 0),
-                completion_tokens=int(usage_data.get("completion_tokens", 0) or 0),
-                total_tokens=int(usage_data.get("total_tokens", 0) or 0),
-            )
+            usage = OpenAICompatProvider._parse_usage(usage_data)
         return LLMChunk(
             delta_content=delta_content,
             delta_reasoning=delta_reasoning,

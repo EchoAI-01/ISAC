@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 from isac.channel.model import ISACMessage
 from isac.channel.registry import ChannelRegistry
 from isac.core.events import EventType
+from isac.core.types import ProgressEvent
 from isac.gateway.event_bus import EventBus
 from isac.gateway.lock import SessionLockManager
 from isac.gateway.session import SessionManager
@@ -27,6 +29,7 @@ from isac.memory.storage.metadata import MetadataStore
 from isac.memory.storage.sparse import SparseBM25Index
 from isac.memory.storage.vector import VectorStore
 from isac.observability import AlertManager, MetricsCollector, get_default_alert_rules, get_default_metrics
+from isac.provider.catalog import ModelCatalog, ModelDescriptor
 from isac.provider.llm.openai_compat import OpenAICompatProvider
 from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
@@ -72,8 +75,11 @@ async def process_message(
 
     session = await session_mgr.get_or_create(routed_message, agent_id=decision.agent_id)
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
+    progress_sender = _make_progress_sender(channel_registry, routed_message, decision.agent_id)
     try:
-        reply = await agent_manager.handle_message(decision.agent_id, routed_message, session, profile)
+        reply = await agent_manager.handle_message(
+            decision.agent_id, routed_message, session, profile, progress_sender=progress_sender
+        )
     except Exception:
         metrics.counter("isac_messages_failed_total").inc()
         raise
@@ -112,6 +118,41 @@ async def _send_reply(
         logger.info("Agent 回复已发送", agent_id=agent_id, platform=incoming.platform, length=len(reply_text))
 
 
+def _make_progress_sender(
+    channel_registry: ChannelRegistry, incoming: ISACMessage, agent_id: str
+) -> Callable[[str, ProgressEvent], Awaitable[None]]:
+    """D9: 构造绑定到本次到达消息所属 Channel 的进度 sender。
+
+    与 _send_reply 同构: 按 incoming.platform 找 adapter, 构造一条降级为普通文本的
+    ISACMessage, 附 metadata.message_kind=progress 供 Channel 侧按需特殊处理
+    (WebChat 输出原生 kind 字段, 其余平台按普通文本发送)。找不到 adapter / 发送失败
+    时只记日志, 不得影响主任务 (进度是旁路信号)。
+    """
+
+    async def sender(text: str, event: ProgressEvent) -> None:
+        adapter = channel_registry.get(incoming.platform)
+        if adapter is None:
+            return
+        progress_message = ISACMessage(
+            msg_id="",
+            platform=incoming.platform,
+            timestamp=0,
+            user_id=incoming.user_id,
+            user_name="",
+            group_id=incoming.group_id,
+            session_id=incoming.session_id,
+            content=text,
+            reply_to=incoming.msg_id,
+            metadata={"message_kind": "progress", "task_id": event.task_id, "progress_stage": event.stage},
+        )
+        try:
+            await adapter.send(progress_message)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("进度通知发送失败, 已忽略", platform=incoming.platform, agent_id=agent_id, error=str(exc))
+
+    return sender
+
+
 def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[str, Any]) -> None:
     """按配置注册 LLM Provider (K2, DEVELOPMENT_PLAN.md)。
 
@@ -137,6 +178,102 @@ def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[st
         provider_manager.register(StubProvider())
 
 
+# J2: 多模态 Provider 按 kind 实例化 + 注册到 ProviderManager + ModelCatalog
+# 每个 mm 配置字段: kind / provider / api_key / base_url / model / cost_tier / latency_tier
+_MM_KIND_TO_OPERATIONS: dict[str, set[str]] = {
+    "image_gen": {"image_gen"},
+    "stt": {"stt"},
+    "tts": {"tts"},
+    "embed": {"embed"},
+    "vision": {"vision"},
+}
+
+_MM_KIND_TO_MODALITIES: dict[str, tuple[set[str], set[str]]] = {
+    "image_gen": ({"text"}, {"image"}),
+    "stt": ({"audio"}, {"text"}),
+    "tts": ({"text"}, {"audio"}),
+    "embed": ({"text"}, {"embedding"}),
+    "vision": ({"image", "text"}, {"text"}),
+}
+
+
+def _build_multimodal_provider(
+    kind: str,
+    api_key: str,
+    base_url: str,
+    model: str,
+    artifact_store: Any,
+) -> Any | None:
+    """按 kind 实例化多模态 Provider; 未知 kind 抛 ValueError。"""
+    if kind == "image_gen":
+        from isac.provider.image_gen.openai_compat import OpenAICompatImageGenProvider
+        return OpenAICompatImageGenProvider(api_key, base_url, model, artifact_store)
+    if kind == "stt":
+        from isac.provider.stt_tts.openai_compat import OpenAICompatSTTProvider
+        return OpenAICompatSTTProvider(api_key, base_url, model)
+    if kind == "tts":
+        from isac.provider.stt_tts.openai_compat import OpenAICompatTTSProvider
+        return OpenAICompatTTSProvider(api_key, base_url, model, artifact_store)
+    if kind == "embed":
+        from isac.provider.embed.openai_compat import OpenAICompatEmbeddingProvider
+        return OpenAICompatEmbeddingProvider(api_key, base_url, model)
+    if kind == "vision":
+        # vision 走 LLM Provider 的 vision_chat 方法 (gpt-4o 兼容)
+        return OpenAICompatProvider(api_key, base_url, model)
+    raise ValueError(f"未知 multimodal kind: {kind}")
+
+
+def register_multimodal_providers(
+    provider_manager: ProviderManager,
+    model_catalog: Any,
+    artifact_store: Any,
+    mm_list: list[dict[str, Any]] | None,
+) -> None:
+    """J2: 按 multimodal_providers[] 配置实例化并注册多模态 Provider + ModelDescriptor。
+
+    缺 api_key/model/未知 kind 跳过 + 警告, 不抛异常阻塞主链路。
+    """
+    if not mm_list:
+        return
+    for mm in mm_list:
+        kind = str(mm.get("kind", "")).strip()
+        provider_id = str(mm.get("provider", "")).strip()
+        api_key = str(mm.get("api_key", "")).strip()
+        base_url = str(mm.get("base_url", "")).strip()
+        model = str(mm.get("model", "")).strip()
+        if not kind or not api_key or not model:
+            logger.warning(
+                "多模态 Provider 配置不完整, 跳过",
+                kind=kind, provider=provider_id, has_api_key=bool(api_key), has_model=bool(model),
+            )
+            continue
+        try:
+            provider = _build_multimodal_provider(kind, api_key, base_url, model, artifact_store)
+        except ValueError as exc:
+            logger.warning("多模态 Provider 构造失败, 跳过", kind=kind, error=str(exc))
+            continue
+        provider_manager.register_multimodal(
+            provider, provider_id=provider_id, model_id=model
+        )
+        operations = _MM_KIND_TO_OPERATIONS.get(kind, set())
+        modalities = _MM_KIND_TO_MODALITIES.get(kind, (set(), set()))
+        descriptor = ModelDescriptor(
+            provider_id=provider_id,
+            model_id=model,
+            operations=operations,
+            modalities_in=modalities[0],
+            modalities_out=modalities[1],
+            cost_tier=str(mm.get("cost_tier", "standard")),
+            latency_tier=str(mm.get("latency_tier", "standard")),
+        )
+        model_catalog.register(descriptor)
+        logger.info(
+            "已注册多模态 Provider",
+            kind=kind, provider=provider_id, model=model,
+            cost_tier=descriptor.cost_tier, latency_tier=descriptor.latency_tier,
+        )
+
+
 def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。
 
@@ -145,7 +282,26 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     MemoryRetrievalPipeline (CODE_REVIEW_REPORT.md #5)。
     """
     metrics = get_default_metrics()
-    provider_manager = ProviderManager(global_config.get("llm", {}), metrics=metrics)
+
+    # J1: 模型用量计量子系统 (默认关闭; observability.usage.enabled=true 时启用)。
+    # 未启用时 usage_recorder 为 None → ProviderManager 不计量, 主链路热路径零变化,
+    # 也不会创建任何 usage.db 文件。
+    usage_store: Any = None
+    usage_recorder: Any = None
+    usage_config = (global_config.get("observability", {}) or {}).get("usage", {}) or {}
+    if usage_config.get("enabled"):
+        from isac.observability.usage.pricing import PricingCatalog
+        from isac.observability.usage.recorder import UsageRecorder
+        from isac.observability.usage.storage import UsageStore
+
+        usage_store = UsageStore(str(DATA_DIR / "usage" / "usage.db"))
+        usage_recorder = UsageRecorder(
+            store=usage_store,
+            pricing=PricingCatalog(),
+            flush_interval_seconds=float(usage_config.get("flush_interval_seconds", 30)),
+        )
+
+    provider_manager = ProviderManager(global_config.get("llm", {}), metrics=metrics, usage_recorder=usage_recorder)
     memory_config = global_config.get("memory", {})
     metadata_store: MetadataStore | None = None
     vector_store: VectorStore | None = None
@@ -194,12 +350,57 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
             metrics=metrics,
         )
 
+    # J2: 模型能力目录 / 路由 / 制品存储 (轻量, 始终构造, 无 I/O 副作用)。
+    # 默认无多模态 Provider 注册 → ModelRouter.select 返回 None, Agent 无多模态能力;
+    # 用户在 config.jsonc 的 multimodal_providers[] 配置 api_key/base_url/model 后,
+    # register_multimodal_providers 实例化 Provider 并注册到 catalog + provider_manager。
+    from isac.artifacts.store import ArtifactStore
+    from isac.provider.router import ModelRouter
+    from isac.utils.media import MediaNormalizer
+
+    model_catalog = ModelCatalog()
+    model_router = ModelRouter(model_catalog)
+    artifact_store = ArtifactStore(str(DATA_DIR / "artifacts"))
+    # 安全修复: transcribe_audio/understand_image 等工具必须先经 MediaNormalizer
+    # 校验 media_uri (白名单目录 + MIME + 大小上限), 不能直接信任 LLM 工具调用参数
+    # 里的任意绝对路径 (否则可读取白名单外的任意本地文件, 如 ~/.ssh/id_rsa)。
+    media_normalizer = MediaNormalizer(global_config.get("media_normalizer") or {})
+
+    # J2: 按 global_config.multimodal_providers[] 注册真实 Provider + ModelDescriptor
+    # 缺 api_key/model/未知 kind 跳过 + 警告, 不阻塞主链路
+    register_multimodal_providers(
+        provider_manager, model_catalog, artifact_store,
+        global_config.get("multimodal_providers"),
+    )
+
+    # J4: SubAgent 运行时。Supervisor 轻量常驻 (纯内存); Journal 持久化默认关闭,
+    # subagent.enabled=true 时才创建 DB 与生命周期。生产 runner 在 AgentManager 创建后绑定。
+    from isac.runtime.subagent.supervisor import SubAgentSupervisor
+
+    subagent_journal: Any = None
+    if (global_config.get("subagent", {}) or {}).get("enabled"):
+        from isac.runtime.subagent.journal import SubAgentJournal
+
+        subagent_journal = SubAgentJournal(str(DATA_DIR / "subagent" / "journal.db"))
+    subagent_supervisor = SubAgentSupervisor(journal=subagent_journal)
+
     return {
         "global_config": global_config,
         "provider_manager": provider_manager,
         "memory_factory": memory_factory,
         "metrics": metrics,
         "storage_start": _storage_start if memory_config.get("enabled") else _noop_start,
+        # J1: 计量子系统句柄 (未启用时为 None, main 据此决定是否注册生命周期)。
+        "usage_store": usage_store,
+        "usage_recorder": usage_recorder,
+        # J2: 模型能力目录 / 路由 / 制品存储 (供多模态工具与能力选择使用)。
+        "model_catalog": model_catalog,
+        "model_router": model_router,
+        "artifact_store": artifact_store,
+        "media_normalizer": media_normalizer,
+        # J4: SubAgent 监督器 (常驻) 与日志句柄 (未启用时为 None)。
+        "subagent_supervisor": subagent_supervisor,
+        "subagent_journal": subagent_journal,
     }
 
 
@@ -220,7 +421,15 @@ async def main() -> None:
       结束被取消的 bug 已修 (CODE_REVIEW_REPORT.md #12/#13)
     """
     global_config = load_config(DATA_DIR / "config.jsonc")
-    setup_logger(debug=bool(global_config.get("debug", False)))
+    _logging_cfg = global_config.get("logging", {}) or {}
+    # debug=true 视为全局 DEBUG; 否则用 log_level / logging.level; 均缺省时 setup_logger 落 INFO。
+    _level = "debug" if global_config.get("debug") else (global_config.get("log_level") or _logging_cfg.get("level"))
+    setup_logger(
+        debug=bool(global_config.get("debug", False)),
+        log_format=_logging_cfg.get("format", "console"),
+        level=_level,
+        per_module=_logging_cfg.get("per_module"),
+    )
     logger.info("ISAC 启动中", version=_get_version())
 
     runtime = ApplicationRuntime()
@@ -233,6 +442,9 @@ async def main() -> None:
 
     # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
     agent_manager = AgentManager(services)
+    from isac.runtime.subagent.runner import configure_subagent_runner
+
+    configure_subagent_runner(services["subagent_supervisor"], agent_manager)
     bus = InterAgentBus()
     # 投递回调: 把 InterAgentMessage 路由到目标 Agent 的 handle_message。
     # 命令 (ask_agent) 现在能拿到 response 而不是恒 None (CODE_REVIEW_REPORT.md #3)。
@@ -326,7 +538,12 @@ async def main() -> None:
     control_config = global_config.get("control", {}) or {}
     if control_config.get("enabled"):
         await _register_control_plane(
-            runtime, control_config, agent_manager, router, bus, metrics
+            runtime, control_config, agent_manager, router, bus, metrics,
+            services.get("usage_store"), services.get("subagent_supervisor"),
+            services.get("provider_manager"), services.get("model_catalog"),
+            services.get("artifact_store"),
+            services.get("session_mgr"), services.get("metadata_store"),
+            services.get("event_bus"),
         )
     runtime.register_lifecycle(
         "alerts",
@@ -349,6 +566,17 @@ async def main() -> None:
     await storage_start()
     runtime.register_lifecycle("storage", _noop_start, _noop_start)
 
+    # J2: 制品存储生命周期 (启动 schema 初始化 + 周期 TTL 扫描; 关闭时 sweep 兜底)。
+    # ArtifactStore 在 build_services 中无条件构造, 这里无条件注册: 即使无多模态
+    # Provider 注册, start_ttl_sweep 也只是周期扫描空 DB, 开销可忽略。
+    artifact_store = services["artifact_store"]
+    runtime.register_lifecycle("artifact_store", artifact_store.start, artifact_store.stop)
+
+    # J1: 用量存储生命周期 (仅启用计量时注册; stop 时先 flush 缓冲再关连接)。
+    _register_usage_lifecycle(runtime, services)
+    # J4: 子任务日志生命周期 (仅启用 subagent.enabled 时注册)。
+    _register_subagent_lifecycle(runtime, services)
+
     # 先恢复持久化 Agent (data/agents/*/config.jsonc, enabled=true 的自动 start),
     # 再回退到默认 Agent 保证无任何持久化配置时也能跑通 (CODE_REVIEW_REPORT.md #2)。
     agents_dir = global_config.get("control", {}).get(
@@ -362,6 +590,9 @@ async def main() -> None:
 
     # ── 进入 runtime (启动 TaskGroup + 触发所有 register_lifecycle.start) ──
     await runtime.start()
+    # J4-3: SubAgent 重启恢复 — 把 running/queued 标记为 cancelled (中断后不恢复旧进度)。
+    # 必须在 runtime.start() 之后调用 (subagent_journal 已 start, DB 连接就绪)。
+    await _restore_subagent_interrupts(services)
     logger.info("ISAC 启动完成")
     await runtime.serve_forever()
     await runtime.shutdown()
@@ -375,6 +606,14 @@ async def _register_control_plane(
     router: MessageRouter,
     bus: InterAgentBus,
     metrics: MetricsCollector,
+    usage_store: Any = None,
+    subagent_supervisor: Any = None,
+    provider_manager: Any = None,
+    model_catalog: Any = None,
+    artifact_store: Any = None,
+    session_manager: Any = None,
+    metadata_store: Any = None,
+    event_bus: Any = None,
 ) -> None:
     """把控制面 (uvicorn Server) 注册到 runtime 的生命周期管理。
 
@@ -411,6 +650,14 @@ async def _register_control_plane(
             plugin_manager,
             control_config,
             metrics=metrics,
+            usage_store=usage_store,
+            subagent_supervisor=subagent_supervisor,
+            provider_manager=provider_manager,
+            model_catalog=model_catalog,
+            artifact_store=artifact_store,
+            session_manager=session_manager,
+            metadata_store=metadata_store,
+            event_bus=event_bus,
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))
@@ -440,6 +687,60 @@ async def _register_control_plane(
         logger.info("控制面已注册", host=host, port=port)
     except Exception as exc:
         logger.error("控制面注册失败 (不阻塞数据面)", error=str(exc), exc_info=True)
+
+
+def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
+    """J1: 仅在启用计量时注册用量存储 + 周期性 flush 的生命周期。
+
+    未启用计量 (usage_store 为 None) 时直接返回, 不注册任何生命周期, 主链路零变化。
+    start: 先打开 DB 连接再启动周期任务 (避免周期任务第一次 tick 时连接还没就位);
+    stop: 先停周期任务 (内部已含最终 flush) 再关连接, 顺序反过来会导致最后一批
+    缓冲事件在落库前连接已关闭而丢失。
+    """
+    usage_store = services.get("usage_store")
+    if usage_store is None:
+        return
+    usage_recorder = services.get("usage_recorder")
+
+    async def _usage_start() -> None:
+        await usage_store.start()
+        if usage_recorder is not None:
+            await usage_recorder.start()
+
+    async def _usage_stop() -> None:
+        if usage_recorder is not None:
+            await usage_recorder.stop()
+        await usage_store.stop()
+
+    runtime.register_lifecycle("usage_store", _usage_start, _usage_stop)
+
+
+def _register_subagent_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
+    """J4: 仅在启用 subagent 日志时注册 Journal 生命周期。
+
+    未启用 (subagent_journal 为 None) 时直接返回, 不创建任何 DB 文件。
+    """
+    journal = services.get("subagent_journal")
+    if journal is None:
+        return
+    runtime.register_lifecycle("subagent_journal", journal.start, journal.stop)
+
+
+async def _restore_subagent_interrupts(services: dict[str, Any]) -> None:
+    """J4-3: SubAgent 重启恢复, 把 running/queued 标记为 cancelled。
+
+    必须在 runtime.start() 之后调用 (subagent_journal 已 start, DB 连接就绪);
+    journal 未启用或 supervisor 不存在时 no-op。
+    """
+    supervisor = services.get("subagent_supervisor")
+    if supervisor is None:
+        return
+    try:
+        marked = await supervisor.restore_interrupted()
+        if marked > 0:
+            logger.info("SubAgent 重启恢复: 已标记中断任务", marked=marked)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SubAgent 重启恢复失败, 不阻塞启动", error=str(exc))
 
 
 def _get_version() -> str:

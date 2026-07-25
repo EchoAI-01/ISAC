@@ -313,8 +313,20 @@ class OneBotAdapter(PlatformAdapter):
             return CQSegment.reply(seg.data.get("msg_id", ""))
         if seg.type == "emoji":
             return CQSegment.face(seg.data.get("id", 0))
-        if seg.type == "voice":
+        if seg.type in ("voice", "audio"):
+            # OneBot 11 用 record 表达音频/语音段; audio 是 J2 扩展, 与 voice 同语义
             return CQSegment.record(seg.data.get("url", seg.data.get("file", "")))
+        if seg.type == "video":
+            # J2: video 段 (OneBot 11 标准支持 video)
+            return CQSegment.video(seg.data.get("url", seg.data.get("file", "")))
+        if seg.type == "file":
+            # J2: OneBot 11 标准无 file segment; 用 getattr 探测扩展支持
+            # (NapCat 等实现支持 CQ:file), 不支持时降级为文本占位
+            file_method = getattr(CQSegment, "file", None)
+            if file_method is not None:
+                return file_method(seg.data.get("url", seg.data.get("file", "")))
+            artifact_id = str(seg.data.get("artifact_id", ""))
+            return CQSegment.text(f"[file: {artifact_id[:8]}]")
         # 不支持的类型降级为文本
         logger.debug("不支持的 ISACMessage segment 类型，已跳过", type=seg.type)
         return None

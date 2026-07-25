@@ -21,6 +21,9 @@ from isac.gating.reply_necessity import ReplyNecessityJudge
 from isac.gating.turn_gates import TurnGates
 from isac.gating.turn_scheduler import TurnScheduler
 from isac.gating.types import GateDecision
+from isac.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class FocusMode:
@@ -141,6 +144,12 @@ class GatingSystem:
 
         # 3. 回复必要性评分
         score = await self.reply_necessity.score(pending, context)
+        logger.debug(
+            "门控评分",
+            session_id=session_id,
+            score=score,
+            threshold=self.reply_necessity.threshold,
+        )
         if score < self.reply_necessity.threshold:
             return GateDecision.wait()
 

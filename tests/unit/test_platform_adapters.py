@@ -165,6 +165,34 @@ class TestWebChatAdapter:
         assert received[0].content == "hello from client"
         assert received[0].platform == "webchat"
 
+    @pytest.mark.asyncio
+    async def test_normal_reply_polls_with_kind_message(self) -> None:
+        """D9-4: 普通回复 (无 message_kind metadata) 应带 kind="message"。"""
+        adapter = WebChatAdapter({})
+        msg = ISACMessage(
+            msg_id="", platform="webchat", timestamp=0, user_id="u1", user_name="",
+            content="普通回复", session_id="s1",
+        )
+        await adapter.send(msg)
+        replies = await adapter.poll_replies("s1")
+        assert replies[0]["kind"] == "message"
+
+    @pytest.mark.asyncio
+    async def test_progress_reply_polls_with_kind_progress_and_stage(self) -> None:
+        """D9-4: metadata.message_kind=progress 的回复应作为原生 progress 帧
+        透出 kind/task_id/progress_stage, 供客户端区分渲染, 不必解析文本。"""
+        adapter = WebChatAdapter({})
+        msg = ISACMessage(
+            msg_id="", platform="webchat", timestamp=0, user_id="u1", user_name="",
+            content="query_memory 这步处理好了。", session_id="s1",
+            metadata={"message_kind": "progress", "task_id": "t1", "progress_stage": "tool_finished"},
+        )
+        await adapter.send(msg)
+        replies = await adapter.poll_replies("s1")
+        assert replies[0]["kind"] == "progress"
+        assert replies[0]["task_id"] == "t1"
+        assert replies[0]["progress_stage"] == "tool_finished"
+
 
 class TestDiscordAdapter:
     def test_platform_name(self) -> None:

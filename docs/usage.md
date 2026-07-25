@@ -313,10 +313,10 @@ curl "http://127.0.0.1:8765/api/v1/audit?action=create_agent&limit=20" \
 
 ## 相关文档
 
-- [架构总览](../ARCHITECTURE.md)
-- [开发规范](../DEVELOP.md)
-- [规范契约](../SPECIFICATION.md)
-- [开发计划 SOW](../DEVELOPMENT_PLAN.md)
+- [架构总览](./ARCHITECTURE.md)
+- [开发规范](./DEVELOP.md)
+- [规范契约](./SPECIFICATION.md)
+- [开发计划 SOW](./DEVELOPMENT_PLAN.md)
 - [Docker 部署](./deployment.md)
 - [API 文档](./api.md)
 - [插件开发指南](./plugin_development.md)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -17,12 +18,21 @@ from isac.runtime.assembly import assemble_agent
 from isac.runtime.config import AgentConfig
 from isac.runtime.instance import AgentInstance
 from isac.utils.logger import get_logger
+from isac.utils.logging_context import bind_log_context
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from isac.channel.model import ISACMessage
+    from isac.core.types import ProgressEvent
     from isac.gateway.models import Session, UserProfile
+    from isac.runtime.progress import ProgressReporter
 
 logger = get_logger(__name__)
+
+# D9: instance.progress_reporters 的 session 数量软上限, 防止长期运行无界增长
+# (超出时丢弃最旧插入的 session, 与 WebChatAdapter._pending_replies 的 FIFO 上限同思路)。
+MAX_PROGRESS_REPORTERS_PER_AGENT = 500
 
 
 class AgentManager:
@@ -38,6 +48,11 @@ class AgentManager:
         """
         self._agents: dict[str, AgentInstance] = {}
         self._services = services
+        # Fix-2: 按 agent_id 的配置锁, 用于 PATCH 时把"读 revision → 校验 if_match →
+        # 合并 → 持久化 → reload_config"整段串行化, 避免并发 PATCH 静默丢更新。
+        # agent_id 数量受限于实际创建过的 Agent 数 (不像 session 那样量级无界),
+        # 不需要 SessionLockManager 那种引用计数回收, destroy() 时清理即可。
+        self._config_locks: dict[str, asyncio.Lock] = {}
 
     # ── 生命周期 (控制面暴露) ──────────────────────────────
 
@@ -81,9 +96,23 @@ class AgentManager:
         """销毁 Agent。keep_memory=True 时保留记忆数据。"""
         self._require(agent_id)
         del self._agents[agent_id]
+        self._config_locks.pop(agent_id, None)
         self._update_active_gauge()
         # TODO: keep_memory=False 时清理 data/agents/<id>/memory/
         logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
+
+    def acquire_config_lock(self, agent_id: str) -> asyncio.Lock:
+        """按 agent_id 取配置锁 (Fix-2, 不存在则创建)。
+
+        供控制面 PATCH 端点 ``async with manager.acquire_config_lock(agent_id):``
+        包住整段"读取当前配置 → 校验 If-Match → 合并 → 持久化 → reload_config",
+        使同一 agent_id 的并发 PATCH 严格串行, 不会互相用过期的基线覆盖对方的改动。
+        """
+        lock = self._config_locks.get(agent_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._config_locks[agent_id] = lock
+        return lock
 
     async def get(self, agent_id: str) -> AgentInstance | None:
         return self._agents.get(agent_id)
@@ -114,6 +143,7 @@ class AgentManager:
         message: ISACMessage,
         session: Session,
         user_profile: UserProfile | None,
+        progress_sender: Callable[[str, ProgressEvent], Awaitable[None]] | None = None,
     ) -> str | None:
         """处理一条路由到本 Agent 的消息，返回回复文本 (WAIT/DROP 返回 None)。
 
@@ -126,6 +156,32 @@ class AgentManager:
             logger.warning("Agent 不存在或未运行，消息忽略", agent_id=agent_id)
             return None
 
+        # 可观测性: trace_id/session_id/agent_id 经 contextvars 贯穿整段处理,
+        # 其后所有日志 (门控 → Loop → 工具 → 记忆 → 回复) 自动携带这三个字段,
+        # 便于按一次消息处理串联排查。退出 with 时精确还原, 不污染后续。
+        with bind_log_context(
+            trace_id=uuid.uuid4().hex,
+            session_id=session.session_id,
+            agent_id=agent_id,
+        ):
+            logger.debug("消息进入 Agent 处理", content_len=len(message.content))
+            return await self._dispatch_message(instance, message, session, user_profile, progress_sender)
+
+    async def _dispatch_message(
+        self,
+        instance: AgentInstance,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+        progress_sender: Callable[[str, ProgressEvent], Awaitable[None]] | None,
+    ) -> str | None:
+        """在 handle_message 已绑定的日志上下文内执行 门控 → Loop → 回复。"""
+        agent_id = instance.agent_id
+        # L1: 会话级拟人运行时 (默认关闭)。启用时缓存消息, 供未来 debounce/状态机接管;
+        # 骨架阶段仅记录, 不改变触发逻辑, 仍走既有门控 → Loop (零行为变化)。
+        conv_registry = instance.services.get("conversation_registry")
+        if conv_registry is not None and self._conversation_enabled():
+            conv_registry.get(agent_id, session.session_id).register_message(message)
         # 每条到达消息都累加注入器的新消息计数 (按 session 隔离, 支撑 max_new_messages 频率控制)。
         instance.prompt_builder.notify_new_message(session.session_id)
 
@@ -183,10 +239,17 @@ class AgentManager:
             logger.debug("门控未触发", agent_id=agent_id, kind=decision.kind.value)
             return None
 
+        reporter = self._get_or_create_progress_reporter(instance, session.session_id, progress_sender)
+        progress_services: dict[str, Any] = {"task_id": uuid.uuid4().hex, "agent_id": agent_id}
+        if reporter is not None:
+            progress_services["progress_slow_tool_threshold_seconds"] = reporter.policy.slow_tool_threshold_seconds
+            progress_services["progress_report_before_slow_tool"] = reporter.policy.report_before_slow_tool
         agent_context = AgentContext(
             session=session,
             user_profile=user_profile,
             current_message=message,
+            services=progress_services,
+            report_progress=reporter.report if reporter is not None else None,
         )
         messages = [{"role": "user", "content": message.content}]
         result = await instance.loop.run(messages, agent_context)
@@ -203,6 +266,12 @@ class AgentManager:
         return [a.config for a in self._agents.values() if a.status == "running"]
 
     # ── 内部 ────────────────────────────────────────────────
+
+    def _conversation_enabled(self) -> bool:
+        """L1: 是否启用会话级拟人运行时 (默认关闭 → 主链路零行为变化)。"""
+        return bool(
+            self._services.get("global_config", {}).get("conversation", {}).get("enabled", False)
+        )
 
     def _require(self, agent_id: str) -> AgentInstance:
         instance = self._agents.get(agent_id)
@@ -222,6 +291,32 @@ class AgentManager:
             return
         active = sum(1 for instance in self._agents.values() if instance.status == "running")
         metrics.gauge("isac_agents_active").set(active)
+
+    def _get_or_create_progress_reporter(
+        self,
+        instance: AgentInstance,
+        session_id: str,
+        sender: Callable[[str, ProgressEvent], Awaitable[None]] | None,
+    ) -> ProgressReporter | None:
+        """D9: 按 session 复用 ProgressReporter (使 min_interval_seconds 频控跨消息生效)。
+
+        未注入 progress_reporter_factory 时返回 None (旧测试/未组装该服务的场景),
+        主链路保持零行为变化。sender 每次调用都重新绑定, 因为同一 session 后续消息
+        可能来自不同的 Channel 连接。
+        """
+        factory = instance.services.get("progress_reporter_factory")
+        if factory is None:
+            return None
+        reporter = instance.progress_reporters.get(session_id)
+        if reporter is None:
+            if len(instance.progress_reporters) >= MAX_PROGRESS_REPORTERS_PER_AGENT:
+                oldest_session_id = next(iter(instance.progress_reporters))
+                del instance.progress_reporters[oldest_session_id]
+            reporter = factory(session_id, sender=sender)
+            instance.progress_reporters[session_id] = reporter
+        else:
+            reporter.rebind_sender(sender)
+        return reporter
 
 
 async def ensure_default_agent(manager: AgentManager, global_config: dict) -> AgentInstance:

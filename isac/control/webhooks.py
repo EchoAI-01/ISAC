@@ -17,13 +17,21 @@
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import json
-import socket
 from typing import Any
 from urllib.parse import urlparse
 
 from isac.utils.logger import get_logger
+from isac.utils.ssrf import SSRFBlockedError, validate_webhook_url
+
+__all__ = [
+    "DEFAULT_MAX_RETRIES",
+    "DEFAULT_RETRY_BACKOFF",
+    "DEFAULT_TIMEOUT",
+    "SSRFBlockedError",
+    "WebhookManager",
+    "validate_webhook_url",
+]
 
 logger = get_logger(__name__)
 
@@ -32,61 +40,9 @@ DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF = 1.0  # 秒
 DEFAULT_TIMEOUT = 10.0  # 秒
 
-
-class SSRFBlockedError(ValueError):
-    """Webhook URL 被 SSRF 校验拒绝 (内网/链路本地/保留地址)。"""
-
-
-def _is_private_or_reserved_ip(ip: str) -> bool:
-    """判断 IP 是否为内网/保留/链路本地地址 (SSRF 防护)。"""
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    return (
-        addr.is_private
-        or addr.is_loopback
-        or addr.is_link_local
-        or addr.is_reserved
-        or addr.is_multicast
-        or addr.is_unspecified
-    )
-
-
-def validate_webhook_url(url: str, *, allow_local: bool = False) -> None:
-    """校验 Webhook URL, SSRF 防护: 拒绝内网 IP / localhost / 非 http(s)。
-
-    allow_local=True 时放行 localhost/127.0.0.1 (开发态), 生产态必须 False。
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise SSRFBlockedError(f"Webhook URL scheme 必须是 http/https: {url}")
-    hostname = parsed.hostname or ""
-    if not hostname:
-        raise SSRFBlockedError(f"Webhook URL 缺少 hostname: {url}")
-
-    if allow_local and hostname in ("localhost", "127.0.0.1", "::1"):
-        return
-
-    # hostname 是 IP 直接校验
-    try:
-        ipaddress.ip_address(hostname)
-    except ValueError:
-        # 域名: DNS 解析后校验所有 A/AAAA 记录都不在内网
-        try:
-            infos = socket.getaddrinfo(hostname, None)
-        except socket.gaierror as exc:
-            raise SSRFBlockedError(f"Webhook URL 域名无法解析: {hostname} ({exc})") from exc
-        for info in infos:
-            ip = str(info[4][0])
-            if _is_private_or_reserved_ip(ip):
-                raise SSRFBlockedError(
-                    f"Webhook URL 域名 {hostname} 解析到内网/保留地址 {ip}"
-                )
-        return
-
-    if _is_private_or_reserved_ip(hostname):
-        raise SSRFBlockedError(f"Webhook URL 指向内网/保留地址: {hostname}")
+# SSRF 校验实现已下沉到 isac.utils.ssrf (utils 是全仓库最底层, provider/ 等模块
+# 也需要复用同一份校验, 但不能反向依赖 control/); 这里重新导出保持向后兼容,
+# 已有调用方/测试继续从 isac.control.webhooks 导入不受影响。
 
 
 class WebhookManager:

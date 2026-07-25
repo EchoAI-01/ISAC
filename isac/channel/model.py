@@ -7,9 +7,16 @@ from dataclasses import dataclass, field
 
 @dataclass
 class MessageSegment:
-    """消息分段 (用于富媒体)"""
+    """消息分段 (用于富媒体)
 
-    type: str  # "text" | "image" | "at" | "reply" | "emoji" | "voice"
+    type 取值:
+      - text / at / reply / emoji: 基础交互段 (所有平台支持)
+      - image / voice: 图片与语音 (OneBot 已支持; WebChat 降级为占位文本)
+      - audio / video / file: J2 多模态扩展 (OneBot 用 record/video/file 表达;
+        WebChat 与 Telegram/Discord 当前降级为占位文本, 真实发送留 J3)
+    """
+
+    type: str
     data: dict  # 分段内容
 
 

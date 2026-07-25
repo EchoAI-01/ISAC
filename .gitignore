@@ -13,9 +13,10 @@ build/
 .coverage
 htmlcov/
 
-# 运行数据 (保留目录占位)
+# 运行数据 (保留目录占位; sample 配置模板例外, 不含敏感信息)
 data/*
 !data/.gitkeep
+!data/config.sample.jsonc
 
 # IDE
 .idea/

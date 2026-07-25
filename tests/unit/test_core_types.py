@@ -55,6 +55,30 @@ class TestTokenUsage:
         assert budget.used_tokens == 50
         assert budget.remaining_tokens == 50
 
+    def test_detail_token_fields_default_to_zero(self):
+        """J1: cache/reasoning/audio 明细字段默认 0, 不影响 total_tokens 自动计算。"""
+        usage = TokenUsage(prompt_tokens=10, completion_tokens=5)
+        assert usage.cache_read_tokens == 0
+        assert usage.cache_write_tokens == 0
+        assert usage.reasoning_tokens == 0
+        assert usage.audio_input_tokens == 0
+        assert usage.audio_output_tokens == 0
+        assert usage.total_tokens == 15
+
+    def test_detail_token_fields_can_be_set(self):
+        usage = TokenUsage(
+            prompt_tokens=100,
+            completion_tokens=50,
+            cache_read_tokens=80,
+            reasoning_tokens=20,
+            audio_input_tokens=5,
+            audio_output_tokens=3,
+        )
+        assert usage.cache_read_tokens == 80
+        assert usage.reasoning_tokens == 20
+        assert usage.audio_input_tokens == 5
+        assert usage.audio_output_tokens == 3
+
 
 class TestContexts:
     def _session(self):

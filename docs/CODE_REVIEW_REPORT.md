@@ -1,22 +1,14 @@
-# ISAC 代码审查报告
+# ISAC 已修复缺陷追溯档案
 
-- **审查范围**：当前 `main` 分支 v1.0.0 代码基线及工作树中的未提交差异
-- **审查日期**：2026-07-23
-- **审查方式**：静态代码审查、现有测试检查、关键控制面行为动态复现
-- **总体结论**：**Request changes**。Ruff、Mypy 和现有单元测试表现良好，但当前版本仍存在可被认证用户利用的路径穿越、匿名读取管理数据、Docker 默认部署失效、真实 LLM 配置被静默替换，以及多项长期运行资源泄漏和状态隔离问题。不建议按“可生产运行的 v1.0.0”验收。
+> 本文件记录 2026-07-23 复审发现的 P0/P1 缺陷。**所有条目已由 K1-K8 稳定化节点修复**：
+> 主程序已驻留并支持优雅关闭、真实 `OpenAICompatProvider` 可用、存储/配置/Agent 可持久化恢复、
+> 单/多 Agent 端到端测试就位、安全基线落地；467 单测通过，Ruff/Mypy 全绿。当前进度见 [PROGRESS.md](./PROGRESS.md)。
+>
+> **保留原因**：源码与测试中约 40 处注释以 `(CODE_REVIEW_REPORT.md #N)` 锚定对应修复项，
+> 删除本文件会造成悬空引用。下方第 2–6 节即这些编号锚点的定义，请保持顺序，不要删除。
+> 过时的验证结果表、Alpha 结论与修复顺序建议已移除（结论已由实测复审取代）。
 
-## 1. 验证结果
-
-| 检查项 | 结果 | 说明 |
-|---|---:|---|
-| Ruff | 通过 | `.venv/bin/python -m ruff check .` |
-| Mypy | 通过 | `.venv/bin/python -m mypy isac/`，160 个源文件无错误 |
-| Pytest | 326 passed | `.venv/bin/python -m pytest --cov=isac --cov-report=term-missing` |
-| Statement coverage | 71% | 低于项目文档声明的核心模块 80% 门槛；CI 未设置 `--cov-fail-under` |
-| Branch coverage | 现有报告 51% | 关键启动、网关、真实 Provider、外部适配器和安全路径覆盖不足 |
-| 工作树 | 有既有差异 | `uv.lock` 中项目版本由 `0.1.0` 改为 `1.0.0`；本次审查未修改该文件 |
-
-## 2. 必须优先修复的问题
+## 2. 必须优先修复的问题（已全部修复）
 
 ### P0 / Critical：`agent_id` 可造成目录穿越写入
 
@@ -305,17 +297,3 @@ GET /api/v1/metrics → 200
 ## 6. 文档与版本状态不一致
 
 `AGENTS.md:5-38` 和 `README.md:54-71` 仍描述“Phase 1 中期”和大量模块待实现；而 `DEVELOPMENT_PLAN.md` 又记录 v1.0.0 已整体完成。建议明确该版本到底是“框架预览版”还是“生产可用版”，同步更新 README、AGENTS、部署文档和变更记录，避免新开发者误判功能完成度。
-
-## 7. 建议修复顺序
-
-1. **先修安全边界**：Agent ID 路径穿越、控制面认证、shared memory ACL。
-2. **再修可部署性**：环境变量映射、控制面启用逻辑、Docker healthcheck smoke test。
-3. **修复核心正确性**：路由内容、EventBus payload、会话状态隔离、Provider 异常回退和工具调用消息序列。
-4. **修复长期运行稳定性**：MCP 进程/pending、WebChat 输入、Session/Lock 生命周期、Discord 分页。
-5. **优化记忆与索引**：FTS 增量维护、Sparse BM25 增量索引。
-6. **补测试与 CI 门禁**：集成测试、覆盖率阈值、包构建、Docker smoke test。
-7. **最后同步版本和文档状态**。
-
-## 最终 Verdict
-
-**Request changes**。当前代码可以通过现有静态检查和单元测试，但上述 P0/P1 问题必须在合并或宣称生产可用前处理。尤其是路径穿越、认证绕过和默认 Docker 部署失效，不应以“后续清理”方式延期。

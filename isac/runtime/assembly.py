@@ -9,6 +9,7 @@ from typing import Any
 
 from isac.agent.hooks import AgentHooks
 from isac.agent.injectors.base_identity import BaseIdentityInjector
+from isac.agent.injectors.model_capabilities import ModelCapabilitiesInjector
 from isac.agent.injectors.tools_available import ToolsAvailableInjector
 from isac.agent.loop import ISACAgentLoop
 from isac.agent.prompt_builder import SystemPromptBuilder
@@ -23,6 +24,13 @@ from isac.agent.tools.social.send_image import SendImageTool
 from isac.agent.tools.social.switch_chat import SwitchChatTool
 from isac.agent.tools.social.view_forward_message import ViewForwardMessageTool
 from isac.agent.tools.social.wait import WaitTool
+from isac.agent.tools.subagent import (
+    CancelSubagentTool,
+    DelegateTaskTool,
+    ListSubagentsTool,
+    SubagentLogTool,
+    SubagentStatusTool,
+)
 from isac.agent.tools.utility.bash import BashTool
 from isac.agent.tools.utility.read_file import ReadFileTool
 from isac.agent.tools.utility.task import TaskTool
@@ -40,7 +48,9 @@ from isac.memory.injector.mid_term import MidTermMemoryInjector
 from isac.memory.injector.person_profile import PersonProfileInjector
 from isac.persona.manager import PersonaManager
 from isac.runtime.config import AgentConfig
+from isac.runtime.conversation import ConversationRuntimeRegistry
 from isac.runtime.instance import AgentInstance
+from isac.runtime.progress import build_progress_reporter
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -53,9 +63,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
         config: Agent 独立配置
         services: 共享服务 {"provider_manager", "memory_factory", "global_config", ...}
 
-    [已完成] memory_factory / 人格注入器 / 记忆注入器 / BehaviorLearner hooks;
-    待落地: attention_drift/expression_style/mood/skill_selector 注入器接入 PersonaManager,
-            AgentConfig.llm 非空时创建独立 Provider。
+    [已完成] memory_factory / 人格注入器 / 记忆注入器 / BehaviorLearner hooks / SubAgent 工具;
+    待落地: attention_drift/expression_style/mood/skill_selector 注入器接入 PersonaManager。
     """
     global_config: dict = services.get("global_config", {})
 
@@ -73,6 +82,10 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
 
     prompt_builder = SystemPromptBuilder()
     prompt_builder.register(BaseIdentityInjector())
+    # J2: 多模态能力注入器 (默认无授权媒体能力 → 注入空串, 主链路零变化)。
+    # model_capabilities_allow 字段将在 J2 实现节点加入 AgentConfig; 当前经 getattr 兜底。
+    _media_caps = [c for c in (getattr(config, "model_capabilities_allow", None) or []) if c != "chat"]
+    prompt_builder.register(ModelCapabilitiesInjector(_media_caps))
 
     hooks = AgentHooks()
     permission = ToolPermission(config.tools_policy)
@@ -93,6 +106,11 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(WriteFileTool())
     tools.register(WebSearchTool())
     tools.register(TaskTool())
+    tools.register(DelegateTaskTool())
+    tools.register(ListSubagentsTool())
+    tools.register(SubagentStatusTool())
+    tools.register(SubagentLogTool())
+    tools.register(CancelSubagentTool())
     prompt_builder.register(ToolsAvailableInjector(tools))
 
     # E4 命令注册表: commands_allow 矩阵在 try_execute 时生效
@@ -116,6 +134,26 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     prompt_builder.register(HeuristicMemoryInjector(memory))
     prompt_builder.register(MidTermMemoryInjector(memory))
     agent_services = {**services, "memory": memory}
+
+    # D9 进度报告: 注入工厂 (默认无 sender → 惰性关闭, 主链路热路径零变化)。
+    # 消息处理时用它构造 per-session Reporter 并绑定 Channel sender; persona_rendering
+    # ="llm" 时复用本 Agent 已解析的 llm Provider 做受超时约束的文案改写。
+    def _progress_reporter_factory(session_id, sender=None):  # noqa: ANN001, ANN202
+        return build_progress_reporter(
+            agent_id=config.agent_id,
+            session_id=session_id,
+            persona=config.persona,
+            policy_config=config.persona.get("progress"),
+            sender=sender,
+            llm=llm,
+        )
+
+    agent_services["progress_reporter_factory"] = _progress_reporter_factory
+
+    # L1: 会话级拟人运行时注册表 (每 Agent 独立, 会话间隔离)。默认不接入主链路,
+    # conversation.enabled=True 时由 manager.handle_message 启用消息缓存/状态机。
+    agent_services["conversation_registry"] = ConversationRuntimeRegistry()
+
     loop = ISACAgentLoop(
         llm=llm,
         prompt_builder=prompt_builder,
