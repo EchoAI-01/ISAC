@@ -84,6 +84,7 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
                 "agent_id": task.parent_agent_id,
                 "task_id": task.task_id,
                 "task_depth": int(task.context.get("task_depth", 0)),
+                "task_max_depth": task.policy.max_depth,
             },
         )
         result = await loop.run([{"role": "user", "content": task.objective}], context)
