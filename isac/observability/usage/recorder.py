@@ -1,15 +1,15 @@
 """J1 用量记录器 (SPECIFICATION.md 2.3)。
 
 在 Provider 调用边界被调用: ``record`` 是同步非阻塞的热路径入口, 只做成本估算与
-入队缓冲; ``flush`` 由生命周期 stop / 周期任务调用, 把缓冲事件落库。写入失败只记
-日志、绝不阻塞或中断主模型调用。
-
-骨架状态: 缓冲 + 定价 + flush/aggregate 接口就位; 周期性异步 flush、背压与采样
-留待 J1 实现节点。
+入队缓冲; ``flush`` 把缓冲事件批量落库, 由 ``start()``/``stop()`` 生命周期驱动的
+周期任务自动调用, 也可在测试/关闭时手动调用。写入失败只记日志、绝不阻塞或中断
+主模型调用。
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import time
 import uuid
 from collections import deque
@@ -26,9 +26,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+DEFAULT_FLUSH_INTERVAL_SECONDS = 30.0
+
 
 class UsageRecorder:
-    """模型用量记录器: 估算成本 → 缓冲 → 落库。"""
+    """模型用量记录器: 估算成本 → 缓冲 → 周期性批量落库。"""
 
     def __init__(
         self,
@@ -36,10 +38,14 @@ class UsageRecorder:
         pricing: PricingCatalog | None = None,
         *,
         buffer_maxlen: int = 10_000,
+        flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
     ) -> None:
         self._store = store
         self._pricing = pricing
         self._buffer: deque[ModelUsageEvent] = deque(maxlen=buffer_maxlen)
+        self._flush_interval_seconds = max(0.001, flush_interval_seconds)
+        self._running = False
+        self._task: asyncio.Task[None] | None = None
 
     @property
     def pending_count(self) -> int:
@@ -101,20 +107,54 @@ class UsageRecorder:
         self.record(event)
 
     async def flush(self) -> None:
-        """把缓冲事件落库。单条失败不影响其余; store 缺失时清空缓冲。"""
+        """把缓冲事件一次性批量落库 (insert_many, 避免逐事件提交的 N+1 开销)。
+
+        store 缺失时清空缓冲; 整批失败只记一条日志丢弃, 不做逐行重试 (缓冲事件
+        来自内部构造, 格式错误概率极低, 批量整体失败优于极慢的逐条提交)。
+        """
         if self._store is None:
             self._buffer.clear()
             return
         pending = list(self._buffer)
         self._buffer.clear()
-        for event in pending:
-            try:
-                await self._store.insert(event)
-            except Exception as exc:
-                logger.warning("用量事件落库失败, 跳过该条", event_id=event.event_id, error=str(exc))
+        if not pending:
+            return
+        try:
+            await self._store.insert_many(pending)
+        except Exception as exc:
+            logger.warning("用量事件批量落库失败, 整批丢弃", count=len(pending), error=str(exc))
 
     async def aggregate(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """按维度聚合用量 (委托 UsageStore)。store 缺失时返回空列表。"""
         if self._store is None:
             return []
         return await self._store.aggregate(filters)
+
+    async def start(self) -> None:
+        """启动周期性 flush (ApplicationRuntime 生命周期 start); 重复调用是 no-op。"""
+        if self._running:
+            return
+        self._running = True
+        self._task = asyncio.create_task(self._flush_loop())
+        logger.info("用量周期性 flush 已启动", interval=self._flush_interval_seconds)
+
+    async def stop(self) -> None:
+        """停止周期性 flush 并兜底再 flush 一次剩余缓冲 (生命周期 stop, LIFO)。"""
+        self._running = False
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+        self._task = None
+        await self.flush()
+
+    async def _flush_loop(self) -> None:
+        """仿 AlertManager._check_loop: 循环 flush, 单次异常不终止循环。"""
+        while self._running:
+            try:
+                await self.flush()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("周期性 flush 循环异常", error=str(exc))
+            await asyncio.sleep(self._flush_interval_seconds)

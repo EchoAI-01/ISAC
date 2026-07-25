@@ -1,10 +1,11 @@
-"""J1 模型用量计量框架骨架测试。
-
-覆盖数据契约、定价 (未知价 → None)、缓冲/落库/失败隔离, 以及 ProviderManager
-在成功/失败两条路径都记录一次物理请求。真实多维聚合属实现节点范畴, 不在此覆盖。
+"""J1 模型用量计量测试: 数据契约、分档定价、缓冲/批量落库/周期性 flush、
+ProviderManager 在成功/失败两条路径都记录一次物理请求。多维聚合的详细用例见
+tests/unit/test_usage_storage.py, 这里只做最小 smoke 覆盖。
 """
 
 from __future__ import annotations
+
+import asyncio
 
 import pytest
 
@@ -218,7 +219,7 @@ async def test_recorder_flush_without_store_clears_buffer() -> None:
 
 async def test_recorder_flush_swallows_store_errors() -> None:
     class _BoomStore:
-        async def insert(self, event) -> None:
+        async def insert_many(self, events) -> None:
             raise RuntimeError("db down")
 
         async def aggregate(self, filters=None):
@@ -228,6 +229,92 @@ async def test_recorder_flush_swallows_store_errors() -> None:
     recorder.record(_event())
     await recorder.flush()  # 不得抛异常
     assert recorder.pending_count == 0
+
+
+async def test_flush_writes_all_pending_events_in_one_batch_call() -> None:
+    """J1: flush() 应一次性调用 insert_many, 而不是逐事件调用 insert (N+1 提交)。"""
+    calls: list[list] = []
+
+    class _SpyStore:
+        async def insert_many(self, events) -> None:
+            calls.append(list(events))
+
+        async def aggregate(self, filters=None):
+            return []
+
+    recorder = UsageRecorder(store=_SpyStore())  # type: ignore[arg-type]
+    recorder.record(_event(event_id="a"))
+    recorder.record(_event(event_id="b"))
+    await recorder.flush()
+
+    assert len(calls) == 1
+    assert {e.event_id for e in calls[0]} == {"a", "b"}
+
+
+async def test_flush_skips_store_call_when_buffer_empty() -> None:
+    calls: list[list] = []
+
+    class _SpyStore:
+        async def insert_many(self, events) -> None:
+            calls.append(list(events))
+
+    recorder = UsageRecorder(store=_SpyStore())  # type: ignore[arg-type]
+    await recorder.flush()
+
+    assert calls == []
+
+
+async def test_start_runs_periodic_flush_without_explicit_flush_call() -> None:
+    """J1: start() 后缓冲事件应在下一次周期性 flush 时自动落库, 不需要手动调用 flush()。"""
+    captured: list = []
+
+    class _SpyStore:
+        async def insert_many(self, events) -> None:
+            captured.extend(events)
+
+    recorder = UsageRecorder(store=_SpyStore(), flush_interval_seconds=0.02)  # type: ignore[arg-type]
+    recorder.record(_event())
+
+    await recorder.start()
+    try:
+        for _ in range(50):
+            if captured:
+                break
+            await asyncio.sleep(0.01)
+        assert len(captured) == 1
+    finally:
+        await recorder.stop()
+
+
+async def test_stop_flushes_remaining_buffer_even_if_interval_never_fired() -> None:
+    """J1: stop() 应兜底再 flush 一次, 即使周期间隔还没到。"""
+    captured: list = []
+
+    class _SpyStore:
+        async def insert_many(self, events) -> None:
+            captured.extend(events)
+
+    recorder = UsageRecorder(store=_SpyStore(), flush_interval_seconds=999)  # type: ignore[arg-type]
+    recorder.record(_event())
+
+    await recorder.start()
+    await recorder.stop()
+
+    assert len(captured) == 1
+
+
+async def test_start_is_idempotent() -> None:
+    recorder = UsageRecorder(store=None, flush_interval_seconds=999)
+    await recorder.start()
+    task = recorder._task
+    await recorder.start()  # 第二次调用应是 no-op, 不新建任务
+    assert recorder._task is task
+    await recorder.stop()
+
+
+async def test_stop_without_start_does_not_raise() -> None:
+    recorder = UsageRecorder(store=None)
+    await recorder.stop()  # 不抛异常即通过
 
 
 async def test_usage_store_roundtrip(tmp_path) -> None:
