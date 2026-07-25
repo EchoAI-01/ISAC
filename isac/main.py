@@ -29,6 +29,7 @@ from isac.memory.storage.metadata import MetadataStore
 from isac.memory.storage.sparse import SparseBM25Index
 from isac.memory.storage.vector import VectorStore
 from isac.observability import AlertManager, MetricsCollector, get_default_alert_rules, get_default_metrics
+from isac.provider.catalog import ModelCatalog, ModelDescriptor
 from isac.provider.llm.openai_compat import OpenAICompatProvider
 from isac.provider.llm.stub import StubProvider
 from isac.provider.manager import ProviderManager
@@ -177,6 +178,102 @@ def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[st
         provider_manager.register(StubProvider())
 
 
+# J2: 多模态 Provider 按 kind 实例化 + 注册到 ProviderManager + ModelCatalog
+# 每个 mm 配置字段: kind / provider / api_key / base_url / model / cost_tier / latency_tier
+_MM_KIND_TO_OPERATIONS: dict[str, set[str]] = {
+    "image_gen": {"image_gen"},
+    "stt": {"stt"},
+    "tts": {"tts"},
+    "embed": {"embed"},
+    "vision": {"vision"},
+}
+
+_MM_KIND_TO_MODALITIES: dict[str, tuple[set[str], set[str]]] = {
+    "image_gen": ({"text"}, {"image"}),
+    "stt": ({"audio"}, {"text"}),
+    "tts": ({"text"}, {"audio"}),
+    "embed": ({"text"}, {"embedding"}),
+    "vision": ({"image", "text"}, {"text"}),
+}
+
+
+def _build_multimodal_provider(
+    kind: str,
+    api_key: str,
+    base_url: str,
+    model: str,
+    artifact_store: Any,
+) -> Any | None:
+    """按 kind 实例化多模态 Provider; 未知 kind 抛 ValueError。"""
+    if kind == "image_gen":
+        from isac.provider.image_gen.openai_compat import OpenAICompatImageGenProvider
+        return OpenAICompatImageGenProvider(api_key, base_url, model, artifact_store)
+    if kind == "stt":
+        from isac.provider.stt_tts.openai_compat import OpenAICompatSTTProvider
+        return OpenAICompatSTTProvider(api_key, base_url, model)
+    if kind == "tts":
+        from isac.provider.stt_tts.openai_compat import OpenAICompatTTSProvider
+        return OpenAICompatTTSProvider(api_key, base_url, model, artifact_store)
+    if kind == "embed":
+        from isac.provider.embed.openai_compat import OpenAICompatEmbeddingProvider
+        return OpenAICompatEmbeddingProvider(api_key, base_url, model)
+    if kind == "vision":
+        # vision 走 LLM Provider 的 vision_chat 方法 (gpt-4o 兼容)
+        return OpenAICompatProvider(api_key, base_url, model)
+    raise ValueError(f"未知 multimodal kind: {kind}")
+
+
+def register_multimodal_providers(
+    provider_manager: ProviderManager,
+    model_catalog: Any,
+    artifact_store: Any,
+    mm_list: list[dict[str, Any]] | None,
+) -> None:
+    """J2: 按 multimodal_providers[] 配置实例化并注册多模态 Provider + ModelDescriptor。
+
+    缺 api_key/model/未知 kind 跳过 + 警告, 不抛异常阻塞主链路。
+    """
+    if not mm_list:
+        return
+    for mm in mm_list:
+        kind = str(mm.get("kind", "")).strip()
+        provider_id = str(mm.get("provider", "")).strip()
+        api_key = str(mm.get("api_key", "")).strip()
+        base_url = str(mm.get("base_url", "")).strip()
+        model = str(mm.get("model", "")).strip()
+        if not kind or not api_key or not model:
+            logger.warning(
+                "多模态 Provider 配置不完整, 跳过",
+                kind=kind, provider=provider_id, has_api_key=bool(api_key), has_model=bool(model),
+            )
+            continue
+        try:
+            provider = _build_multimodal_provider(kind, api_key, base_url, model, artifact_store)
+        except ValueError as exc:
+            logger.warning("多模态 Provider 构造失败, 跳过", kind=kind, error=str(exc))
+            continue
+        provider_manager.register_multimodal(
+            provider, provider_id=provider_id, model_id=model
+        )
+        operations = _MM_KIND_TO_OPERATIONS.get(kind, set())
+        modalities = _MM_KIND_TO_MODALITIES.get(kind, (set(), set()))
+        descriptor = ModelDescriptor(
+            provider_id=provider_id,
+            model_id=model,
+            operations=operations,
+            modalities_in=modalities[0],
+            modalities_out=modalities[1],
+            cost_tier=str(mm.get("cost_tier", "standard")),
+            latency_tier=str(mm.get("latency_tier", "standard")),
+        )
+        model_catalog.register(descriptor)
+        logger.info(
+            "已注册多模态 Provider",
+            kind=kind, provider=provider_id, model=model,
+            cost_tier=descriptor.cost_tier, latency_tier=descriptor.latency_tier,
+        )
+
+
 def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。
 
@@ -255,14 +352,21 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
 
     # J2: 模型能力目录 / 路由 / 制品存储 (轻量, 始终构造, 无 I/O 副作用)。
     # 默认无多模态 Provider 注册 → ModelRouter.select 返回 None, Agent 无多模态能力;
-    # 真实 Provider 注册与制品落地留待 J2 实现节点。
+    # 用户在 config.jsonc 的 multimodal_providers[] 配置 api_key/base_url/model 后,
+    # register_multimodal_providers 实例化 Provider 并注册到 catalog + provider_manager。
     from isac.artifacts.store import ArtifactStore
-    from isac.provider.catalog import ModelCatalog
     from isac.provider.router import ModelRouter
 
     model_catalog = ModelCatalog()
     model_router = ModelRouter(model_catalog)
     artifact_store = ArtifactStore(str(DATA_DIR / "artifacts"))
+
+    # J2: 按 global_config.multimodal_providers[] 注册真实 Provider + ModelDescriptor
+    # 缺 api_key/model/未知 kind 跳过 + 警告, 不阻塞主链路
+    register_multimodal_providers(
+        provider_manager, model_catalog, artifact_store,
+        global_config.get("multimodal_providers"),
+    )
 
     # J4: SubAgent 运行时。Supervisor 轻量常驻 (纯内存); Journal 持久化默认关闭,
     # subagent.enabled=true 时才创建 DB 与生命周期。执行循环留待 J4 实现节点。
