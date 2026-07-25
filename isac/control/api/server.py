@@ -37,10 +37,12 @@ def create_control_app(
 
     config 字段:
     - api_token: Bearer Token (为空时跳过认证, 仅开发模式)
+    - tokens: Fix-12 Token Scope 模型 [{token, scopes}, ...] (未配置时回退 api_token)
     - agents_dir: AgentConfig 持久化目录 (默认 data/agents)
     - routing_rules_path: 路由规则文件 (默认 data/routing.jsonc)
     - links_path: 互联 Link 文件 (默认 data/links.jsonc)
     - audit_log_path: 审计日志 NDJSON 文件 (默认 data/audit.ndjson)
+    - events_max_connections: Fix-14 SSE 同时在线连接数上限 (默认 100)
 
     metrics: 应用生命周期内唯一的 MetricsCollector 实例 (由 main.build_services()
     创建并注入给核心组件); 未传入时兜底创建独立实例, 保证测试 fixture 不必更新。
@@ -93,7 +95,7 @@ def create_control_app(
     _mount_optional_routers(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
-        scope_dependency, parsed_tokens,
+        scope_dependency, parsed_tokens, config.get("events_max_connections"),
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -202,6 +204,7 @@ def _mount_optional_routers(
     auth_dependency: Any,
     scope_dependency: Any = None,
     tokens: Any = None,
+    events_max_connections: int | None = None,
 ) -> None:
     """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events)。"""
     if usage_store is not None:
@@ -257,7 +260,10 @@ def _mount_optional_routers(
     if event_bus is not None:
         from isac.control.api import routes_events
 
+        kwargs: dict[str, Any] = {}
+        if events_max_connections is not None:
+            kwargs["max_connections"] = events_max_connections
         app.include_router(
-            routes_events.build_router(event_bus, auth_dependency=auth_dependency, tokens=tokens),
+            routes_events.build_router(event_bus, auth_dependency=auth_dependency, tokens=tokens, **kwargs),
             prefix="/api/v1",
         )
