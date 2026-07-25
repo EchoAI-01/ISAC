@@ -188,6 +188,7 @@ async def test_control_api_routes_subagent_full_chain(tmp_path: Path) -> None:
             trace_id="tr1", objective="查天气",
         )
         await supervisor.submit(task)
+        bg_task = supervisor._tasks.get("api-e2e")
         for _ in range(50):
             await asyncio.sleep(0.01)
             run = await supervisor.get_status("api-e2e")
@@ -195,6 +196,13 @@ async def test_control_api_routes_subagent_full_chain(tmp_path: Path) -> None:
                 break
         assert run is not None
         assert run.status == "succeeded"
+        # 等 bg_task 完全完成 (确保 _transition 的 journal.append 已写完, 避免
+        # finally journal.stop() 后 bg_task 还在写导致 "closed database" 错误)
+        if bg_task is not None:
+            try:
+                await asyncio.wait_for(bg_task, timeout=2.0)
+            except (asyncio.CancelledError, TimeoutError):
+                pass
 
         class _StubAM:
             async def list(self): return []
