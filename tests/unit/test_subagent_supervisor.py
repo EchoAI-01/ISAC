@@ -10,9 +10,14 @@ import asyncio
 
 from isac.agent.tools.base import ToolContext, ToolPermission
 from isac.agent.tools.subagent import CancelSubagentTool, DelegateTaskTool, SubagentStatusTool
+from isac.core.types import AgentContext
 from isac.runtime.subagent.journal import SubAgentJournal
 from isac.runtime.subagent.models import SubAgentEvent, SubAgentPolicy, SubAgentTask
 from isac.runtime.subagent.supervisor import SubAgentSupervisor
+
+
+def _requester(agent_id: str) -> AgentContext:
+    return AgentContext(session=object(), user_profile=None, current_message=object(), services={"agent_id": agent_id})
 
 
 def _task(task_id: str = "t1", policy: SubAgentPolicy | None = None) -> SubAgentTask:
@@ -69,6 +74,79 @@ async def test_submit_returns_queued_run() -> None:
     assert run.status == "queued"
     assert run.task_id == "t1"
     assert (await supervisor.get_status("t1")) is run
+
+
+async def test_run_records_parent_agent_id() -> None:
+    """Fix-10: SubAgentRun 必须记住创建它的 Agent, 否则无法做跨 Agent 鉴权,
+    也无法按 agent_id 过滤 Control API 的 list_subagent_runs。"""
+    supervisor = SubAgentSupervisor()
+    task = SubAgentTask(
+        task_id="owned-by-a", parent_agent_id="agent-a", session_id="s1", trace_id="tr1", objective="x",
+    )
+    run = await supervisor.submit(task)
+    assert run.parent_agent_id == "agent-a"
+
+
+async def test_other_agent_cannot_query_status_of_task_it_does_not_own() -> None:
+    supervisor = SubAgentSupervisor()
+    task = SubAgentTask(
+        task_id="owned-by-a", parent_agent_id="agent-a", session_id="s1", trace_id="tr1", objective="x",
+    )
+    await supervisor.submit(task)
+    try:
+        await supervisor.get_status("owned-by-a", _requester("agent-b"))
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("Agent B 查询 Agent A 的子任务必须被拒绝")
+
+
+async def test_owning_agent_can_query_its_own_task_status() -> None:
+    supervisor = SubAgentSupervisor()
+    task = SubAgentTask(
+        task_id="owned-by-a", parent_agent_id="agent-a", session_id="s1", trace_id="tr1", objective="x",
+    )
+    await supervisor.submit(task)
+    run = await supervisor.get_status("owned-by-a", _requester("agent-a"))
+    assert run is not None
+
+
+async def test_admin_caller_without_requester_can_query_any_task() -> None:
+    """requester=None (控制面/管理员调用, 不代表某个具体 Agent) 必须放行, 不受
+    跨 Agent 归属限制。"""
+    supervisor = SubAgentSupervisor()
+    task = SubAgentTask(
+        task_id="owned-by-a", parent_agent_id="agent-a", session_id="s1", trace_id="tr1", objective="x",
+    )
+    await supervisor.submit(task)
+    run = await supervisor.get_status("owned-by-a", None)
+    assert run is not None
+
+
+async def test_other_agent_cannot_cancel_task_it_does_not_own() -> None:
+    supervisor = SubAgentSupervisor()
+    task = SubAgentTask(
+        task_id="owned-by-a", parent_agent_id="agent-a", session_id="s1", trace_id="tr1", objective="x",
+    )
+    await supervisor.submit(task)
+    try:
+        await supervisor.cancel("owned-by-a", _requester("agent-b"))
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("Agent B 取消 Agent A 的子任务必须被拒绝")
+
+
+async def test_list_runs_filters_by_parent_agent_id() -> None:
+    supervisor = SubAgentSupervisor()
+    await supervisor.submit(SubAgentTask(
+        task_id="a1", parent_agent_id="agent-a", session_id="s1", trace_id="tr1", objective="x",
+    ))
+    await supervisor.submit(SubAgentTask(
+        task_id="b1", parent_agent_id="agent-b", session_id="s1", trace_id="tr1", objective="x",
+    ))
+    runs = await supervisor.list_runs(filters={"parent_agent_id": "agent-a"})
+    assert {r.task_id for r in runs} == {"a1"}
 
 
 async def test_submit_rejects_task_beyond_policy_max_depth() -> None:
