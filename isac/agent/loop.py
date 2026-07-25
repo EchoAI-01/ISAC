@@ -82,6 +82,11 @@ class ISACAgentLoop:
         reported_task_progress = False
         while context.budget.remaining:
             context.iteration += 1
+            logger.debug(
+                "Agent Loop 迭代开始",
+                iteration=context.iteration,
+                remaining_iterations=context.budget.remaining_iterations,
+            )
 
             # 每轮重新构建 system prompt (记忆/画像/行话需要刷新)
             injection_context = self._to_injection_context(context)
@@ -100,6 +105,12 @@ class ISACAgentLoop:
             # LLM 调用 (支持流式和非流式)
             response = await self._call_llm(system_prompt, messages, context)
             context.budget.consume(response.usage)
+            logger.debug(
+                "LLM 响应",
+                tool_calls=len(response.tool_calls),
+                content_len=len(response.content or ""),
+                total_tokens=response.usage.total_tokens,
+            )
 
             # POST_LLM
             await self.hooks.fire(AgentHookPoint.POST_LLM, response, context)
@@ -152,6 +163,8 @@ class ISACAgentLoop:
 
     async def _execute_tool(self, tool_call: ToolCall, context: AgentContext) -> ToolResult:
         """执行单个工具: PRE_TOOL 权限检查 → 执行 → POST_TOOL 副作用。"""
+        # 只记录工具名, 不记录 arguments (可能含敏感参数, 脱敏要求)
+        logger.debug("执行工具", tool=tool_call.name)
         # PRE_TOOL: 返回 False 可阻止
         results = await self.hooks.fire(AgentHookPoint.PRE_TOOL, tool_call, context)
         if any(r is False for r in results):

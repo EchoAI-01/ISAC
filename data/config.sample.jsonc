@@ -7,6 +7,19 @@
   "debug": false,
   "bot_id": "",
 
+  // 日志与可观测性 (详见 docs/LOGGING.md)
+  // level: 全局级别 debug | info | warning | error (debug=true 等价 level=debug)
+  // format: console (开发彩色) | json (生产 ELK/Loki 采集)
+  // per_module: 按模块前缀单独设级, 只放开个别链路的 debug 而不刷屏全局
+  "logging": {
+    "level": "info",
+    "format": "console",
+    "per_module": {
+      // "isac.router": "debug",
+      // "isac.gating": "debug"
+    }
+  },
+
   // 主 LLM (文生文): K2 已落地, OpenAI 兼容 chat/completions
   "llm": {
     "provider": "openai",
