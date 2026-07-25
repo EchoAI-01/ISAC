@@ -32,6 +32,7 @@ class ArtifactRef:
     size_bytes: int = 0
     duration_seconds: float = 0.0
     created_at: int = 0
+    expires_at: int = 0  # unix 时间戳; 0 表示不过期, >0 表示到期时间 (ArtifactStore 用)
     metadata: dict = field(default_factory=dict)
 
 
