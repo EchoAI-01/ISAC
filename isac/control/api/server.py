@@ -25,6 +25,7 @@ def create_control_app(
     config: dict[str, Any],
     metrics: MetricsCollector | None = None,
     usage_store: UsageStore | None = None,
+    subagent_supervisor: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -40,6 +41,9 @@ def create_control_app(
 
     usage_store: J1 用量存储; 为 None (计量未启用) 时不挂载 /usage/models/* 路由,
     404 而不是暴露一个看起来有效但永远空的接口。
+
+    subagent_supervisor: J4 SubAgent 监督器; 为 None (未启用) 时不挂载
+    /subagent-runs/* 路由, 404。
     """
     try:
         from fastapi import Depends, FastAPI
@@ -96,6 +100,14 @@ def create_control_app(
 
         app.include_router(
             routes_usage.build_router(usage_store, auth_dependency=auth_dependency),
+            prefix="/api/v1",
+        )
+    # J4: SubAgent 监督器路由 (仅启用时挂载)
+    if subagent_supervisor is not None:
+        from isac.control.api import routes_subagent
+
+        app.include_router(
+            routes_subagent.build_router(subagent_supervisor, auth_dependency=auth_dependency),
             prefix="/api/v1",
         )
 
