@@ -23,7 +23,12 @@ class WaitTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        """返回非阻塞等待意图，后续 ConversationRuntime 接管真实 wait 状态。"""
+        """返回非阻塞等待意图。
+
+        TODO(L2): conversation.enabled 时改为向本会话 ConversationRuntime 注册
+        WaitState (runtime.enter_wait),由 timeout / message / proactive 结束并回填
+        wait 工具结果;骨架阶段仍返回意图字符串,保持现有行为。
+        """
         seconds = max(0, int(context.args.get("seconds", 5) or 5))
         session_id = getattr(context.agent_context.session, "session_id", "")
         return ToolResult(content=f"已记录等待意图：等待 {seconds} 秒或等待对方继续说。session_id={session_id}")
