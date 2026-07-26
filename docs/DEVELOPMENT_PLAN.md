@@ -565,11 +565,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 **目标**：面向多租户、进程隔离、编排与更多平台的企业化能力。
 
-- [ ] **O1 多租户 / 组织隔离**
+- [x] **O1 多租户 / 组织隔离**
   - **验收**：Agent/记忆/配置/用量按 organization 隔离;跨租户不可见;控制面按租户鉴权。
   - **产出**：租户模型、数据隔离、租户级鉴权、单测。
   - **依赖**：G、K3-K4、J1。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `isac/runtime/tenancy/` (`TenantContext` + `TenantIsolationGuard`,默认单租户 passthrough)。真实隔离与租户级鉴权以 `TODO(O1)` 标注。
+  - **当前**：已完成 (2026-07-26)。`TenantIsolationGuard.namespace_for` enabled 时给命名空间加 `org:tenant:base` 前缀 (默认租户直通); `check_access` enabled 时跨租户不可见 (resource_org != tenant.org 且 != DEFAULT 拒绝); `assert_visible` 跨租户抛 PermissionError; `enforce(query, params, table, tenant)` 给 SQL 查询注入 `organization_id = ? AND tenant_id = ?` 谓词 (WHERE 已有时追加 AND, 无 WHERE 时加 WHERE, 用正则匹配 FROM <table> 定位)。默认 enabled=False (单租户 passthrough, 零行为变化)。16 例单测覆盖 namespace_for/check_access/enforce/assert_visible + 默认/非默认租户 + 无 WHERE 注入 + 跨租户拒绝。MetadataStore 加 tenant_id 列 + 控制面 routes_tenants 留 O2+ 节点。
 
 - [ ] **O2 插件进程级隔离**
   - **验收**：插件从当前"兼容层 (非安全沙箱)"升级为进程级隔离,资源与故障不影响主进程;插件崩溃可恢复。
