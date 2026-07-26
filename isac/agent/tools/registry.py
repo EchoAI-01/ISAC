@@ -126,5 +126,10 @@ class ToolRegistry:
             "fetch_history": "channel_history",
             "switch_chat": "session_topic",
             "view_forward_message": "channel_forward",
+            # M2: 4 个 A2A 工具需 mesh_action_broker 注入后方可调用
+            "notify_agent": "mesh_action_broker",
+            "handoff_conversation": "mesh_action_broker",
+            "list_available_agents": "mesh_action_broker",
+            "memory_query_agent": "mesh_action_broker",
         }
         return mapping.get(tool_name)

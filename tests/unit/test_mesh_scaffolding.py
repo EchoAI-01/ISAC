@@ -1,9 +1,9 @@
-"""Agent Mesh (M1/M2) 骨架测试。
+"""Agent Mesh (M1/M2) 骨架测试 (M1/M2 已实现后的回归)。
 
-验证 M1 (MeshRoutingDecision/MeshRouter observer/candidate) 与 M2 (MeshActionBroker
-deny-by-default + A2A 工具默认 deny) 的契约与骨架安全行为,并断言既有
-RoutingDecision / InterAgentLink 契约字段未被改动 (approach b: 新增 sibling)。
-真实仲裁与投递属实现节点 (M1/M2), 本文件只覆盖骨架级行为。
+验证 M1 (MeshRoutingDecision/MeshRouter observer/candidate + arbitrate) 与
+M2 (MeshActionBroker ACL + bus 投递 + A2A 工具 restricted) 的契约与行为,
+并断言既有 RoutingDecision / InterAgentLink 契约字段未被改动 (approach b)。
+详细业务测试在 test_mesh_router.py / test_mesh_actions.py。
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def test_mesh_router_arbitrate_returns_primary_when_no_candidate() -> None:
     assert MeshRouter().arbitrate(d) == "a1"
 
 
-# ── M2: MeshActionBroker deny-by-default ────────────────────────
+# ── M2: MeshActionBroker deny-by-default + bus 投递 ─────────────
 
 
 def test_action_broker_deny_by_default_without_policy() -> None:
@@ -67,11 +67,22 @@ def test_action_broker_permits_only_listed_actions() -> None:
     assert broker.is_permitted("handoff", policy) is False
 
 
-async def test_action_broker_async_actions_respect_policy() -> None:
+async def test_action_broker_async_actions_respect_policy_and_bus() -> None:
+    """M2: ACL 不通过或无 bus 时拒绝; ACL 通过且有 bus 时投递成功."""
+    from isac.runtime.bus import InterAgentBus, InterAgentLink
+
     broker = MeshActionBroker()
+    # 无 bus: 所有动作拒绝 (零行为变化)
     assert await broker.notify("a1", "a2", "hi", None) is False
-    assert await broker.handoff("a1", "a2", "s", MeshLinkPolicy(permissions=["handoff"])) is True
+    # policy 含 handoff 但无 bus: 仍拒绝
+    assert await broker.handoff("a1", "a2", "s", MeshLinkPolicy(permissions=["handoff"])) is False
     assert broker.list_available("a1") == []
+    # 有 bus + Link + policy: handoff 投递成功
+    bus = InterAgentBus()
+    bus.add_link(InterAgentLink(from_agent="a1", to_agent="a2"))
+    broker2 = MeshActionBroker(bus)
+    ok = await broker2.handoff("a1", "a2", "s", MeshLinkPolicy(permissions=["handoff"]))
+    assert ok is True
 
 
 def test_mesh_link_policy_defaults() -> None:
@@ -80,13 +91,14 @@ def test_mesh_link_policy_defaults() -> None:
     assert p.max_context_messages == 20
 
 
-# ── A2A 工具默认 deny (LLM 不可见, 零行为变化) ───────────────────
+# ── A2A 工具 restricted (M2 已接入 broker, 需注入方可调用) ───────
 
 
-def test_a2a_tools_default_deny() -> None:
+def test_a2a_tools_restricted_after_m2() -> None:
+    """M2: 4 个 A2A 工具改为 restricted (LLM 可见, 但需 mesh_action_broker 注入)."""
     perm = ToolPermission()
     for name in ("notify_agent", "handoff_conversation", "list_available_agents", "memory_query_agent"):
-        assert perm.check(name) == "deny", name
+        assert perm.check(name) == "restricted", name
     # 既有 ask_agent 仍为 allow, 未受影响
     assert perm.check("ask_agent") == "allow"
 

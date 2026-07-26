@@ -1,13 +1,14 @@
-"""notify_agent 工具骨架 (M2, ROUTING_AND_AGENT_MESH.md §5.2)。
+"""notify_agent 工具 (M2, ROUTING_AND_AGENT_MESH.md §5.2)。
 
-单向通知另一个 Agent (不等待响应)。默认 deny (definitions() 过滤, LLM 不可见),
-M2 实现节点接入 MeshActionBroker.notify 后改为 restricted。
+单向通知另一个 Agent (不等待响应)。默认 restricted (LLM 可见但需注入
+mesh_action_broker + policy); M2 已接入 MeshActionBroker.notify。
 """
 
 from __future__ import annotations
 
 from isac.agent.tools.base import Tool, ToolContext
 from isac.core.types import ToolResult
+from isac.runtime.mesh.models import MeshLinkPolicy
 
 
 class NotifyAgentTool(Tool):
@@ -31,8 +32,21 @@ class NotifyAgentTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        """TODO(M2): 经 MeshActionBroker.notify → InterAgentBus 发 NOTIFY 消息。
+        """M2: 经 MeshActionBroker.notify → InterAgentBus 发 NOTIFY 消息。
 
-        骨架阶段: 默认 deny 不会被 LLM 调用; 若显式启用则返回未实现提示。
+        services 需注入 mesh_action_broker (broker) + mesh_link_policy (policy);
+        缺失时返回受限工具错误 (ToolRegistry 自动拒绝)。
         """
-        return ToolResult(content="notify_agent 尚未实现 (M2 待落地)。", is_error=True)
+        broker = context.services.get("mesh_action_broker")
+        if broker is None:
+            return ToolResult(content="notify_agent 未接入 mesh_action_broker", is_error=True)
+        policy: MeshLinkPolicy | None = context.services.get("mesh_link_policy")
+        target = str(context.args.get("target_agent", ""))
+        content = str(context.args.get("content", ""))
+        agent_id = str(context.services.get("agent_id", ""))
+        ok = await broker.notify(agent_id, target, content, policy)
+        if not ok:
+            return ToolResult(
+                content=f"通知 {target} 失败 (ACL 拒绝或 Link 未配置)", is_error=True
+            )
+        return ToolResult(content=f"已通知 {target}: {content[:50]}")
