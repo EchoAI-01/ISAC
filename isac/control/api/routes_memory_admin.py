@@ -55,7 +55,12 @@ def build_router(
         return {"ok": ok, "detail": "protected" if ok else "item not found or already protected"}
 
     @router.patch("/memory/{agent_id}/items/{item_id}", dependencies=write_deps)
-    async def correct(agent_id: str, item_id: str, new_content: str = "") -> dict:
+    async def correct(agent_id: str, item_id: str, payload: dict) -> dict:
+        """CR2-Fix-14: new_content 通过 JSON body 传入 (裸 str 参数会被 FastAPI
+        绑成 query 参数, 长文本进 URL 会污染访问日志/代理场景), 与
+        routes_agents.py::patch_agent 的 payload: dict 惯例一致。
+        """
+        new_content = str(payload.get("new_content", ""))
         ok = await governor.correct(item_id, new_content, agent_id)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}"
         await _audit_if_ok(audit_log, ok, "PATCH", path, "correct_memory_item", item_id)
