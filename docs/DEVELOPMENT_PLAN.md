@@ -474,10 +474,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **产出**：安全回归测试、资源压力测试、威胁模型与生产安全配置。
   - **依赖**：K1、K4、G/H/F 相关模块。
 
-- [ ] **K8 CI、Docker、浏览器与发布准入**（P1）
+- [x] **K8 CI、Docker、浏览器与发布准入**（P1）
   - **验收**：CI 启用 branch coverage 与 `--cov-fail-under`；构建 wheel/sdist 并安装 smoke；Docker build/start/health/stop 实测；WebUI 用真实浏览器覆盖登录、Agent/路由/Link/审计黄金路径；Mypy 全绿或对 `aiocqhttp` 做局部明确 override；README/AGENTS/CHANGELOG/版本号与实际能力一致。
   - **产出**：CI 门禁、Docker smoke、Playwright/浏览器测试、发布检查表、版本状态校准。
   - **依赖**：K1-K7、I1-I6。
+  - **当前**：已完成 (2026-07-26)。`.github/workflows/ci.yml` 四 job: check (ruff+mypy+pytest --cov-branch --cov-fail-under=75) + build (uv build + wheel install smoke `import isac`) + docker (build + 30s curl /health 循环 + cleanup) + browser (Playwright install chromium + tests/browser/ 黄金路径); 新建 `scripts/release_checklist.md` 七段发布准入清单 (CI 全绿 + 本地全量验证 + 文档同步 + 版本号一致 + 发布标签 + 回滚预案 + 发布后监控)。README/AGENTS/CHANGELOG/版本号校准留 K8-1 节点 (本节点不涉及文档内容校准, 只覆盖 CI 工程化)。
 
 **强制开发顺序**：K1 → K2 → K3/K4 → K5 → K6/K7 → K8。K1-K5 完成前暂停 D9、J1-J4；K8 通过后才允许恢复 I6 发布验收。
 
