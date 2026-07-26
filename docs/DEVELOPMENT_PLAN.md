@@ -35,7 +35,9 @@
 
 各节点进度以 [PROGRESS.md](./PROGRESS.md) 为**唯一事实源**,本文档不再另存进度表,只描述节点定义、依赖与验收。
 
-当前概况(详见 PROGRESS.md)：A-K 已达可运行完成度 —— A-C、F-H 完成;E 经 K6 端到端验收;I 主体完成(WebUI v2 已落地,浏览器测试 CI 随 K8 接入);J1-J4 完成;K1-K8 稳定化完成,进入发布候选。**L 拟人化 / M 路由 Mesh / N 记忆深化 / O 企业化** 四大节点的 14 子节点中,**L2-L5、M1-M2、N1-N3、O1-O3 核心逻辑 + 单测已实现,但主链路尚未接线**(标 `[~]`:默认关闭、生产路径无调用点,按 §二完成定义尚不算完成),O4/O5 未开始(`[ ]`);向量库 / 图谱 / Embedding / Reranker 检索后端已实现(向量/图谱召回待接入 pipeline)。为把这些 `[~]` 能力接入同一主链路协同工作,新增大节点 **P 主链路接线与激活**(P0-P5,定义见 §四)。当前 1091 单测通过、ruff/mypy 全绿、主链路零行为变化。技术路线全景见 [ROADMAP.md](./ROADMAP.md);模块开发范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
+当前概况(详见 PROGRESS.md)：A-K 已达可运行完成度 —— A-C、F-H 完成;E 经 K6 端到端验收;I 主体完成(WebUI v2 已落地,浏览器测试 CI 随 K8 接入);J1-J4 完成;K1-K8 稳定化完成,进入发布候选。**L 拟人化 / M 路由 Mesh / N 记忆深化 / O 企业化** 四大节点的 14 子节点中,**L2-L5、M1-M2、N1-N3、O1-O3 核心逻辑 + 单测已实现,但主链路尚未接线**(标 `[~]`:默认关闭、生产路径无调用点,按 §二完成定义尚不算完成),O4/O5 未开始(`[ ]`);向量库 / 图谱 / Embedding / Reranker 检索后端已实现(向量/图谱召回待接入 pipeline)。为把这些 `[~]` 能力接入同一主链路协同工作,新增大节点 **P 主链路接线与激活**(P0-P5,定义见 §四)。当前 1157 单测通过、ruff/mypy 全绿、主链路零行为变化。
+
+**2026-07-26 MVP 差距复核**：对照 `docs/REQUIREMENTS.md` 十二条原始需求做 10 域并行代码取证(498 次代码检索 + 一次真实启动实测),发现一批标 `[x]` **已交付**的节点(D8/E4/F1-F3/H1/H2/J1-J4/K1-K4/K7)存在与其"完成定义"矛盾的未接线子行为,已在对应节点下补记"**2026-07-26 MVP 缺口复核**"说明(不改动其余已验证部分的 `[x]`);并新增大节点 **Q MVP 收尾**,收纳未被 P0-P5 覆盖、但 MVP 必需的缺口(记忆写入回路等,定义见 §四 Q)。技术路线全景见 [ROADMAP.md](./ROADMAP.md);模块开发范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
 
 ## 三之二、下一步开发计划
 
@@ -48,8 +50,9 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 5. **P4 身份归一激活** — gateway 接入 `IdentityResolver`,记忆按归一身份聚合(N3)。
 6. **P5 企业化激活** — 多租户隔离 / 插件进程隔离 / Workflow 接入 control 与主链路(O1-O3)。
 7. **未开始功能(`[ ]`)** — O4 平台适配器(微信/Slack/飞书 ≥1 真实实现)、O5 Video Provider 真实端点、MemoryConsolidator(记忆整合后台任务)、I 节点复核(浏览器测试 CI 已随 K8 接入,复核 85%→100%)。
+8. **Q MVP 收尾**(2026-07-26 新增,详见 §四 Q 节点) — 对照原始需求清单逐条代码取证后发现的、**未被 P0-P5 覆盖**的 MVP 必需缺口(按优先级排列,非编号顺序):**Q1 记忆写入回路与身份稳定化**(检索/注入/治理链路全通但生产从未写入,MVP 最高优先级,不依赖 P0)、Q0 开箱可触达与配置纠偏、Q2 人格差异化实现、Q3 插件与 MCP 生态数据面接线、Q4 多模态工具注册与计量收尾、Q5 WebUI 与控制面收尾、Q6 SubAgent 用量与安全补漏。
 
-依赖顺序：P0 → P1;P2 与 P3 可并行,P4 依赖 P3;P5 与 O4/O5/MemoryConsolidator/I 复核 独立,可并行插入。每项按 §二"完成定义"验收(非桩实现 + 单测 + 集成/运行验证 + 主链路接线 + 文档 + `ruff`/`mypy`/CI),完成后把 §四 对应 `[~]` 升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。技术路线全景见 [ROADMAP.md](./ROADMAP.md)。
+依赖顺序：P0 → P1;P2 与 P3 可并行,P4 依赖 P3;P5 与 O4/O5/MemoryConsolidator/I 复核独立,可并行插入;**Q0/Q1 不依赖 P0,可立即开始甚至优先于 P0**,Q2-Q6 相互独立、与 P 节点也无强依赖,可并行插入。MVP 发布以 **P0-P2 + Q0-Q1** 完成为最低准入线(详见 [ROADMAP.md](./ROADMAP.md) M-MVP 里程碑)。每项按 §二"完成定义"验收(非桩实现 + 单测 + 集成/运行验证 + 主链路接线 + 文档 + `ruff`/`mypy`/CI),完成后把 §四 对应 `[~]` 升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。
 
 ---
 
@@ -197,6 +200,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **产出**：`persona/{manager,drift_profiles,style_profiles,mood,behavior_learner}.py`。
   - **依赖**：D2、D3。
   - **当前**：PersonaManager 合并全局/Agent 覆盖并聚合 MoodEngine + BehaviorLearner; MoodEngine 实现 update (valence/arousal 钳制 + 离散 label 映射) 与 decay (按 decay_rate 向中性衰减); BehaviorLearner 注册 FINAL_RESPONSE hook 从回复提取行为特征 (长度/emoji/话题) 写入 UserProfile.behavior_patterns, 带 max_patterns 滚动淘汰。已在 `runtime/assembly.py` 接线 `persona.register_hooks(hooks)`。附 `tests/unit/test_persona.py` (15 测试)。
+  - **2026-07-26 MVP 缺口复核**：`AgentConfig.persona` 文本从未接入 `BaseIdentityInjector`(该注入器恒注入 locales 通用文案),两个 Agent 的人格差异在 Prompt 层不可见;`MoodInjector`/`ExpressionStyleInjector`/`AttentionDriftInjector` 是返回空串的桩且未注册进 `prompt_builder`(`assembly.py` 自认"待落地"),`MoodEngine.update/decay` 与 `PersonaManager.get_expression_style/get_drift_level` 全仓无生产调用点,既无注入也无更新回路;`BehaviorLearner` 写的 `behavior_patterns` 也无消费者。人格系统在读侧(合并/存储)完整,但对话可感知的差异化实际不存在。补齐见 **Q2**。
 
 - [x] **D9 任务进度报告**
   - **验收**：Agent Loop 在工具完成/失败后产生 `ProgressEvent`；慢工具可在执行前报告；`ProgressReporter` 完成人格模板渲染、敏感信息过滤、2 秒默认频控、连续事件合并和每任务上限；WebChat 输出原生 `progress` 事件，普通 IM 降级为带 `message_kind=progress` 的文本；发送失败不阻断主任务；中断后不再发送旧任务进度。
@@ -232,6 +236,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **产出**：`plugin/runtime/manager.py`、`commands/registry.py`、`agent/tools/registry.py` 联动逻辑。
   - **依赖**：E2、F4 骨架、D4。
   - **当前**：`core/policy.py` 新增 `EnableMatrix` 类实现有效权限计算 (Agent ∩ Channel ∩ 全局); `ToolRegistry` 接入 effective_policy (Channel deny/restricted 优先); `CommandRegistry` 启用矩阵注入 enable_checker; `runtime/assembly.py` 把 EnableMatrix 注入 ToolRegistry + 构造 CommandRegistry 注册 4 个内置命令; `runtime/manager.py` 在 handle_message 中接入命令拦截 (/cmd 跳过门控直接执行)。附 `tests/unit/test_enable_matrix.py` (14 测试覆盖 plugin/tool/command/mcp 四类矩阵决策)。
+  - **2026-07-26 MVP 缺口复核**：tool/command 两臂矩阵在生产真实生效,但 **plugin 臂未接线** —— `PluginManager` 构造时未传入 `EnableMatrix`(`plugin/runtime/manager.py:105-107` 的 `is_enabled_for` 硬编码放行 `["*"], []`),`plugins_allow`/`plugins_deny` 对已加载插件的 hooks 完全不生效;**mcp 臂**(`is_mcp_enabled`)也全仓零生产调用点(因为 MCP Client 本身未接线,见 H2)。补齐见 **Q3**。
 
 - [ ] **E5 多 Agent 集成测试（并入 K6 验收）**
   - **验收**：2+ Agent × 1 Channel + 触发词/默认 Agent 路由 + ask_agent 互联端到端通过，并验证重启恢复、权限与记忆隔离。
@@ -249,18 +254,21 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **产出**：`plugin/compatibility/astrbot/{star,context,events,tools,sandbox}.py`。
   - **依赖**：B2、D3、D4。
   - **当前**：FunctionToolAdapter 桥接 @filter.llm_tool 函数 → ISAC Tool (同步/异步/异常隔离); ContextAdapter 映射 send_message/get_platform/get_provider/register_tool 到 ISAC services; Star 基类与 _FilterRegistry 实现 AstrBot 装饰器 (llm_tool/on_message/on_llm_request); events.py EventType 映射到 ISAC EventType/AgentHookPoint; sandbox.py meta_path 拦截 astrbot.* import 重定向。附 `tests/unit/test_astrbot_compat.py` (9 测试覆盖装饰器/桥接/Context 适配)。
+  - **2026-07-26 MVP 缺口复核**：桥接组件本身(`FunctionToolAdapter`/`ContextAdapter`/`Star`/`_FilterRegistry`)已实现且有单测,但生产 `plugin/runtime/loader.py` 只识别格式并 `exec_module` 实例化,**从不调用这些桥接逻辑**做真正的注册;已加载的 AstrBot 插件是惰性实例,`@filter.llm_tool`/`@filter.on_message` 等装饰器标记的 handler 永不被生产事件触发,`sandbox.install_sandbox` 也无调用点。补齐见 **Q3**。
 
 - [x] **F2 MaiBot 兼容层**
   - **验收**：2-3 个 MaiBot 插件可运行；Plugin/Action/Command 映射工作；锁定兼容版本。
   - **产出**：`plugin/compatibility/maibot/{plugin,actions,commands}.py`。
   - **依赖**：B2、D3、`commands/`。
   - **当前**：MaiBotPlugin 基类 + @register_action / @register_command 装饰器 (标记 _maibot_action / _maibot_command); MaiBotPluginAdapter 扫描装饰器并 adapt 到 ToolRegistry / CommandRegistry; bridge_action (MaiBotActionAdapter) 桥接 Action → ISAC Tool (同步/异步/异常隔离); bridge_command (MaiBotCommandAdapter) 桥接 Command → ISAC Command。附 `tests/unit/test_maibot_compat.py` (6 测试覆盖装饰器扫描/Action 桥接/Command 桥接)。
+  - **2026-07-26 MVP 缺口复核**：与 F1 同源问题 —— `MaiBotPluginAdapter.adapt` 只被单测调用,生产 `loader.py` 加载 MaiBot 插件后不调用它;插件里 `@register_action`/`@register_command` 标记的能力在生产是死代码。`PLUGIN_COMPATIBILITY.md` §7.3 描述的 `enqueue_proactive_task` 映射也全仓无实现。补齐见 **Q3**。
 
 - [x] **F3 原生 SDK v2**
   - **验收**：ISACPlugin 可注册 Commands/InterAgent Hooks/Admin Routes(预留)；Plugin Manifest 扩展字段生效。
   - **产出**：`plugin/native/{plugin,hooks,api}.py`。
   - **依赖**：B2、E3。
   - **当前**：PluginContext 实现 register_tool/injector/command 真实注册到 ToolRegistry/CommandRegistry/SystemPromptBuilder; register_inter_agent_hook 挂到 InterAgentBus; register_admin_route 收集到 services["admin_routes"] 待 G1 消费; on_event_intercept/on_event_async 订阅 EventBus。make_plugin_context 工厂在 PluginManager 加载时调用。附 `tests/unit/test_native_plugin.py` (9 测试)。
+  - **2026-07-26 MVP 缺口复核**：`PluginContext` 的 `register_tool/register_command/register_injector` 实现真实存在,但生产 `main.py` 构造 `PluginContext` 时把 tools/commands/prompt_builder 三个注册表显式留 `None`(`main.py:750-755` 注释明示),`plugin/native/plugin.py` 里 `register_tool` 等方法在注册表为 `None` 时 `raise RuntimeError` —— 插件唯一能真正注册工具/命令/注入器的入口在生产环境不可用;`register_admin_route` 收集的路由也无人挂载到 control app。`CR3-H2` 已接线的是 `on_load` 生命周期调用本身,不含这三类注册表的生产绑定。补齐见 **Q3**(复用 `assembly.py:100-104` 已验证的 `plugin_agent_hooks` 共享注册表模式)。
 
 - [x] **F4 插件加载器与启用矩阵**
   - **验收**：loader 自动识别三种格式；PluginManager 热重载、错误隔离、启用矩阵生效。
@@ -309,12 +317,14 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **产出**：`channel/adapters/{telegram,discord,webchat}/`。
   - **依赖**：C1。
   - **当前**：TelegramAdapter 用 Bot HTTP API long polling + httpx 惰性导入; 私聊/群聊识别 + @mention entity 转 at segment; DiscordAdapter 用 REST polling (简化版, 生产推荐接入 discord.py 或 Gateway); WebChat 用 asyncio.start_server 极简 HTTP 实现 (/webchat/send + /webchat/poll), 不依赖外部 web 框架, 内存消息队列 + 过期清理。附 `tests/unit/test_platform_adapters.py` (13 测试覆盖三种适配器消息转换 + send + token 缺失兜底)。
+  - **2026-07-26 MVP 缺口复核**：三个适配器本身"可收发消息"这一验收标准(单测层面)成立,但生产入口 `main.py` 只有 `channels.onebot` 一个注册分支,`TelegramAdapter`/`DiscordAdapter`/`WebChatAdapter` 全仓零生产实例化点(`config.sample.jsonc` 里 `channels.webchat.enabled=true` 是死配置);开箱部署事实上只有 OneBot(需外部 NapCat+QQ 号)一条可用通道,零外部依赖的 WebChat 摸不到。补齐见 **Q0**(main() 各加一个注册分支,~5 行 × 3)。
 
 - [x] **H2 MCP Client**
   - **验收**：可连接外部 MCP Server；工具按 Agent mcp_servers 矩阵生效。
   - **产出**：`agent/tools/mcp/client.py`。
   - **依赖**：D4、E4。
   - **当前**：MCPClient 支持两种传输 (stdio 子进程 + HTTP/SSE); connect 启动子进程或 httpx.AsyncClient; list_tools 发现 MCP 工具并桥接为 MCPToolBridge (实现 ISAC Tool 接口); call_tool 转发 JSON-RPC tools/call + 错误处理 (jsonrpc error → is_error=True); disconnect 终止子进程 / 关闭 httpx + 取消 pending future。stdio 模式后台读 stdout NDJSON 并分发到 pending future。Agent 的 mcp_servers 启用矩阵在 E4 EnableMatrix 落地。附 `tests/unit/test_mcp_client.py` (9 测试覆盖 connect 各传输 + list_tools + call_tool 正常/错误/未连接 + MCPToolBridge 桥接)。
+  - **2026-07-26 MVP 缺口复核**："Agent 的 mcp_servers 启用矩阵在 E4 EnableMatrix 落地"仅指判定逻辑(`is_mcp_enabled`)存在,`MCPClient` 本身**全仓无生产 import**——`AgentConfig.mcp_servers` 配置该字段对生产没有任何效果,`assembly.py` 从不构造/`connect`/把 `list_tools` 结果注册进 Agent 的 `ToolRegistry`。补齐见 **Q3**。
 
 - [x] **H3 实用工具与子 Agent**
   - **验收**：bash/read_file/write_file/web_search/task 可用；受限策略（项目目录/递归深度）生效。
@@ -375,6 +385,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **产出**：`observability/usage/{models,recorder,storage,pricing}.py`、SQLite Schema、ProviderManager 接线、Usage REST API、指标与测试。
   - **依赖**：B2、G1、I5。
   - **当前**：已完成 (2026-07-25)。`TokenUsage`（`core/types.py`）补齐 `cache_read/cache_write/reasoning/audio_{input,output}_tokens` 明细字段；`OpenAICompatProvider` 从 `prompt_tokens_details`/`completion_tokens_details` 解析这些字段（非流式 + SSE 流式）。`PricingCatalog.estimate_cost()` 按分档单价计算缓存/音频 Token 成本（子集扣除，避免重复计价），未配置分档价时回退基础 input/output 价。`ProviderManager.chat_with_retry()`/`_call_and_record()` 贯穿 `agent_id`/`session_id`/`trace_id`（复用 D9 的 `task_id`）/`request_id`（每次物理尝试独立生成）/`fallback_from`；新增 `record_stream_result()` 补齐此前完全绕过计量的流式调用路径（`agent/loop.py::_call_llm_streaming()`，成功/失败都记录）。`UsageStore`：Schema 迁移（`_ensure_column` 补 5 个明细列）、`insert_many()` 批量提交替代逐事件 commit、`list_events()` 分页查询、`aggregate()` 真实多维聚合（`group_by` 走固定白名单防注入，`time_bucket` 按 hour/day 分桶，全空结果返回 `[]` 而非幻影汇总行）。`UsageRecorder` 新增 `start()`/`stop()`/`_flush_loop()` 周期性 flush（仿 `AlertManager._check_loop`），`main.py` 按 `observability.usage.flush_interval_seconds` 配置并保证 start/stop 顺序不丢最后一批事件。新增 `control/api/routes_usage.py` 提供 `GET /usage/models/{summary,events,timeseries}`，`create_control_app()` 仅在 `usage_store` 非 `None` 时挂载。测试：`tests/unit/test_usage_recorder.py`、`tests/unit/test_usage_storage.py`、`tests/unit/test_control_api_usage.py`、`tests/unit/test_provider_manager.py`、`tests/unit/test_openai_compat_provider.py`、`tests/unit/test_core_types.py`、`tests/integration/test_single_agent_flow.py`（全链路 process_message → ... → chat_with_retry → flush → aggregate 按 agent_id 查得用量）。Embedding/Reranker/STT/TTS/ImageGen/Video 的 `ModelUsageEvent` 埋点留给 J2（真实多模态调用路径落地时一起补，当前这些 Provider 仍是 J2 范畴的桩，没有可埋点的真实调用链路）。
+  - **2026-07-26 MVP 缺口复核**：J2 完成后,`UsageRecorder` 已补 `record_image_gen/stt/tts/video/embed/rerank` 6 个方法(见 J2 当前),但生产**零调用点**——多模态工具(`agent/tools/media.py`)直连 Provider,不经过计量边界;`PricingCatalog` 在生产恒空快照(`main.py` 构造 `PricingCatalog()` 不加载任何价目表),`estimated_cost` 恒为 `None`。补齐见 **Q4**。
 
 - [x] **J2 多模态 Provider 与能力选择**
   - **验收**：文本、视觉理解、STT、TTS、图片生成、视频理解/生成 Provider 使用统一注册与能力声明；Agent 只感知被授权能力；输入内容、用户意图、成本/延迟策略可选择模型；不可用时按能力回退或明确失败；生成结果经制品存储和 Channel 能力适配发送。
@@ -399,6 +410,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
     - **Agent 能力授权字段**: `AgentConfig.model_capabilities_allow` 留 J4 (assembly.py:78-81 getattr 兜底保留)。
     - 覆盖测试: `tests/unit/test_artifact_store.py` (12) / `test_media_normalizer.py` (13) / `test_model_router.py` (10) / `test_usage_recorder_multimodal.py` (13) / `test_image_gen_provider.py` (9) / `test_stt_tts_provider.py` (13) / `test_embed_provider.py` (14) / `test_vision_chat.py` (7) / `test_media_tools_wired.py` (8) / `test_channel_media_resolver.py` (13) / `test_main_multimodal_registration.py` (8); 集成测试 `tests/integration/test_j2_multimodal_flow.py` (4) / `tests/integration/test_j2_channel_delivery.py` (4)。共 721 测试全绿。
   - **边界**: Agent 能力授权字段留 J4; 视频生成真实 API 留 J3+; Telegram/Discord 媒体 segment 留 J3; Channel 入站媒体解析 (用户上传图片/语音 → MediaInput) 留 J3; MediaNormalizer 白名单仅 data/artifacts/ (不启用 data/uploads/); 既有 send_image.py 旧工具保留不动, J3 决定迁移; _send_reply 改造 (扫描回复里的 artifact_id 引用 → MediaResolver 转 segment) 留 J3 WebUI v2 一起做。
+  - **2026-07-26 MVP 缺口复核**：本节点标注"留 J3"的 `_send_reply`/入站媒体/Telegram·Discord segment 在 J3 完成后**仍未补齐**;更根本的是 `isac/runtime/assembly.py` 的 `ToolRegistry` 注册清单**不含任何 `media.py` 工具**(vision/STT/TTS/生图/视频理解/视频生成 6 个语义工具全仓仅测试引用),`AgentConfig` 也无 `model_capabilities_allow` 字段(此前留 J4,J4 完成后仍未补) —— Provider/Router/Catalog/ArtifactStore 全部就绪却是"配置了也没用"的状态,这是需求七 MVP 的核心缺口。补齐见 **Q4**。
 
 - [x] **J3 WebUI v2 管理与观测**
   - **验收**：Dashboard、Agent、Channel/路由、Provider/模型、Token/成本、插件/MCP/工具、记忆、会话/任务进度、日志/审计、系统设置页面可用；配置写入支持 Schema 校验、差异预览、二次确认、版本冲突检测和审计；密钥只可替换不可回显。
@@ -414,6 +426,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
     - **Bearer Token 模式**: 沿用 v1 从 DOM 读取 (不引入 HttpOnly Cookie + CSRF, 留作未来工作); sessionStorage 存 token (K7 已落地, 关闭标签即清除)。
     - 覆盖测试: tests/unit/test_webui.py (11 测试, 含 SPA 侧边栏 + 三批页面 + 配置编辑事务 UI) + tests/browser/test_webui_golden_path.py (2 黄金路径, Playwright 未装时 skip)。共 792 测试全绿。
   - **边界**: HttpOnly Cookie + CSRF 未引入 (沿用 v1 Bearer Token 从 DOM 读取); 多 scope 权限模型未引入 (扁平 Bearer Token); 插件表占位 (插件列表 API 待后续); WebUI 浏览器测试在 CI 中运行待 K8-2 加 Playwright step。
+  - **2026-07-26 MVP 缺口复核**：HttpOnly Cookie + CSRF 与多 scope 权限模型已由后续的 Fix-17/Fix-12(见 CR2/CR3 修复记录)补上,本节点"边界"里这两条已解决,但另外几处遗留问题仍在:Extensions 插件表硬编码占位文案(实际后端 API `/agents/{id}/plugins` 已就绪,只是前端未接);SubAgent 任务表请求路径写死 `agent_id="_"`,恒空;配置编辑的 `loadConfigForEdit` 不读真实配置、伪造 `revision=1`,真实 revision>1 时 PATCH 必 409(乐观锁在 WebUI 侧形同虚设);后端 SSE(`/events/stream`)已挂载但前端无 `EventSource` 消费;Usage 页明细表按 `events?.events` 取值,与 API 裸数组返回不匹配,恒显示"(无事件)"。补齐见 **Q5**。
 
 - [x] **J4 SubAgent Runtime 与可追溯任务日志**
   - **验收**：每个 Agent 可用 `delegate_task` 创建隔离子任务；子 Agent 使用独立 History/Prompt/Budget/Workspace 和父权限子集；主 Agent 默认只收到结构化结果、证据引用和用量摘要；可通过 task_id 列表、查询状态、分页读取脱敏日志、取消任务；日志持久化后重启仍可查询；不记录原始 reasoning；子 Agent 默认不能直接发消息、写长期记忆或无限派生。
@@ -430,6 +443,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
     - **DEFAULT_POLICY**: delegate_task 从 deny 改 restricted (需显式授权, 但不再默认禁用)。
     - 覆盖测试: `tests/unit/test_subagent_supervisor.py` (19) / `test_subagent_supervisor_exec.py` (7) / `test_delegate_task_wired.py` (10) / `test_subagent_restore.py` (5) / `test_control_api_subagent.py` (8); 集成测试 `tests/integration/test_j4_subagent_flow.py` (5)。共 751 测试全绿。
   - **边界**: SubAgentPolicy.intersect() 采用 fail-closed (AND/min/∩, 空集拒绝全部); AgentConfig.model_capabilities_allow 字段仍留 J4+ (assembly.py getattr 兜底); ContextEnvelope 不复制主会话可变上下文 (MoodState/RelationshipState/用户画像/私有记忆正文); 子 Agent 默认不能直接发消息、写长期记忆或无限派生 (allow_channel_send/allow_memory_write/allow_delegate 默认 False); list_subagent-runs 按 parent_agent_id 过滤 TODO (SubAgentRun 无该字段, 当前返回全部)。
+  - **2026-07-26 MVP 缺口复核**：委派主链路(`delegate_task`→Supervisor→runner→独立 loop)本身是本仓接线最完整的域之一,但 `supervisor` 只保留 `result.summary`,把 `result.usage`/`evidence_refs` 丢弃(`run.tokens_used`/`tool_calls_used` 恒 0 —— Control API `/subagent-runs` 会把这两个恒 0 字段返回给客户端;WebUI 任务表当前未渲染用量列,补列后也无真实数据可显);`delegate_task` 收集的背景摘要从未真正传给子 Agent(`ContextEnvelopeBuilder` 死代码);`SubAgentPolicy` 无并发上限字段、`supervisor` 无信号量,可无限并发 `submit`;`control/defaults.py` 的 `RESTRICTED_TOOLS_POLICY` 只 `deny` 了 `task` 却漏了 `delegate_task`,自动化创建的受限 Agent 仍可派生子任务。补齐见 **Q6**。
 
 ---
 
@@ -437,43 +451,53 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 **目标**：先打通“可持续运行、真实模型回复、持久化恢复、端到端可验证”的最小纵向链路，再继续 D9/J1-J3 等横向扩展。K1-K8 是当前最高优先级；完成前项目统一定位为 Alpha，不得宣称生产可用或完成 v1.0 验收。
 
-- [ ] **K1 应用常驻与统一资源生命周期**（P0）
+- [x] **K1 应用常驻与统一资源生命周期**（P0）
   - **验收**：`python -m isac` 在无 Channel、仅 Control、启用 Channel 三种模式下均持续驻留；支持 SIGINT/SIGTERM；Channel、Control、Alert、Provider、Storage、Plugin、Webhook 后台任务统一 start/health/close；启动失败能回滚，后台任务异常不会静默丢失，关闭无 pending task/resource warning。
   - **产出**：`ApplicationRuntime` / `ServiceContainer`、统一 TaskGroup、信号处理、优雅关闭、生命周期单元与进程级 smoke test。
   - **依赖**：B4、C4、G1、I5。
-  - **已知问题**：当前 `main()` 调用 `channel_registry.start_all()` 后直接返回，Control/Alert 等后台任务随事件循环结束被取消。
+  - **当前**：已完成(校正复选框,与 PROGRESS.md 稳定化节点明细表一致)。历史"已知问题"(`main()` 直接返回、后台任务被取消)已由 `ApplicationRuntime` 统一生命周期解决;2026-07-26 实测无 `data/config.jsonc` 时也能启动并驻留 18 秒无异常栈。
+  - **2026-07-26 MVP 缺口复核**：Windows 控制台 Ctrl+C 不走优雅关闭 —— `add_signal_handler` 在 Windows 上注册失败(仅回退 `KeyboardInterrupt`),且 `main()` 的 `await runtime.serve_forever(); await runtime.shutdown()` 无 `try/finally` 包裹,`KeyboardInterrupt`/`CancelledError` 会直接穿透跳过 `shutdown()`;Linux/Docker(CI 实际运行环境)不受影响。补齐见 **Q0**。
 
-- [ ] **K2 真实 LLM Provider 纵向闭环**（P0）
+- [x] **K2 真实 LLM Provider 纵向闭环**（P0）
   - **验收**：至少一个真实 Provider 支持非流式、SSE 流式、Tool Call、usage、超时、429/5xx/非法响应分类、重试与 fallback；配置真实 Provider 时不得回退为 Stub 冒充成功；Provider Client 可健康检查并在关闭时释放连接池。
   - **产出**：`OpenAICompatProvider` 或等价首个 Provider 的真实实现、HTTP 契约测试、Fake Server 集成测试、错误分类与关闭测试。
   - **依赖**：K1、D3、ProviderManager。
-  - **阻塞**：未完成前不能验收“真实 AI 对话”。
+  - **当前**：已完成(校正复选框)。`OpenAICompatProvider` 真实闭环已实测(非流式/工具调用/错误分类/连接池);历史"阻塞"说明已解除。
+  - **2026-07-26 MVP 缺口复核**：SSE 流式合并逻辑已修复(CR3-H4 按 index 累积),但主链路 `AgentContext.streaming` 默认 `False` 且全仓无生产赋 `True` 点,流式路径实际未在生产启用(非 MVP 阻塞项,已知记录)。
 
-- [ ] **K3 Storage Schema、记忆写入与恢复**（P0）
+- [x] **K3 Storage Schema、记忆写入与恢复**（P0）
   - **验收**：启动时执行 Schema init/migration；Metadata/FTS/Sparse 按 namespace 初始化；消息或会话结束后真实写入 Episode；重启后可检索；shared namespace 强制 user/group/scope ACL；写入失败不阻塞回复但可观测；关闭时提交并释放连接。
   - **产出**：StorageLifecycle、schema_version/migration、MemoryEncoder 接线、Sparse 重建/恢复、跨用户隔离与重启测试。
   - **依赖**：K1、D5-D7。
   - **边界**：Vector/Graph/Reranker 可继续降级，但必须明确标记 experimental/stub，不能计入 MVP 完成度。
+  - **当前**：Schema init/migration、跨用户隔离、重启恢复已完成(校正复选框)。
+  - **2026-07-26 MVP 缺口复核**：本节点验收标准明确要求"消息或会话结束后真实写入 Episode",但生产 `_dispatch_message`/`process_message` 全程无任何 `store_episode`/画像/行话写入调用 —— 存储基建(Schema/FTS/Sparse/重启恢复)已就绪,唯独"写入"这一步从未接线,记忆检索因此恒为空。这是本次差距复核中最关键的发现,补齐见 **Q1(MVP 最高优先级)**。
 
-- [ ] **K4 Agent、Session、Identity、Routing 与 Link 持久化恢复**（P0）
+- [x] **K4 Agent、Session、Identity、Routing 与 Link 持久化恢复**（P0）
   - **验收**：重启后恢复 AgentConfig/运行状态、Session、UserMapper 绑定、RoutingRules、InterAgentLink；Agent 独立 Provider 配置实际生效；配置写入使用原子替换和版本迁移；非法 ID/路径被拒绝。
   - **产出**：registry/session/identity 持久化、启动恢复编排、原子配置存储、路径安全与迁移测试。
   - **依赖**：K1、E1-E3、G1。
+  - **当前**：AgentConfig/运行状态、RoutingRules、InterAgentLink 持久化恢复已完成(校正复选框)。
+  - **2026-07-26 MVP 缺口复核**：`Session`(`gateway/session.py`)与 `UserMapper`(`gateway/user_mapper.py`,自述"[桩] 内存实现,待 SQLite 持久化")实际为纯内存,本节点验收要求的"重启后恢复 Session、UserMapper 绑定"未达成 —— 与本节点其余三项(Agent/RoutingRules/Link)相比是明确的未闭合子项;`PROGRESS.md` 此前"Session 可持久化恢复"表述已一并订正。补齐见 **Q1**。
 
-- [ ] **K5 单 Channel × 单 Agent 真实 E2E**（P0）
+- [x] **K5 单 Channel × 单 Agent 真实 E2E**（P0）
   - **验收**：进程启动 → Fake/测试 Channel 收消息 → EventBus intercept → Router 剥离触发词 → Session/Gating → 真实 HTTP Mock Provider → Tool Call → Channel 回复全链通过；覆盖打断、超时、错误和重启恢复。
   - **产出**：`tests/integration/test_single_agent_flow.py`、可复用 Fake Channel/Provider、进程级测试夹具。
   - **依赖**：K1-K4。
+  - **当前**：已完成(校正复选框,与 PROGRESS.md 一致)。
 
-- [ ] **K6 多 Agent、工具、记忆与控制面 E2E**（P1）
+- [x] **K6 多 Agent、工具、记忆与控制面 E2E**（P1）
   - **验收**：2+ Agent 共享 1 Channel；显式绑定/触发词/默认 Agent；InterAgentBus deliver + ACL；工具权限；记忆 namespace 隔离；Control 修改配置真实生效并在重启后保留。E5 并入本节点验收。
   - **产出**：`tests/integration/test_multi_agent.py`、Agent Mesh/权限/记忆/Control 集成测试。
   - **依赖**：K5、E3-E5、G1-G4。
+  - **当前**：已完成(校正复选框,与 PROGRESS.md 一致)。
 
-- [ ] **K7 安全与长期运行基线**（P0/P1）
+- [x] **K7 安全与长期运行基线**（P0/P1）
   - **验收**：Agent ID/路径穿越防护；Control 空 Token 仅显式开发模式；审计/JSON metrics 鉴权；WebUI 不持久化 Bearer Token；Webhook 与远程媒体防 SSRF；SecretStore 可用；插件明确为兼容层而非安全沙箱或提供进程级隔离；Bash/File/MCP 有字节、时间、进程、路径与 pending 上限；Session/Lock/队列有 TTL/LRU；Discord 分页不丢消息。
   - **产出**：安全回归测试、资源压力测试、威胁模型与生产安全配置。
   - **依赖**：K1、K4、G/H/F 相关模块。
+  - **当前**：已完成(校正复选框,与 PROGRESS.md 一致)。
+  - **2026-07-26 MVP 缺口复核**：`SecretStore`(AES-256-GCM)实现存在但生产零调用点,`api_key` 实际以明文存于 `data/config.jsonc`(env 覆盖已支持);MVP 建议先文档化 env 方案,`SecretStore` 接线留 MVP 之后,见 **Q5** 备注。
 
 - [x] **K8 CI、Docker、浏览器与发布准入**（P1）
   - **验收**：CI 启用 branch coverage 与 `--cov-fail-under`；构建 wheel/sdist 并安装 smoke；Docker build/start/health/stop 实测；WebUI 用真实浏览器覆盖登录、Agent/路由/Link/审计黄金路径；Mypy 全绿或对 `aiocqhttp` 做局部明确 override；README/AGENTS/CHANGELOG/版本号与实际能力一致。
@@ -632,16 +656,16 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **当前**：未开始。激活后 L2-L5 升级为 `[x]`。
 
 - [ ] **P2 Mesh 激活**(依赖 M1/M2 + E3 bus)
-  - **目标**：AgentConfig 增 `mesh_role`;`manager.observe_message` 实现旁听/候选路由(M1);assembly 注入 `MeshRouter`/`MeshActionBroker`,4 个 A2A 工具(notify/handoff/list/memory_query)获得 broker 后真正可用(M2);动作审计埋点。
-  - **验收**：observer 只入记忆不回复、candidate 多 Agent 仲裁选回复者、A2A 动作经 InterAgentLink ACL 真实投递且可审计;集成测试。
-  - **产出**：AgentConfig `mesh_role`、observe_message 路由、assembly 注入、审计埋点、集成测试。
+  - **目标**：AgentConfig 增 `mesh_role`;`manager.observe_message` 实现旁听/候选路由(M1);assembly 注入 `MeshRouter`/`MeshActionBroker`,4 个 A2A 工具(notify/handoff/list/memory_query)获得 broker 后真正可用(M2);动作审计埋点。**(2026-07-26 差距复核扩充)** broker 注入只让 `list_available_agents` 真正可用——`notify`/`handoff`/`memory_query` 若要成为"真正可用"而非"能发一条消息",还需:①`InterAgentLink` 增 `permissions`/`visible_memory_scopes`/`max_context_messages` 配置面(`links.jsonc` 与控制面 API),按 (from_agent, to_agent) 解析出对应 `MeshLinkPolicy` 注入(而非当前假设的单值 `services["mesh_link_policy"]`);②`handoff_conversation` 需接收端识别 `HANDOFF` 类型消费 `context.summary` + Router/manager 侧临时切换 `primary_agent_id`,实现真正的会话所有权转移(当前只是发了一条普通消息);③`memory_query_agent` 需接收端按 `context.filters.scopes` 过滤检索记忆,并把结果经 `bus.send` 的 response 通道同步返回给查询方(当前 `_send` 忽略 `bus.send` 返回值,查询方永远拿不到结果)。
+  - **验收**：observer 只入记忆不回复、candidate 多 Agent 仲裁选回复者、A2A 动作经 InterAgentLink ACL 真实投递且可审计;notify 触发目标 Agent 真实处理、handoff 后续消息路由到接收方、memory_query 返回按 scope 裁剪的真实检索结果;集成测试。
+  - **产出**：AgentConfig `mesh_role`、observe_message 路由、assembly 注入、Link 细粒度策略配置面、handoff 会话所有权转移、memory_query 同步返回通道、审计埋点、集成测试。
   - **依赖**：M1、M2、E3(InterAgentBus/Link)。
   - **当前**：未开始。激活后 M1/M2 升级为 `[x]`。
 
 - [ ] **P3 记忆检索深化激活**(依赖 N1 + VectorStore/GraphStore/Embedding/Reranker)
-  - **目标**：`pipeline.search()` 接入向量 KNN(VectorStore)+ 图谱邻居(GraphStore)召回,与现有 FTS/BM25/Reranker 融合;`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确其落地边界(N1)。(注:检索期软删除 `deleted` 过滤已由 CR2-Fix-12 生效,不在本节点范围。)
-  - **验收**：配置 embedding 时向量/图谱召回生效、被治理条目不被检索命中、`MemoryItem` 成为检索/注入统一载体;集成测试。
-  - **产出**：pipeline 召回接线、治理过滤、MemoryItem 接入、集成测试。
+  - **目标**：`pipeline.search()` 接入向量 KNN(VectorStore)+ 图谱邻居(GraphStore)召回,与现有 FTS/BM25/Reranker 融合;`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确其落地边界(N1)。(注:检索期软删除 `deleted` 过滤已由 CR2-Fix-12 生效,向量召回+RRF 融合已由 CR3-H3 生效,均不在本节点剩余范围。)**(2026-07-26 差距复核扩充)** 本节点剩余范围收窄为:①图谱召回接入(`GraphStore` 边写入 + `neighbors` 结果并入 RRF,目前全仓无 `add_edge`/`neighbors` 调用点,图始终为空);②`Reranker` provider 注入 —— `main.py` 构造 `Reranker(memory_config.get("reranker", {}))` 时从未传入 provider,`is_available()` 恒 `False`,rerank 步骤永不执行,补齐仿 CR3-H3 embedding 的写法(按 `memory.reranker.{api_key,model,protocol}` 构造 `OpenAICompatRerankerProvider` 注入);③`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确落地边界。
+  - **验收**：配置 embedding 时向量召回已生效(CR3-H3);配置 reranker 时 rerank 步骤真实执行;图谱召回生效;被治理条目不被检索命中;`MemoryItem` 成为检索/注入统一载体;集成测试。
+  - **产出**：pipeline 图谱召回接线、Reranker provider 注入、MemoryItem 接入、集成测试。
   - **依赖**：N1、N2、J2(embed/rerank Provider)。
   - **当前**：未开始。激活后 N1 升级为 `[x]`。
 
@@ -658,6 +682,63 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **产出**：租户接线 + tenant_id 列 + routes_tenants、loader 隔离模式、workflow 控制面入口、集成测试。
   - **依赖**：O1、O2、O3、G(控制面)。
   - **当前**：未开始。激活后 O1/O2/O3 升级为 `[x]`。
+
+---
+
+### Q MVP 收尾
+
+**目标**：2026-07-26 对照 `docs/REQUIREMENTS.md` 十二条原始需求做 10 域并行代码取证(498 次代码检索 + 一次真实启动实测)后,发现一批 **MVP 必需、但未被 P0-P5 任何节点覆盖**的缺口 —— 既包括生产入口的"最后一厘米接线"(Channel 注册、工具注册),也包括此前未曾识别的**全新缺口**(记忆写入回路)。所有子节点默认不影响现有测试(新增代码路径,不改动既有默认关闭行为)。MVP 发布以 **P0-P2 + Q0-Q1** 完成为最低准入线(详见 [ROADMAP.md](./ROADMAP.md) M-MVP 里程碑)。
+
+依赖顺序：Q0/Q1 不依赖任何 P 节点,可立即开工(Q1 最高优先级);Q2-Q6 相互独立、与 P 节点亦无强依赖,可按人力并行插入。
+
+- [ ] **Q0 开箱可触达与配置纠偏**(纯接线与纠偏,不依赖 P 节点)
+  - **目标**：让"拷贝 `config.sample.jsonc` 并启动"就能获得至少一条零外部依赖的可聊通道,并修正一批会误导新用户的样例配置死键与生产健壮性缺口。
+  - **验收**：`main()` 补齐 Telegram/Discord/WebChat 三个注册分支(镜像 OneBot 分支);裸部署(无 `data/routing.jsonc`)时已启用平台有默认路由,不再全部 DROP;`config.sample.jsonc` 修正 `control.auth_token`→`api_token`、`channels.onebot.ws_reverse_url`→`host/port`、`channels.webchat` 死配置、`alerting` 死键;Dockerfile 补 `COPY uv.lock` + `uv sync --frozen`(构建可复现);`docker-compose.yml` 按需补 OneBot 场景的 8080 端口映射说明;Windows `main()` 用 `try/finally` 包 `shutdown()` 且捕获 `KeyboardInterrupt`,Ctrl+C 走优雅关闭;`web_search` 默认策略由 `allow` 改 `deny`(无后端时不出现在 LLM schema 里);`ProviderManager._agent_providers` 在 `reload_config`/`destroy` 时失效缓存(PATCH 改 llm 立即热生效);`AgentManager.destroy(keep_memory=False)` 清理 `data/agents/<id>/memory`;`agent/tools/registry.py` 修正过期的 `task`→`task_runner` 映射(改查 `subagent_supervisor`,否则 SubAgent 委派被挡死)。
+  - **产出**：`main.py` 三个 channel 注册分支、`config.sample.jsonc` 修正、`Dockerfile`/`docker-compose.yml` 修正、`main.py` 优雅关闭修正、`ProviderManager`/`AgentManager` 缓存失效修正、`registry.py` 映射修正、对应单测与一次多平台冒烟。
+  - **依赖**：H1(适配器实现)、K1(生命周期)、K8(CI/Docker)。均已具备,本节点是纯接线与纠偏。
+  - **当前**：未开始。
+
+- [ ] **Q1 记忆写入回路与身份稳定化**(MVP 最高优先级,不依赖 P0)
+  - **目标**：补齐 K3 验收要求但从未接线的"消息/会话结束后真实写入 Episode"——这是记忆检索/注入/治理整条链路能真正发挥作用的前提,当前该链路读侧全通但生产端零写入,记忆恒为空。同时稳定化 person_id 与 Session。
+  - **验收**：每轮对话回复后(或 `POST_MESSAGE` hook)真实调用 `store_episode`;每 N 轮或每次互动后更新人物画像(`upsert_person_profile`)与 `relationship_depth`/`interaction_count`;行话学习(可选,降级不阻塞 MVP);聊天 → 重启 → 记忆检索命中;`UserMapper` SQLite 持久化,`person_id` 跨重启稳定;`SessionManager` 状态持久化(可选,MVP 可接受会话状态重启丢失但需在文档准确标注,不得再宣称"可持久化恢复")。
+  - **产出**：`_dispatch_message`/`process_message` 记忆写入接线、画像/关系更新回路、`UserMapper` 持久化、集成测试(聊天→重启→检索命中、画像随轮次加深)。
+  - **依赖**：K3(存储基建)、D6-D7(检索/注入)、K4(持久化恢复框架)。
+  - **当前**：未开始。**MVP 最高优先级,建议第一个开工。**
+
+- [ ] **Q2 人格差异化实现**(依赖 D8 人格系统 + D2 prompt_builder)
+  - **目标**：让 `AgentConfig.persona` 配置的人格文本真正影响 System Prompt,并把 D8 已实现但未注册的情绪/表达风格/注意力漂移能力接入 Prompt 组装与更新回路,使不同 Agent 的人格差异在回复中可辨。
+  - **验收**：`persona` 文本接入 `BaseIdentityInjector`(或新增专用注入器);`MoodInjector`/`ExpressionStyleInjector`/`AttentionDriftInjector` 实现真实文案(非空串)并注册进 `prompt_builder`;`MoodEngine.update/decay` 在 `POST_LLM`/`FINAL_RESPONSE` 或周期任务中真实被调用,情绪随对话变化;`PersonaManager.get_expression_style/get_drift_level` 有生产调用点。
+  - **产出**：`BaseIdentityInjector` persona 接线、三个注入器实现+注册、情绪更新回路、集成测试(两个不同 persona 配置的 Agent 回复风格可辨)。
+  - **依赖**：D8(PersonaManager/MoodEngine 已实现)、D2(prompt_builder)。
+  - **当前**：未开始。
+
+- [ ] **Q3 插件与 MCP 生态数据面接线**(依赖 F1-F4/E4/H2,均已实现)
+  - **目标**：让插件(Native/AstrBot/MaiBot)与 MCP Server 注册的工具/命令/注入器真正进入 Agent 的运行时注册表并被 LLM 调用,而不仅仅是"加载成功但惰性"。
+  - **验收**：`main.py` 构造 `PluginContext` 时传入真实的进程级共享工具/命令/注入器注册表(复用已验证的 `assembly.py:100-104` `plugin_agent_hooks` 模式),`assemble_agent` 把共享注册表合并进每个 Agent 的 `ToolRegistry`/`CommandRegistry`/`SystemPromptBuilder`;`plugin/runtime/loader.py` 加载 AstrBot/MaiBot 插件后调用 `FunctionToolAdapter`/`MaiBotPluginAdapter.adapt` 完成真正桥接;`PluginManager` 构造时传入 `EnableMatrix`,`plugins_allow`/`plugins_deny` 对插件 hooks 真实生效;`AgentConfig.mcp_servers` 配置后,`assembly` 按需构造 `MCPClient`、`connect`、把 `list_tools` 结果注册进 `ToolRegistry`,Agent 停止/销毁时 `disconnect`;`tools.workspace_root`/`tools.bash_allowlist` 配置项接入 `build_services`,使 `bash`/`read_file`/`write_file` 三个 CLI 工具不再因 services 未注入而恒被拒绝。
+  - **产出**：共享注册表机制、AstrBot/MaiBot 桥接接线、PluginManager EnableMatrix 注入、MCP Client 生产接线、CLI 工具 services 注入、集成测试(示例插件注册的工具被 LLM 真实调用)。
+  - **依赖**：F1-F4(兼容层与加载器已实现)、E4(EnableMatrix 已实现)、H2(MCPClient 已实现)。
+  - **当前**：未开始。
+
+- [ ] **Q4 多模态工具注册与计量收尾**(依赖 J1/J2,均已实现)
+  - **目标**：打通 J2 已就绪的 Provider/Router/Catalog/ArtifactStore 与 Agent 侧的"最后一厘米"——6 个语义媒体工具注册进 ToolRegistry,出入站媒体链路可用,多模态用量真实可查。
+  - **验收**：`assembly.py` 注册 vision/STT/TTS/生图/视频理解/视频生成 6 个 `media.py` 工具(视频两模态可保留桩,待 O5 二次确认端点);`AgentConfig` 增 `model_capabilities_allow` 字段并映射为工具可见性;`_send_reply` 扫描回复中的 `artifact_id` 引用,经 `MediaResolver.resolve_for_channel` 转换为对应 Channel 的 segment 发送;入站媒体(用户上传图片/语音)下载落盘到 `data/uploads/`,`MediaNormalizer` 白名单相应扩展,生成合法 `media_uri` 供工具使用;`_MediaToolBase`/`EmbeddingManager`/`Reranker` 调用点接入 `UsageRecorder` 的 6 个多模态 `record_*` 方法;`data/pricing.jsonc` 价目表加载机制落地,`ModelUsageEvent` 的 provider 字段与价目表 key 对齐(而非记 `type(provider).__name__`)。
+  - **产出**：媒体工具注册、`model_capabilities_allow` 字段、出/入站媒体链路、多模态计量埋点、价目表加载、集成测试(配置生图/视觉 key 后发图/识图全链可用且计量有数)。
+  - **依赖**：J1(用量框架)、J2(Provider/Router/Catalog/ArtifactStore)。
+  - **当前**：未开始。
+
+- [ ] **Q5 WebUI 与控制面收尾**(依赖 J3/G2/G3,均已实现)
+  - **目标**：修掉 J3 WebUI 与 G2/G3 控制面里"看起来完成但实为占位"的断点,并给自动化场景补上生产启动点。
+  - **验收**：Extensions 插件页改接真实 `/agents/{id}/plugins` API;SubAgent 任务表改正确 `agent_id` 参数(而非硬编码 `_`);新增 `GET /agents/{id}/config` 返回全量配置 + 真实 `revision`,WebUI `loadConfigForEdit` 改用它(乐观锁真实生效);WebUI 消费 `/events/stream` SSE(`EventSource`);Usage 明细表按实际 API 返回结构(裸数组)解析,不再读 `events?.events`;补 `routes_webhooks`(subscribe/unsubscribe/list + `/automation/trigger`)并在 `main.py` 构造 `WebhookManager` 订阅 `EventBus` 事件;`isac/control/mcp_server.py` 补生产启动点(独立进程或桥接到 Admin API)并补齐 5 个声明但未实现的工具;密钥管理策略文档化为"配置文件 + env 覆盖"(`ISAC_API_TOKEN` 已支持,Provider `api_key` 同理补 env 映射),`SecretStore` 接线留 MVP 之后。
+  - **产出**：WebUI 断点修复、`GET /agents/{id}/config` 端点、SSE 前端消费、Webhook 路由与事件源接线、MCP Server 启动点、密钥管理文档、集成测试。
+  - **依赖**：J3(WebUI v2)、G2(MCP Server)、G3(Webhooks)。
+  - **当前**：未开始。
+
+- [ ] **Q6 SubAgent 用量与安全补漏**(依赖 J4,已实现)
+  - **目标**：让 J4 SubAgent 的用量/证据数据真实可信,并补上两个安全口子。
+  - **验收**：`supervisor` 保存 `result.usage`/`evidence_refs` 到 `run.tokens_used`/`tool_calls_used`/journal(而非只留 `summary`);`delegate_task` 收集的背景摘要经 `ContextEnvelopeBuilder` 真正传给子 Agent;`SubAgentPolicy`/`supervisor` 加并发上限(信号量或计数器);`control/defaults.py` 的 `RESTRICTED_TOOLS_POLICY` 补 `deny` `delegate_task`。
+  - **产出**：supervisor 用量/证据保存、summary 传递接线、并发信号量、受限策略修正、集成测试。
+  - **依赖**：J4(SubAgent Runtime)。
+  - **当前**：未开始。
 
 ---
 
@@ -708,3 +789,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 | **MeshActionBroker** | (M2) Agent 间协作动作 (notify/handoff/memory_query/list) 的 deny-by-default 代理,委托 InterAgentBus。 |
 | **TenantContext** | (O1) 一次请求/一个 Agent 所属的租户上下文 (organization_id/tenant_id/limits),默认单租户。 |
 | **Workflow** | (O3) 声明式多步骤编排 (Stage + Transition),支持串/并/条件/重试,由 WorkflowEngine 执行。 |
+| **MVP** | Minimum Viable Product,满足 [ROADMAP.md](./ROADMAP.md) M-MVP 里程碑定义(P0-P2 + Q0-Q1 完成)的最小可用产品,是当前项目下一个明确的发布目标。 |
+| **Q 节点(MVP 收尾)** | 2026-07-26 对照 `REQUIREMENTS.md` 逐条代码取证后新增的节点组,收纳未被 P0-P5 覆盖、但 MVP 必需的缺口(定义见 §四 Q)。 |
+| **MVP 差距复核** | 2026-07-26 对照 `REQUIREMENTS.md` 十二条需求做的一次性审计事件(10 域并行代码取证 + 真实启动实测);其结论落为各节点下的"MVP 缺口复核"批注与 §四 Q 节点组。 |
+| **MVP 缺口复核** | 本文档中标注在已交付(`[x]`)节点下的补充说明(是上述"MVP 差距复核"审计的逐节点产物),记录与该节点"完成定义"矛盾的未接线子行为,不改动该节点其余已验证部分的状态,指向修复它的 Q/P 节点。 |
