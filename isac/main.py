@@ -15,6 +15,7 @@ from typing import Any
 
 from isac.channel.model import ISACMessage
 from isac.channel.registry import ChannelRegistry
+from isac.core.constants import INTERAGENT_PLATFORM
 from isac.core.events import EventType
 from isac.core.types import ProgressEvent
 from isac.gateway.event_bus import EventBus
@@ -82,20 +83,78 @@ async def process_message(
     if platform_session_id and not session.platform_session_id:
         session.platform_session_id = platform_session_id
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
+
+    # P2 Mesh: 候选仲裁 (可能改写归属 Agent) + observer 旁听 (只入记忆不回复)。
+    # 无 Agent 配置 mesh_role 时整段短路 = 单主路由, 零行为变化。
+    final_agent_id = await _apply_mesh_routing(
+        decision, routed_message, session, profile, session_mgr, agent_manager
+    )
+    if final_agent_id != decision.agent_id:
+        # 仲裁换了回复者: 会话按新 Agent 重新解析 (Session 含 agent_id 维度)
+        session = await session_mgr.get_or_create(routed_message, agent_id=final_agent_id)
+        if platform_session_id and not session.platform_session_id:
+            session.platform_session_id = platform_session_id
+
     progress_sender = _make_progress_sender(
-        channel_registry, routed_message, decision.agent_id, platform_session_id
+        channel_registry, routed_message, final_agent_id, platform_session_id
     )
     try:
         reply = await agent_manager.handle_message(
-            decision.agent_id, routed_message, session, profile, progress_sender=progress_sender
+            final_agent_id, routed_message, session, profile, progress_sender=progress_sender
         )
     except Exception:
         metrics.counter("isac_messages_failed_total").inc()
         raise
     metrics.counter("isac_messages_processed_total").inc()
     if reply:
-        await _send_reply(channel_registry, routed_message, reply, decision.agent_id, platform_session_id)
+        await _send_reply(channel_registry, routed_message, reply, final_agent_id, platform_session_id)
     await event_bus.fire_async(EventType.POST_MESSAGE, routed_message)
+
+
+async def _apply_mesh_routing(
+    decision: Any,
+    message: ISACMessage,
+    session: Any,
+    profile: Any,
+    session_mgr: SessionManager,
+    agent_manager: AgentManager,
+) -> str:
+    """P2: observer 旁听 + candidate 仲裁, 返回最终处理该消息的 agent_id。
+
+    - 无 Agent 配置 mesh_role → 直接返回 decision.agent_id (零行为变化)
+    - observer: 各自用**自己的会话**旁听入记忆 (不回复, 与主处理并发执行)
+    - candidate: 按 ReplyNecessityJudge 评分与 primary 比较, 显著更高 (>SWITCH_MARGIN)
+      才切换回复者, 避免噪声抖动 (MeshRouter.arbitrate)
+    """
+    # getattr 防御: 旧测试替身/未升级的自定义 manager 无 mesh_roles → 单主路由
+    roles_fn = getattr(agent_manager, "mesh_roles", None)
+    roles = roles_fn() if roles_fn is not None else {}
+    if not roles:
+        return decision.agent_id
+    from isac.runtime.mesh.router import MeshRouter
+
+    mesh_decision = MeshRouter(agent_roles=roles).to_mesh_decision(decision)
+    # observer 旁听: 并发写各自记忆, 失败不影响主处理
+    for observer_id in mesh_decision.observer_agent_ids:
+        observer_session = await session_mgr.get_or_create(message, agent_id=observer_id)
+        await agent_manager.observe_message(observer_id, message, observer_session, profile)
+    if not mesh_decision.candidate_agent_ids:
+        return decision.agent_id
+    # 候选仲裁: primary 与各候选各自评分 (纯启发式, 不调 LLM)
+    scores: dict[str, float] = {
+        decision.agent_id: await agent_manager.gating_score(decision.agent_id, message, session, profile)
+    }
+    for candidate_id in mesh_decision.candidate_agent_ids:
+        candidate_session = await session_mgr.get_or_create(message, agent_id=candidate_id)
+        scores[candidate_id] = await agent_manager.gating_score(
+            candidate_id, message, candidate_session, profile
+        )
+    winner = MeshRouter(agent_roles=roles).arbitrate(mesh_decision, gating_scores=scores)
+    if winner and winner != decision.agent_id:
+        logger.info(
+            "Mesh 仲裁改写回复者", primary=decision.agent_id, winner=winner, reason=mesh_decision.reason
+        )
+    return winner or decision.agent_id
 
 
 async def _send_reply(
@@ -664,6 +723,46 @@ def _build_memory_stack(
     return metadata_store, graph_store, embedder, reranker
 
 
+async def _answer_memory_query(
+    agent_manager: AgentManager, target_agent_id: str, message: InterAgentMessage
+) -> str:
+    """P2: 接收端执行授权记忆查询, 返回格式化结果 (经 bus response 回到查询方)。
+
+    scope 语义 (ROUTING_AND_AGENT_MESH.md §6.1): "user:<id>" / "group:<id>" ——
+    复用 pipeline.search 的 user/group ACL 参数做真实裁剪; scopes 为空 = 不额外
+    限定 (仍受目标 Agent 自身 namespace/shared ACL 约束); 未知格式保守跳过
+    (绝不扩大可见范围)。检索失败返回空串 (查询方看到"无相关内容")。
+    """
+    instance = await agent_manager.get(target_agent_id)
+    if instance is None or instance.status != "running":
+        return ""
+    filters = message.context.get("filters") or {}
+    scopes = [str(s) for s in (filters.get("scopes") or []) if s]
+    query = message.content
+    hits: list[Any] = []
+    try:
+        if not scopes:
+            hits = await instance.memory.search(query, top_k=5)
+        else:
+            for scope in scopes[:5]:
+                kind, _, ident = scope.partition(":")
+                if kind == "user" and ident:
+                    hits.extend(await instance.memory.search(query, top_k=3, user_id=ident))
+                elif kind == "group" and ident:
+                    hits.extend(await instance.memory.search(query, top_k=3, group_id=ident))
+    except Exception:  # noqa: BLE001
+        logger.warning("跨 Agent 记忆查询失败", target=target_agent_id, exc_info=True)
+        return ""
+    seen: set[str] = set()
+    lines: list[str] = []
+    for hit in hits:
+        if hit.id in seen:
+            continue
+        seen.add(hit.id)
+        lines.append(f"- {hit.content[:200]}")
+    return "\n".join(lines[:5])
+
+
 async def _noop_start() -> None:
     """无启动动作的资源 (如 Provider 连接池: 惰性创建, 无需 start) 占位。"""
     return None
@@ -706,23 +805,35 @@ async def main() -> None:
 
     configure_subagent_runner(services["subagent_supervisor"], agent_manager)
     bus = InterAgentBus()
+    # 互联投递专用 SessionManager: P2 起进程内共享一个实例 (此前每次投递新建,
+    # 跨 Agent 会话永不复用, 目标 Agent 每条互联消息都像陌生会话)。
+    interagent_session_mgr = SessionManager(global_config)
+
     # 投递回调: 把 InterAgentMessage 路由到目标 Agent 的 handle_message。
     # 命令 (ask_agent) 现在能拿到 response 而不是恒 None (CODE_REVIEW_REPORT.md #3)。
     async def _deliver_to_agent(target_agent_id: str, message: InterAgentMessage) -> str | None:
+        # P2: MEMORY_QUERY 不进 LLM 聊天 —— 按 visible_memory_scopes 裁剪后直接跑
+        # 目标 Agent 的记忆检索, 结果经 bus response 同步返回查询方。
+        if message.type == "memory_query":
+            return await _answer_memory_query(agent_manager, target_agent_id, message)
         # 互联消息复用原消息的 session 上下文; 跨 Agent 时把 from_agent 当作 user_id
         # 让目标 Agent 不会因 has_at=False 而被门控过滤。但目标 Agent 的 handle_message
         # 依赖真实 Session/UserProfile; 这里构造一个最小可路由会话。
+        content = message.content
+        if message.type == "handoff":
+            # P2: 接手方明确知道这是会话交接 (摘要), 而非用户发来的普通消息
+            summary = str(message.context.get("summary", "") or message.content)
+            content = f"[会话交接] 来自 {message.from_agent} 的交接摘要: {summary}"
         wrapped = ISACMessage(
             msg_id="",
-            platform="interagent",
+            platform=INTERAGENT_PLATFORM,
             timestamp=0,
             user_id=message.from_agent,
             user_name="",
             group_id=None,
-            content=message.content,
+            content=content,
         )
-        session_mgr = SessionManager(global_config)
-        session = await session_mgr.get_or_create(wrapped, agent_id=target_agent_id)
+        session = await interagent_session_mgr.get_or_create(wrapped, agent_id=target_agent_id)
         return await agent_manager.handle_message(target_agent_id, wrapped, session, None)
 
     bus.set_deliver(_deliver_to_agent)
@@ -741,6 +852,8 @@ async def main() -> None:
     # ── Router (Channel 与 Agent 解耦) ──────────────────────
     rules = load_rules(global_config.get("router", {}).get("rules_file", DATA_DIR / "routing.jsonc"))
     router = MessageRouter(rules, agents_provider=agent_manager.routing_infos)
+    # P2: handoff_conversation 工具经 services["router"] 登记会话归属转移
+    services["router"] = router
 
     # ── Channel ─────────────────────────────────────────────
     channel_registry = ChannelRegistry()

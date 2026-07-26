@@ -33,6 +33,8 @@ class MessageRouter:
         self._rules = rules
         self._agents_provider = agents_provider
         self._router_hooks: list[RouterHook] = []
+        # P2: 会话移交覆盖 (handoff_key → agent_id), 优先级最高; 仅内存
+        self._handoffs: dict[str, str] = {}
 
     # ── 规则管理 (控制面调用) ──────────────────────────────
 
@@ -48,10 +50,41 @@ class MessageRouter:
         """预留: 自定义路由函数 (Native SDK)，在显式绑定之前执行。"""
         self._router_hooks.append(fn)
 
+    # ── P2 handoff: 会话归属临时转移 ────────────────────────
+
+    @staticmethod
+    def handoff_key(platform: str, group_id: str | None, user_id: str) -> str:
+        """会话归属键 (与消息的 platform + 群/私聊主体一致)。"""
+        target = f"group:{group_id}" if group_id else f"user:{user_id}"
+        return f"{platform}:{target}"
+
+    def set_handoff(self, platform: str, group_id: str | None, user_id: str, agent_id: str) -> None:
+        """P2: 登记一次会话移交 —— 后续该会话的消息路由到接手 Agent。
+
+        优先级高于显式绑定/触发词/默认 Agent (移交是用户可感知的显式动作)。
+        仅内存: 进程重启后归属回落到常规路由规则 (与 SessionManager 的内存语义
+        一致; 长期归属请改 routing.jsonc 的 bindings)。
+        """
+        key = self.handoff_key(platform, group_id, user_id)
+        self._handoffs[key] = agent_id
+        logger.info("会话已移交", key=key, agent_id=agent_id)
+
+    def clear_handoff(self, platform: str, group_id: str | None, user_id: str) -> None:
+        """撤销会话移交, 归属回落到常规路由规则。"""
+        self._handoffs.pop(self.handoff_key(platform, group_id, user_id), None)
+
+    def get_handoff(self, platform: str, group_id: str | None, user_id: str) -> str | None:
+        return self._handoffs.get(self.handoff_key(platform, group_id, user_id))
+
     # ── 路由 ────────────────────────────────────────────────
 
     async def route(self, message: ISACMessage) -> RoutingDecision | None:
         """决定消息归属。返回 None 表示 DROP。"""
+        # P2: 会话移交覆盖 (最高优先级; handoff 后该会话由接手 Agent 处理)
+        handoff_agent = self.get_handoff(message.platform, message.group_id, message.user_id)
+        if handoff_agent:
+            return RoutingDecision(agent_id=handoff_agent, matched_by="handoff", content=message.content)
+
         # 0. 自定义 Router Hook (预留接口)
         for hook in self._router_hooks:
             try:

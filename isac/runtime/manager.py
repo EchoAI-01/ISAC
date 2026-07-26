@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from isac.core.constants import DEFAULT_AGENT_ID
+from isac.core.constants import DEFAULT_AGENT_ID, INTERAGENT_PLATFORM
 from isac.core.exceptions import AgentNotFoundError
 from isac.gating.types import GateKind
 from isac.runtime.assembly import assemble_agent
@@ -285,13 +285,17 @@ class AgentManager:
                     logger.debug("debounce 静默窗口内有更新消息, 本条并入后续合并处理")
                     return None
 
-        gating_context = self._build_gating_context(
-            instance, message, session, user_profile, turn_scheduler, conv_runtime
-        )
-        decision = await instance.gating.evaluate([message], gating_context)
-        if decision.kind != GateKind.TRIGGER:
-            logger.debug("门控未触发", agent_id=agent_id, kind=decision.kind.value)
-            return None
+        # P2: 互联消息 (ask/notify/handoff 经 bus 投递) 已过 Link ACL, 是显式协作
+        # 动作, 不适用环境聊天的回复必要性门控 —— 否则 notify/交接摘要可能被静默
+        # WAIT 掉 (投递"成功"但目标从未处理), ask 发起方拿到空响应。
+        if message.platform != INTERAGENT_PLATFORM:
+            gating_context = self._build_gating_context(
+                instance, message, session, user_profile, turn_scheduler, conv_runtime
+            )
+            decision = await instance.gating.evaluate([message], gating_context)
+            if decision.kind != GateKind.TRIGGER:
+                logger.debug("门控未触发", agent_id=agent_id, kind=decision.kind.value)
+                return None
 
         agent_context = self._build_agent_context(
             instance, message, session, user_profile, progress_sender, conv_runtime
@@ -711,6 +715,71 @@ class AgentManager:
     def routing_infos(self) -> builtins.list[AgentConfig]:
         """返回所有运行中 Agent 的路由信息 (agent_id + trigger_words)。"""
         return [a.config for a in self._agents.values() if a.status == "running"]
+
+    # ── P2 Mesh: 角色 / 仲裁分数 / 旁听 ──────────────────────
+
+    def mesh_roles(self) -> dict[str, str]:
+        """P2: 运行中 Agent 的 mesh 角色映射 (agent_id → observer|candidate|primary)。
+
+        只返回显式配置了非空 mesh_role 的 Agent; 全空 = 单主路由 (零行为变化)。
+        """
+        return {
+            a.agent_id: a.config.mesh_role
+            for a in self._agents.values()
+            if a.status == "running" and a.config.mesh_role
+        }
+
+    async def gating_score(
+        self, agent_id: str, message: ISACMessage, session: Session, user_profile: UserProfile | None
+    ) -> float:
+        """P2: 某 Agent 对这条消息的回复必要性评分 (候选仲裁的依据)。
+
+        复用门控的 ReplyNecessityJudge (纯启发式, 不调 LLM), 归一化到 0~1。
+        Agent 不存在/未运行/评分异常时返回 0.0 (保守: 不参与切换)。
+        """
+        instance = self._agents.get(agent_id)
+        if instance is None or instance.status != "running":
+            return 0.0
+        try:
+            turn_scheduler = instance.gating.get_turn_scheduler(session.session_id)
+            gating_context = self._build_gating_context(
+                instance, message, session, user_profile, turn_scheduler, None
+            )
+            raw = await instance.gating.reply_necessity.score([message], gating_context)
+            return max(0.0, min(1.0, float(raw) / 100.0))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Mesh 候选评分失败, 记 0", agent_id=agent_id, error=str(exc))
+            return 0.0
+
+    async def observe_message(
+        self,
+        agent_id: str,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+    ) -> None:
+        """P2: 旁听 —— observer Agent 只把消息写进自己的记忆, 不回复、不占用话轮。
+
+        与 handle_message 的区别: 不过门控、不跑 Loop、不发回复; 只写 episodic
+        记忆 (让 observer 具备"听过"的上下文, 供后续被 ask/仲裁选中时使用)。
+        """
+        instance = self._agents.get(agent_id)
+        if instance is None or instance.status != "running":
+            return
+        with bind_log_context(trace_id=uuid.uuid4().hex, session_id=session.session_id, agent_id=agent_id):
+            try:
+                speaker = message.user_name or message.user_id
+                await instance.memory.store_episode(
+                    content=f"{speaker}: {message.content}",
+                    session_id=session.session_id,
+                    user_id=message.user_id,
+                    group_id=message.group_id or "",
+                    metadata={"importance": 0.3, "observed": True},
+                )
+                await self._update_person_profile(instance, message, user_profile)
+                logger.debug("旁听消息已入记忆", agent_id=agent_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("旁听写入失败, 已忽略", agent_id=agent_id, error=str(exc))
 
     # ── 内部 ────────────────────────────────────────────────
 

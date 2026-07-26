@@ -43,6 +43,11 @@ HEURISTIC_MEMORY_MIN_NEW_MESSAGES = 60  # 启发式记忆最小新消息数
 # 多 Agent (ARCHITECTURE.md 3.1)
 DEFAULT_AGENT_ID = "default"  # 单 Agent 兼容模式使用的默认 ID
 
+# P2: 互联消息的虚拟平台名 (bus deliver 包装的 A2A 消息)。已过 Link ACL 的显式
+# 协作动作 (ask/notify/handoff), 目标 Agent 处理时跳过环境聊天的回复必要性门控
+# —— 否则 notify/交接摘要可能被静默 WAIT 掉, ask 发起方拿到空响应。
+INTERAGENT_PLATFORM = "interagent"
+
 # 控制面 (ARCHITECTURE.md 3.9)
 DEFAULT_CONTROL_HOST = "127.0.0.1"
 DEFAULT_CONTROL_PORT = 8765
