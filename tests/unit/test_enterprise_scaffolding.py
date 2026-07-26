@@ -55,12 +55,17 @@ def test_ipc_envelope_defaults() -> None:
     assert env.payload == {} and env.correlation_id == ""
 
 
-async def test_isolation_host_spawn_noop_and_call_not_implemented() -> None:
+async def test_isolation_host_spawn_call_kill_roundtrip() -> None:
+    """O2 已实现: spawn → call (echo) → kill 真实子进程生命周期."""
     host = PluginIsolationHost("p1")
-    await host.spawn()  # no-op, 不抛
+    await host.spawn()
+    assert host.is_alive is True
+    env = IPCEnvelope(kind="call", plugin_id="p1", payload={"text": "hello"})
+    result = await host.call(env)
+    assert result.kind == "result"
+    assert result.payload.get("echo") == "hello"
+    await host.kill()
     assert host.is_alive is False
-    with pytest.raises(NotImplementedError):
-        await host.call(IPCEnvelope(kind="call", plugin_id="p1"))
 
 
 # ── O3: Workflow ────────────────────────────────────────────────
