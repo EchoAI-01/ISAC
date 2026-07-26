@@ -208,11 +208,15 @@ class MemoryGovernor:
         await self._write_audit(db_path, item_id, "restore")
         return True
 
-    async def export(self, agent_id: str) -> list[MemoryItem]:
+    async def export(self, agent_id: str, limit: int = 500, offset: int = 0) -> list[MemoryItem]:
         """导出某 Agent 的记忆 (合规/迁移) 为 list[MemoryItem]。
 
         N1: 用 MemoryItem.from_episode 适配; 含软删除的条目 (审计保留) 也导出,
         metadata 标记 deleted/frozen/protected。无 store 返回空列表。
+
+        CR2-Fix-15: 此前一次性吐出该 Agent 全部记忆, 记忆量大时是无限量查询;
+        加 limit/offset 分页 (默认 limit=500), 配合 offset 翻页取完, 保留
+        "含软删除内容也导出"的既有合规/迁移设计不变。
         """
         db_path = self._db_path()
         if db_path is None:
@@ -220,8 +224,8 @@ class MemoryGovernor:
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT * FROM episodes WHERE agent_id = ? ORDER BY created_at ASC",
-                (agent_id,),
+                "SELECT * FROM episodes WHERE agent_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+                (agent_id, max(1, int(limit)), max(0, int(offset))),
             )
             rows = await cursor.fetchall()
         items: list[MemoryItem] = []

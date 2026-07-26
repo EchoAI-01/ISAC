@@ -84,8 +84,8 @@ def build_router(
         return {"ok": ok, "detail": "restored" if ok else "item not found"}
 
     @router.get("/memory/{agent_id}/items", dependencies=read_deps)
-    async def list_items(agent_id: str) -> dict:
-        items = await governor.export(agent_id)
+    async def list_items(agent_id: str, limit: int = 500, offset: int = 0) -> dict:
+        items = await governor.export(agent_id, limit=limit, offset=offset)
         return {
             "ok": True,
             "count": len(items),
