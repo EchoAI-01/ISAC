@@ -101,8 +101,15 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(QueryPersonProfileTool())
     tools.register(WaitTool())
     tools.register(AskAgentTool())
-    # M2 Agent Mesh 协作工具骨架: DEFAULT_POLICY 里默认 deny → definitions() 过滤,
-    # LLM 不可见, 主链路零行为变化; M2 实现节点接入 MeshActionBroker 后开放。
+    # M2 Agent Mesh 协作工具: notify_agent/handoff_conversation/
+    # list_available_agents/memory_query_agent 默认策略 restricted (已接入
+    # MeshActionBroker, 见 isac/agent/tools/base.py::DEFAULT_POLICY)。
+    # CR2-Fix-19: restricted 不等于"LLM 不可见"——definitions() 只过滤 deny,
+    # 这 4 个工具的定义仍会出现在 function-calling schema 里; 未注入
+    # mesh_action_broker + mesh_link_policy 时调用在 execute() 阶段优雅失败
+    # (拒绝, 不暴露 NotImplementedError)。以下 5 个是 Channel 交互工具
+    # (send_emoji/send_image/fetch_history/switch_chat/view_forward_message),
+    # 默认策略 allow, 与 Agent Mesh 无关。
     tools.register(NotifyAgentTool())
     tools.register(HandoffConversationTool())
     tools.register(ListAvailableAgentsTool())
