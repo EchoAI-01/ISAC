@@ -23,15 +23,27 @@ def _priority_rank(task: ProactiveTask) -> int:
 class ProactiveTaskQueue:
     """主动任务队列 (priority 排序, 同优先 FIFO)."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_size: int = 100) -> None:
         # 用 list 而非 deque: priority 排序需要随机插入位置; enqueue 量级通常小, 线性查找足够。
         self._queue: list[ProactiveTask] = []
+        # CR2-Fix-5: 容量上限, 防止任意来源无限入队占用内存。
+        self.max_size = max(1, int(max_size))
 
-    def enqueue(self, task: ProactiveTask) -> None:
+    def enqueue(self, task: ProactiveTask) -> bool:
         """入队一个主动任务 (必须带 source/intent/reason, 按 priority 插入正确位置)。
 
         L3: priority 排序 high(0) > normal(1) > low(2); 同优先按入队顺序 FIFO。
+        CR2-Fix-5: 队列已满 (>= max_size) 时拒绝新任务, 返回 False; 成功入队返回 True。
         """
+        if len(self._queue) >= self.max_size:
+            logger.warning(
+                "主动任务队列已满, 拒绝入队",
+                task_id=task.task_id,
+                source=task.source,
+                agent_id=task.agent_id,
+                max_size=self.max_size,
+            )
+            return False
         # 找到第一个 rank > 当前 task rank 的位置, 插入之前 (保持同优先 FIFO)。
         rank = _priority_rank(task)
         insert_at = len(self._queue)
@@ -48,6 +60,7 @@ class ProactiveTaskQueue:
             priority=task.priority,
             queue_len=len(self._queue),
         )
+        return True
 
     def poll(self) -> ProactiveTask | None:
         """取出最高优先级任务 (同优先取最早入队的); 队列空返回 None。"""
