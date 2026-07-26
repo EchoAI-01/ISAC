@@ -283,11 +283,14 @@ def _mount_optional_routers(
     memory_router = routes_memory.build_router(metadata_store, auth_dependency=auth_dependency)
     if memory_router is not None:
         app.include_router(memory_router, prefix="/api/v1")
-    # N2: Memory 治理路由 (freeze/protect/correct/delete/restore, 骨架 no-op);
+    # N2: Memory 治理路由 (freeze/protect/correct/delete/restore/export);
     # 与 routes_memory 一致按 metadata_store 是否注入决定挂载, 无则不挂载。
     from isac.control.api import routes_memory_admin
 
-    memory_admin_router = routes_memory_admin.build_router(metadata_store, auth_dependency=auth_dependency)
+    memory_admin_router = routes_memory_admin.build_router(
+        metadata_store, auth_dependency=auth_dependency,
+        scope_dependency=scope_dependency, audit_log=audit_log,
+    )
     if memory_admin_router is not None:
         app.include_router(memory_admin_router, prefix="/api/v1")
     # J3-4: Events SSE 路由 (event_bus 注入时挂载)
