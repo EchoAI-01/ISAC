@@ -10,6 +10,7 @@ Q1: SQLite 写穿持久化落地 —— master_id (person_id) 跨重启稳定, �
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -45,34 +46,42 @@ class UserMapper:
         self._profiles: dict[str, UserProfile] = {}
         self._db_path = db_path
         self._schema_ready = False
+        # MVP-Fix: resolve 的 "查缓存 → 查库 → 创建" 之间有 await (DB 读),
+        # P0 并发化后不同会话的消息真并行, 同一用户首次在两个会话同时出现会
+        # 各自走完未命中分支, 创建两个 master_id → 身份分裂 (画像/记忆按归一
+        # 身份聚合的前提被破坏)。用锁把这段临界区串行化。
+        self._resolve_lock = asyncio.Lock()
 
     async def resolve(self, platform: str, user_id: str, nickname: str = "") -> UserProfile:
         """解析平台用户 → 主用户画像。首次见到自动创建。
 
         Q1: 内存缓存未命中时先查 SQLite (重启后恢复既有 master_id), 仍未命中才
         创建新身份; 每次 resolve 写穿 last_seen/nickname (best-effort)。
+        MVP-Fix: 整段 check-then-create 在 `_resolve_lock` 内串行, 消除并发
+        首次接触同一用户时的身份分裂 (TOCTOU)。
         """
         key = (platform, user_id)
-        master_id = self._by_platform.get(key)
-        if master_id is None:
-            master_id = await self._load_from_db(platform, user_id)
-        if master_id is None:
-            master_id = new_id("user")
-            self._by_platform[key] = master_id
-            profile = UserProfile(
-                user_id=master_id,
-                platform_ids={platform: user_id},
-                nickname=nickname,
-                first_seen=unix_now(),
-            )
-            self._profiles[master_id] = profile
-            logger.info("创建用户画像", master_id=master_id, platform=platform)
-        profile = self._profiles[master_id]
-        profile.last_seen = unix_now()
-        if nickname:
-            profile.nickname = nickname
-        await self._persist(platform, user_id, profile)
-        return profile
+        async with self._resolve_lock:
+            master_id = self._by_platform.get(key)
+            if master_id is None:
+                master_id = await self._load_from_db(platform, user_id)
+            if master_id is None:
+                master_id = new_id("user")
+                self._by_platform[key] = master_id
+                profile = UserProfile(
+                    user_id=master_id,
+                    platform_ids={platform: user_id},
+                    nickname=nickname,
+                    first_seen=unix_now(),
+                )
+                self._profiles[master_id] = profile
+                logger.info("创建用户画像", master_id=master_id, platform=platform)
+            profile = self._profiles[master_id]
+            profile.last_seen = unix_now()
+            if nickname:
+                profile.nickname = nickname
+            await self._persist(platform, user_id, profile)
+            return profile
 
     async def bind(self, master_id: str, platform: str, user_id: str) -> None:
         """手动绑定平台账号到主用户。"""

@@ -274,25 +274,26 @@ class AgentManager:
                 instance.gating.get_idle_backoff(session.session_id).record_reply()
                 return cmd_result
 
-        # P1(L2): debounce 静默窗口 —— 等待窗口结束; 若窗口内有更新消息到达
-        # (锁外 notify_incoming 已把它缓存并刷新 last_message_received_at),
-        # 本条弃权, 由最新消息的处理统一 drain 合并, 避免连续消息逐条打断。
-        if conv_runtime is not None:
-            debounce_seconds = self._conversation_debounce_seconds(instance)
-            if debounce_seconds > 0:
-                await asyncio.sleep(debounce_seconds)
-                if not conv_runtime.should_trigger(debounce_seconds):
-                    logger.debug("debounce 静默窗口内有更新消息, 本条并入后续合并处理")
-                    return None
+        if await self._debounce_should_yield(instance, conv_runtime, message):
+            return None
+
+        # MVP-Fix: drain 提到门控之前。此前 ① 门控只评估末条消息 —— 突发里靠前
+        # 消息的 @提及/内容分被丢弃, 整个突发可能一条不回; ② drain 为空时退回用
+        # 本条内容再跑一轮 —— 突发中被别的回合合并处理过的消息会重复回复。
+        # 现在 drain 空即弃权 (根治重复), 门控与 Loop 都基于整个 burst。
+        pending = self._drain_pending(conv_runtime, message)
+        if not pending:
+            logger.debug("本条消息已被前一回合合并处理, 弃权避免重复回复", agent_id=agent_id)
+            return None
 
         # P2: 互联消息 (ask/notify/handoff 经 bus 投递) 已过 Link ACL, 是显式协作
         # 动作, 不适用环境聊天的回复必要性门控 —— 否则 notify/交接摘要可能被静默
         # WAIT 掉 (投递"成功"但目标从未处理), ask 发起方拿到空响应。
         if message.platform != INTERAGENT_PLATFORM:
             gating_context = self._build_gating_context(
-                instance, message, session, user_profile, turn_scheduler, conv_runtime
+                instance, pending, session, user_profile, turn_scheduler, conv_runtime
             )
-            decision = await instance.gating.evaluate([message], gating_context)
+            decision = await instance.gating.evaluate(pending, gating_context)
             if decision.kind != GateKind.TRIGGER:
                 logger.debug("门控未触发", agent_id=agent_id, kind=decision.kind.value)
                 return None
@@ -300,8 +301,8 @@ class AgentManager:
         agent_context = self._build_agent_context(
             instance, message, session, user_profile, progress_sender, conv_runtime
         )
-        # P1(L2): drain 缓存里的未处理消息; 静默窗口内积压 >1 条时合并为一轮输入
-        user_content = self._drain_merged_content(conv_runtime, message)
+        # P1(L2): 积压 >1 条时合并为一轮输入 (带说话人前缀多行)
+        user_content = self._merge_pending_content(pending)
         messages = [{"role": "user", "content": user_content}]
         result = await self._run_loop_with_conversation(instance, conv_runtime, messages, agent_context)
         if result.interrupted:
@@ -312,8 +313,39 @@ class AgentManager:
             turn_scheduler.record_reply()
             instance.gating.get_idle_backoff(session.session_id).record_reply()
             # Q1: 回复后异步写入记忆 (episodic + 画像回路), 不阻塞回复发送。
-            self._schedule_memory_write(instance, message, session, user_profile, result.content)
+            # MVP-Fix: 写入**本回合实际看到的输入** (合并后的整个 burst), 而不是
+            # 触发这一轮的单条 —— 否则突发被合并处理时, 记忆只留下其中一条,
+            # 用户后来问起前面说过的内容检索不到。
+            self._schedule_memory_write(
+                instance, message, session, user_profile, result.content, user_content
+            )
         return result.content or None
+
+    async def _debounce_should_yield(
+        self,
+        instance: AgentInstance,
+        conv_runtime: ConversationRuntime | None,
+        message: ISACMessage,
+    ) -> bool:
+        """P1(L2): 等待 debounce 静默窗口; 返回 True 表示本条应弃权。
+
+        窗口内若有更新消息到达 (锁外 notify_incoming 已缓存并刷新
+        last_message_received_at), 本条弃权, 由最新消息的处理统一 drain 合并,
+        避免连续消息逐条打断。
+        MVP-Fix: 互联消息 (ask/notify/handoff) 豁免 —— 它们已过 Link ACL, 是显式
+        协作动作, 不该被静默窗口延迟, 更不该因"窗口内有新消息"被弃权 (与门控
+        豁免同源: 投递"成功"但目标从未处理)。
+        """
+        if conv_runtime is None or message.platform == INTERAGENT_PLATFORM:
+            return False
+        debounce_seconds = self._conversation_debounce_seconds(instance)
+        if debounce_seconds <= 0:
+            return False
+        await asyncio.sleep(debounce_seconds)
+        if conv_runtime.should_trigger(debounce_seconds):
+            return False
+        logger.debug("debounce 静默窗口内有更新消息, 本条并入后续合并处理")
+        return True
 
     def _conversation_runtime_for(
         self, instance: AgentInstance, session: Session, message: ISACMessage
@@ -321,15 +353,28 @@ class AgentManager:
         """P1(L1/L2): 取会话拟人运行时 (conversation 关闭时 None, 零行为变化)。
 
         消息一般已在锁外 notify_incoming 缓存 (P0 dispatcher 的 pre-lock 信号);
-        直调 handle_message 的旧调用方/测试未走该路径, 按对象身份去重后兜底补注册。
+        直调 handle_message 的旧调用方/测试未走该路径, 去重后兜底补注册。
+
+        MVP-Fix: 去重键改用 **msg_id** 而非对象身份 —— `process_message` 传给
+        本方法的是 `dataclasses.replace(message, content=...)` 的**新对象**, 与
+        notify_incoming 缓存的原对象身份不同, 身份去重永远不命中 → 每条消息被
+        缓存两次: 突发合并把重复条目一起喂给 LLM, 且末条的 drain 非空导致重复
+        回复。msg_id 在 replace 后保持不变, 是稳定去重键 (为空时回退身份比较)。
         """
         conv_registry = instance.services.get("conversation_registry")
         if conv_registry is None or not self._conversation_enabled():
             return None
         conv_runtime = conv_registry.get(instance.agent_id, session.session_id)
-        if all(cached is not message for cached in conv_runtime.message_cache):
+        if not self._is_cached(conv_runtime, message):
             conv_runtime.register_message(message)
         return conv_runtime
+
+    @staticmethod
+    def _is_cached(conv_runtime: ConversationRuntime, message: ISACMessage) -> bool:
+        """消息是否已在会话缓存里 (优先 msg_id, 无 id 时退回对象身份)。"""
+        if message.msg_id:
+            return any(cached.msg_id == message.msg_id for cached in conv_runtime.message_cache)
+        return any(cached is message for cached in conv_runtime.message_cache)
 
     def _build_agent_context(
         self,
@@ -409,7 +454,7 @@ class AgentManager:
     def _build_gating_context(
         self,
         instance: AgentInstance,
-        message: ISACMessage,
+        pending: builtins.list[ISACMessage],
         session: Session,
         user_profile: UserProfile | None,
         turn_scheduler: Any,
@@ -418,40 +463,56 @@ class AgentManager:
         """构造门控上下文; has_at/has_mention 在交给门控前填充。
 
         has_mention 判定: 消息文本中出现当前 Agent 的 display_name (不含 @)。
-        P1: conversation 启用时积压数按缓存中未 drain 的消息数计 (支撑门控积压评估)。
+        MVP-Fix: 接收**整个 burst** 而非末条 —— has_at/has_mention 取并集, 否则
+        "先 @我 再补一句" 这种突发里的点名信号会被末条覆盖掉, 整个突发不回复。
+        current_message 仍取末条 (最新语境), pending_count = 本批消息数。
         """
         from isac.core.types import GatingContext
 
+        current = pending[-1]
         display_name = instance.config.display_name
         mention_names = [display_name] if display_name else []
         bot_id = self._services.get("global_config", {}).get("bot_id", "")
-        has_at = message.has_at(bot_id) if bot_id else any(seg.type == "at" for seg in message.segments)
-        pending_count = 1
-        if conv_runtime is not None:
-            pending_count = max(1, len(conv_runtime.message_cache) - conv_runtime.last_processed_index)
+
+        def _has_at(msg: ISACMessage) -> bool:
+            return msg.has_at(bot_id) if bot_id else any(seg.type == "at" for seg in msg.segments)
+
         return GatingContext(
             session=session,
             user_profile=user_profile,
-            current_message=message,
-            is_private=message.group_id is None,
-            has_at=has_at,
-            has_mention=message.has_mention(mention_names),
-            pending_count=pending_count,
+            current_message=current,
+            is_private=current.group_id is None,
+            has_at=any(_has_at(m) for m in pending),
+            has_mention=any(m.has_mention(mention_names) for m in pending),
+            pending_count=max(1, len(pending)),
             effective_frequency=turn_scheduler.effective_frequency(),
             recent_self_replies=turn_scheduler.recent_self_replies,
             recent_window_messages=turn_scheduler.recent_window_messages,
         )
 
     @staticmethod
-    def _drain_merged_content(conv_runtime: ConversationRuntime | None, message: ISACMessage) -> str:
-        """P1(L2): drain 未处理消息; >1 条时合并为带说话人前缀的多行输入。"""
+    def _drain_pending(
+        conv_runtime: ConversationRuntime | None, message: ISACMessage
+    ) -> builtins.list[ISACMessage]:
+        """MVP-Fix: 取出本回合要处理的消息列表 (门控与 Loop 共用同一批)。
+
+        conversation 关闭时就是当前这条; 启用时 drain 缓存里所有未处理消息。
+        **返回空列表表示本条已被前一回合合并处理, 调用方应弃权** —— 此前这里
+        回退成"用本条内容再跑一轮", 导致突发消息的末条被重复回复。
+        """
         if conv_runtime is None:
-            return message.content
+            return [message]
         drained = conv_runtime.drain_new_messages()
-        if len(drained) <= 1:
-            return message.content
-        logger.debug("debounce 合并消息", merged=len(drained))
-        return "\n".join(f"{m.user_name or m.user_id}: {m.content}" for m in drained)
+        if len(drained) > 1:
+            logger.debug("debounce 合并消息", merged=len(drained))
+        return drained
+
+    @staticmethod
+    def _merge_pending_content(pending: builtins.list[ISACMessage]) -> str:
+        """把本回合的消息合并为一轮 user 输入 (>1 条时带说话人前缀分行)。"""
+        if len(pending) == 1:
+            return pending[0].content
+        return "\n".join(f"{m.user_name or m.user_id}: {m.content}" for m in pending)
 
     def _conversation_debounce_seconds(self, instance: AgentInstance) -> float:
         """P1: 读 debounce 静默窗口秒数 (全局 conversation 节 ∪ Agent 级覆盖)。"""
@@ -515,15 +576,24 @@ class AgentManager:
         runtime: ConversationRuntime | None,
         task: ProactiveTask,
     ) -> None:
-        """在会话锁内执行强制话轮: 合成任务上下文 → Loop → 经 Channel 发送回复。"""
+        """在会话锁内执行强制话轮: 合成任务上下文 → Loop → 经 Channel 发送回复。
+
+        MVP-Fix: 锁的获取/释放改为严格配对的 `acquired` 标志。此前用
+        `lock.locked()` 判定是否释放 —— 会话锁是**共享对象**, 若本协程在
+        `await lock.acquire()` 处被取消 (scheduler.stop 取消调度循环时会传播到
+        这里), finally 看到 `locked()` 为真 (那是并发消息任务持有的) 就会释放
+        别人的锁, 单会话串行被破坏 (两条消息同时进入 Loop)。
+        """
         import time as _time
 
         lock_mgr = self._services.get("session_lock")
         lock_key = f"{session.platform}:{session.user_id or 'unknown'}:{session.group_id or 'private'}"
         lock = await lock_mgr.acquire(lock_key) if lock_mgr is not None else None
+        acquired = False
         try:
             if lock is not None:
                 await lock.acquire()
+                acquired = True
             if runtime is not None:
                 runtime.forced_turn = ForcedTurnState(
                     source="proactive", reason=task.reason, created_at=_time.time()
@@ -564,7 +634,9 @@ class AgentManager:
                 runtime.forced_turn = None
                 if runtime.state is ConversationState.THINKING:
                     runtime.transition_to(ConversationState.IDLE)
-            if lock is not None and lock.locked():
+            # 只释放**本协程真正获取到**的锁 (acquired 标志), 不看共享锁的
+            # locked() 状态 —— 否则取消场景下会释放并发消息持有的同一把锁。
+            if lock is not None and acquired:
                 lock.release()
             if lock_mgr is not None:
                 lock_mgr.release(lock_key)
@@ -593,6 +665,22 @@ class AgentManager:
 
     # ── 记忆写入回路 (Q1) ───────────────────────────────────
 
+    async def drain_background_tasks(self, timeout_seconds: float = 15.0) -> None:
+        """MVP-Fix: 等待在途的后台记忆写入任务完成 (优雅关闭时调用)。
+
+        `_schedule_memory_write` 派生的任务不在 dispatcher 的 inflight 集合里 ——
+        消息任务在产出回复后立即返回并离开 inflight, 记忆写入还在跑。关闭链此前
+        只 drain dispatcher, 导致最后若干轮的 episodic 记忆 / 画像自增 / 会话快照
+        在 `asyncio.run` 收尾取消任务时静默丢失 (正是"越聊越熟"要落的数据)。
+        """
+        pending = [t for t in self._memory_tasks if not t.done()]
+        if not pending:
+            return
+        logger.info("等待在途记忆写入完成", count=len(pending))
+        _done, still_pending = await asyncio.wait(pending, timeout=timeout_seconds)
+        if still_pending:
+            logger.warning("记忆写入未在超时内完成, 继续关闭", count=len(still_pending))
+
     def _schedule_memory_write(
         self,
         instance: AgentInstance,
@@ -600,15 +688,17 @@ class AgentManager:
         session: Session,
         user_profile: UserProfile | None,
         reply: str,
+        user_content: str | None = None,
     ) -> None:
         """Q1: 把本轮对话写入记忆 (后台任务, 失败降级不影响回复)。
 
         这是差距复核发现的 MVP 最关键缺口: 检索/注入/治理整条读链路就绪, 但生产
         从未调用 store_episode, 记忆恒为空。写入放后台任务是为了不给回复路径增加
         延迟 (配置 embedding 时 store_episode 内含一次向量化 API 调用)。
+        user_content 缺省时用 message.content (直调 handle_message 的旧调用方)。
         """
         task = asyncio.create_task(
-            self._write_memory(instance, message, session, user_profile, reply),
+            self._write_memory(instance, message, session, user_profile, reply, user_content),
             name=f"memory-write-{session.session_id}",
         )
         self._memory_tasks.add(task)
@@ -621,14 +711,21 @@ class AgentManager:
         session: Session,
         user_profile: UserProfile | None,
         reply: str,
+        user_content: str | None = None,
     ) -> None:
         """写入一轮对话的 episodic 记忆 + 更新人物画像 (SPECIFICATION 5.1: 失败降级)。"""
         try:
             user_name = message.user_name or message.user_id
             display_name = instance.config.display_name or instance.agent_id
             # 存整轮对话 (用户话 + 回复): BM25/向量召回都能命中双方内容,
-            # 注入时也能还原"谁说了什么"。
-            content = f"{user_name}: {message.content}\n{display_name}: {reply}"
+            # 注入时也能还原"谁说了什么"。合并回合存的是**整个 burst**
+            # (user_content, 已带说话人前缀), 与 Agent 实际看到的输入一致。
+            said = user_content if user_content is not None else message.content
+            content = (
+                f"{said}\n{display_name}: {reply}"
+                if user_content is not None and len(said.splitlines()) > 1
+                else f"{user_name}: {said}\n{display_name}: {reply}"
+            )
             await instance.memory.store_episode(
                 content=content,
                 session_id=session.session_id,
@@ -743,7 +840,7 @@ class AgentManager:
         try:
             turn_scheduler = instance.gating.get_turn_scheduler(session.session_id)
             gating_context = self._build_gating_context(
-                instance, message, session, user_profile, turn_scheduler, None
+                instance, [message], session, user_profile, turn_scheduler, None
             )
             raw = await instance.gating.reply_necessity.score([message], gating_context)
             return max(0.0, min(1.0, float(raw) / 100.0))

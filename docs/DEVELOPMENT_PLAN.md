@@ -701,6 +701,30 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 ---
 
+### MVP-Fix MVP 增量代码评审修复轮 (2026-07-27)
+
+**背景**：P0-P2 + Q0-Q1 达成 MVP 准入线后，对整个增量 diff (23 文件 / +1430 行) 做了 5 维度并行审查 + 每条发现 2 票独立对抗性验证 (22 个代理，405 次代码检索)。17 项发现中 **13 项确认、4 项被证伪**。全部已修复并配回归测试 (`tests/integration/test_mvp_review_fixes.py`，12 例)。
+
+- [x] **MVP-Fix 高危 (5)**
+  - **打断在多步(工具)回合中失效**：`InterruptInjector.build()` 会消费并清空 `interrupt_state`，而它在每轮迭代开头的 prompt build 里运行 —— 工具执行期间到达的打断被下一轮 build 吞掉，POST_LLM 检查永远读不到 → 陈旧回复照发。修复：`ConversationRuntime` 增**单调递增** `interrupt_seq` (不被 clear 复位)，Loop 在回合开始快照基线，用"序号是否增长"判定；并把判定提前到 prompt build 之前 (省掉一次注定丢弃的 LLM 调用)。同时避免"接替的新回合误读上一回合的 superseded 标志而自杀"。
+  - **突发消息重复回复**：debounce 弃权是纯时间判定，锁串行下突发中段消息 drain 全部并回复后，末条自身回合 drain 为空却退回用本条内容再回复一次。修复：`_drain_pending` 返回空即弃权。**根因**（审查只看到症状）：`notify_incoming` 缓存的是原消息对象，而 `process_message` 传下来的是 `dataclasses.replace(...)` 新对象，身份去重永不命中 → 每条消息被缓存两次；去重键改为 `msg_id`。
+  - **门控只评估突发末条**：靠前消息的 @提及/内容分被丢弃，整个突发可能一条不回。修复：drain 提到门控之前，`has_at`/`has_mention` 取整批并集，`pending_count` 按真实批量计。
+  - **后台记忆写入不被 drain**：消息任务产出回复即离开 dispatcher 的 inflight，其派生的记忆写入仍在跑，关闭链不等待 → 最后若干轮的 episodic/画像/快照在事件循环收尾取消任务时静默丢失。修复：`AgentManager.drain_background_tasks()` + 接入关闭链 (顺带停 ProactiveScheduler 的裸 create_task 循环)。
+  - **memory_query 空 scopes 泄露全部记忆**(安全)：`visible_memory_scopes` 默认就是空，而空 scopes 走的是无 user/group 过滤的全量检索 —— 管理员只授予 `permissions=["memory_query"]` 忘配 scopes 时，对端可读取目标 Agent 的全部记忆(含他人私聊)。修复：**空 scopes 一律拒绝** (deny-by-default)，未知 scope 格式保守跳过。
+- [x] **MVP-Fix 中危 (4)**
+  - **handoff 永久劫持路由**：移交是最高优先级且全仓无 clear 调用点，一次移交无限期覆盖包括显式 @ 在内的所有路由信号。修复：TTL (默认 1h，到期自动回落) + 移交给自己 = 交还归属。
+  - **强制话轮释放他人的会话锁**：`lock.locked()` 判定释放 —— 会话锁是共享对象，若在 `acquire()` 处被取消 (scheduler.stop 传播)，finally 会释放并发消息持有的同一把锁，单会话串行被破坏。修复：改用严格配对的 `acquired` 标志。
+  - **互联消息被 debounce 拦截**：A2A 消息已过 Link ACL，却仍被静默窗口延迟/弃权 (与门控豁免同源问题)。修复：`INTERAGENT_PLATFORM` 豁免 debounce。
+  - **UserMapper 身份分裂**：resolve 的 check-then-create 之间有 DB await，P0 并发化后同一用户首次在两个会话同时出现会创建两个 master_id。修复：`asyncio.Lock` 串行化临界区。
+- [x] **MVP-Fix 低危 (3) 与顺带修正**
+  - 会话快照只增不删 → `load_all` 顺带清理过期/损坏文件；快照目录跟随 `control.agents_dir` 配置 (此前硬编码写进真实 `data/agents`，测试互相污染)。
+  - `config.sample.jsonc` 的 `embedding.dimension=1024` 与示例模型 `text-embedding-3-small`(1536) 自相矛盾 → 修正并注明常见模型维度。
+  - `InterAgentMessage.trace_id` (SPECIFICATION 2.10 已定义、实现缺失) → 补齐，未显式传入时从日志上下文继承，响应沿用同一 trace。
+  - **记忆保真度**(冒烟发现)：合并回合此前只把"触发那条"写进记忆，Agent 实际看到的是整个 burst → 改为写入合并后的完整输入。
+- **被证伪 (4)**：ProactiveScheduler 孤儿循环的严重度描述、UserMapper 每消息连接开销、`_apply_mesh_routing` 的 session_id 副作用、SQLITE_BUSY 静默吞。前三项机制描述属实但后果不成立，第四项前提不成立。
+
+---
+
 ### Q MVP 收尾
 
 **目标**：2026-07-26 对照 `docs/REQUIREMENTS.md` 十二条原始需求做 10 域并行代码取证(498 次代码检索 + 一次真实启动实测)后,发现一批 **MVP 必需、但未被 P0-P5 任何节点覆盖**的缺口 —— 既包括生产入口的"最后一厘米接线"(Channel 注册、工具注册),也包括此前未曾识别的**全新缺口**(记忆写入回路)。所有子节点默认不影响现有测试(新增代码路径,不改动既有默认关闭行为)。MVP 发布以 **P0-P2 + Q0-Q1** 完成为最低准入线(详见 [ROADMAP.md](./ROADMAP.md) M-MVP 里程碑)。

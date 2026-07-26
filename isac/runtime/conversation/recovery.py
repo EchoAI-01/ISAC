@@ -96,6 +96,10 @@ class ConversationStateStore:
 
         供 assembly 在 Agent 组装时批量恢复 → 填充 RecoveryInjector.snapshots。
         文件名是稳定键的 lossy 转义, 真实键以 JSON 内的 session_id 字段为准。
+
+        MVP-Fix: 顺带删除已过期 (>24h) 与损坏的快照文件 —— 此前过期快照只是
+        "不恢复"但文件永久保留, 每次组装/reload 都要重新扫描解析全部历史会话,
+        目录随会话数单调增长。
         """
         directory = Path(self._base_dir) / agent_id / "conversation"
         if not directory.exists():
@@ -105,6 +109,13 @@ class ConversationStateStore:
             snap = self._load_path(path, agent_id, path.stem)
             if snap is not None:
                 result[snap.session_id] = snap
+                continue
+            # 过期 / 损坏: 删除文件, 避免目录只增不减
+            try:
+                path.unlink()
+                logger.debug("清理过期会话快照", path=str(path))
+            except OSError as exc:  # noqa: PERF203
+                logger.warning("过期会话快照清理失败, 已忽略", path=str(path), error=str(exc))
         return result
 
     def _load_path(self, path: Path, agent_id: str, fallback_session_id: str) -> ConversationSnapshot | None:

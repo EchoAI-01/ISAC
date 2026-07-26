@@ -100,6 +100,18 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 
 **CR3 修复轮 (2026-07-26, 对应 Review/ISAC_待修复项清单.md 的 14 项)**: H2 插件隔离护栏+`on_load` 接线+隔离宿主真实加载 / H3 向量召回接入 pipeline(RRF+ACL)+生产 EmbeddingProvider 注入 / H4 流式工具调用按 index 累积+include_usage+失败回退 / M2 bus notify 真实投递 / M5 Gating-Focus LRU cap 1000 / M6 调度器冷却不再饿死其他会话 / M7 Workflow 多入口+fan-in 入度语义 / L1 自动化创建 Agent 强制受限沙箱 / L2 租户隔离进数据面(默认关闭) / L3 软删同步 BM25+预热过滤 / L4 SSRF 请求期固定 IP / L5 治理审计 operator+agent_id 归因 / L6 非 ASCII Token 401+/metrics 可选认证 / L8 write_file 线程池+journal 原子 seq+MCP sse 显式拒绝。附带: 控制面 sessions/memory/events 路由完成生产挂载(此前 services 键缺失恒 None), `resource` 模块 Windows 平台守卫。
 
+## 2026-07-27 MVP 增量代码评审修复轮 (MVP-Fix)
+
+P0-P2 + Q0-Q1 达成 MVP 准入线后，对整个增量 diff (23 文件 / +1430 行) 做 5 维度并行审查 + 每条发现 2 票独立对抗性验证 (22 代理 / 405 次代码检索)：**17 项发现 → 13 项确认、4 项证伪**，全部修复并配 12 例回归测试 (`tests/integration/test_mvp_review_fixes.py`)。
+
+高危 5 项：多步(工具)回合的打断被 `InterruptInjector` 吞掉 (改用单调 `interrupt_seq` 基线判定) / 突发消息重复回复 (drain 空即弃权 + 去重键改 `msg_id`，根因是 `dataclasses.replace` 使身份去重永不命中) / 门控只评估突发末条 (drain 提到门控前，`has_at` 取并集) / 后台记忆写入不被 drain (`drain_background_tasks` 接入关闭链) / **memory_query 空 scopes 泄露全部记忆**(改为 deny-by-default)。
+
+中危 4 项：handoff 永久劫持路由 (加 TTL + 交还路径) / 强制话轮释放他人会话锁 (`acquired` 标志) / 互联消息被 debounce 拦截 (豁免) / UserMapper 并发身份分裂 (锁串行化)。
+
+低危及顺带：快照过期清理 + 目录跟随 `control.agents_dir` (此前测试污染真实 `data/agents`) / `config.sample` embedding 维度矛盾 / 补齐 `InterAgentMessage.trace_id` / **记忆保真度**(合并回合改为写入完整 burst，冒烟发现)。
+
+验证：1203 单测通过、ruff/mypy 全绿；真实启动冒烟确认 3 条突发消息恰好产生 1 条合并回复、记忆与画像正确落库。
+
 ## 2026-07-26 MVP 差距复核 (对照 REQUIREMENTS.md 逐条取证)
 
 对照 `docs/REQUIREMENTS.md` 十二条原始需求,10 个领域并行验证(每条结论均落实到 文件:行号 证据,498 次代码检索 + 一次真实启动实测:无 `data/config.jsonc` 时兜底默认值也能启动、18 秒驻留无异常栈)。核心结论:**项目"能启动"但未达"MVP 可用"** —— 开箱只有 OneBot 一条可聊通道(WebChat/Telegram/Discord 已实现却零生产注册点)、**记忆写入回路完全缺失**(检索/注入/治理/持久化整条读链路就绪,但生产从未调用 `store_episode`,检索永远为空)、人格系统的情绪/表达风格/注意力漂移注入器是未注册的空桩、插件与 MCP 生态的数据面注册表在生产被硬编码为空、多模态语义工具从未注册进 ToolRegistry。
