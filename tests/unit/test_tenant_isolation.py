@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from isac.runtime.tenancy.isolation import TenantIsolationGuard
@@ -78,7 +80,7 @@ def test_enforce_disabled_returns_original_query() -> None:
     guard = TenantIsolationGuard(enabled=False)
     query = "SELECT * FROM episodes WHERE agent_id = ?"
     params = ["a1"]
-    new_query, new_params = guard.enforce(query, params, "episodes", _tenant("acme", "t1"))
+    new_query, new_params = guard.enforce(query, params, _tenant("acme", "t1"))
     assert new_query == query
     assert new_params == params
 
@@ -88,17 +90,17 @@ def test_enforce_default_tenant_returns_original_query() -> None:
     guard = TenantIsolationGuard(enabled=True)
     query = "SELECT * FROM episodes WHERE agent_id = ?"
     params = ["a1"]
-    new_query, new_params = guard.enforce(query, params, "episodes", TenantContext())
+    new_query, new_params = guard.enforce(query, params, TenantContext())
     assert new_query == query
     assert new_params == params
 
 
 def test_enforce_enabled_adds_tenant_id_predicate() -> None:
-    """enabled + 非默认租户时给 WHERE 加 tenant_id 谓词."""
+    """enabled + 非默认租户时给查询加 tenant_id 谓词."""
     guard = TenantIsolationGuard(enabled=True)
     query = "SELECT * FROM episodes WHERE agent_id = ?"
     params = ["a1"]
-    new_query, new_params = guard.enforce(query, params, "episodes", _tenant("acme", "t1"))
+    new_query, new_params = guard.enforce(query, params, _tenant("acme", "t1"))
     # 新查询含 tenant_id 谓词
     assert "tenant_id = ?" in new_query
     assert "acme" in new_params
@@ -111,10 +113,86 @@ def test_enforce_query_without_where_adds_where_tenant() -> None:
     guard = TenantIsolationGuard(enabled=True)
     query = "SELECT * FROM episodes"
     params: list[str] = []
-    new_query, new_params = guard.enforce(query, params, "episodes", _tenant("acme", "t1"))
+    new_query, new_params = guard.enforce(query, params, _tenant("acme", "t1"))
     assert "WHERE" in new_query.upper()
     assert "tenant_id = ?" in new_query
     assert "acme" in new_params
+
+
+# ── enforce: 真实 sqlite3 执行验证 (CR2-Fix-18 子查询包裹) ─────────
+
+
+def _make_scoped_db() -> sqlite3.Connection:
+    """构造一个含 organization_id/tenant_id/is_shared 列的最小测试表。"""
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE episodes (id TEXT, agent_id TEXT, organization_id TEXT, "
+        "tenant_id TEXT, is_shared INTEGER)"
+    )
+    conn.executemany(
+        "INSERT INTO episodes VALUES (?, ?, ?, ?, ?)",
+        [
+            ("e1", "a1", "acme", "t1", 0),  # acme/t1 自己的私有记忆
+            ("e2", "a2", "other", "t2", 1),  # 另一租户标记为"共享"的记忆
+            ("e3", "a3", "other", "t2", 0),  # 另一租户的私有记忆 (不共享)
+        ],
+    )
+    conn.commit()
+    return conn
+
+
+def test_enforce_blocks_top_level_or_bypass() -> None:
+    """CR2-Fix-18: 含顶层 OR 的查询此前会被操作符优先级绕过 —— 拼接后
+    `WHERE org=? AND tenant=? AND agent_id=? OR is_shared=1` 里 AND 优先级
+    高于 OR, 导致其他租户 is_shared=1 的行也被返回。用真实 sqlite3 验证
+    子查询包裹修复后不再泄露。
+
+    注意: 子查询包裹要求内层查询投影出 organization_id/tenant_id 列供外层
+    WHERE 引用, 故用 SELECT * (与本项目 metadata.py 里的实际查询写法一致)。
+    """
+    conn = _make_scoped_db()
+    guard = TenantIsolationGuard(enabled=True)
+    query = "SELECT * FROM episodes WHERE agent_id = ? OR is_shared = 1"
+    params = ["a1"]
+    new_query, new_params = guard.enforce(query, params, _tenant("acme", "t1"))
+    rows = conn.execute(new_query, new_params).fetchall()
+    ids = {r[0] for r in rows}
+    assert ids == {"e1"}  # 只有 acme/t1 自己的记忆; other/t2 的 e2 (is_shared=1) 不泄露
+    conn.close()
+
+
+def test_enforce_preserves_order_by_and_limit() -> None:
+    """CR2-Fix-18: 子查询包裹后, 原查询自带的 ORDER BY/LIMIT 仍正常生效。"""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE episodes (id TEXT, organization_id TEXT, tenant_id TEXT, created_at INTEGER)")
+    conn.executemany(
+        "INSERT INTO episodes VALUES (?, ?, ?, ?)",
+        [
+            ("e1", "acme", "t1", 100),
+            ("e2", "acme", "t1", 300),
+            ("e3", "acme", "t1", 200),
+            ("e4", "other", "t2", 50),  # 排序最靠后, 无论过滤先后都会被 LIMIT 排除
+        ],
+    )
+    conn.commit()
+    guard = TenantIsolationGuard(enabled=True)
+    query = "SELECT * FROM episodes ORDER BY created_at DESC LIMIT 2"
+    new_query, new_params = guard.enforce(query, [], _tenant("acme", "t1"))
+    rows = conn.execute(new_query, new_params).fetchall()
+    assert [r[0] for r in rows] == ["e2", "e3"]
+    conn.close()
+
+
+def test_enforce_query_without_where_filters_correctly() -> None:
+    """CR2-Fix-18: 无 WHERE 的查询包裹后, 确实按租户过滤了实际返回的行
+    (不只是字符串层面出现了 WHERE)。"""
+    conn = _make_scoped_db()
+    guard = TenantIsolationGuard(enabled=True)
+    query = "SELECT * FROM episodes"
+    new_query, new_params = guard.enforce(query, [], _tenant("acme", "t1"))
+    rows = conn.execute(new_query, new_params).fetchall()
+    assert {r[0] for r in rows} == {"e1"}
+    conn.close()
 
 
 # ── assert_visible ──────────────────────────────────────────────
