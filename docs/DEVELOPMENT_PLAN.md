@@ -641,12 +641,15 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 依赖顺序：P0 → P1;P2 与 P3 可并行;P4 依赖 P3;P5 独立。每个子节点完成后,把它激活的 `[~]` 节点在 §四 升级为 `[x]`。
 
-- [ ] **P0 消息处理并发化**(P1 前置基础)
+- [x] **P0 消息处理并发化**(P1 前置基础)
   - **目标**：`manager` 从"单条即时同步处理"升级为 `asyncio.create_task` 并发处理,保留单会话串行、优雅关闭等待在途任务。这是 L2 debounce 合并、L4 thinking 期打断的共同前提(L4/L2 备注均指向它)。
   - **验收**：并发处理多会话不串话;同一会话消息串行;`shutdown` 等待在途任务不丢消息;集成测试。
   - **产出**：manager 并发调度、单会话锁/队列、在途任务生命周期登记、单测与集成测试。
   - **依赖**：K1(生命周期)、E(多 Agent 运行时)。
-  - **当前**：未开始。
+  - **当前**：已完成 (2026-07-27)。
+    - `main.make_message_dispatcher` (模块级工厂, 可测): `handle_message` 派生 `asyncio.Task` 立即返回 —— 适配器收取循环不再被单条消息的 LLM 往返阻塞, Telegram/Discord/WebChat 轮询循环下跨会话真并行; 单会话串行保持 (锁键 platform:user:group, 同会话任务按到达顺序创建, asyncio FIFO 就绪队列 + 公平锁保证按序获取); 任务持强引用 (inflight 集合 + done 自清理), 异常任务内捕获记日志。
+    - 优雅关闭: `drain_inflight` 带超时等待在途任务; channels 生命周期改到**最后注册** (LIFO 关闭最先执行: 停收取 → drain → 再关 journal/usage/providers 等下游; 此前 channels 最先注册 → 最后关闭, providers 连接池会在在途消息处理完之前被关掉)。
+    - 集成测试 `tests/integration/test_p0_concurrent_dispatch.py` (3): 跨会话并发峰值≥2 / 同会话串行且回复有序 / drain 不丢在途消息。
 
 - [ ] **P1 拟人化激活**(依赖 P0 + L1-L5)
   - **目标**：把 L2-L5 已实现能力接入主链路 —— debounce 连续消息合并接入 manager(L2);ProactiveScheduler 注入 assembly + 生命周期注册 start/stop(L3);thinking 期新消息调 `request_interrupt`、loop 读 `superseded` 抑制旧回复、InterruptInjector 注册 prompt_builder(L4);启动时 `ConversationStateStore.load` 恢复 + RecoveryInjector 注册(L5);AgentConfig 增 `conversation` 配置段。
@@ -691,19 +694,28 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 依赖顺序：Q0/Q1 不依赖任何 P 节点,可立即开工(Q1 最高优先级);Q2-Q6 相互独立、与 P 节点亦无强依赖,可按人力并行插入。
 
-- [ ] **Q0 开箱可触达与配置纠偏**(纯接线与纠偏,不依赖 P 节点)
+- [x] **Q0 开箱可触达与配置纠偏**(纯接线与纠偏,不依赖 P 节点)
   - **目标**：让"拷贝 `config.sample.jsonc` 并启动"就能获得至少一条零外部依赖的可聊通道,并修正一批会误导新用户的样例配置死键与生产健壮性缺口。
   - **验收**：`main()` 补齐 Telegram/Discord/WebChat 三个注册分支(镜像 OneBot 分支);裸部署(无 `data/routing.jsonc`)时已启用平台有默认路由,不再全部 DROP;`config.sample.jsonc` 修正 `control.auth_token`→`api_token`、`channels.onebot.ws_reverse_url`→`host/port`、`channels.webchat` 死配置、`alerting` 死键;Dockerfile 补 `COPY uv.lock` + `uv sync --frozen`(构建可复现);`docker-compose.yml` 按需补 OneBot 场景的 8080 端口映射说明;Windows `main()` 用 `try/finally` 包 `shutdown()` 且捕获 `KeyboardInterrupt`,Ctrl+C 走优雅关闭;`web_search` 默认策略由 `allow` 改 `deny`(无后端时不出现在 LLM schema 里);`ProviderManager._agent_providers` 在 `reload_config`/`destroy` 时失效缓存(PATCH 改 llm 立即热生效);`AgentManager.destroy(keep_memory=False)` 清理 `data/agents/<id>/memory`;`agent/tools/registry.py` 修正过期的 `task`→`task_runner` 映射(改查 `subagent_supervisor`,否则 SubAgent 委派被挡死)。
   - **产出**：`main.py` 三个 channel 注册分支、`config.sample.jsonc` 修正、`Dockerfile`/`docker-compose.yml` 修正、`main.py` 优雅关闭修正、`ProviderManager`/`AgentManager` 缓存失效修正、`registry.py` 映射修正、对应单测与一次多平台冒烟。
   - **依赖**：H1(适配器实现)、K1(生命周期)、K8(CI/Docker)。均已具备,本节点是纯接线与纠偏。
-  - **当前**：未开始。
+  - **当前**：已完成 (2026-07-27)。验收清单逐项落地:
+    - `main._register_channel_adapters` 四平台按 `channels.*` 配置惰性注册 (未启用零 import);`main._ensure_default_routing` 裸部署 (bindings 与 default_agents 全空) 时为已注册平台登记默认 Agent (仅内存不落盘, 用户显式配置过任何路由即不动)。
+    - `config.sample.jsonc` 四死键修正 (`api_token`/`host+port`/webchat 注释附 curl 示例/alerting 标注未接线);Dockerfile `COPY uv.lock` + `--frozen`;compose 附 8080/8090 端口映射注释;`main()` try/finally 优雅关闭;`web_search` 全局与 RESTRICTED 模板均改 deny;`ProviderManager.invalidate_agent_provider` + `AgentManager.reload_config/destroy` 接线 (含 aclose 释放连接池);`destroy(keep_memory=False)` 经 pipeline 的 namespace/MetadataStore 硬删三表 + `SparseBM25Index.clear` (shared 命名空间拒绝清理, 原 TODO 落地);registry `task` 门改为 `("subagent_supervisor", "task_runner")` 任一注入即放行 (restricted 门支持备选服务键)。
+    - **冒烟发现并修复两个开箱不可聊的隐藏缺陷**: ① `_send_reply` 构造回复不带 session_id;② 更根本的 —— `SessionManager.get_or_create` 会把消息 session_id 改写为内部 `sess_*`, 平台侧会话键丢失, WebChat 回复与 D9 进度帧都落错队列 → `process_message` 现在在改写前捕获 `platform_session_id` 并透传 `_send_reply`/`_make_progress_sender`。
+    - 真实启动冒烟通过: 拷 sample 起进程 → `POST /webchat/send` → 默认路由 → StubProvider 回复 → `GET /webchat/poll` 按客户端会话键取回。附 `tests/unit/test_q0_wiring.py` (14 测试)。
 
-- [ ] **Q1 记忆写入回路与身份稳定化**(MVP 最高优先级,不依赖 P0)
+- [x] **Q1 记忆写入回路与身份稳定化**(MVP 最高优先级,不依赖 P0)
   - **目标**：补齐 K3 验收要求但从未接线的"消息/会话结束后真实写入 Episode"——这是记忆检索/注入/治理整条链路能真正发挥作用的前提,当前该链路读侧全通但生产端零写入,记忆恒为空。同时稳定化 person_id 与 Session。
   - **验收**：每轮对话回复后(或 `POST_MESSAGE` hook)真实调用 `store_episode`;每 N 轮或每次互动后更新人物画像(`upsert_person_profile`)与 `relationship_depth`/`interaction_count`;行话学习(可选,降级不阻塞 MVP);聊天 → 重启 → 记忆检索命中;`UserMapper` SQLite 持久化,`person_id` 跨重启稳定;`SessionManager` 状态持久化(可选,MVP 可接受会话状态重启丢失但需在文档准确标注,不得再宣称"可持久化恢复")。
   - **产出**：`_dispatch_message`/`process_message` 记忆写入接线、画像/关系更新回路、`UserMapper` 持久化、集成测试(聊天→重启→检索命中、画像随轮次加深)。
   - **依赖**：K3(存储基建)、D6-D7(检索/注入)、K4(持久化恢复框架)。
-  - **当前**：未开始。**MVP 最高优先级,建议第一个开工。**
+  - **当前**：已完成 (2026-07-27)。
+    - **episodic 写入回路**: `AgentManager._dispatch_message` 回复后经 `_schedule_memory_write` 后台任务调 `instance.memory.store_episode` (存整轮对话"用户话+回复", importance 启发式 0.5); 后台化避免给回复路径加延迟 (配 embedding 时写入含一次向量化 API 调用); 任务强引用集合 + done 自清理; 失败降级只记日志 (SPECIFICATION 5.1)。
+    - **画像/关系回路**: `_update_person_profile` 每次互动 `interaction_count+1`、`relationship_depth+0.01` (封顶 1.0)、name/first_seen/last_seen 维护; person_id 与读侧 (PersonProfileInjector/query_person_profile) 同口径 —— 优先 UserMapper master_id, agent 键用 instance.agent_id。画像文本 LLM 归纳留 MemoryConsolidator (MVP 后)。
+    - **UserMapper SQLite 持久化**: 写穿模式 (user_bindings + user_profiles 两表, 含 behavior_patterns JSON), 内存缓存未命中先查 DB 恢复既有 master_id; 不传 db_path 保持纯内存 (测试零行为变化); main 接 `data/gateway/identity.db`。
+    - **边界**: 行话学习未做 (可选项, 归 MemoryConsolidator); SessionManager 状态仍不持久化 (已在 PROGRESS 如实标注); `config.sample.jsonc` 的 `memory.enabled` 默认改 true (纯 SQLite 零外部依赖, "越聊越熟"开箱生效)。
+    - 集成测试 `tests/integration/test_q1_memory_write_loop.py` (4): 聊→重启(新 pipeline 预热)→BM25 命中、画像随互动加深、UserMapper 重启同 master_id、纯内存模式零行为变化。
 
 - [ ] **Q2 人格差异化实现**(依赖 D8 人格系统 + D2 prompt_builder)
   - **目标**：让 `AgentConfig.persona` 配置的人格文本真正影响 System Prompt,并把 D8 已实现但未注册的情绪/表达风格/注意力漂移能力接入 Prompt 组装与更新回路,使不同 Agent 的人格差异在回复中可辨。

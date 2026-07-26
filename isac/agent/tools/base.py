@@ -69,7 +69,9 @@ class ToolPermission:
         "handoff_conversation": "restricted",
         "list_available_agents": "restricted",
         "memory_query_agent": "restricted",
-        "web_search": "allow",
+        # Q0: 默认 deny —— 全仓无搜索后端实现, allow 会让工具出现在 LLM schema
+        # 里却恒失败 (LLM 反复调用死工具); 接入后端后在配置中显式开启。
+        "web_search": "deny",
         "read_file": "restricted",  # 限制在项目目录内
         "write_file": "restricted",
         "bash": "deny",  # 默认禁用，需在配置中显式启用

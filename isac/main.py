@@ -73,9 +73,15 @@ async def process_message(
         return  # 路由无匹配 → DROP
     routed_message = dataclasses.replace(message, content=decision.content)
 
+    # Q0: 在 get_or_create 改写 session_id 为内部 sess_* 之前, 捕获适配器侧的
+    # 平台会话键 (如 WebChat 客户端自带的 session_id)。出站回复/进度帧必须用
+    # 平台键路由, 否则 WebChat 队列键与客户端轮询键对不上, 回复永远取不到。
+    platform_session_id = routed_message.session_id
     session = await session_mgr.get_or_create(routed_message, agent_id=decision.agent_id)
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
-    progress_sender = _make_progress_sender(channel_registry, routed_message, decision.agent_id)
+    progress_sender = _make_progress_sender(
+        channel_registry, routed_message, decision.agent_id, platform_session_id
+    )
     try:
         reply = await agent_manager.handle_message(
             decision.agent_id, routed_message, session, profile, progress_sender=progress_sender
@@ -85,7 +91,7 @@ async def process_message(
         raise
     metrics.counter("isac_messages_processed_total").inc()
     if reply:
-        await _send_reply(channel_registry, routed_message, reply, decision.agent_id)
+        await _send_reply(channel_registry, routed_message, reply, decision.agent_id, platform_session_id)
     await event_bus.fire_async(EventType.POST_MESSAGE, routed_message)
 
 
@@ -94,8 +100,14 @@ async def _send_reply(
     incoming: ISACMessage,
     reply_text: str,
     agent_id: str,
+    platform_session_id: str = "",
 ) -> None:
-    """把 Agent 的文本回复经原 Channel 适配器发送。"""
+    """把 Agent 的文本回复经原 Channel 适配器发送。
+
+    Q0: platform_session_id 是 gateway 改写前的适配器侧会话键 (WebChat 客户端
+    的 session_id); 出站按平台键路由, 客户端才能按自己的键轮询到回复。适配器
+    未提供平台键时 (OneBot 等按 group/user 路由的平台) 回退内部 session_id。
+    """
     adapter = channel_registry.get(incoming.platform)
     if adapter is None:
         logger.warning("未找到对应平台适配器，无法发送回复", platform=incoming.platform, agent_id=agent_id)
@@ -108,6 +120,7 @@ async def _send_reply(
         user_id=incoming.user_id,
         user_name="",  # 发送方是 Bot，无需昵称
         group_id=incoming.group_id,
+        session_id=platform_session_id or incoming.session_id,
         content=reply_text,
         reply_to=incoming.msg_id,
     )
@@ -119,7 +132,7 @@ async def _send_reply(
 
 
 def _make_progress_sender(
-    channel_registry: ChannelRegistry, incoming: ISACMessage, agent_id: str
+    channel_registry: ChannelRegistry, incoming: ISACMessage, agent_id: str, platform_session_id: str = ""
 ) -> Callable[[str, ProgressEvent], Awaitable[None]]:
     """D9: 构造绑定到本次到达消息所属 Channel 的进度 sender。
 
@@ -127,6 +140,8 @@ def _make_progress_sender(
     ISACMessage, 附 metadata.message_kind=progress 供 Channel 侧按需特殊处理
     (WebChat 输出原生 kind 字段, 其余平台按普通文本发送)。找不到 adapter / 发送失败
     时只记日志, 不得影响主任务 (进度是旁路信号)。
+    Q0: 与 _send_reply 一致改用 platform_session_id (gateway 改写前的平台会话键)
+    路由, WebChat 进度帧此前落在内部 sess_* 键下, 客户端同样轮询不到。
     """
 
     async def sender(text: str, event: ProgressEvent) -> None:
@@ -140,7 +155,7 @@ def _make_progress_sender(
             user_id=incoming.user_id,
             user_name="",
             group_id=incoming.group_id,
-            session_id=incoming.session_id,
+            session_id=platform_session_id or incoming.session_id,
             content=text,
             reply_to=incoming.msg_id,
             metadata={"message_kind": "progress", "task_id": event.task_id, "progress_stage": event.stage},
@@ -151,6 +166,138 @@ def _make_progress_sender(
             logger.warning("进度通知发送失败, 已忽略", platform=incoming.platform, agent_id=agent_id, error=str(exc))
 
     return sender
+
+
+def make_message_dispatcher(
+    *,
+    event_bus: EventBus,
+    router: MessageRouter,
+    session_mgr: SessionManager,
+    user_mapper: UserMapper,
+    agent_manager: AgentManager,
+    channel_registry: ChannelRegistry,
+    metrics: MetricsCollector,
+    session_lock: SessionLockManager,
+    drain_timeout_seconds: float = 30.0,
+) -> tuple[Callable[[ISACMessage], Awaitable[None]], Callable[[], Awaitable[None]]]:
+    """P0: 构造并发消息分发器, 返回 (handle_message, drain_inflight)。
+
+    此前 handle_message 同步 await 整条处理链 (门控→LLM→工具→回复), 适配器的
+    收取循环被单条消息阻塞 —— 跨会话并行度完全取决于 Channel 库自身调度
+    (Telegram/Discord/WebChat 的轮询循环整体串行)。现在:
+    - handle_message 派生 asyncio.Task 后立即返回, 不同会话真并行;
+    - 单会话串行保持: 锁键 platform:user:group (消息 session_id 尚未赋值),
+      同会话任务按到达顺序创建, asyncio FIFO 就绪队列 + 公平锁保证按序获取;
+    - 任务持强引用 (inflight 集合 + done 自清理), 异常在任务内捕获记日志,
+      不产生 "Task exception was never retrieved";
+    - drain_inflight 供优雅关闭调用: 停止收取后等待在途任务完成 (带超时),
+      保证 shutdown 不丢已接收的消息。
+    """
+    inflight: set[asyncio.Task[None]] = set()
+
+    async def _process_locked(message: ISACMessage) -> None:
+        lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
+        lock = await session_lock.acquire(lock_key)
+        # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
+        # SessionLockManager 的 K7 锁回收 (否则 _locks/_waiters 无界增长)。
+        try:
+            async with lock:
+                await process_message(
+                    message,
+                    event_bus=event_bus,
+                    router=router,
+                    session_mgr=session_mgr,
+                    user_mapper=user_mapper,
+                    agent_manager=agent_manager,
+                    channel_registry=channel_registry,
+                    metrics=metrics,
+                )
+        except Exception:
+            # 任务化后异常不再冒泡到适配器循环, 必须就地捕获记录
+            logger.error(
+                "消息处理任务异常", platform=message.platform, msg_id=message.msg_id, exc_info=True
+            )
+        finally:
+            session_lock.release(lock_key)
+
+    async def handle_message(message: ISACMessage) -> None:
+        task = asyncio.create_task(
+            _process_locked(message),
+            name=f"msg-{message.platform}-{message.msg_id or 'anon'}",
+        )
+        inflight.add(task)
+        task.add_done_callback(inflight.discard)
+
+    async def drain_inflight() -> None:
+        pending = [t for t in inflight if not t.done()]
+        if not pending:
+            return
+        logger.info("等待在途消息处理完成", count=len(pending))
+        _done, still_pending = await asyncio.wait(pending, timeout=drain_timeout_seconds)
+        if still_pending:
+            logger.warning("在途消息处理未在超时内完成, 继续关闭", count=len(still_pending))
+
+    return handle_message, drain_inflight
+
+
+def _register_channel_adapters(channel_registry: ChannelRegistry, global_config: dict[str, Any]) -> None:
+    """Q0: 按 channels.* 配置注册各平台适配器。
+
+    此前生产入口只有 OneBot 一个注册分支, Telegram/Discord/WebChat 三个适配器
+    实现+单测齐全却零调用点 (开箱只有需要外部 NapCat 的 QQ 一条可聊通道)。
+    全部惰性导入: 未启用的平台不 import 对应模块, 可选依赖不成为强制依赖。
+    """
+    channels_config = global_config.get("channels", {}) or {}
+
+    onebot_config = channels_config.get("onebot")
+    if onebot_config and onebot_config.get("enabled"):
+        from isac.channel.adapters.onebot.adapter import OneBotAdapter
+
+        channel_registry.register(OneBotAdapter(onebot_config))
+    telegram_config = channels_config.get("telegram")
+    if telegram_config and telegram_config.get("enabled"):
+        from isac.channel.adapters.telegram.adapter import TelegramAdapter
+
+        channel_registry.register(TelegramAdapter(telegram_config))
+    discord_config = channels_config.get("discord")
+    if discord_config and discord_config.get("enabled"):
+        from isac.channel.adapters.discord.adapter import DiscordAdapter
+
+        channel_registry.register(DiscordAdapter(discord_config))
+    webchat_config = channels_config.get("webchat")
+    if webchat_config and webchat_config.get("enabled"):
+        from isac.channel.adapters.webchat.adapter import WebChatAdapter
+
+        channel_registry.register(WebChatAdapter(webchat_config))
+    registered = [adapter.platform_name for adapter in channel_registry.list()]
+    if registered:
+        logger.info("Channel 适配器已注册", platforms=registered)
+    else:
+        logger.info("未启用任何 Channel 适配器 (channels.* 均未 enabled)")
+
+
+def _ensure_default_routing(router: MessageRouter, channel_registry: ChannelRegistry, fallback_agent_id: str) -> None:
+    """Q0: 裸部署 (未配置任何路由规则) 时为每个已注册平台登记默认 Agent。
+
+    此前无 data/routing.jsonc 时所有无触发词消息在 router 层全部 DROP, 新用户
+    首跑收不到任何回复。仅在规则完全为空 (无 bindings 且无 default_agents) 时
+    兜底 —— 用户显式配置过任何路由即完全不动, 保留有意的 DROP 语义; 只改内存
+    规则不落盘, 不把隐式默认写进用户配置文件。
+    """
+    rules = router.get_rules()
+    if rules.bindings or rules.default_agents:
+        return
+    platforms = [adapter.platform_name for adapter in channel_registry.list()]
+    if not platforms:
+        return
+    for platform in platforms:
+        rules.default_agents[platform] = fallback_agent_id
+    router.set_rules(rules)
+    logger.info(
+        "未配置任何路由规则, 已为已启用平台登记默认 Agent (仅内存, 不落盘)",
+        platforms=platforms,
+        agent_id=fallback_agent_id,
+    )
 
 
 def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[str, Any]) -> None:
@@ -576,45 +723,28 @@ async def main() -> None:
 
     # ── Channel ─────────────────────────────────────────────
     channel_registry = ChannelRegistry()
-    onebot_config = global_config.get("channels", {}).get("onebot")
-    if onebot_config and onebot_config.get("enabled"):
-        # 惰性导入 OneBot 适配器，避免 aiocqhttp 成为强制依赖
-        from isac.channel.adapters.onebot.adapter import OneBotAdapter
-
-        onebot_adapter = OneBotAdapter(onebot_config)
-        channel_registry.register(onebot_adapter)
+    _register_channel_adapters(channel_registry, global_config)
 
     # ── Gateway ─────────────────────────────────────────────
     event_bus = EventBus()
     session_mgr = SessionManager(global_config)
-    user_mapper = UserMapper()
+    # Q1: 跨平台身份映射 SQLite 持久化 (master_id/person_id 跨重启稳定,
+    # 人物画像与记忆按归一身份聚合的前提)
+    user_mapper = UserMapper(str(DATA_DIR / "gateway" / "identity.db"))
     session_lock = SessionLockManager()
 
-    async def handle_message(message: ISACMessage) -> None:
-        """入口: 会话锁保证同一会话串行 (SPECIFICATION.md 2.5)。
-
-        注意: 此时 message.session_id 尚未赋值，因此锁键使用 platform:user_id:group_id，
-        避免退化为全局串行。
-        """
-        lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
-        lock = await session_lock.acquire(lock_key)
-        # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
-        # SessionLockManager 的 K7 锁回收; 此前主链路只 acquire 不 release, 导致
-        # _locks/_waiters 按不同 platform:user:group 无界增长 (长期运行内存泄漏)。
-        try:
-            async with lock:
-                await process_message(
-                    message,
-                    event_bus=event_bus,
-                    router=router,
-                    session_mgr=session_mgr,
-                    user_mapper=user_mapper,
-                    agent_manager=agent_manager,
-                    channel_registry=channel_registry,
-                    metrics=metrics,
-                )
-        finally:
-            session_lock.release(lock_key)
+    # P0: 消息处理并发化 —— handle_message 只负责派生任务立即返回, 适配器收取
+    # 循环不再被单条消息的 LLM 往返阻塞 (跨会话真并行); 单会话仍靠会话锁串行。
+    handle_message, drain_inflight = make_message_dispatcher(
+        event_bus=event_bus,
+        router=router,
+        session_mgr=session_mgr,
+        user_mapper=user_mapper,
+        agent_manager=agent_manager,
+        channel_registry=channel_registry,
+        metrics=metrics,
+        session_lock=session_lock,
+    )
 
     # 注入 Channel 适配器的消息回调
     for adapter in channel_registry.list():
@@ -626,13 +756,10 @@ async def main() -> None:
         alert_manager.add_rule(rule)
 
     # ── 启动编排 (K1): 所有资源通过 register_lifecycle 注册到 runtime ──
-    # 启动顺序: Channel 适配器 → Control Plane (可选) → Alert → Provider 连接池关闭
-    # 关闭顺序 (LIFO): Provider → Alert → Control → Channel
-    runtime.register_lifecycle(
-        "channels",
-        channel_registry.start_all,
-        channel_registry.stop_all,
-    )
+    # P0: channels 改到最后注册 (见 runtime.start() 前) —— LIFO 关闭时最先停止
+    # 消息入口并 drain 在途任务, 之后才关 journal/usage/providers 等下游资源;
+    # 此前 channels 最先注册 → 最后关闭, providers 连接池会在在途消息还没
+    # 处理完时先被关掉。启动侧 channels 最后 start 也更合理 (一切就绪才开闸)。
     control_config = global_config.get("control", {}) or {}
     if control_config.get("enabled"):
         # CR3: session_mgr/event_bus 此前经 services.get() 取值恒 None (键根本
@@ -679,6 +806,19 @@ async def main() -> None:
     # J4: 子任务日志生命周期 (仅启用 subagent.enabled 时注册)。
     _register_subagent_lifecycle(runtime, services)
 
+    # P0: channels 最后注册 —— 启动侧一切资源就绪后才开消息闸; 关闭侧 (LIFO
+    # 最先执行) 先停适配器收取, 再 drain 在途消息任务, 保证 journal/usage/
+    # providers 等下游资源关闭时不再有消息在途 (不丢消息)。
+    async def _stop_channels_and_drain() -> None:
+        await channel_registry.stop_all()
+        await drain_inflight()
+
+    runtime.register_lifecycle(
+        "channels",
+        channel_registry.start_all,
+        _stop_channels_and_drain,
+    )
+
     # 先恢复持久化 Agent (data/agents/*/config.jsonc, enabled=true 的自动 start),
     # 再回退到默认 Agent 保证无任何持久化配置时也能跑通 (CODE_REVIEW_REPORT.md #2)。
     agents_dir = global_config.get("control", {}).get(
@@ -687,7 +827,9 @@ async def main() -> None:
     restore_report = await load_persisted_agents(agent_manager, agents_dir)
     if restore_report:
         logger.info("持久化 Agent 恢复完成", report=restore_report)
-    await ensure_default_agent(agent_manager, global_config)
+    default_instance = await ensure_default_agent(agent_manager, global_config)
+    # Q0: 裸部署无任何路由规则时, 已启用平台的消息兜底路由到默认 Agent (否则全 DROP)
+    _ensure_default_routing(router, channel_registry, default_instance.agent_id)
     await event_bus.fire_async(EventType.ON_START, {"config": global_config})
 
     # ── 进入 runtime (启动 TaskGroup + 触发所有 register_lifecycle.start) ──
@@ -696,9 +838,15 @@ async def main() -> None:
     # 必须在 runtime.start() 之后调用 (subagent_journal 已 start, DB 连接就绪)。
     await _restore_subagent_interrupts(services)
     logger.info("ISAC 启动完成")
-    await runtime.serve_forever()
-    await runtime.shutdown()
-    logger.info("ISAC 已退出")
+    # Q0: try/finally 保证优雅关闭 —— Windows 上 add_signal_handler 注册失败,
+    # Ctrl+C 以 KeyboardInterrupt/CancelledError 穿透 serve_forever, 此前会跳过
+    # shutdown() 留下未释放的连接与后台任务; POSIX 信号路径 (serve_forever 正常
+    # 返回) 行为不变。
+    try:
+        await runtime.serve_forever()
+    finally:
+        await runtime.shutdown()
+        logger.info("ISAC 已退出")
 
 
 async def _register_control_plane(
