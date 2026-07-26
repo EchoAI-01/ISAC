@@ -702,12 +702,17 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
     - **冒烟发现并修复两个开箱不可聊的隐藏缺陷**: ① `_send_reply` 构造回复不带 session_id;② 更根本的 —— `SessionManager.get_or_create` 会把消息 session_id 改写为内部 `sess_*`, 平台侧会话键丢失, WebChat 回复与 D9 进度帧都落错队列 → `process_message` 现在在改写前捕获 `platform_session_id` 并透传 `_send_reply`/`_make_progress_sender`。
     - 真实启动冒烟通过: 拷 sample 起进程 → `POST /webchat/send` → 默认路由 → StubProvider 回复 → `GET /webchat/poll` 按客户端会话键取回。附 `tests/unit/test_q0_wiring.py` (14 测试)。
 
-- [ ] **Q1 记忆写入回路与身份稳定化**(MVP 最高优先级,不依赖 P0)
+- [x] **Q1 记忆写入回路与身份稳定化**(MVP 最高优先级,不依赖 P0)
   - **目标**：补齐 K3 验收要求但从未接线的"消息/会话结束后真实写入 Episode"——这是记忆检索/注入/治理整条链路能真正发挥作用的前提,当前该链路读侧全通但生产端零写入,记忆恒为空。同时稳定化 person_id 与 Session。
   - **验收**：每轮对话回复后(或 `POST_MESSAGE` hook)真实调用 `store_episode`;每 N 轮或每次互动后更新人物画像(`upsert_person_profile`)与 `relationship_depth`/`interaction_count`;行话学习(可选,降级不阻塞 MVP);聊天 → 重启 → 记忆检索命中;`UserMapper` SQLite 持久化,`person_id` 跨重启稳定;`SessionManager` 状态持久化(可选,MVP 可接受会话状态重启丢失但需在文档准确标注,不得再宣称"可持久化恢复")。
   - **产出**：`_dispatch_message`/`process_message` 记忆写入接线、画像/关系更新回路、`UserMapper` 持久化、集成测试(聊天→重启→检索命中、画像随轮次加深)。
   - **依赖**：K3(存储基建)、D6-D7(检索/注入)、K4(持久化恢复框架)。
-  - **当前**：未开始。**MVP 最高优先级,建议第一个开工。**
+  - **当前**：已完成 (2026-07-27)。
+    - **episodic 写入回路**: `AgentManager._dispatch_message` 回复后经 `_schedule_memory_write` 后台任务调 `instance.memory.store_episode` (存整轮对话"用户话+回复", importance 启发式 0.5); 后台化避免给回复路径加延迟 (配 embedding 时写入含一次向量化 API 调用); 任务强引用集合 + done 自清理; 失败降级只记日志 (SPECIFICATION 5.1)。
+    - **画像/关系回路**: `_update_person_profile` 每次互动 `interaction_count+1`、`relationship_depth+0.01` (封顶 1.0)、name/first_seen/last_seen 维护; person_id 与读侧 (PersonProfileInjector/query_person_profile) 同口径 —— 优先 UserMapper master_id, agent 键用 instance.agent_id。画像文本 LLM 归纳留 MemoryConsolidator (MVP 后)。
+    - **UserMapper SQLite 持久化**: 写穿模式 (user_bindings + user_profiles 两表, 含 behavior_patterns JSON), 内存缓存未命中先查 DB 恢复既有 master_id; 不传 db_path 保持纯内存 (测试零行为变化); main 接 `data/gateway/identity.db`。
+    - **边界**: 行话学习未做 (可选项, 归 MemoryConsolidator); SessionManager 状态仍不持久化 (已在 PROGRESS 如实标注); `config.sample.jsonc` 的 `memory.enabled` 默认改 true (纯 SQLite 零外部依赖, "越聊越熟"开箱生效)。
+    - 集成测试 `tests/integration/test_q1_memory_write_loop.py` (4): 聊→重启(新 pipeline 预热)→BM25 命中、画像随互动加深、UserMapper 重启同 master_id、纯内存模式零行为变化。
 
 - [ ] **Q2 人格差异化实现**(依赖 D8 人格系统 + D2 prompt_builder)
   - **目标**：让 `AgentConfig.persona` 配置的人格文本真正影响 System Prompt,并把 D8 已实现但未注册的情绪/表达风格/注意力漂移能力接入 Prompt 组装与更新回路,使不同 Agent 的人格差异在回复中可辨。

@@ -101,11 +101,12 @@
     // }
   ],
 
-  // 记忆子系统 (默认关闭; 开启后 FTS5+BM25 稀疏检索立即可用)
+  // 记忆子系统 (Q1 起默认开启: 纯 SQLite 零外部依赖, FTS5+BM25 稀疏检索 +
+  // 对话写入回路立即可用, "越聊越熟"开箱生效; 不需要记忆时改 false)
   // embedding 配置了 api_key+model 时启用稠密 (向量) 召回 + RRF 融合 (CR3-H3):
   // 未配置时自动降级为纯稀疏检索, 不报错。dimension 必须与所选模型输出维度一致。
   "memory": {
-    "enabled": false,
+    "enabled": true,
     "embedding": {
       // "provider": "openai",
       // "api_key": "sk-your-key",
