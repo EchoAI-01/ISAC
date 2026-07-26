@@ -511,11 +511,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：L1、L2、`agent/loop.py`。
   - **当前**：已完成 (2026-07-26)。`ConversationRuntime` 加 `interrupt_state` + `max_interrupts_per_turn` (默认 1, 保守); `request_interrupt(reason)` 单轮次数限制 + 置 `superseded=True` + `interrupt_count++`; `clear_interrupt` 进入下一轮前重置。新增 `agent/injectors/interrupt.py:InterruptInjector` 注入"上一轮被打断"内部参考 (含打断次数与原因), 注入后清空状态避免重复注入。AgentLoop 接线 (thinking 后读 `superseded`) 与 manager 并发处理消息 (thinking 期间收到新消息调 `request_interrupt`) 留 L4+ 节点, 因这两者需要 manager 用 asyncio.create_task 并发处理消息的大改动, 超出 L4 验收线。9 例单测覆盖 request/clear/单轮上限/可配置/注入/清空/默认零行为变化。
 
-- [ ] **L5 上下文恢复**
+- [x] **L5 上下文恢复**
   - **验收**：进程重启后,会话的拟人状态 (未决 wait、被打断标记、主动任务) 可从持久化恢复到合理起点 (与 D9/J4 "中断后不恢复旧进度" 思路一致,标为终止/复位而非续跑)。
   - **产出**：ConversationRuntime 状态持久化 schema、启动恢复编排、恢复测试。
   - **依赖**：L1-L4、K4 (持久化恢复框架)。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `conversation/recovery.py` (`ConversationStateStore` + `ConversationSnapshot`,no-op 骨架)。真实持久化 schema 与恢复编排以 `TODO(L5)` 标注。
+  - **当前**：已完成 (2026-07-26)。`ConversationStateStore` 原子写 JSON 落盘到 `data/agents/<id>/conversation/<session_id>.json` (复用 `utils.fs.atomic_write_json`, K4 模式); `load` 读回 → 计算 elapsed → 短(<5min)/中(<1h)/长(<24h) 窗口生成 `recovery_hint` → 复位 `state=idle` + `pending_wait=None` (中断后不续跑); > 24h 不恢复。新增 `agent/injectors/recovery.py:RecoveryInjector` 注入 `recovery_hint` 到第一轮 Prompt, 注入后清空 (避免重复注入)。10 例单测覆盖 save/load 往返 + 短/中/长/24h 窗口 + 未决 wait 复位 + 原子写文件存在 + RecoveryInjector 注入/清空/无快照空串。manager 启动时调 `store.load` 填充 snapshots + 接线 RecoveryInjector 到 prompt_builder 留 L5+ 节点 (不涉及主链路行为变化)。
 
 ---
 

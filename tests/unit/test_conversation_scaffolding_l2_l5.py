@@ -103,11 +103,19 @@ def test_interrupt_state_defaults() -> None:
 # ── L5: ConversationStateStore ──────────────────────────────────
 
 
-def test_state_store_save_is_noop_and_load_returns_none() -> None:
-    store = ConversationStateStore()
-    snap = ConversationSnapshot(agent_id="a1", session_id="s1")
-    store.save(snap)  # 骨架 no-op, 不抛
-    assert store.load("a1", "s1") is None  # 无恢复 = 全新会话
+def test_state_store_save_then_load_returns_snapshot() -> None:
+    """L5 已实现: save 落盘 + load 读回 (而非 no-op). 用 tmp 目录避免污染 data/."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        store = ConversationStateStore(base_dir=tmp)
+        snap = ConversationSnapshot(agent_id="a1", session_id="s1")
+        store.save(snap)  # L5: 真实落盘, 不抛
+        loaded = store.load("a1", "s1")  # L5: 真实读回, 短间隔内恢复
+        assert loaded is not None
+        assert loaded.state == "idle"  # 复位运行态
+        # 默认 base_dir 下不存在的 session: load 返回 None (新会话)
+        assert store.load("a1", "nonexistent") is None
 
 
 def test_conversation_snapshot_defaults() -> None:
