@@ -48,6 +48,21 @@ def test_should_trigger_zero_debounce_always_true() -> None:
     assert runtime.should_trigger(debounce_seconds=0.0) is True
 
 
+def test_register_message_caps_cache_size_and_adjusts_processed_index() -> None:
+    """CR2-Fix-4: register_message 是当前唯一在生产环境被 manager 真实调用的写入
+    路径 (drain_new_messages 从未被生产代码调用), 长会话下 message_cache 会无界
+    增长。应有软上限, 超出后丢弃最旧消息并同步下修 last_processed_index。"""
+    from isac.runtime.conversation.runtime import _MAX_MESSAGE_CACHE
+
+    runtime = ConversationRuntime("a1", "s1")
+    for i in range(_MAX_MESSAGE_CACHE + 50):
+        runtime.register_message(_make_message(f"m{i}"))
+    assert len(runtime.message_cache) == _MAX_MESSAGE_CACHE
+    # 最旧的 50 条应已被丢弃, 缓存里第一条应是 m50
+    assert runtime.message_cache[0].content == "m50"
+    assert runtime.last_processed_index == 0  # 从未 drain 过, 索引应保持在 0 (被 max(0,...) 夹住)
+
+
 def test_should_trigger_positive_respects_silence_window() -> None:
     runtime = ConversationRuntime("a1", "s1")
     runtime.last_message_received_at = 100.0
