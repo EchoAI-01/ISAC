@@ -1,11 +1,15 @@
-"""ProactiveScheduler: 主动任务调度骨架 (L3, HUMANLIKE_RUNTIME.md §5.2)。
+"""ProactiveScheduler: 主动任务调度 (L3, HUMANLIKE_RUNTIME.md §5.2)。
 
-[框架已搭建 / scaffolding] 从 ProactiveTaskQueue 取任务的调度挂接点就位;真正的按
-优先级排序、冷却与频率边界、来源鉴权、唤醒对应会话发起强制话轮留待 L3 实现节点
-(见 TODO)。默认不启动后台调度, 对主链路零行为变化。
+L3 实现: 后台循环按 poll_interval_seconds 周期 poll queue → authorize (allowed_sources)
+→ may_fire (min_interval_seconds 冷却) → to_forced_turn (更新 _last_fired_at) →
+wake_callback (manager 注入, 唤醒对应会话 ConversationRuntime)。默认 enabled=False
+不启动后台循环, 主链路零行为变化。
 """
 
 from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
 
 from isac.runtime.conversation.models import ForcedTurnState, ProactiveTask, TriggerSource
 from isac.runtime.conversation.proactive import ProactiveTaskQueue
@@ -13,25 +17,45 @@ from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# 默认允许的来源集合 (HUMANLIKE_RUNTIME.md §5.2); 不在此集合的 source 一律拒绝, 防滥用。
+DEFAULT_ALLOWED_SOURCES: frozenset[str] = frozenset({"plugin", "memory", "schedule", "agent", "api"})
+
+# 默认后台轮询周期; 实际生效需 enabled=True 显式 start()。1 秒兼顾响应性与低开销。
+DEFAULT_POLL_INTERVAL_SECONDS: float = 1.0
+
+WakeCallback = Callable[[ProactiveTask], "Awaitable[None]"]
+
 
 class ProactiveScheduler:
-    """主动任务调度器骨架 (驱动 ProactiveTaskQueue)。
+    """主动任务调度器 (驱动 ProactiveTaskQueue + 后台循环)。
 
-    每个 Agent 一个, 由 L3 的后台循环按冷却/频率驱动; 骨架阶段仅提供判定与
-    转换的纯函数式挂接点, 不含后台任务。
+    每个 Agent 一个; 由 L3 的后台循环按冷却/频率驱动; 默认不 start, 不产生主动发言。
     """
 
-    def __init__(self, queue: ProactiveTaskQueue | None = None, *, min_interval_seconds: float = 0.0) -> None:
+    def __init__(
+        self,
+        queue: ProactiveTaskQueue | None = None,
+        *,
+        min_interval_seconds: float = 0.0,
+        allowed_sources: frozenset[str] | set[str] | None = None,
+        poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
+    ) -> None:
         # 用 is None 判定而非 `queue or ...`: 空队列 __len__==0 为 falsy, or 会误建新队列。
         self.queue = queue if queue is not None else ProactiveTaskQueue()
         self.min_interval_seconds = max(0.0, float(min_interval_seconds))
+        self.allowed_sources: frozenset[str] = (
+            frozenset(allowed_sources) if allowed_sources is not None else DEFAULT_ALLOWED_SOURCES
+        )
+        self.poll_interval_seconds = max(0.05, float(poll_interval_seconds))
         self._last_fired_at: float = 0.0
+        self._loop_task: asyncio.Task[None] | None = None
+        self._wake_callback: WakeCallback | None = None
 
     def may_fire(self, now: float) -> bool:
         """是否已过冷却窗口、允许再触发一个主动任务。
 
-        TODO(L3): 结合 effective_frequency (存在感/关系/专注度) 与 min_interval_seconds
-        判定; 骨架阶段仅按 min_interval_seconds 判定, 无后台循环驱动故不产生主动发言。
+        L3: min_interval_seconds<=0 恒 True; 否则按 _last_fired_at + min_interval 判定。
+        effective_frequency (存在感/关系/专注度) 留后续节点接入。
         """
         if self.min_interval_seconds <= 0.0:
             return True
@@ -40,14 +64,77 @@ class ProactiveScheduler:
     def authorize(self, task: ProactiveTask) -> bool:
         """校验主动任务来源合法 (禁止无来源随机发言)。
 
-        TODO(L3): 按 source (plugin/memory/schedule/agent/api) 做来源鉴权与配额;
-        骨架阶段仅要求 source/intent/reason 非空。
+        L3: source 在 allowed_sources 中 + source/intent/reason 非空。
         """
-        return bool(task.source and task.intent and task.reason)
+        if not (task.source and task.intent and task.reason):
+            return False
+        return task.source in self.allowed_sources
 
-    def to_forced_turn(self, task: ProactiveTask) -> ForcedTurnState:
+    def to_forced_turn(self, task: ProactiveTask, *, now: float | None = None) -> ForcedTurnState:
         """把一个主动任务转成强制话轮状态 (供 ConversationRuntime 发起)。
 
-        TODO(L3): 触发时更新 _last_fired_at 并唤醒对应会话的 ConversationRuntime。
+        L3: 触发时更新 _last_fired_at (供下次 may_fire 判定)。now 参数便于测试。
         """
-        return ForcedTurnState(source=TriggerSource.PROACTIVE.value, reason=task.reason)
+        import time as _time
+
+        fired_at = now if now is not None else _time.time()
+        self._last_fired_at = fired_at
+        return ForcedTurnState(
+            source=TriggerSource.PROACTIVE.value,
+            reason=task.reason,
+            created_at=fired_at,
+        )
+
+    async def start(self, wake_callback: WakeCallback | None = None) -> None:
+        """启动后台调度循环 (poll → authorize → may_fire → wake_callback)。
+
+        重复 start 不重启 (保留首个循环); wake_callback 可后续替换。
+        """
+        if self._loop_task is not None and not self._loop_task.done():
+            self._wake_callback = wake_callback or self._wake_callback
+            return
+        self._wake_callback = wake_callback
+        self._loop_task = asyncio.create_task(self._loop())
+
+    async def stop(self) -> None:
+        """取消后台调度循环 (重复 stop 安全)。"""
+        if self._loop_task is None:
+            return
+        self._loop_task.cancel()
+        try:
+            await self._loop_task
+        except asyncio.CancelledError:
+            pass
+        self._loop_task = None
+
+    async def _loop(self) -> None:
+        """后台调度循环: poll_interval_seconds 周期 poll queue。
+
+        未通过 authorize 的任务被丢弃 (不阻塞队列, 不调 wake_callback);
+        may_fire=False 时任务退回队列头部, 等下次轮询。
+        """
+        try:
+            while True:
+                await asyncio.sleep(self.poll_interval_seconds)
+                task = self.queue.poll()
+                if task is None:
+                    continue
+                if not self.authorize(task):
+                    logger.info("主动任务鉴权失败, 已丢弃", task_id=task.task_id, source=task.source)
+                    continue
+                import time as _time
+
+                if not self.may_fire(_time.time()):
+                    # 冷却中: 任务退回队列头部, 等下次轮询 (保持 FIFO 顺序, 优先级不变)。
+                    self.queue._queue.insert(0, task)  # noqa: SLF001
+                    continue
+                # 触发: 转 forced turn + 唤醒 callback
+                self.to_forced_turn(task)
+                if self._wake_callback is not None:
+                    try:
+                        await self._wake_callback(task)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("主动任务唤醒回调失败, 已吞掉", task_id=task.task_id, error=str(exc))
+        except asyncio.CancelledError:
+            logger.debug("主动调度循环已取消", queue_len=len(self.queue))
+            raise
