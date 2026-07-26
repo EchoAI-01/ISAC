@@ -1,7 +1,10 @@
 """MemoryRetrievalPipeline: 记忆检索流水线 (ARCHITECTURE.md 3.6)。
 
-检索流程: Query → [Embed] → Dense Search + Sparse (BM25) → [RRF Fusion]
+检索流程: Query → [Embed] → Dense Search + FTS5 + Sparse (BM25) → RRF Fusion
          → [Reranker] → Top-K → Format → Inject
+CR3-H3: 稠密 (向量) 召回已接入 search() —— embedder 未降级时 embed_query +
+vector.search 参与 RRF 融合; 向量候选统一经 get_episodes_by_ids 过滤
+(agent 命名空间 + user/group ACL + deleted=0), 与稀疏候选同一套访问控制。
 契约见 SPECIFICATION.md 2.4；错误处理: 检索失败返回空列表 (SPECIFICATION.md 5.1)。
 """
 
@@ -87,23 +90,32 @@ class MemoryRetrievalPipeline:
             self._metrics.counter("isac_memory_searches_total").inc()
         start = time.monotonic()
         try:
+            recall_limit = max(top_k * 2, 10)
             fts_rows = await self.metadata.search_fts(
                 self.namespace,
                 clean_query,
-                limit=max(top_k * 2, 10),
+                limit=recall_limit,
                 user_id=user_id,
                 group_id=group_id,
             )
-            sparse_rows = self.sparse.search(clean_query, top_k=max(top_k * 2, 10))
-            sparse_ids = [memory_id for memory_id, _score in sparse_rows]
+            sparse_rows = self.sparse.search(clean_query, top_k=recall_limit)
+            # CR3-H3: 稠密召回 (embedder 降级/失败时返回空, 不影响稀疏路径)
+            dense_rows = await self._dense_search(clean_query, top_k=recall_limit)
             fts_ids = {str(row.get("id", "")) for row in fts_rows}
+            candidate_ids: list[str] = []
+            for memory_id, _score in [*sparse_rows, *dense_rows]:
+                if memory_id not in fts_ids and memory_id not in candidate_ids:
+                    candidate_ids.append(memory_id)
+            # 稀疏/稠密候选统一经 get_episodes_by_ids 补齐行数据 —— 它同时执行
+            # agent 命名空间隔离 + user/group ACL + deleted=0 过滤, 向量库中
+            # 不属于当前访问上下文的候选在这里被丢弃 (shared-namespace ACL 一致)。
             missing_rows = await self.metadata.get_episodes_by_ids(
                 self.namespace,
-                [memory_id for memory_id in sparse_ids if memory_id not in fts_ids],
+                candidate_ids,
                 user_id=user_id,
                 group_id=group_id,
             )
-            hits = self._merge_results([*fts_rows, *missing_rows], sparse_rows)
+            hits = self._merge_results([*fts_rows, *missing_rows], sparse_rows, dense_rows)
             if self.reranker is not None and self.reranker.is_available():
                 hits = await self.reranker.rerank(clean_query, hits)
             return hits[: max(1, int(top_k))]
@@ -113,6 +125,24 @@ class MemoryRetrievalPipeline:
         finally:
             if self._metrics is not None:
                 self._metrics.histogram("isac_memory_search_latency_seconds").observe(time.monotonic() - start)
+
+    async def _dense_search(self, query: str, top_k: int) -> list[tuple[str, float]]:
+        """稠密 (向量) 召回: embed_query → vector.search (CR3-H3)。
+
+        embedder 降级 (未注入 Provider)、query 向量为空、或向量检索抛异常时
+        返回空列表 —— 稠密路径任何故障都只降级为"纯稀疏检索", 不影响 FTS/BM25
+        已召回的结果 (SPECIFICATION.md 5.1 记忆失败降级)。
+        """
+        if self.embedder.is_degraded():
+            return []
+        try:
+            query_embedding = await self.embedder.embed_query(query)
+            if not query_embedding:
+                return []
+            return await self.vector.search(query_embedding, top_k=top_k)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("稠密检索失败, 降级为稀疏检索", namespace=self.namespace, error=str(exc))
+            return []
 
     async def warm_up_sparse_index(self) -> int:
         """从 MetadataStore 加载全部 episodes 重建 SparseBM25Index 内存索引。
@@ -176,7 +206,17 @@ class MemoryRetrievalPipeline:
             return ""
 
     @staticmethod
-    def _merge_results(fts_rows: list[dict], sparse_rows: list[tuple[str, float]]) -> list[MemoryHit]:
+    def _merge_results(
+        fts_rows: list[dict],
+        sparse_rows: list[tuple[str, float]],
+        dense_rows: list[tuple[str, float]] | None = None,
+    ) -> list[MemoryHit]:
+        """RRF 融合 FTS / BM25 / 稠密三路召回 (CR3-H3 加入 dense_rows)。
+
+        dense_rows 是 (memory_id, distance) 且按距离升序 —— RRF 只用名次不用
+        距离值, 与 FTS 路的贡献公式一致 (1/(60+rank)); 未经 get_episodes_by_ids
+        补齐行数据的候选 (被 ACL/软删过滤) 在末尾 rows_by_id 检查中被丢弃。
+        """
         scores: dict[str, float] = {}
         rows_by_id: dict[str, dict] = {}
         for rank, row in enumerate(fts_rows, start=1):
@@ -187,6 +227,8 @@ class MemoryRetrievalPipeline:
             scores[memory_id] = scores.get(memory_id, 0.0) + 1 / (60 + rank)
         for rank, (memory_id, sparse_score) in enumerate(sparse_rows, start=1):
             scores[memory_id] = scores.get(memory_id, 0.0) + 1 / (60 + rank) + sparse_score * 0.001
+        for rank, (memory_id, _distance) in enumerate(dense_rows or [], start=1):
+            scores[memory_id] = scores.get(memory_id, 0.0) + 1 / (60 + rank)
         hits = []
         for memory_id, score in sorted(scores.items(), key=lambda item: (-item[1], item[0])):
             if memory_id not in rows_by_id:

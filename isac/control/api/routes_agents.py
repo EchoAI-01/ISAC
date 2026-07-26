@@ -177,13 +177,18 @@ async def _do_create_agent(agent_manager: AgentManager, config: dict) -> Any:
 
     构造 AgentConfig (格式校验，如 agent_id 非法) 与创建实例 (是否已存在) 分开处理，
     避免 agent_id 格式错误被误报成"已存在" (409)。
+
+    CR3-L1: 经控制面自动化创建的 Agent 一律使用受限默认配置
+    (restricted_config_from_payload: bash/task deny + plugins_deny=["*"] +
+    仅安全命令), 调用方 payload 里的能力字段被丢弃并告警; 需要放宽能力走
+    PATCH /agents/{id} 显式授予。
     """
     from fastapi import HTTPException
 
-    from isac.runtime.config import AgentConfig
+    from isac.control.defaults import restricted_config_from_payload
 
     try:
-        agent_config = AgentConfig(**config)
+        agent_config = restricted_config_from_payload(config)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail={"code": "INVALID_CONFIG", "message": str(exc)}) from exc
 

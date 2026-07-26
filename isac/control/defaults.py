@@ -48,6 +48,13 @@ RESTRICTED_TOOLS_POLICY: dict[str, str] = {
 # 受限 commands_allow: 自动化创建 Agent 仅放行安全命令
 RESTRICTED_COMMANDS_ALLOW: list[str] = ["focus", "mute", "unmute"]
 
+# CR3-L1: 自动化创建路径 (Admin API / MCP) 不采纳调用方的能力字段, 一律由
+# 受限默认值接管 —— 否则持 agent:write 的 Token 可以直接 POST 出一个开 bash、
+# 全插件的 Agent, make_restricted_agent_config 形同虚设。
+RESTRICTED_CAPABILITY_FIELDS: frozenset[str] = frozenset(
+    {"tools_policy", "plugins_allow", "plugins_deny", "commands_allow", "mcp_servers"}
+)
+
 
 def make_restricted_agent_config(
     agent_id: str,
@@ -88,6 +95,34 @@ def make_restricted_agent_config(
         commands_allow=RESTRICTED_COMMANDS_ALLOW,
     )
     return config
+
+
+def restricted_config_from_payload(config: dict) -> AgentConfig:
+    """CR3-L1: 校验调用方 payload 后构造受限默认 AgentConfig (自动化创建路径共用)。
+
+    先用 AgentConfig(**config) 做严格校验 —— agent_id 格式非法/未知字段的
+    ValueError/TypeError 原样抛出, 由调用方转 400 / JSON-RPC 错误 (与接入受限
+    默认之前的行为一致)。能力字段 (RESTRICTED_CAPABILITY_FIELDS) 一律丢弃并
+    告警, 由 make_restricted_agent_config 的受限默认值接管; 其余字段
+    (persona/gating/llm/trigger_words/memory_namespace 等) 原样透传。
+
+    需要放宽能力的 Agent 走后续 PATCH /agents/{id} 或插件矩阵接口显式授予
+    (有审计), 而不是在创建时静默带入。
+    """
+    requested = AgentConfig(**config)
+    dropped = sorted(k for k in RESTRICTED_CAPABILITY_FIELDS if k in config)
+    if dropped:
+        logger.warning(
+            "自动化创建 Agent 的能力字段被受限默认值覆盖 (CR3-L1)",
+            agent_id=requested.agent_id,
+            dropped_fields=dropped,
+        )
+    extra = {
+        k: v
+        for k, v in config.items()
+        if k not in RESTRICTED_CAPABILITY_FIELDS and k not in ("agent_id", "display_name")
+    }
+    return make_restricted_agent_config(requested.agent_id, requested.display_name, extra=extra)
 
 
 def is_safe_default_host(host: str) -> bool:

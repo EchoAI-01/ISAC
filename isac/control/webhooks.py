@@ -140,7 +140,14 @@ class WebhookManager:
         return f"failed: {last_error}" if last_error else "failed: unknown"
 
     async def _post(self, url: str, payload: bytes) -> bool:
-        """真实 HTTP POST (httpx 注入时) 或 mock 返回。"""
+        """真实 HTTP POST (httpx 注入时) 或 mock 返回。
+
+        CR3-L4: 生产分支 (无注入 http_client) 在发起请求前一刻执行
+        pin_validated_url —— 订阅时的校验与请求之间存在 TOCTOU/DNS rebinding
+        窗口, 低 TTL 域名可在校验后重指向内网; 请求期"校验即固定"把 http URL
+        直接指向已校验 IP (Host 头保留原域名), 消除重解析窗口。注入 http_client
+        的测试分支不做 DNS (与 subscribe 的分流一致)。
+        """
         if self._http_client is not None:
             return await self._http_client.post(url, payload)
         # 默认: 尝试用 httpx (惰性导入)
@@ -149,12 +156,15 @@ class WebhookManager:
         except ImportError:
             logger.warning("httpx 未安装, Webhook 推送跳过")
             return False
+        from isac.utils.ssrf import pin_validated_url
+
+        request_url, extra_headers = pin_validated_url(url, allow_local=self._allow_local_urls)
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    url,
+                    request_url,
                     content=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers={"Content-Type": "application/json", **extra_headers},
                 )
                 return 200 <= response.status_code < 300
         except Exception as exc:  # noqa: BLE001

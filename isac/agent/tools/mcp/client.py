@@ -51,11 +51,20 @@ class MCPClient:
         self._terminate_timeout = float(config.get("terminate_timeout_seconds", 5))
 
     async def connect(self) -> None:
-        """建立连接 (stdio 子进程或 HTTP)。"""
+        """建立连接 (stdio 子进程或 HTTP)。
+
+        CR3-L8: transport="sse" 此前被静默当作普通 HTTP POST 处理 (无任何 SSE
+        流式语义), 对配置方是误导; 在真正实现 SSE 之前显式拒绝, 提示改用 http/stdio。
+        """
         if self._transport == "stdio":
             await self._connect_stdio()
-        elif self._transport in ("http", "sse"):
+        elif self._transport == "http":
             await self._connect_http()
+        elif self._transport == "sse":
+            raise ValueError(
+                f"不支持的 MCP 传输: sse (Server {self.server_name} 的 SSE 模式尚未实现, "
+                "请改用 transport=\"http\" 或 \"stdio\")"
+            )
         else:
             raise ValueError(f"不支持的 MCP 传输: {self._transport}")
         self._connected = True
@@ -200,10 +209,19 @@ class MCPClient:
             self._pending.pop(request_id, None)
 
     async def _send_http(self, request: dict[str, Any]) -> dict[str, Any]:
-        """HTTP 模式: POST 请求 + 响应。"""
+        """HTTP 模式: POST 请求 + 响应。
+
+        CR3-L8: 补 HTTP 状态码检查 —— 此前 4xx/5xx 的错误页会被直接 .json()
+        (通常抛 JSONDecodeError 或返回误导性的错误体)。getattr 防御式取
+        status_code 兼容测试注入的最小 mock 响应对象。
+        """
         if self._http_client is None:
             raise RuntimeError("MCP HTTP 未连接")
         response = await self._http_client.post("/", json=request)
+        status_code = int(getattr(response, "status_code", 200) or 200)
+        if status_code >= 400:
+            body = str(getattr(response, "text", ""))[:200]
+            raise RuntimeError(f"MCP Server {self.server_name} HTTP {status_code}: {body}")
         return response.json()
 
     async def _read_stdout_loop(self) -> None:

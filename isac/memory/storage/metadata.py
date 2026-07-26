@@ -1,6 +1,11 @@
 """MetadataStore: SQLite + FTS5 元数据存储 (ARCHITECTURE.md 3.6)。
 
 所有表带 agent_id 命名空间 (SPECIFICATION.md 1.6/2.4)。
+
+CR3-L2 (O1/P5): 可选注入 TenantIsolationGuard + TenantContext —— 写入时给
+episodes 行打 organization_id/tenant_id 标, 读查询用 guard.enforce() 子查询
+包裹加租户谓词。未注入 (默认) 或 guard.enabled=False 时零行为变化 (单租户
+passthrough); 注入按运行时实例进行, 不 import runtime 层 (DEVELOP.md 1.2)。
 """
 
 from __future__ import annotations
@@ -16,6 +21,10 @@ import aiosqlite
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# 与 isac.runtime.tenancy.models.DEFAULT_ORG/DEFAULT_TENANT 对齐的字面量
+# (不能 import runtime 层, 见 DEVELOP.md 导入顺序)。
+_DEFAULT_TENANT_VALUE = "default"
 
 # ARCHITECTURE.md 3.6 存储层 Schema (含 agent_id 命名空间)
 SCHEMA_SQL = """
@@ -106,7 +115,8 @@ CREATE TABLE IF NOT EXISTS memory_audit (
     audit_id TEXT PRIMARY KEY,
     item_id TEXT NOT NULL,
     action TEXT NOT NULL,  -- freeze/protect/correct/delete/restore
-    operator TEXT,          -- 操作者 (控制面 token / agent_id); 可空
+    operator TEXT,          -- 操作者标识 (控制面 token 指纹 / 调用方名); CR3-L5 起真实写入
+    agent_id TEXT,          -- 被操作条目所属 Agent (CR3-L5; 老库由 _ensure_column 补齐)
     occurred_at INTEGER NOT NULL,
     detail TEXT
 );
@@ -117,8 +127,32 @@ CREATE INDEX IF NOT EXISTS idx_audit_item ON memory_audit(item_id);
 class MetadataStore:
     """SQLite 元数据存储。"""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, *, tenant_guard: Any = None, tenant_context: Any = None):
+        """
+        Args:
+            db_path: SQLite 文件路径
+            tenant_guard: 可选 TenantIsolationGuard (CR3-L2; 鸭子类型, 需有
+                enforce(query, params, tenant) 方法)。None = 单租户 passthrough。
+            tenant_context: 可选 TenantContext (organization_id/tenant_id)。
+        """
         self.db_path = db_path
+        self._tenant_guard = tenant_guard
+        self._tenant_context = tenant_context
+
+    def _tenant_scope(self, query: str, params: list) -> tuple[str, list]:
+        """给读查询加租户谓词 (CR3-L2); 未注入 guard/context 时原样返回。"""
+        if self._tenant_guard is None or self._tenant_context is None:
+            return query, list(params)
+        return self._tenant_guard.enforce(query, list(params), self._tenant_context)
+
+    def _tenant_row_values(self) -> tuple[str, str]:
+        """写入行的 (organization_id, tenant_id) 标记值。"""
+        if self._tenant_context is None:
+            return (_DEFAULT_TENANT_VALUE, _DEFAULT_TENANT_VALUE)
+        return (
+            str(getattr(self._tenant_context, "organization_id", _DEFAULT_TENANT_VALUE)),
+            str(getattr(self._tenant_context, "tenant_id", _DEFAULT_TENANT_VALUE)),
+        )
 
     async def init_schema(self) -> None:
         """初始化 Schema。"""
@@ -132,6 +166,12 @@ class MetadataStore:
             await self._ensure_column(db, "episodes", "protected", "INTEGER DEFAULT 0")
             await self._ensure_column(db, "episodes", "deleted", "INTEGER DEFAULT 0")
             await self._ensure_column(db, "episodes", "corrected_by", "TEXT")
+            # CR3-L5: memory_audit 补 agent_id 列 (老库迁移; 新库建表语句已含)
+            await self._ensure_column(db, "memory_audit", "agent_id", "TEXT")
+            # CR3-L2 (O1): episodes 租户列 (老库/新库统一走 _ensure_column 迁移,
+            # 默认 'default' = 单租户退化态; 常量默认值可用于 ADD COLUMN)
+            await self._ensure_column(db, "episodes", "organization_id", "TEXT DEFAULT 'default'")
+            await self._ensure_column(db, "episodes", "tenant_id", "TEXT DEFAULT 'default'")
             await db.commit()
 
     @staticmethod
@@ -159,12 +199,16 @@ class MetadataStore:
             # 触发器, episodes_fts 倒排索引会残留旧 rowid 的词项 (MATCH 旧内容仍命中;
             # search_fts() 因为额外 JOIN episodes 才没有把这些孤儿行暴露出来)。
             await db.execute("PRAGMA recursive_triggers = ON")
+            # CR3-L2: organization_id/tenant_id 必须在 INSERT OR REPLACE 的列清单里
+            # —— 覆盖写入时缺列会把已有行的租户标重置为默认值。
+            organization_id, tenant_id = self._tenant_row_values()
             await db.execute(
                 """
                 INSERT OR REPLACE INTO episodes (
                     id, agent_id, session_id, user_id, group_id, content, summary, topics,
-                    participants, emotion, importance, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    participants, emotion, importance, created_at, updated_at,
+                    organization_id, tenant_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     memory_id,
@@ -180,6 +224,8 @@ class MetadataStore:
                     float(episode.get("importance", 0.5) or 0.5),
                     int(episode.get("created_at", now) or now),
                     int(episode.get("updated_at", now) or now),
+                    organization_id,
+                    tenant_id,
                 ),
             )
             # episodes_fts 由 episodes_fts_ai/ad/au 触发器增量同步, 此处不再需要
@@ -213,19 +259,19 @@ class MetadataStore:
             conditions.append("episodes.user_id = ? AND episodes.group_id IS NULL")
             params.append(user_id)
         where_clause = " AND ".join(conditions)
+        query = f"""
+            SELECT episodes.*, bm25(episodes_fts) AS score
+            FROM episodes_fts
+            JOIN episodes ON episodes_fts.rowid = episodes.rowid
+            WHERE {where_clause}
+            ORDER BY score ASC, episodes.created_at DESC
+            LIMIT ?
+        """
+        # CR3-L2: 租户谓词用子查询包裹 (enforce), 内层 episodes.* 投影已含租户列
+        query, scoped_params = self._tenant_scope(query, [*params, max(1, int(limit))])
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            rows = await db.execute_fetchall(
-                f"""
-                SELECT episodes.*, bm25(episodes_fts) AS score
-                FROM episodes_fts
-                JOIN episodes ON episodes_fts.rowid = episodes.rowid
-                WHERE {where_clause}
-                ORDER BY score ASC, episodes.created_at DESC
-                LIMIT ?
-                """,
-                (*params, max(1, int(limit))),
-            )
+            rows = await db.execute_fetchall(query, scoped_params)
         return [self._episode_row_to_dict(row) for row in rows]
 
     async def get_episodes_by_ids(
@@ -249,12 +295,10 @@ class MetadataStore:
             conditions.append("user_id = ? AND group_id IS NULL")
             params.append(user_id)
         where_clause = " AND ".join(conditions)
+        query, scoped_params = self._tenant_scope(f"SELECT * FROM episodes WHERE {where_clause}", params)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            rows = await db.execute_fetchall(
-                f"SELECT * FROM episodes WHERE {where_clause}",
-                params,
-            )
+            rows = await db.execute_fetchall(query, scoped_params)
         rows_by_id = {str(row["id"]): self._episode_row_to_dict(row) for row in rows}
         return [rows_by_id[memory_id] for memory_id in ordered_ids if memory_id in rows_by_id]
 
@@ -264,12 +308,19 @@ class MetadataStore:
         SparseBM25Index 是内存数据结构, 进程重启后会丢失倒排索引; 启动时从 SQLite
         episodes 表加载现有记忆重建索引, 让 BM25 检索在重启后立即可用
         (K3, DEVELOPMENT_PLAN.md)。
+
+        CR3-L3: 排除软删除行 (deleted=1)。此前预热把墓碑也灌进 BM25 内存索引,
+        抬高 total_docs/平均长度, 污染存活项的 IDF 与长度归一。
+        CR3-L2: 投影带上租户列并经 _tenant_scope 过滤 (enforce 的外层谓词需要
+        内层投影出 organization_id/tenant_id; 返回值仍只取前两列)。
         """
+        query, scoped_params = self._tenant_scope(
+            "SELECT id, content, organization_id, tenant_id FROM episodes "
+            "WHERE agent_id = ? AND content != '' AND deleted = 0",
+            [agent_id],
+        )
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute(
-                "SELECT id, content FROM episodes WHERE agent_id = ? AND content != ''",
-                (agent_id,),
-            )
+            cursor = await db.execute(query, scoped_params)
             rows = await cursor.fetchall()
         return [(str(row[0]), str(row[1])) for row in rows]
 

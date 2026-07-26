@@ -60,7 +60,11 @@ def test_is_permitted_rejects_action_not_in_permissions() -> None:
 
 @pytest.mark.asyncio
 async def test_notify_sends_message_via_bus_when_permitted() -> None:
-    """notify ACL 通过时经 bus.send 投递 NOTIFY 消息, 返回 True (bus 对 notify 不调 deliver)."""
+    """notify ACL 通过时经 bus.send 真实投递 NOTIFY 消息, 返回 True。
+
+    CR3-M2: 此前 bus 对 notify 在调用 _deliver 之前就 return None (消息被静默
+    丢弃, 工具却报告成功)。修复后 notify 必须真实投递到目标 Agent (忽略响应)。
+    """
     bus = _make_bus()
     bus.add_link(InterAgentLink(from_agent="a1", to_agent="a2", direction="both", enabled=True))
     sent: list[InterAgentMessage] = []
@@ -69,9 +73,11 @@ async def test_notify_sends_message_via_bus_when_permitted() -> None:
     policy = _policy(["notify"])
     ok = await broker.notify("a1", "a2", "提醒用户喝水", policy)
     assert ok is True
-    # bus.send 对 notify 类型不调 deliver (直接 return None), 但仍记日志 + 通过 ACL
-    # 验证: 不抛 InterAgentLinkDeniedError (ACL 通过), 返回 True
-    assert sent == []  # notify 不调 deliver (符合 bus 设计)
+    # CR3-M2: notify 必须真实调用 deliver 投递 (fire-and-forget: 忽略响应)
+    assert len(sent) == 1
+    assert sent[0].type == "notify"
+    assert sent[0].to_agent == "a2"
+    assert sent[0].content == "提醒用户喝水"
 
 
 @pytest.mark.asyncio

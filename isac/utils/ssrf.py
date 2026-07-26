@@ -65,3 +65,76 @@ def validate_webhook_url(url: str, *, allow_local: bool = False) -> None:
 
     if is_private_or_reserved_ip(hostname):
         raise SSRFBlockedError(f"URL 指向内网/保留地址: {hostname}")
+
+
+def pin_validated_url(url: str, *, allow_local: bool = False) -> tuple[str, dict[str, str]]:
+    """请求期"校验即固定": 消除校验与请求分离的 TOCTOU / DNS rebinding 窗口 (CR3-L4)。
+
+    此前的模式是"subscribe/构造时 validate 一次, 真正 httpx 请求时独立重解析、
+    不再校验"—— 低 TTL 域名可在两次解析之间重指向 169.254.169.254 等内网地址。
+    本函数在发起请求前一刻调用, 返回 (request_url, extra_headers):
+
+    - http 域名 URL: 解析并校验全部 A/AAAA 记录后, 把 URL 的 host 替换为一个已
+      通过校验的 IP (优先 IPv4), 并返回 ``{"Host": 原域名}`` 头 —— 实际连接目标
+      与被校验的 IP 严格一致, 重解析窗口不复存在。
+    - https 域名 URL: 原样返回 (证书校验依赖原始域名做 SNI/主机名匹配, 换成 IP
+      会破坏 TLS)。刚完成的重新校验已把窗口收窄到本次请求内部; 且 rebinding 到
+      内网服务时对方无法出示该域名的有效证书, TLS 握手会失败, 剩余风险可接受。
+    - IP 字面量 URL: 校验后原样返回 (无 DNS, 不存在 rebinding)。
+
+    抛 SSRFBlockedError 同 validate_webhook_url。
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise SSRFBlockedError(f"URL scheme 必须是 http/https: {url}")
+    hostname = parsed.hostname or ""
+    if not hostname:
+        raise SSRFBlockedError(f"URL 缺少 hostname: {url}")
+
+    if allow_local and hostname in ("localhost", "127.0.0.1", "::1"):
+        return url, {}
+
+    # IP 字面量: 直接校验, 无需固定
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        if is_private_or_reserved_ip(hostname):
+            raise SSRFBlockedError(f"URL 指向内网/保留地址: {hostname}")
+        return url, {}
+
+    resolved_ips = _resolve_and_validate_host(hostname)
+
+    if parsed.scheme == "https":
+        return url, {}
+
+    # http: 把 host 替换为已校验 IP, Host 头保留原域名 (虚拟主机路由不受影响)
+    pinned_ip = next(
+        (ip for ip in resolved_ips if ":" not in ip),  # 优先 IPv4
+        resolved_ips[0],
+    )
+    host_for_url = f"[{pinned_ip}]" if ":" in pinned_ip else pinned_ip
+    port_part = f":{parsed.port}" if parsed.port else ""
+    netloc = f"{host_for_url}{port_part}"
+    pinned_url = parsed._replace(netloc=netloc).geturl()
+    host_header = hostname if not parsed.port else f"{hostname}:{parsed.port}"
+    return pinned_url, {"Host": host_header}
+
+
+def _resolve_and_validate_host(hostname: str) -> list[str]:
+    """解析域名并校验全部 A/AAAA 记录, 返回去重后的已校验 IP 列表 (CR3-L4)。"""
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as exc:
+        raise SSRFBlockedError(f"URL 域名无法解析: {hostname} ({exc})") from exc
+    resolved_ips: list[str] = []
+    for info in infos:
+        ip = str(info[4][0])
+        if is_private_or_reserved_ip(ip):
+            raise SSRFBlockedError(f"URL 域名 {hostname} 解析到内网/保留地址 {ip}")
+        if ip not in resolved_ips:
+            resolved_ips.append(ip)
+    if not resolved_ips:
+        raise SSRFBlockedError(f"URL 域名无可用解析结果: {hostname}")
+    return resolved_ips

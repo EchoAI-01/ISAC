@@ -229,3 +229,51 @@ def test_default_tenant_is_default_property() -> None:
 def test_non_default_tenant_is_default_false() -> None:
     non_default = _tenant("acme", "t1")
     assert non_default.is_default is False
+
+
+# ── CR3-L2: 数据面接线 (MetadataStore × TenantIsolationGuard) ──
+
+
+@pytest.mark.asyncio
+async def test_metadata_store_cross_tenant_reads_are_isolated(tmp_path) -> None:
+    """CR3-L2: 同一 DB 文件下, 租户 B 的查询看不到租户 A 写入的 episodes。"""
+    from isac.memory.storage.metadata import MetadataStore
+
+    db_path = str(tmp_path / "tenanted.db")
+    guard = TenantIsolationGuard(enabled=True)
+    tenant_a = TenantContext(organization_id="acme", tenant_id="t1")
+    tenant_b = TenantContext(organization_id="globex", tenant_id="t9")
+
+    store_a = MetadataStore(db_path, tenant_guard=guard, tenant_context=tenant_a)
+    await store_a.init_schema()
+    await store_a.store_episode(
+        "agent_x", {"id": "ep-a", "content": "租户A 的 秘密 记忆", "session_id": "s1", "user_id": "u1"}
+    )
+
+    store_b = MetadataStore(db_path, tenant_guard=guard, tenant_context=tenant_b)
+
+    # FTS 检索 / 按 ID 读取 / 预热枚举, 三条读路径都必须被租户谓词过滤
+    assert await store_b.search_fts("agent_x", "秘密") == []
+    assert await store_b.get_episodes_by_ids("agent_x", ["ep-a"]) == []
+    assert await store_b.iter_episodes_by_namespace("agent_x") == []
+
+    # 租户 A 自己完全可见
+    assert len(await store_a.search_fts("agent_x", "秘密")) == 1
+    assert len(await store_a.get_episodes_by_ids("agent_x", ["ep-a"])) == 1
+    assert len(await store_a.iter_episodes_by_namespace("agent_x")) == 1
+
+
+@pytest.mark.asyncio
+async def test_metadata_store_without_guard_is_passthrough(tmp_path) -> None:
+    """CR3-L2: 未注入 guard/context (默认) 时行为与单租户完全一致。"""
+    from isac.memory.storage.metadata import MetadataStore
+
+    store = MetadataStore(str(tmp_path / "plain.db"))
+    await store.init_schema()
+    await store.store_episode(
+        "agent_x", {"id": "ep-1", "content": "普通 记忆", "session_id": "s1", "user_id": "u1"}
+    )
+    assert len(await store.search_fts("agent_x", "记忆")) == 1
+    rows = await store.get_episodes_by_ids("agent_x", ["ep-1"])
+    assert rows and rows[0]["organization_id"] == "default"
+    assert rows[0]["tenant_id"] == "default"

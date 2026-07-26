@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import asyncio
+import calendar
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -153,13 +154,29 @@ class DiscordAdapter(PlatformAdapter):
         return ISACMessage(
             msg_id=msg_id,
             platform=self.platform_name,
-            timestamp=int(time.mktime(time.strptime(dc_message.get("timestamp", "")[:19], "%Y-%m-%dT%H:%M:%S"))),
+            timestamp=self._parse_timestamp(dc_message.get("timestamp", "")),
             user_id=user_id,
             user_name=user_name,
             group_id=channel_id,
             content=content,
             segments=[MessageSegment(type="text", data={"text": content})] if content else [],
         )
+
+    @staticmethod
+    def _parse_timestamp(raw: Any) -> int:
+        """解析 Discord ISO8601 时间戳 → Unix 秒。
+
+        CR3-Fix: 此前直接 time.mktime(time.strptime(raw[:19])) 有两处缺陷:
+        (1) raw 缺失/格式异常时 strptime 抛 ValueError, 且本方法在 _poll_channel
+            的 cursor 提交之前调用、异常会逃逸到轮询循环, 使该 channel 永远重拉同一页
+            (cursor 不前进) —— 单条坏消息即可拖死整条频道。
+        (2) Discord 时间戳是 UTC, 但 time.mktime 按本地时区解释, 结果偏移一个时区。
+        改为 calendar.timegm (按 UTC 解释) 并对解析失败兜底为当前时间, 保证健壮。
+        """
+        try:
+            return calendar.timegm(time.strptime(str(raw)[:19], "%Y-%m-%dT%H:%M:%S"))
+        except (ValueError, TypeError):
+            return int(time.time())
 
     async def _call_api(
         self,

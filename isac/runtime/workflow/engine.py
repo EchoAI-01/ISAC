@@ -13,7 +13,7 @@ import asyncio
 import json
 from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from isac.runtime.workflow.models import (
     Stage,
@@ -82,50 +82,179 @@ class WorkflowEngine:
         return wf.status
 
     async def _run_workflow(self, wf: Workflow) -> None:
-        """按 transitions 调度 stages; 失败抛异常让上层标 FAILED."""
-        # 找入口 stage (无 incoming transition 的第一个 stage)
-        incoming = {t.to_stage for t in wf.transitions}
-        entry_stages = [s for s in wf.stages if s.stage_id not in incoming] or wf.stages[:1]
+        """按 transitions 调度 stages; 失败抛异常让上层标 FAILED。
+
+        CR3-M7 重写:
+        - 启动全部入口节点 (此前只启动 entry_stages[0], 多入口根节点被丢弃却仍标
+          SUCCEEDED); 入口判定与入度计算都排除 RETRY 边 (RETRY 是 stage 的重试
+          配置自环, 不是流转边, 计入会让带重试的入口 stage 被误判为"有父节点")。
+        - fan-in (汇合) 节点按入度计数, 等所有父边都被满足 (父 stage 完成或被
+          跳过) 才执行 (此前 `if stage_id in executed` 使汇合节点在首个父分支
+          到达时就提前运行, 钻石 DAG 下 D 在 C 完成前就跑)。
+        - conditional 为假时目标标 SKIPPED; 被跳过的 stage 同样"满足"其下游
+          依赖 (否则含条件分支的汇合节点会永远等不到), 但只有至少一个父 stage
+          真正 SUCCEEDED 的节点才会执行 —— 全部父分支都被跳过的节点级联 SKIPPED。
+        - 入度只统计"运行期可能被满足"的边 (CR3 复核修正): 悬空边 (from/to 不是
+          真实 stage)、非 RETRY 自环、以及从入口 DFS 分类出的回环边 (back edge)
+          与不可达来源边都被排除 —— 否则这些永远等不到的父边会让目标 stage
+          静默卡在 PENDING, 工作流却报 SUCCEEDED。回环边运行期不再传播 (目标
+          必然已执行, 与旧实现 executed 集合防重入的效果一致)。
+        - 收尾对残留 PENDING (从入口不可达的 stage, 如游离环) 记 warning, 与旧
+          实现"不可达即不执行"的行为一致但不再无声。
+        """
+        stages_by_id = {s.stage_id: s for s in wf.stages}
+        entry_stages, effective_transitions, in_degree = self._plan_schedule(wf, stages_by_id)
         if not entry_stages:
             wf.status = WorkflowStatus.SUCCEEDED
             return
-        # 按串行默认跑入口 stage, transitions 决定后续
         executed: set[str] = set()
-        await self._run_stage_chain(wf, entry_stages[0], executed)
+        # succeeded_parents: 记录哪些节点至少有一个父 stage 真正执行成功
+        # (入口节点无父, 视为可执行)。
+        succeeded_parents: set[str] = {s.stage_id for s in entry_stages}
+        await asyncio.gather(
+            *[
+                self._advance(wf, stage, in_degree, stages_by_id, effective_transitions, executed, succeeded_parents)
+                for stage in entry_stages
+            ]
+        )
+        pending_left = [s.stage_id for s in wf.stages if s.status is StageStatus.PENDING]
+        if pending_left:
+            logger.warning(
+                "部分 stage 从入口不可达, 未被调度 (保持 PENDING)",
+                workflow_id=wf.workflow_id,
+                stages=pending_left,
+            )
         wf.status = WorkflowStatus.SUCCEEDED
 
-    async def _run_stage_chain(
-        self, wf: Workflow, stage: Stage, executed: set[str]
+    def _plan_schedule(
+        self, wf: Workflow, stages_by_id: dict[str, Stage]
+    ) -> tuple[list[Stage], list, dict[str, int]]:
+        """图预处理 (CR3-M7): 过滤无效边 → 判定入口 → 排除回环/不可达边 → 计算入度。
+
+        返回 (entry_stages, effective_transitions, in_degree)。effective 边保证:
+        from/to 都是真实 stage、非自环、来源从入口可达、且不是 DFS 回环边 ——
+        因此每条边在运行期都必然被满足一次, 入度归零可达成。
+        """
+        flow: list = []
+        for t in wf.transitions:
+            if t.kind is TransitionKind.RETRY:
+                continue
+            if t.from_stage not in stages_by_id or t.to_stage not in stages_by_id:
+                logger.warning(
+                    "忽略指向/来自不存在 stage 的流转边",
+                    workflow_id=wf.workflow_id, from_stage=t.from_stage, to_stage=t.to_stage,
+                )
+                continue
+            if t.from_stage == t.to_stage:
+                logger.warning(
+                    "忽略非 RETRY 自环边 (重试语义请用 kind=RETRY)",
+                    workflow_id=wf.workflow_id, stage_id=t.from_stage,
+                )
+                continue
+            flow.append(t)
+        raw_in: dict[str, int] = {}
+        for t in flow:
+            raw_in[t.to_stage] = raw_in.get(t.to_stage, 0) + 1
+        entry_stages = [s for s in wf.stages if raw_in.get(s.stage_id, 0) == 0]
+        if not entry_stages and wf.stages:
+            # 全部 stage 都有入边 (整体成环); 退回旧行为从首个 stage 起跑
+            entry_stages = wf.stages[:1]
+        reachable, back_edge_ids = self._classify_edges(entry_stages, flow)
+        effective = [t for t in flow if id(t) not in back_edge_ids and t.from_stage in reachable]
+        in_degree: dict[str, int] = {}
+        for t in effective:
+            in_degree[t.to_stage] = in_degree.get(t.to_stage, 0) + 1
+        return entry_stages, effective, in_degree
+
+    @staticmethod
+    def _classify_edges(entry_stages: list[Stage], flow: list) -> tuple[set[str], set[int]]:
+        """从入口做迭代 DFS: 返回 (可达 stage 集合, 回环边 id 集合)。
+
+        回环边 = 指向当前 DFS 栈上节点的边 (灰色节点), 是让图成环的边;
+        把它们从入度中排除后, 剩余 effective 边构成可达子图上的 DAG。
+        """
+        adjacency: dict[str, list] = {}
+        for t in flow:
+            adjacency.setdefault(t.from_stage, []).append(t)
+        color: dict[str, int] = {}  # 缺失=white, 1=gray(栈上), 2=black(完成)
+        reachable: set[str] = set()
+        back_edge_ids: set[int] = set()
+        for entry in entry_stages:
+            if color.get(entry.stage_id, 0) != 0:
+                continue
+            stack: list[tuple[str, Any]] = [(entry.stage_id, iter(adjacency.get(entry.stage_id, [])))]
+            color[entry.stage_id] = 1
+            reachable.add(entry.stage_id)
+            while stack:
+                node_id, edge_iter = stack[-1]
+                pushed = False
+                for edge in edge_iter:
+                    target_color = color.get(edge.to_stage, 0)
+                    if target_color == 1:
+                        back_edge_ids.add(id(edge))
+                    elif target_color == 0:
+                        color[edge.to_stage] = 1
+                        reachable.add(edge.to_stage)
+                        stack.append((edge.to_stage, iter(adjacency.get(edge.to_stage, []))))
+                        pushed = True
+                        break
+                if not pushed:
+                    color[node_id] = 2
+                    stack.pop()
+        return reachable, back_edge_ids
+
+    async def _advance(  # noqa: C901 - 调度核心: 串/并/条件/汇合语义集中于此
+        self,
+        wf: Workflow,
+        stage: Stage,
+        in_degree: dict[str, int],
+        stages_by_id: dict[str, Stage],
+        flow_transitions: list,
+        executed: set[str],
+        succeeded_parents: set[str],
     ) -> None:
-        """递归执行 stage 链 (按 transitions 串行/并行/条件/重试)."""
+        """执行 stage 并传播其下游依赖 (fan-in 按入度等全部父边满足)。"""
         if stage.stage_id in executed:
             return
         executed.add(stage.stage_id)
-        await self._execute_stage(wf, stage)
-        # 找出从本 stage 出发的 transitions
-        outgoing = [t for t in wf.transitions if t.from_stage == stage.stage_id]
-        if not outgoing:
-            return
-        # 按 kind 分组
-        parallel_targets: list[Stage] = []
-        for t in outgoing:
-            target = next((s for s in wf.stages if s.stage_id == t.to_stage), None)
-            if target is None:
+        skipped = stage.status is StageStatus.SKIPPED
+        if not skipped:
+            await self._execute_stage(wf, stage)
+        # 传播: 本 stage (完成或被跳过) 满足每条出边; 目标入度归零时才可推进。
+        sequential_ready: list[Stage] = []
+        parallel_ready: list[Stage] = []
+        for t in flow_transitions:
+            if t.from_stage != stage.stage_id:
                 continue
+            target = stages_by_id.get(t.to_stage)
+            if target is None or target.stage_id in executed:
+                continue
+            edge_satisfies_execution = not skipped
             if t.kind is TransitionKind.CONDITIONAL:
-                if self._evaluate(t.condition):
-                    await self._run_stage_chain(wf, target, executed)
-                else:
-                    target.status = StageStatus.SKIPPED
-            elif t.kind is TransitionKind.PARALLEL:
-                parallel_targets.append(target)
-            elif t.kind is TransitionKind.RETRY:
-                # retry 在 _execute_stage 内处理, 不递归
-                pass
-            else:  # SEQUENTIAL
-                await self._run_stage_chain(wf, target, executed)
-        if parallel_targets:
-            await asyncio.gather(*[self._run_stage_chain(wf, t, executed) for t in parallel_targets])
+                if skipped or not self._evaluate(t.condition):
+                    # 条件为假 (或父分支已被跳过): 目标不因这条边而执行
+                    edge_satisfies_execution = False
+            if edge_satisfies_execution:
+                succeeded_parents.add(target.stage_id)
+            in_degree[target.stage_id] = in_degree.get(target.stage_id, 1) - 1
+            if in_degree[target.stage_id] > 0:
+                continue  # 还有父边未满足 (fan-in 等待)
+            if target.stage_id not in succeeded_parents:
+                # 所有父分支都被跳过/条件为假: 级联标 SKIPPED, 但仍要传播其下游
+                target.status = StageStatus.SKIPPED
+            if t.kind is TransitionKind.PARALLEL:
+                parallel_ready.append(target)
+            else:
+                sequential_ready.append(target)
+        for target in sequential_ready:
+            await self._advance(wf, target, in_degree, stages_by_id, flow_transitions, executed, succeeded_parents)
+        if parallel_ready:
+            await asyncio.gather(
+                *[
+                    self._advance(wf, target, in_degree, stages_by_id, flow_transitions, executed, succeeded_parents)
+                    for target in parallel_ready
+                ]
+            )
 
     async def _execute_stage(self, wf: Workflow, stage: Stage) -> None:
         """执行单个 stage (含重试逻辑)."""

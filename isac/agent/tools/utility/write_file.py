@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from isac.agent.tools.base import Tool, ToolContext
@@ -55,13 +56,20 @@ class WriteFileTool(Tool):
 
         append = bool(context.args.get("append", False))
         try:
-            safe_path.parent.mkdir(parents=True, exist_ok=True)
-            mode = "a" if append else "w"
-            with safe_path.open(mode, encoding="utf-8") as fp:
-                fp.write(content)
+            # CR3-L8: 磁盘 I/O 卸载到线程池, 不在事件循环里做同步 open/write
+            # (对齐 read_file 已有的 asyncio.to_thread 做法)。
+            await asyncio.to_thread(self._write_sync, safe_path, content, append)
         except Exception as exc:
             return ToolResult(content=f"写入失败: {exc}", is_error=True)
         return ToolResult(content=f"已{'追加' if append else '写入'} {len(content)} 字符到 {raw_path}")
+
+    @staticmethod
+    def _write_sync(safe_path: Path, content: str, append: bool) -> None:
+        """同步写入 (在 asyncio.to_thread 线程池中执行)。"""
+        safe_path.parent.mkdir(parents=True, exist_ok=True)
+        mode = "a" if append else "w"
+        with safe_path.open(mode, encoding="utf-8") as fp:
+            fp.write(content)
 
 
 def _resolve_safe(workspace_root: str, raw_path: str) -> Path | None:

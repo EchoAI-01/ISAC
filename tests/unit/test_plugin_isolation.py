@@ -164,3 +164,66 @@ def test_host_default_max_restart_attempts_is_three() -> None:
     assert host.max_restart_attempts == 3
     assert host.is_alive is False
     assert host._restart_count == 0  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_host_loads_real_plugin_and_calls_method(tmp_path) -> None:
+    """CR3-H2: 隔离子进程真实加载插件 (echo 桩 → 真实宿主), 并可调用其方法。"""
+    plugin_dir = tmp_path / "iso_plugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "manifest.jsonc").write_text(
+        '{"name": "iso_plugin", "version": "0.1.0", "entry": "plugin.py"}', encoding="utf-8"
+    )
+    (plugin_dir / "plugin.py").write_text(
+        "from isac.plugin.native.plugin import ISACPlugin\n"
+        "\n"
+        "class IsoPlugin(ISACPlugin):\n"
+        "    def ping(self):\n"
+        "        return 'pong'\n"
+        "\n"
+        "    async def greet(self, name):\n"
+        "        return f'hi {name}'\n",
+        encoding="utf-8",
+    )
+
+    host = PluginIsolationHost("iso_plugin")
+    await host.spawn()
+    try:
+        loaded = await host.load_plugin(str(plugin_dir))
+        assert loaded.kind == "result", loaded.payload
+        assert loaded.payload["loaded"] == "iso_plugin"
+
+        sync_result = await host.call(
+            IPCEnvelope(kind="call", plugin_id="iso_plugin", payload={"method": "ping"})
+        )
+        assert sync_result.kind == "result"
+        assert sync_result.payload["result"] == "pong"
+
+        async_result = await host.call(
+            IPCEnvelope(kind="call", plugin_id="iso_plugin", payload={"method": "greet", "args": {"name": "isac"}})
+        )
+        assert async_result.kind == "result"
+        assert async_result.payload["result"] == "hi isac"
+
+        # 未加载方法调用私有方法被拒绝
+        denied = await host.call(
+            IPCEnvelope(kind="call", plugin_id="iso_plugin", payload={"method": "_secret"})
+        )
+        assert denied.kind == "error"
+    finally:
+        await host.kill()
+
+
+@pytest.mark.asyncio
+async def test_host_call_method_before_load_returns_error() -> None:
+    """CR3-H2: 未 load 就调用方法 → kind=error (echo 探测不受影响)。"""
+    host = PluginIsolationHost("no_load")
+    await host.spawn()
+    try:
+        result = await host.call(
+            IPCEnvelope(kind="call", plugin_id="no_load", payload={"method": "ping"})
+        )
+        assert result.kind == "error"
+        assert "load" in result.payload["error"]
+    finally:
+        await host.kill()

@@ -21,19 +21,25 @@ def build_router(
     session_manager: SessionManager,
     metadata_store: MetadataStore | None,
     auth_dependency: Any = None,
+    scope_dependency: Any = None,
 ) -> Any:
     """构造 Sessions Control API 路由。"""
     from fastapi import APIRouter, Depends, HTTPException
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["sessions"], dependencies=deps)
+    # CR3-Fix: /sessions/{id}/messages 直接返回会话消息文本 (与 memory episodes 同等
+    # 敏感), 但此前没接 scope_dependency —— control.tokens[] 生效时任意合法 token 都能
+    # 读所有会话与消息历史。补齐 memory:read 门禁 (会话内容属记忆读权限范畴);
+    # scope_dependency 为 None 时 read_deps 为空, 行为与之前一致 (向后兼容)。
+    read_deps = [Depends(scope_dependency("memory:read"))] if scope_dependency else []
 
-    @router.get("/sessions")
+    @router.get("/sessions", dependencies=read_deps)
     async def list_sessions(agent_id: str | None = None) -> dict:
         sessions = await session_manager.list_sessions(agent_id=agent_id)
         return {"sessions": [_session_to_dict(s) for s in sessions]}
 
-    @router.get("/sessions/{session_id}")
+    @router.get("/sessions/{session_id}", dependencies=read_deps)
     async def get_session(session_id: str) -> dict:
         session = await session_manager.get(session_id)
         if session is None:
@@ -43,7 +49,7 @@ def build_router(
             )
         return _session_to_dict(session)
 
-    @router.get("/sessions/{session_id}/messages")
+    @router.get("/sessions/{session_id}/messages", dependencies=read_deps)
     async def get_session_messages(session_id: str, limit: int = 100) -> dict:
         """列出会话消息历史 (从 MetadataStore.episodes 按 session_id 查)。"""
         if metadata_store is None:
@@ -83,7 +89,9 @@ async def _query_episodes_by_session(store: Any, session_id: str, limit: int) ->
     MetadataStore 当前没有按 session_id 直接查询的方法, 用 iter_episodes_by_namespace
     + 过滤 session_id 兜底 (性能不优, 但 J3 范围内可用; 后续可加专门索引)。
     """
-    # MetadataStore 的 session_id 是 episode 行的 session_id 列; 直接 SQL 查
+    # MetadataStore 的 session_id 是 episode 行的 session_id 列; 直接 SQL 查。
+    # CR3-Fix: 排除软删除行 (deleted=1), 与检索链路/routes_memory 的墓碑过滤一致 ——
+    # 治理 delete 后的内容不得再经会话消息端点原文取回。
     import aiosqlite
 
     rows: list[dict] = []
@@ -91,7 +99,7 @@ async def _query_episodes_by_session(store: Any, session_id: str, limit: int) ->
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "SELECT id, content, session_id, created_at FROM episodes "
-            "WHERE session_id = ? ORDER BY created_at DESC LIMIT ?",
+            "WHERE session_id = ? AND deleted = 0 ORDER BY created_at DESC LIMIT ?",
             (session_id, limit),
         )
         for row in await cursor.fetchall():
