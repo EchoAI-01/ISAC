@@ -571,11 +571,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：G、K3-K4、J1。
   - **当前**：已完成 (2026-07-26)。`TenantIsolationGuard.namespace_for` enabled 时给命名空间加 `org:tenant:base` 前缀 (默认租户直通); `check_access` enabled 时跨租户不可见 (resource_org != tenant.org 且 != DEFAULT 拒绝); `assert_visible` 跨租户抛 PermissionError; `enforce(query, params, table, tenant)` 给 SQL 查询注入 `organization_id = ? AND tenant_id = ?` 谓词 (WHERE 已有时追加 AND, 无 WHERE 时加 WHERE, 用正则匹配 FROM <table> 定位)。默认 enabled=False (单租户 passthrough, 零行为变化)。16 例单测覆盖 namespace_for/check_access/enforce/assert_visible + 默认/非默认租户 + 无 WHERE 注入 + 跨租户拒绝。MetadataStore 加 tenant_id 列 + 控制面 routes_tenants 留 O2+ 节点。
 
-- [ ] **O2 插件进程级隔离**
+- [x] **O2 插件进程级隔离**
   - **验收**：插件从当前"兼容层 (非安全沙箱)"升级为进程级隔离,资源与故障不影响主进程;插件崩溃可恢复。
   - **产出**：插件进程宿主、IPC 协议、资源限额、崩溃恢复、单测。
   - **依赖**：F (插件生态)、K7 (安全基线)。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `isac/plugin/isolation/` (`IPCEnvelope` + `PluginIsolationHost` 骨架)。既有 `loader.py` 进程内兼容层路径不变 (仍默认)。真实子进程宿主与 IPC 以 `TODO(O2)` 标注。
+  - **当前**：已完成 (2026-07-26)。`PluginIsolationHost.spawn` 用 `multiprocessing.Process` (fork on POSIX) 启动子进程 + `Pipe` 建立 IPC; 子进程入口 `_plugin_worker` 设资源限额 (`resource.setrlimit` RLIMIT_CPU=1s / RLIMIT_NOFILE=64 / RLIMIT_AS=256MB, 平台不支持时跳过); `call` 编码 IPCEnvelope → JSON → 管道发送 → asyncio.to_thread(recv) → 解码返回; 子进程崩溃 (BrokenPipeError/EOFError) 触发 `_on_crash` 自动重启 (最多 max_restart_attempts=3 次, 超过放弃); `kill` 优雅终止 (terminate + join 2s + kill 强杀); `is_alive` 属性。既有 `loader.py` 进程内兼容层不变 (仍默认)。6 例单测覆盖 spawn/call/kill roundtrip + 未 spawn 抛 + 重复 kill 幂等 + 崩溃重启计数 + 超限放弃 + 默认零行为变化。
 
 - [ ] **O3 Workflow 编排**
   - **验收**：多步骤任务可用声明式 Workflow 编排 (串/并/条件/重试);步骤可跨 Agent/工具;执行可观测、可恢复。
