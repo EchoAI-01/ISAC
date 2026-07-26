@@ -9,7 +9,9 @@ from typing import Any
 
 from isac.agent.hooks import AgentHooks
 from isac.agent.injectors.base_identity import BaseIdentityInjector
+from isac.agent.injectors.interrupt import InterruptInjector
 from isac.agent.injectors.model_capabilities import ModelCapabilitiesInjector
+from isac.agent.injectors.recovery import RecoveryInjector
 from isac.agent.injectors.tools_available import ToolsAvailableInjector
 from isac.agent.loop import ISACAgentLoop
 from isac.agent.prompt_builder import SystemPromptBuilder
@@ -17,6 +19,10 @@ from isac.agent.tools.base import ToolPermission
 from isac.agent.tools.registry import ToolRegistry
 from isac.agent.tools.social.ask_agent import AskAgentTool
 from isac.agent.tools.social.fetch_history import FetchHistoryTool
+from isac.agent.tools.social.handoff_conversation import HandoffConversationTool
+from isac.agent.tools.social.list_available_agents import ListAvailableAgentsTool
+from isac.agent.tools.social.memory_query_agent import MemoryQueryAgentTool
+from isac.agent.tools.social.notify_agent import NotifyAgentTool
 from isac.agent.tools.social.query_memory import QueryMemoryTool
 from isac.agent.tools.social.query_person_profile import QueryPersonProfileTool
 from isac.agent.tools.social.send_emoji import SendEmojiTool
@@ -95,6 +101,19 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(QueryPersonProfileTool())
     tools.register(WaitTool())
     tools.register(AskAgentTool())
+    # M2 Agent Mesh 协作工具: notify_agent/handoff_conversation/
+    # list_available_agents/memory_query_agent 默认策略 restricted (已接入
+    # MeshActionBroker, 见 isac/agent/tools/base.py::DEFAULT_POLICY)。
+    # CR2-Fix-19: restricted 不等于"LLM 不可见"——definitions() 只过滤 deny,
+    # 这 4 个工具的定义仍会出现在 function-calling schema 里; 未注入
+    # mesh_action_broker + mesh_link_policy 时调用在 execute() 阶段优雅失败
+    # (拒绝, 不暴露 NotImplementedError)。以下 5 个是 Channel 交互工具
+    # (send_emoji/send_image/fetch_history/switch_chat/view_forward_message),
+    # 默认策略 allow, 与 Agent Mesh 无关。
+    tools.register(NotifyAgentTool())
+    tools.register(HandoffConversationTool())
+    tools.register(ListAvailableAgentsTool())
+    tools.register(MemoryQueryAgentTool())
     tools.register(SendEmojiTool())
     tools.register(SendImageTool())
     tools.register(FetchHistoryTool())
@@ -150,9 +169,32 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
 
     agent_services["progress_reporter_factory"] = _progress_reporter_factory
 
+    # CR2-Fix-1: 供 wait 工具等经 context.services 取用; 必须与 AgentInstance.agent_id
+    # 一致 (manager._dispatch_message 用 instance.agent_id 写 ConversationRuntime,
+    # 两处不一致会导致 wait 工具操作另一个 registry key, 永远等不到真实唤醒)。
+    agent_services["agent_id"] = config.agent_id
+
     # L1: 会话级拟人运行时注册表 (每 Agent 独立, 会话间隔离)。默认不接入主链路,
     # conversation.enabled=True 时由 manager.handle_message 启用消息缓存/状态机。
     agent_services["conversation_registry"] = ConversationRuntimeRegistry()
+    # L2: 把 conversation.enabled 标志透传给 wait 工具等子模块, 避免每个工具都重读
+    # global_config; 默认 False 保持零行为变化。
+    agent_services["conversation_enabled"] = bool(
+        global_config.get("conversation", {}).get("enabled", False)
+    )
+
+    # CR2-Fix-8: InterruptInjector/RecoveryInjector 此前从未注册进 prompt_builder,
+    # 即使 ConversationRuntime.request_interrupt/恢复快照被触发, 提示也不会出现在
+    # System Prompt 里。runtime_provider 用闭包固定 config.agent_id, 按
+    # context.session.session_id 动态查询对应 ConversationRuntime; enabled=False
+    # 时短路返回 None, 不调用 registry.get(), 不创建任何实例 (零行为变化)。
+    def _interrupt_runtime_provider(session_id: str):  # noqa: ANN001, ANN202
+        if not agent_services["conversation_enabled"]:
+            return None
+        return agent_services["conversation_registry"].get(config.agent_id, session_id)
+
+    prompt_builder.register(InterruptInjector(runtime_provider=_interrupt_runtime_provider))
+    prompt_builder.register(RecoveryInjector())  # 已按 session_id 动态查快照, 无需改造
 
     loop = ISACAgentLoop(
         llm=llm,

@@ -36,6 +36,8 @@
 
 **注意**: scaffolding **不标 `[x]` 完成**,不计入强化完成定义 (缺业务实现 + 集成/运行验证)。在 PROGRESS/PLAN 中标注为"框架已搭建 (scaffolding),业务实现待续"。
 
+**接线是第二道坎(实现 ≠ 交付)**: scaffolding 之后即便填充了业务逻辑 + 单测,仍只是 `[~]` **实现完成待接线** —— 若不把能力接入生产主链路 (manager / loop / assembly / pipeline / gateway 的真实调用点),它就是"实现了却激活不了"的孤立代码 (ISAC 曾出现 L2-L5/M/N/O1-O3 全部实现却因未接线而无法工作)。**必须再完成主链路接线 + 集成验证才算 `[x]` 交付**。为避免接线待办散落各节点、导致功能各自孤立无法协同,应把它们统一收敛为一个成体系的接线节点组 (见 DEVELOPMENT_PLAN.md §四 **P 主链路接线与激活**),按依赖顺序整体推进,而非各写各的。
+
 ## 三、分层与依赖规则
 
 新模块必须遵守 [DEVELOP.md](./DEVELOP.md) 1.2 的单向依赖链:
@@ -168,6 +170,24 @@ L1 是本范式的最新范例,可直接对照源码学习。
 | 文档 | DEVELOPMENT_PLAN.md §四 L1;PROGRESS.md;本指南 |
 
 依赖方向: `runtime/conversation` → core + gateway(Session) + utils;被 `runtime/manager`、`assembly` 使用,无反向依赖、无环。
+
+### 更多 scaffolding 范例 (L/M/N/O 全部 14 子节点)
+
+同一范式已应用到全部 14 个待建子节点,可对照学习不同层的落法:
+
+| 节点 | 模块 | 要点 |
+|------|------|------|
+| L2-L5 | `runtime/conversation/{debounce,scheduler,recovery}.py` + `models.py` 枚举/InterruptState | 在既有包内扩展骨架文件 |
+| M1/M2 | `runtime/mesh/` + `agent/tools/social/{notify,handoff,list,memory_query}_agent.py` | **新增 sibling 契约**避免改 `RoutingDecision`/`InterAgentLink`;工具默认 `deny` → LLM 不可见 |
+| N1 | `isac/memory/model/memory_item.py` | 纯契约 + 适配桩,不动既有存储表 |
+| N2 | `memory/model/governance.py` + `control/api/routes_memory_admin.py` | 控制面路由 store-None 时不挂载 |
+| N3 | `isac/gateway/identity/` | **组合**既有 `UserMapper` 而非改动它 |
+| O1/O3 | `runtime/{tenancy,workflow}/` | 默认单租户 passthrough / 引擎 no-op |
+| O2 | `plugin/isolation/` | 不接管既有进程内 `loader.py` |
+| O4 | `channel/adapters/template/` | 文档化模板,**不自动注册** |
+| O5 | `provider/video_gen/` | 实现 ABC,`generate` 抛 `NotImplementedError` |
+
+要点总结: **能新增就不改既有契约** (M1/M2/N3),**默认关闭/不注册/no-op** 保证零行为变化,每个节点用 `TODO(节点)` 标注挂接点。
 
 ## 六、检查清单 (合入前自查)
 

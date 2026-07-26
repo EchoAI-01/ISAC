@@ -32,7 +32,7 @@
   // 每个 Provider 接受 api_base + api_key + model + 可选 cost_tier/latency_tier
   // cost_tier: free | low | standard | high (ModelRouter 按成本过滤)
   // latency_tier: fast | standard | slow
-  // kind 必填, 取值: image_gen | stt | tts | embed | vision
+  // kind 必填, 取值: image_gen | stt | tts | embed | vision | rerank
   "multimodal_providers": [
     // {
     //   "kind": "image_gen",
@@ -70,6 +70,24 @@
     //   "api_key": "sk-your-key",
     //   "base_url": "https://api.openai.com/v1",
     //   "model": "gpt-4o"
+    // },
+    // {
+    //   "kind": "rerank",
+    //   "provider": "cohere",
+    //   "api_key": "sk-your-key",
+    //   "base_url": "https://api.cohere.ai/v1",
+    //   "model": "rerank-english-v3.0",
+    //   "protocol": "cohere",
+    //   "cost_tier": "low",
+    //   "latency_tier": "fast"
+    // },
+    // {
+    //   "kind": "rerank",
+    //   "provider": "jina",
+    //   "api_key": "sk-your-key",
+    //   "base_url": "https://api.jina.ai/v1",
+    //   "model": "jina-reranker-v2-base-multilingual",
+    //   "protocol": "jina"
     // }
     // 自托管 OpenAI 兼容端点示例 (如 vLLM / Ollama / 阿里通义 / 智谱):
     // {
