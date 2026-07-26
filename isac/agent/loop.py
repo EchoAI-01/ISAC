@@ -115,9 +115,14 @@ class ISACAgentLoop:
             # POST_LLM
             await self.hooks.fire(AgentHookPoint.POST_LLM, response, context)
 
-            # 被新消息打断 (TODO(L4): interrupt_requested 由 ConversationRuntime.request_interrupt
-            # 在 thinking 期间收到新消息时写入; 当前仅由外部/测试显式设置)
-            if context.interrupt_requested:
+            # 被新消息打断: context.interrupt_requested (外部/测试显式设置) 或
+            # P1(L4) conversation_runtime.interrupt_state.superseded (thinking 期间
+            # manager.notify_incoming 在锁外调 request_interrupt 写入) —— 抑制旧
+            # 回复, 下一轮由 InterruptInjector 注入"被打断"提示。
+            conv_runtime = self.services.get("conversation_runtime") or context.services.get("conversation_runtime")
+            interrupt_state = getattr(conv_runtime, "interrupt_state", None) if conv_runtime is not None else None
+            superseded = bool(interrupt_state is not None and interrupt_state.superseded)
+            if context.interrupt_requested or superseded:
                 await self._emit_progress_if_task_started(context, reported_task_progress, "interrupted")
                 return AgentResult(interrupted=True)
 

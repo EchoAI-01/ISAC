@@ -16,9 +16,13 @@ MAX_RUNTIMES_PER_AGENT = 1000
 class ConversationRuntimeRegistry:
     """会话运行时注册表 (每 Agent 一个,内部按 session 隔离)。"""
 
-    def __init__(self, max_runtimes: int = MAX_RUNTIMES_PER_AGENT) -> None:
+    def __init__(
+        self, max_runtimes: int = MAX_RUNTIMES_PER_AGENT, *, max_interrupts_per_turn: int = 1
+    ) -> None:
         self._runtimes: dict[tuple[str, str], ConversationRuntime] = {}
         self._max = max_runtimes
+        # P1(L4): 新建 runtime 时透传单轮打断上限 (conversation.max_interrupts_per_turn)
+        self._max_interrupts_per_turn = max(1, int(max_interrupts_per_turn))
 
     def get(self, agent_id: str, session_id: str) -> ConversationRuntime:
         """惰性取回 / 创建某会话的运行时;超上限时淘汰最旧插入者。"""
@@ -28,7 +32,9 @@ class ConversationRuntimeRegistry:
             if len(self._runtimes) >= self._max:
                 oldest_key = next(iter(self._runtimes))
                 del self._runtimes[oldest_key]
-            runtime = ConversationRuntime(agent_id, session_id)
+            runtime = ConversationRuntime(
+                agent_id, session_id, max_interrupts_per_turn=self._max_interrupts_per_turn
+            )
             self._runtimes[key] = runtime
         return runtime
 

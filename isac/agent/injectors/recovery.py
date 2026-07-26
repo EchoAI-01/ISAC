@@ -49,10 +49,21 @@ class RecoveryInjector(PromptInjector):
         self._snapshots[session_id] = snapshot
 
     async def build(self, context: InjectionContext) -> str:
-        session_id = getattr(context.session, "session_id", "") if context.session else ""
-        if not session_id:
+        if context.session is None:
             return ""
-        snap = self._snapshots.pop(session_id, None)
+        # P1(L5): 快照键用重启稳定的会话键 (platform:group/user) —— SessionManager
+        # 是内存实现, 内部 sess_* id 每次重启重新生成, 用它作键永远无法命中。
+        # 公式与 AgentManager._save_conversation_snapshot 保持一致 (agent 层不能
+        # import runtime 层, 按导入规则各自内联同一公式)。
+        platform = getattr(context.session, "platform", "")
+        group_id = getattr(context.session, "group_id", None)
+        user_id = getattr(context.session, "user_id", "")
+        stable_key = f"{platform}:group:{group_id}" if group_id else f"{platform}:user:{user_id}"
+        snap = self._snapshots.pop(stable_key, None)
+        if snap is None:
+            # 兼容: 旧快照/测试可能仍按 session_id 填充
+            session_id = getattr(context.session, "session_id", "")
+            snap = self._snapshots.pop(session_id, None) if session_id else None
         if snap is None or not snap.recovery_hint:
             return ""
         return snap.recovery_hint
