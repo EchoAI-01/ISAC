@@ -3,6 +3,8 @@
 L2 实现: should_trigger 真实 debounce 判定 + wait 闭环 (enter_wait 启动超时定时器,
 resolve_wait 回填 end_reason/actual_seconds + 取消定时器, notify_new_message 在
 WAITING 时结束 wait)。三条唤醒路径: message / timeout / proactive。
+L4 实现: request_interrupt 单轮次数限制 + superseded 标记; clear_interrupt 进入
+下一轮前重置; InterruptInjector 注入"上一轮被打断"提示。
 
 默认不接入主链路 (conversation.enabled=False),对现有"每条消息即时处理"零行为变化。
 """
@@ -13,7 +15,13 @@ import asyncio
 import time
 from typing import TYPE_CHECKING
 
-from isac.runtime.conversation.models import ConversationState, ForcedTurnState, WaitEndReason, WaitState
+from isac.runtime.conversation.models import (
+    ConversationState,
+    ForcedTurnState,
+    InterruptState,
+    WaitEndReason,
+    WaitState,
+)
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -25,7 +33,7 @@ logger = get_logger(__name__)
 class ConversationRuntime:
     """某 Agent 在某会话中的拟人化运行时 (消息缓存 / 状态机 / 等待 / 打断)。"""
 
-    def __init__(self, agent_id: str, session_id: str) -> None:
+    def __init__(self, agent_id: str, session_id: str, *, max_interrupts_per_turn: int = 1) -> None:
         self.agent_id = agent_id
         self.session_id = session_id
         self.state: ConversationState = ConversationState.IDLE
@@ -35,6 +43,9 @@ class ConversationRuntime:
         self.last_reply_at: float = 0.0
         self.pending_wait: WaitState | None = None
         self.forced_turn: ForcedTurnState | None = None
+        # L4: 打断状态 (None = 本轮未被打断); max_interrupts_per_turn 限制单轮次数 (默认 1)。
+        self.interrupt_state: InterruptState | None = None
+        self.max_interrupts_per_turn: int = max(1, int(max_interrupts_per_turn))
         # L2: 等待 future 字典 (按 tool_call_id), wait 工具 await 之, resolve_wait 时 set_result。
         self._wait_futures: dict[str, asyncio.Future[WaitState]] = {}
         # L2: 超时定时器 task (按 tool_call_id), enter_wait 启动, resolve_wait 取消。
@@ -156,13 +167,51 @@ class ConversationRuntime:
         if self.state is ConversationState.WAITING and self.pending_wait is not None:
             self.resolve_wait(WaitEndReason.MESSAGE)
 
-    def request_interrupt(self) -> None:
+    def request_interrupt(self, *, reason: str = "") -> bool:
         """请求打断当前规划 (新消息在 thinking 期间到达)。
 
-        TODO(L4): 与 AgentContext.interrupt_requested 联动 —— 限制单轮打断次数、
-        抑制被打断的旧回复、下一轮 Prompt 注入 "上一轮被新消息打断" 提示。
+        L4: 单轮打断次数上限 (max_interrupts_per_turn, 默认 1); 首次允许并置
+        interrupt_state.superseded=True + interrupt_count=1; 后续同轮请求被拒绝。
+        返回 True=允许打断, False=已达上限。AgentLoop 应在 thinking 后读
+        interrupt_state.superseded 判定是否中断本轮。
         """
-        logger.debug("请求打断当前规划", agent_id=self.agent_id, session_id=self.session_id)
+        if self.interrupt_state is None:
+            self.interrupt_state = InterruptState(requested_at=time.time(), reason=reason)
+        if self.interrupt_state.interrupt_count >= self.max_interrupts_per_turn:
+            logger.info(
+                "打断请求被拒 (单轮已达上限)",
+                agent_id=self.agent_id,
+                session_id=self.session_id,
+                count=self.interrupt_state.interrupt_count,
+                limit=self.max_interrupts_per_turn,
+            )
+            return False
+        self.interrupt_state.interrupt_count += 1
+        self.interrupt_state.superseded = True
+        self.interrupt_state.reason = reason or self.interrupt_state.reason
+        logger.debug(
+            "请求打断当前规划",
+            agent_id=self.agent_id,
+            session_id=self.session_id,
+            count=self.interrupt_state.interrupt_count,
+            reason=reason,
+        )
+        return True
+
+    def clear_interrupt(self) -> None:
+        """本轮结束时清空打断状态 (供 AgentLoop 进入下一轮前调用)。
+
+        L4: 清空后下一轮可再次被打断; InterruptInjector 注入提示后也应调此方法,
+        避免重复注入。
+        """
+        if self.interrupt_state is not None:
+            logger.debug(
+                "清空打断状态",
+                agent_id=self.agent_id,
+                session_id=self.session_id,
+                count=self.interrupt_state.interrupt_count,
+            )
+            self.interrupt_state = None
 
     def drain_new_messages(self) -> list[ISACMessage]:
         """取出自上次处理以来的新消息,并推进 last_processed_index。"""
