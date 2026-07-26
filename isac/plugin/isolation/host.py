@@ -11,11 +11,11 @@ loader (loader.py 不变), enabled=False 时主链路零行为变化。
 
 from __future__ import annotations
 
+import asyncio
 import json
 import multiprocessing as mp
 import os
 import resource
-import sys
 import time
 from typing import Any
 
@@ -100,8 +100,12 @@ class PluginIsolationHost:
         """启动隔离子进程 (multiprocessing.Process + Pipe + 资源限额)."""
         if self._alive and self._process is not None and self._process.is_alive():
             return
-        # multiprocessing 默认 fork (POSIX), 减少 spawn 开销
-        self._ctx = mp.get_context("fork") if sys.platform != "win32" else mp.get_context("spawn")
+        # CR2-Fix-20: 此前用 fork (POSIX) 减少 spawn 开销; fork 会让子进程继承
+        # 父进程 fork 时刻的完整内存 (包括已解密密钥/已建立的连接对象等), 隔离
+        # 插件子进程本应尽量减少与父进程共享状态。改用 spawn: 子进程从头启动
+        # Python 解释器, 只继承 target/args 显式传入的内容; 要求目标函数可被
+        # pickle, _plugin_worker 是模块级函数, 满足要求。
+        self._ctx = mp.get_context("spawn")
         self._parent_conn, self._child_conn = self._ctx.Pipe()
         self._process = self._ctx.Process(
             target=_plugin_worker,
@@ -117,14 +121,19 @@ class PluginIsolationHost:
         )
 
     async def kill(self) -> None:
-        """终止隔离子进程并回收资源 (幂等)."""
+        """终止隔离子进程并回收资源 (幂等)。
+
+        CR2-Fix-20: Process.join() 是阻塞调用, 此前直接同步调用会阻塞整个
+        event loop (最坏情况 terminate 2s + kill 1s = 3s); 包 asyncio.to_thread
+        让阻塞发生在线程池而非事件循环线程上。
+        """
         if self._process is not None:
             if self._process.is_alive():
                 self._process.terminate()
-                self._process.join(timeout=2.0)
+                await asyncio.to_thread(self._process.join, 2.0)
                 if self._process.is_alive():
                     self._process.kill()
-                    self._process.join(timeout=1.0)
+                    await asyncio.to_thread(self._process.join, 1.0)
             self._process.close()
             self._process = None
         if self._parent_conn is not None:
@@ -156,15 +165,13 @@ class PluginIsolationHost:
         except (BrokenPipeError, OSError) as exc:
             # 管道断 = 子进程崩溃, 触发重启
             logger.warning("IPC 管道断, 触发重启", plugin_id=self.plugin_id, error=str(exc))
-            self._on_crash()
+            await self._on_crash()
             raise RuntimeError(f"插件 {self.plugin_id} 子进程崩溃, 已触发重启") from exc
         # 等待响应 (同步 recv, 包在 to_thread 避免阻塞 event loop)
-        import asyncio
-
         try:
             raw = await asyncio.to_thread(self._parent_conn.recv)
         except EOFError as exc:
-            self._on_crash()
+            await self._on_crash()
             raise RuntimeError(f"插件 {self.plugin_id} 子进程已退出") from exc
         data = json.loads(raw) if isinstance(raw, str) else raw
         return IPCEnvelope(
@@ -174,8 +181,12 @@ class PluginIsolationHost:
             correlation_id=data.get("correlation_id", ""),
         )
 
-    def _on_crash(self) -> None:
-        """子进程崩溃时调: 计数 + 重启 (未超 max_restart_attempts)."""
+    async def _on_crash(self) -> None:
+        """子进程崩溃时调: 计数 + 重启 (未超 max_restart_attempts)。
+
+        CR2-Fix-20: Process.join() 是阻塞调用, 包 asyncio.to_thread 避免阻塞
+        event loop (与 kill() 同款修复; call() 调用点相应改为 await)。
+        """
         self._alive = False
         if self._restart_count >= self.max_restart_attempts:
             logger.warning(
@@ -191,12 +202,12 @@ class PluginIsolationHost:
             plugin_id=self.plugin_id,
             restart_count=self._restart_count,
         )
-        # 清理旧 process/conn, 同步 spawn 新子进程 (在 event loop 外)
+        # 清理旧 process/conn, 重新 spawn 新子进程
         try:
             if self._process is not None:
                 if self._process.is_alive():
                     self._process.terminate()
-                    self._process.join(timeout=1.0)
+                    await asyncio.to_thread(self._process.join, 1.0)
                 self._process.close()
         except Exception:  # noqa: BLE001
             pass
@@ -206,7 +217,7 @@ class PluginIsolationHost:
         except Exception:  # noqa: BLE001
             pass
         if self._ctx is None:
-            self._ctx = mp.get_context("fork") if sys.platform != "win32" else mp.get_context("spawn")
+            self._ctx = mp.get_context("spawn")
         self._parent_conn, self._child_conn = self._ctx.Pipe()
         self._process = self._ctx.Process(
             target=_plugin_worker,

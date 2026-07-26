@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -68,7 +69,7 @@ async def test_host_restarts_on_crash_up_to_max_attempts() -> None:
         # (实际测试用 call 触发 internal crash 检测)
         # 这里简化: 直接调 _on_crash 验证重启逻辑
         restarts_before = host._restart_count  # noqa: SLF001
-        host._on_crash()  # noqa: SLF001
+        await host._on_crash()  # noqa: SLF001
         await asyncio.sleep(0.05)
         assert host._restart_count == restarts_before + 1  # noqa: SLF001
     finally:
@@ -82,13 +83,75 @@ async def test_host_gives_up_after_max_restarts() -> None:
     try:
         await host.spawn()
         # 触发超过上限的崩溃
-        host._on_crash()  # noqa: SLF001
+        await host._on_crash()  # noqa: SLF001
         await asyncio.sleep(0.05)
-        host._on_crash()  # noqa: SLF001 第二次崩溃, 超过上限
+        await host._on_crash()  # noqa: SLF001 第二次崩溃, 超过上限
         await asyncio.sleep(0.05)
         assert host._restart_count >= 1  # noqa: SLF001
         # 超过后 is_alive 应为 False (放弃重启)
         # (实际行为: 第二次崩溃后不再重启)
+    finally:
+        await host.kill()
+
+
+# ── CR2-Fix-20: kill() 不阻塞 event loop + spawn context ──────────
+
+
+class _SlowJoinProcess:
+    """伪造一个 join() 阻塞的 Process, 用于验证 kill() 不阻塞 event loop。"""
+
+    def __init__(self, block_seconds: float) -> None:
+        self._block_seconds = block_seconds
+        self._is_alive = True
+
+    def is_alive(self) -> bool:
+        return self._is_alive
+
+    def terminate(self) -> None:
+        pass
+
+    def kill(self) -> None:
+        pass
+
+    def join(self, timeout: float | None = None) -> None:
+        time.sleep(self._block_seconds)
+        self._is_alive = False
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_kill_does_not_block_event_loop() -> None:
+    """CR2-Fix-20: Process.join() 是阻塞调用; 此前 kill() 直接同步调用会
+    阻塞整个 event loop。用 asyncio.to_thread 包装后, 一个并发的心跳协程
+    应能在 kill() 等待期间正常推进 (若被阻塞则心跳次数应为 0)。"""
+    host = PluginIsolationHost(plugin_id="p1")
+    host._process = _SlowJoinProcess(block_seconds=0.3)  # noqa: SLF001
+    host._alive = True  # noqa: SLF001
+    state = {"count": 0, "stop": False}
+
+    async def _heartbeat() -> None:
+        while not state["stop"]:
+            await asyncio.sleep(0.03)
+            state["count"] += 1
+
+    heartbeat_task = asyncio.create_task(_heartbeat())
+    await host.kill()
+    state["stop"] = True
+    await heartbeat_task
+
+    assert state["count"] >= 5
+
+
+@pytest.mark.asyncio
+async def test_spawn_uses_multiprocessing_spawn_context() -> None:
+    """CR2-Fix-20: 改用 spawn context (而非 fork), 避免子进程继承父进程
+    fork 时刻的内存 (包括已解密密钥/已建立的连接对象等)。"""
+    host = PluginIsolationHost(plugin_id="p1")
+    try:
+        await host.spawn()
+        assert host._ctx.get_start_method() == "spawn"  # noqa: SLF001
     finally:
         await host.kill()
 
