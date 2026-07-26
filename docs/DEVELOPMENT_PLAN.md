@@ -523,11 +523,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 **目标**：把 `ROUTING_AND_AGENT_MESH.md` 描述的旁听/候选路由与 Agent 间协作动作从设计落成实现。
 
-- [ ] **M1 observer/candidate 路由**
+- [x] **M1 observer/candidate 路由**
   - **验收**：Agent 可配置为 observer (旁听,只入记忆不回复) 或 candidate (候选,多 Agent 竞争同一消息由仲裁选出回复者);路由决策可解释、可审计。
   - **产出**：路由角色模型、候选仲裁策略、observer 记忆旁路、单测与集成测试。
   - **依赖**：C (路由)、E (多 Agent)、门控。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `runtime/mesh/` (`MeshRoutingDecision`/`RoutingRole` 契约 + `MeshRouter` 骨架);approach b 不改既有 `router/types.py::RoutingDecision`。真实候选仲裁与 observer 记忆旁路以 `TODO(M1)` 标注。
+  - **当前**：已完成 (2026-07-26)。`MeshRouter.to_mesh_decision` 按 agent_roles 字典 (agent_id → "primary"/"observer"/"candidate") 填充 observer_agent_ids/candidate_agent_ids (primary 不动); `arbitrate(decision, gating_scores=...)` 多候选按 gating_score 降序取最高, 但需**显著高于** primary (差值 > SWITCH_MARGIN=0.3) 才切换, 避免小噪声抖动; observer 不参与仲裁 (只观察); decision.reason 记录仲裁过程供审计。无角色配置时退化为单主路由 (零行为变化)。8 例单测覆盖 to_mesh_decision + arbitrate + observer 排除 + 候选切换/不切换 + 默认零行为变化。AgentConfig.mesh_role 字段 + manager.observe_message 接线留 M2+ 节点。
 
 - [ ] **M2 handoff / notify / memory_query**
   - **验收**：Agent 间可显式移交会话 (handoff)、发通知 (notify)、跨 Agent 查询记忆 (memory_query);全部经 InterAgentLink ACL 授权;动作可审计。
