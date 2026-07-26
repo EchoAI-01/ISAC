@@ -50,11 +50,11 @@ def test_memory_item_to_episode_round_trips_core_fields() -> None:
 
 async def test_governor_actions_are_noop_by_default() -> None:
     gov = MemoryGovernor()
-    assert await gov.freeze("m1") is False
-    assert await gov.protect("m1") is False
-    assert await gov.correct("m1", "new") is False
-    assert await gov.delete("m1") is False
-    assert await gov.restore("m1") is False
+    assert await gov.freeze("m1", "a1") is False
+    assert await gov.protect("m1", "a1") is False
+    assert await gov.correct("m1", "new", "a1") is False
+    assert await gov.delete("m1", "a1") is False
+    assert await gov.restore("m1", "a1") is False
     assert await gov.export("a1") == []
 
 
