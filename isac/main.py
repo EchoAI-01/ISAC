@@ -186,6 +186,7 @@ _MM_KIND_TO_OPERATIONS: dict[str, set[str]] = {
     "tts": {"tts"},
     "embed": {"embed"},
     "vision": {"vision"},
+    "rerank": {"rerank"},
 }
 
 _MM_KIND_TO_MODALITIES: dict[str, tuple[set[str], set[str]]] = {
@@ -194,6 +195,7 @@ _MM_KIND_TO_MODALITIES: dict[str, tuple[set[str], set[str]]] = {
     "tts": ({"text"}, {"audio"}),
     "embed": ({"text"}, {"embedding"}),
     "vision": ({"image", "text"}, {"text"}),
+    "rerank": ({"text"}, {"score"}),
 }
 
 
@@ -203,6 +205,8 @@ def _build_multimodal_provider(
     base_url: str,
     model: str,
     artifact_store: Any,
+    *,
+    protocol: str = "cohere",
 ) -> Any | None:
     """按 kind 实例化多模态 Provider; 未知 kind 抛 ValueError。"""
     if kind == "image_gen":
@@ -220,6 +224,9 @@ def _build_multimodal_provider(
     if kind == "vision":
         # vision 走 LLM Provider 的 vision_chat 方法 (gpt-4o 兼容)
         return OpenAICompatProvider(api_key, base_url, model)
+    if kind == "rerank":
+        from isac.provider.rerank.openai_compat import OpenAICompatRerankerProvider
+        return OpenAICompatRerankerProvider(api_key, base_url, model, protocol=protocol)
     raise ValueError(f"未知 multimodal kind: {kind}")
 
 
@@ -248,7 +255,10 @@ def register_multimodal_providers(
             )
             continue
         try:
-            provider = _build_multimodal_provider(kind, api_key, base_url, model, artifact_store)
+            protocol = str(mm.get("protocol", "cohere"))
+            provider = _build_multimodal_provider(
+                kind, api_key, base_url, model, artifact_store, protocol=protocol
+            )
         except ValueError as exc:
             logger.warning("多模态 Provider 构造失败, 跳过", kind=kind, error=str(exc))
             continue

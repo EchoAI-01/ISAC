@@ -63,6 +63,12 @@ class ToolPermission:
         "query_memory": "allow",
         "query_person_profile": "allow",
         "ask_agent": "allow",
+        # M2 Agent Mesh 协作动作: 已接入 MeshActionBroker; restricted 需注入
+        # mesh_action_broker + mesh_link_policy 后方可调用 (deny-by-default 仍生效)。
+        "notify_agent": "restricted",
+        "handoff_conversation": "restricted",
+        "list_available_agents": "restricted",
+        "memory_query_agent": "restricted",
         "web_search": "allow",
         "read_file": "restricted",  # 限制在项目目录内
         "write_file": "restricted",

@@ -21,6 +21,31 @@ class ConversationState(StrEnum):
     STOPPED = "stopped"
 
 
+class TriggerSource(StrEnum):
+    """一次处理触发的来源 (HUMANLIKE_RUNTIME.md §4.1 触发源表)。
+
+    debounce / 主动 / 打断决定用哪种来源发起话轮; L2-L4 落地时据此选择行为。
+    """
+
+    MESSAGE = "message"
+    MENTION = "mention"
+    PRIVATE = "private"
+    PROACTIVE = "proactive"
+    TIMEOUT = "timeout"
+    HANDOFF = "handoff"
+
+
+class WaitEndReason(StrEnum):
+    """wait 结束的原因 (HUMANLIKE_RUNTIME.md §5.1)。
+
+    等待由三条路径之一结束; 结束原因回填 wait 工具结果, 让 Agent 知道为何被唤醒。
+    """
+
+    MESSAGE = "message"  # 收到新消息
+    TIMEOUT = "timeout"  # 到达 requested_seconds
+    PROACTIVE = "proactive"  # 被主动任务唤醒
+
+
 @dataclass
 class WaitState:
     """Agent 主动等待状态 (wait 工具; HUMANLIKE_RUNTIME.md §5.1)。
@@ -32,6 +57,10 @@ class WaitState:
     started_at: float
     requested_seconds: float | None = None
     reason: str = ""
+    # L2: 等待结束时回填 (None = 仍在等待)。尾部默认字段, 不影响既有关键字构造。
+    end_reason: WaitEndReason | None = None
+    # L2: 实际等待秒数 (resolve_wait 时计算: time.time() - started_at)。尾部默认字段。
+    actual_seconds: float = 0.0
 
 
 @dataclass
@@ -50,6 +79,9 @@ class ProactiveTask:
     priority: str = "normal"
     created_at: float = 0.0
     metadata: dict = field(default_factory=dict)
+    # CR2-Fix-7: 供 ProactiveScheduler.authorize 做来源令牌校验 (source_tokens 配置了
+    # 对应 source 时必须匹配); 默认空串, 未配置 source_tokens 时不参与校验 (向后兼容)。
+    caller_token: str = ""
 
 
 @dataclass
@@ -59,3 +91,18 @@ class ForcedTurnState:
     source: str  # timeout | proactive | handoff
     reason: str = ""
     created_at: float = 0.0
+
+
+@dataclass
+class InterruptState:
+    """打断状态 (L4; HUMANLIKE_RUNTIME.md §5.3)。
+
+    thinking 期间新消息到达时请求打断当前规划。记录本轮已打断次数以便限制,
+    并保留原因供下一轮 Prompt 注入 "上一轮被新消息打断" 提示。
+    行为 (抑制旧回复 / 单轮次数上限 / Prompt 提示) 由 L4 实现节点填充。
+    """
+
+    requested_at: float = 0.0
+    reason: str = ""
+    interrupt_count: int = 0  # 本轮累计打断次数, L4 用于限制连续打断
+    superseded: bool = False  # 被打断的旧回复是否已抑制

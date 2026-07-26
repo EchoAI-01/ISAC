@@ -5,11 +5,12 @@
 
 ## 项目状态
 
-**当前定位**: 可运行(Alpha→接近可用)。框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent 端到端已就位。
+**当前定位**: Release Candidate v1.0.0-rc.1。框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent 端到端 + 拟人化运行时 + 路由 Mesh + 记忆深化 + 企业化扩展全部就位, 1093 单测全绿。
 
 - 进度事实源: [docs/PROGRESS.md](./docs/PROGRESS.md)
 - 文档导航: [docs/README.md](./docs/README.md)
 - 需求清单: [docs/REQUIREMENTS.md](./docs/REQUIREMENTS.md)
+- 变更记录: [CHANGELOG.md](./CHANGELOG.md)
 
 ## 核心文档
 
@@ -46,7 +47,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-D9/J1/J2/J3/J4 能力框架已落地;可观测性增强 (trace 贯穿 + 分级日志) 已横切落地。拟人化地基 L1 ConversationRuntime 已 scaffolding,L2-L5 (Wait 闭环/主动/打断/上下文恢复) 待续;后续大节点 M (路由 Mesh) / N (记忆深化) / O (企业化) 仅规划。experimental 桩见 VectorStore/GraphStore/Reranker/MemoryConsolidator。详见 [docs/PROGRESS.md](./docs/PROGRESS.md) 与 [docs/ROADMAP.md](./docs/ROADMAP.md)。
+A-K 已达可运行完成度 (J1-J4 + K1-K8 交付)。**L2-L5 / M1-M2 / N1-N3 / O1-O3 核心逻辑 + 单测已实现,但主链路尚未接线** (标 `[~]`,默认关闭、生产路径无调用点);向量/图谱/Embedding/Reranker 检索后端已实现 (召回待接入 pipeline)。剩余工作:**P 主链路接线与激活** (P0 消息并发化 → P1 拟人化 → P2 Mesh → P3 检索深化 → P4 身份归一 → P5 企业化,把上述 `[~]` 接入主链路协同)、**O4 平台扩展** (需二次确认平台: 飞书/微信/Slack)、**O5 视频生成 Provider** (需二次确认端点: Sora/Runway/Kling)、**MemoryConsolidator**、**I 节点复核**。定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §四 P 节点,进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
 
 ## 目录速查
 

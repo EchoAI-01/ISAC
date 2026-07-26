@@ -89,6 +89,28 @@ CREATE TABLE IF NOT EXISTS jargon_entries (
     created_at INTEGER NOT NULL,
     PRIMARY KEY (agent_id, word)
 );
+
+-- N2 记忆治理 (MEMORY_DESIGN.md §7): episodes 软删除/冻结/保护/纠正历史。
+-- frozen=1: 冻结 (不再自动更新); protected=1: 保护 (不被自动清理/覆盖);
+-- deleted=1: 软删除 (审计保留); corrected_by: 指向最近一次纠正的 revision_id。
+CREATE TABLE IF NOT EXISTS memory_revisions (
+    revision_id TEXT PRIMARY KEY,
+    item_id TEXT NOT NULL,
+    old_content TEXT,
+    new_content TEXT,
+    corrected_at INTEGER NOT NULL,
+    reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_revisions_item ON memory_revisions(item_id);
+CREATE TABLE IF NOT EXISTS memory_audit (
+    audit_id TEXT PRIMARY KEY,
+    item_id TEXT NOT NULL,
+    action TEXT NOT NULL,  -- freeze/protect/correct/delete/restore
+    operator TEXT,          -- 操作者 (控制面 token / agent_id); 可空
+    occurred_at INTEGER NOT NULL,
+    detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_item ON memory_audit(item_id);
 """
 
 
@@ -105,6 +127,11 @@ class MetadataStore:
             await db.executescript(SCHEMA_SQL)
             await self._ensure_column(db, "episodes", "group_id", "TEXT")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_episodes_group ON episodes(group_id)")
+            # N2: episodes 治理列 (向后兼容老库, 默认 0/NULL)
+            await self._ensure_column(db, "episodes", "frozen", "INTEGER DEFAULT 0")
+            await self._ensure_column(db, "episodes", "protected", "INTEGER DEFAULT 0")
+            await self._ensure_column(db, "episodes", "deleted", "INTEGER DEFAULT 0")
+            await self._ensure_column(db, "episodes", "corrected_by", "TEXT")
             await db.commit()
 
     @staticmethod
@@ -177,7 +204,7 @@ class MetadataStore:
         clean_query = " ".join(str(query or "").split())
         if not clean_query:
             return []
-        conditions = ["episodes_fts MATCH ?", "episodes.agent_id = ?"]
+        conditions = ["episodes_fts MATCH ?", "episodes.agent_id = ?", "episodes.deleted = 0"]
         params: list[Any] = [self._fts_query(clean_query), agent_id]
         if group_id:
             conditions.append("episodes.group_id = ?")
@@ -213,7 +240,7 @@ class MetadataStore:
         if not ordered_ids:
             return []
         placeholders = ",".join("?" for _ in ordered_ids)
-        conditions = ["agent_id = ?", f"id IN ({placeholders})"]
+        conditions = ["agent_id = ?", f"id IN ({placeholders})", "deleted = 0"]
         params: list[Any] = [agent_id, *ordered_ids]
         if group_id:
             conditions.append("group_id = ?")

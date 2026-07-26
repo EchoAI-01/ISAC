@@ -31,6 +31,29 @@ jobs:
         # 覆盖率下滑会阻止合并; 关键安全/启动路径 (K7/K1/K4) 已有专项测试
         run: uv run pytest --cov=isac --cov-branch --cov-report=term-missing --cov-fail-under=75
 
+  browser:
+    # K8-2: Playwright 浏览器黄金路径测试 (tests/browser/); 未装时 skip,
+    # CI 显式 install chromium 后跑。与 check/build/docker 并行, 失败不阻塞主链路。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Install Playwright chromium
+        run: uv run playwright install chromium --with-deps
+
+      - name: Run browser tests
+        # tests/browser/ 未装 Playwright 时 skip; CI 显式装后应跑
+        run: uv run pytest tests/browser/ -v
+
   build:
     # K8: 构建 wheel/sdist 并安装 smoke, 验证包可发布
     runs-on: ubuntu-latest

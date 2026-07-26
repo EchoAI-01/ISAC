@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-26 (J2/J3/J4 五维度代码评审补充修复 Fix-1~Fix-19 + 阶段 0/1 地基: 可观测性增强落地 + L1 ConversationRuntime 框架 scaffolding + 文档体系补齐)
+> 最近更新: 2026-07-26 (L2-L5/M1-M2/N1-N3/O1-O3 核心逻辑+单测已实现但主链路待接线;新增 P 主链路接线与激活节点组;1091 单测通过、ruff/mypy 全绿)
 
 ## 节点总览
 
@@ -16,13 +16,14 @@
 | F | 插件生态 | 100% | AstrBot / MaiBot / Native / 加载器 |
 | G | 控制面与自动化 | 100% | Admin API / MCP / Webhook / 安全默认值 |
 | H | 平台与工具扩展 | 100% | Telegram/Discord/WebChat + MCP Client + 实用工具 |
-| I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成 (浏览器测试 CI 接入待 K8-2) |
+| I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成;浏览器测试 CI 已随 K8 接入,待复核升 100% |
 | J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步);2026-07-26 五维度代码评审发现的 J2/J3/J4 缺口 (媒体校验未接线、J4 执行循环未接线、Token Scope/SSE scope 过滤/CSRF 会话缺失等 20 项) 已逐项修复,详见下方"J2/J3/J4 补充修复"|
-| K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试 CI 接入与发布准入收尾 |
-| L | 拟人化运行时落地 | 15% | L1 ConversationRuntime 框架 scaffolding 已落地;L2-L5 待续 |
-| M | 路由与 Agent Mesh 深化 | 0% | 仅设计蓝图 (observer/candidate 路由、handoff/notify/memory_query) |
-| N | 记忆深化 | 0% | 仅设计蓝图 (统一 MemoryItem、记忆治理、身份归一) |
-| O | 企业化与平台扩展 | 0% | 仅设计蓝图 (多租户、进程隔离、Workflow、平台扩展、Video Provider) |
+| K | 稳定化与可用版本闭环 | 100% | K1-K8 全部完成 (K8-2 Playwright CI + release_checklist 已落地) |
+| L | 拟人化运行时落地 | 实现待接线 | L1-L5 核心逻辑+单测完成;wait 闭环已接生产,但 debounce 合并/主动调度启停/打断闭环/上下文恢复 **主链路未接线**(默认关闭)→ 见 P0/P1 |
+| M | 路由与 Agent Mesh 深化 | 实现待接线 | M1/M2 核心逻辑+单测完成(observer/candidate 仲裁+SWITCH_MARGIN; MeshActionBroker ACL+投递; 4 A2A 工具);但 observe_message/mesh_role/broker 注入 **未接线** → 见 P2 |
+| N | 记忆深化 | 部分接线 | N2 治理已完整接入生产(含检索期软删除过滤,CR2-Fix-12);N1 MemoryItem/Adapter、N3 IdentityResolver 核心+单测完成但 **无调用点**(悬空)→ 见 P3/P4 |
+| O | 企业化与平台扩展 | 实现待接线 | O1/O2/O3 核心+单测完成但 **零调用点**(未接 store/loader/control)→ 见 P5;O4 平台适配器/O5 Video Provider 未开始(`[ ]`) |
+| P | 主链路接线与激活 | 未开始 | P0 消息并发化→P1 拟人化→P2 Mesh→P3 检索深化→P4 身份归一→P5 企业化;把上述 `[~]` 能力接入主链路,是 `[~]`→`[x]` 的收尾。定义见 DEVELOPMENT_PLAN §四 P |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
 ## 可运行性状态
@@ -30,7 +31,7 @@
 **已达到「可运行」完成度**(2026-07-25 实测):
 
 - 主程序实测驻留(`RESIDENT_AFTER_3S=True`),支持 SIGINT/SIGTERM 优雅关闭。
-- 914 单元/集成测试通过;Ruff 通过;Mypy 全绿(207 文件)。
+- 1091 单元/集成测试通过;Ruff 通过;Mypy 全绿。
 - 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke、J2 多模态全链 + Channel 投递、J4 SubAgent 全链 + Control API、J3 WebUI v2 SPA 十域。
 - 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用。
 - Agent / Session / 路由 / Link / 记忆可持久化恢复;SubAgent 任务可重启恢复 (running/queued → cancelled)。
@@ -47,7 +48,7 @@
 | K5 单 Agent E2E | ✅ | FakeChannel + FakeLLMProvider 全链集成测试 |
 | K6 多 Agent E2E | ✅ | 多 Agent × 工具 × 记忆 × 控制面集成测试 (含原 E5) |
 | K7 安全基线 | ✅ | SSRF 防护 + SecretStore(AES-256-GCM) + TTL + 有界队列 + kill-wait |
-| K8 CI/发布准入 | 🟡 | CI 覆盖率门禁 + wheel/sdist smoke + Docker health 已就位;WebUI 浏览器测试待补 |
+| K8 CI/发布准入 | ✅ | CI 四 job (check+build+docker+browser) + wheel/sdist smoke + Docker 30s health 循环 + Playwright CI 接入 + scripts/release_checklist.md 七段发布清单 |
 
 ## 待实现能力
 
@@ -69,21 +70,31 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 - 配置编辑事务 UI (Schema 校验 + Diff 预览 + 二次确认 + ETag 乐观锁)
 - Playwright 浏览器黄金路径测试 (2 路径; 未装时 skip, CI 接入待 K8-2)
 
-**剩余 experimental 桩 (本批次 EXP 节点补齐)**:
+**剩余工作 (接线 + 未实现;定义详见 DEVELOPMENT_PLAN.md §四 P 节点)**:
 
-| 能力 | 状态 |
-|------|------|
-| MemoryConsolidator | 留后续迭代 (后台任务, 非本批次) |
-| ConversationRuntime | 框架已搭建 (scaffolding, L1);业务实现 L2-L5 待续,见 DEVELOPMENT_PLAN.md §四 L 节点 |
+*已实现待主链路接线 (`[~]`:核心逻辑 + 单测完成,默认关闭 / 生产路径无调用点)*:
 
-**既有桩待补:**
+| 能力 | 现状 | 接线节点 |
+|------|------|---------|
+| L2-L5 拟人化 | wait 闭环已接生产;debounce 合并 / 主动调度启停 / 打断闭环 / 恢复加载 未接线 | P0 → P1 |
+| M1-M2 Mesh | 仲裁 / ACL / bus 投递 / 4 A2A 工具 已实现;observe_message / mesh_role / broker 注入 未接线 | P2 |
+| N1 MemoryItem | 契约 + Adapter 实现;`pipeline.search()` 从不调用(悬空适配层) | P3 |
+| N3 身份归一 | IdentityResolver 实现;gateway 无调用点(悬空库) | P4 |
+| O1-O3 企业化 | 租户隔离 / 插件隔离 / Workflow 实现;零调用点(未接 store/loader/control) | P5 |
+| 向量 / 图谱召回 | VectorStore / GraphStore / Embedding 已实现;`pipeline.search()` 只写不读 | P3 |
 
-- Reranker 真实后端 (`RerankerProvider` 目前只有 `StubRerankerProvider`)
-- MemoryConsolidator
-- 完整 ConversationRuntime 业务逻辑 (L2 Wait 闭环/debounce、L3 主动任务、L4 打断、L5 上下文恢复);L1 框架已 scaffolding
+*未开始 (`[ ]`)*:
+
+- **O4 平台适配器** — 微信 / Slack / 飞书 ≥1 真实实现(当前仅 `TemplateAdapter` 模板,未注册)。
+- **O5 Video Provider** — 真实端点(`generate` 仍抛 `NotImplementedError`,端点开工前需二次确认)。
+- **MemoryConsolidator** — 记忆整合后台任务(episodic → 画像/中期记忆归并与衰减,当前 `NotImplementedError`)。
+- **I 节点复核** — WebUI 浏览器测试 CI 已随 K8 接入,复核 I 是否可由 85% 升 100%。
+
+*已补齐*: Reranker 真实后端 `OpenAICompatRerankerProvider`(Cohere/Jina 双协议,`isac/provider/rerank/openai_compat.py`,已接入检索 pipeline);N2 检索期软删除过滤已生效(CR2-Fix-12),N2 记忆治理已完整接入生产。
 
 ## 编号约定
 
 - 大节点 A/B/C… 为里程碑;小节点如 D9、K1 为最小可交付单元。
-- 完成定义 = 非桩实现 + 单元/集成测试 + 实际运行验证 + 文档同步 + Ruff/Mypy 通过。
+- 完成定义 = 非桩实现 + 单元/集成测试 + 实际运行验证 + **主链路接线** + 文档同步 + Ruff/Mypy 通过。
 - **scaffolding (框架已搭建)** = 契约 + 骨架 + 惰性默认关闭接线 + 骨架单测 + 主链路零行为变化;**不满足完成定义,不标 100%/`[x]`**。技术路线见 [ROADMAP.md](./ROADMAP.md),范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
+- **三态标记** = `[x]` 已交付(含主链路接线) / `[~]` 实现完成待接线(核心逻辑 + 单测完成,但未接入生产,接线项归 DEVELOPMENT_PLAN §四 P 节点) / `[ ]` 未开始。演进链:scaffolding → `[~]` → `[x]`。
