@@ -656,7 +656,9 @@ async def main() -> None:
     # ── Gateway ─────────────────────────────────────────────
     event_bus = EventBus()
     session_mgr = SessionManager(global_config)
-    user_mapper = UserMapper()
+    # Q1: 跨平台身份映射 SQLite 持久化 (master_id/person_id 跨重启稳定,
+    # 人物画像与记忆按归一身份聚合的前提)
+    user_mapper = UserMapper(str(DATA_DIR / "gateway" / "identity.db"))
     session_lock = SessionLockManager()
 
     async def handle_message(message: ISACMessage) -> None:

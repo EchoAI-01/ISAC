@@ -34,6 +34,9 @@ logger = get_logger(__name__)
 # (超出时丢弃最旧插入的 session, 与 WebChatAdapter._pending_replies 的 FIFO 上限同思路)。
 MAX_PROGRESS_REPORTERS_PER_AGENT = 500
 
+# Q1: 每次互动的关系深度增量 (线性累积, 封顶 1.0 ≈ 100 次互动后达到最深)。
+RELATIONSHIP_DEPTH_STEP = 0.01
+
 
 class AgentManager:
     """Agent 生命周期管理器。
@@ -53,6 +56,9 @@ class AgentManager:
         # agent_id 数量受限于实际创建过的 Agent 数 (不像 session 那样量级无界),
         # 不需要 SessionLockManager 那种引用计数回收, destroy() 时清理即可。
         self._config_locks: dict[str, asyncio.Lock] = {}
+        # Q1: 记忆写入后台任务的强引用集合 (create_task 结果不持引用会被 GC 取消;
+        # done 回调自清理, 集合大小受在途写入数约束, 不会无界增长)。
+        self._memory_tasks: set[asyncio.Task[None]] = set()
 
     # ── 生命周期 (控制面暴露) ──────────────────────────────
 
@@ -305,7 +311,98 @@ class AgentManager:
             # 话轮调度: 记录本轮回复, 更新滑窗频率与存在感数据。
             turn_scheduler.record_reply()
             instance.gating.get_idle_backoff(session.session_id).record_reply()
+            # Q1: 回复后异步写入记忆 (episodic + 画像回路), 不阻塞回复发送。
+            self._schedule_memory_write(instance, message, session, user_profile, result.content)
         return result.content or None
+
+    # ── 记忆写入回路 (Q1) ───────────────────────────────────
+
+    def _schedule_memory_write(
+        self,
+        instance: AgentInstance,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+        reply: str,
+    ) -> None:
+        """Q1: 把本轮对话写入记忆 (后台任务, 失败降级不影响回复)。
+
+        这是差距复核发现的 MVP 最关键缺口: 检索/注入/治理整条读链路就绪, 但生产
+        从未调用 store_episode, 记忆恒为空。写入放后台任务是为了不给回复路径增加
+        延迟 (配置 embedding 时 store_episode 内含一次向量化 API 调用)。
+        """
+        task = asyncio.create_task(
+            self._write_memory(instance, message, session, user_profile, reply),
+            name=f"memory-write-{session.session_id}",
+        )
+        self._memory_tasks.add(task)
+        task.add_done_callback(self._memory_tasks.discard)
+
+    async def _write_memory(
+        self,
+        instance: AgentInstance,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+        reply: str,
+    ) -> None:
+        """写入一轮对话的 episodic 记忆 + 更新人物画像 (SPECIFICATION 5.1: 失败降级)。"""
+        try:
+            user_name = message.user_name or message.user_id
+            display_name = instance.config.display_name or instance.agent_id
+            # 存整轮对话 (用户话 + 回复): BM25/向量召回都能命中双方内容,
+            # 注入时也能还原"谁说了什么"。
+            content = f"{user_name}: {message.content}\n{display_name}: {reply}"
+            await instance.memory.store_episode(
+                content=content,
+                session_id=session.session_id,
+                user_id=message.user_id,
+                group_id=message.group_id or "",
+                metadata={"importance": 0.5},
+            )
+            await self._update_person_profile(instance, message, user_profile)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("记忆写入失败, 已忽略 (不影响回复)", error=str(exc))
+
+    async def _update_person_profile(
+        self,
+        instance: AgentInstance,
+        message: ISACMessage,
+        user_profile: UserProfile | None,
+    ) -> None:
+        """Q1: 每次互动更新人物画像 (interaction_count/relationship_depth/last_seen)。
+
+        person_id 与读侧 (PersonProfileInjector / query_person_profile 工具) 保持
+        同一口径: 优先 UserMapper master_id (Q1 起 SQLite 持久化, 跨重启稳定),
+        无 user_profile 时退化用平台 user_id (与注入器的 session.user_id 兜底一致)。
+        agent 键用 instance.agent_id (读侧用 session.agent_id, 二者相同)。
+        画像文本的 LLM 归纳留 MemoryConsolidator (MVP 之后), 本回路只做启发式累积。
+        """
+        metadata_store = getattr(instance.memory, "metadata", None)
+        if metadata_store is None:
+            return  # NoOpMemoryPipeline / memory 未启用
+        from isac.utils.helpers import unix_now
+
+        person_id = (getattr(user_profile, "user_id", "") or message.user_id or "").strip()
+        if not person_id:
+            return
+        existing = await metadata_store.get_person_profile(instance.agent_id, person_id) or {}
+        now = unix_now()
+        await metadata_store.upsert_person_profile(
+            instance.agent_id,
+            {
+                "person_id": person_id,
+                "name": message.user_name or existing.get("name") or message.user_id,
+                "profile_text": existing.get("profile_text", "") or "",
+                "traits": existing.get("traits", []) or [],
+                "relationship_depth": min(
+                    1.0, float(existing.get("relationship_depth", 0.0) or 0.0) + RELATIONSHIP_DEPTH_STEP
+                ),
+                "interaction_count": int(existing.get("interaction_count", 0) or 0) + 1,
+                "first_seen": existing.get("first_seen") or now,
+                "last_seen": now,
+            },
+        )
 
     # ── 路由信息 (注入 MessageRouter 的 agents_provider) ────
 
