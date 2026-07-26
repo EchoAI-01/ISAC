@@ -5,7 +5,7 @@
 
 ## 项目状态
 
-**当前定位**: Release Candidate v1.0.0-rc.1。框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent 端到端 + 拟人化运行时 + 路由 Mesh + 记忆深化 + 企业化扩展全部就位, 1093 单测全绿。
+**当前定位**: 框架骨架 + 真实 LLM Provider + 持久化恢复(部分) + 安全基线已就绪, 1157 单测全绿; 但 2026-07-26 对照原始需求清单逐条代码取证(10 域并行验证, 见 `docs/DEVELOPMENT_PLAN.md` Q 节点组)发现**尚未达到 MVP**: 开箱只有 OneBot 一条可聊通道、**记忆写入回路缺失(检索永远为空)**、人格/情绪/表达风格注入器多为未注册的空桩、插件与 MCP 生态数据面未接线、多模态工具未注册进 ToolRegistry 等。项目定位应视为"架构完备的骨架 + 大量核心逻辑已实现但未接线的子系统",而非可直接商用。MVP 收尾计划见 `docs/DEVELOPMENT_PLAN.md` Q 节点组与 `docs/ROADMAP.md` MVP 里程碑。
 
 - 进度事实源: [docs/PROGRESS.md](./docs/PROGRESS.md)
 - 文档导航: [docs/README.md](./docs/README.md)
@@ -27,7 +27,7 @@
 
 ```bash
 uv sync --all-extras --dev              # 安装依赖 (Python 3.12+)
-uv run pytest                           # 运行测试 (467+ 用例)
+uv run pytest                           # 运行测试 (用例数见 docs/PROGRESS.md)
 uv run pytest --cov-branch --cov-fail-under=75   # CI 门禁
 uv run ruff check .                     # Lint (line-length 120)
 uv run mypy isac/                       # 类型检查 (全绿)
@@ -47,7 +47,15 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-A-K 已达可运行完成度 (J1-J4 + K1-K8 交付)。CR3 修复轮 (2026-07-26, 见 PROGRESS.md) 已接线: **向量召回** (pipeline 稠密召回+RRF, `memory.embedding` 配置即生效)、**多租户 O1** (`tenancy.enabled` 数据面谓词, 默认关闭)、**插件 on_load 生命周期**、控制面 sessions/memory/events 路由挂载; 并修复 bus notify 假成功、Workflow 引擎 fan-in、流式工具调用、调度器饿死等正确性缺陷。**L2-L5 / M1-M2 / N1-N3 核心逻辑 + 单测已实现,但主链路尚未接线** (标 `[~]`,默认关闭、生产路径无调用点);O2 插件默认加载路径仍无进程隔离 (隔离宿主机制已可用, 接管待做);图谱召回待接入。剩余工作:**P 主链路接线与激活** (P0 消息并发化 → P1 拟人化 → P2 Mesh → P3 检索深化(图谱) → P4 身份归一 → P5 企业化收尾)、**O4 平台扩展** (需二次确认平台: 飞书/微信/Slack)、**O5 视频生成 Provider** (需二次确认端点: Sora/Runway/Kling)、**MemoryConsolidator**、**I 节点复核**。定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §四 P 节点,进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
+A-K 已达可运行完成度 (J1-J4 + K1-K8 交付)。CR3 修复轮 (2026-07-26, 见 PROGRESS.md) 已接线: **向量召回** (pipeline 稠密召回+RRF, `memory.embedding` 配置即生效)、**多租户 O1** (`tenancy.enabled` 数据面谓词, 默认关闭)、**插件 on_load 生命周期**、控制面 sessions/memory/events 路由挂载; 并修复 bus notify 假成功、Workflow 引擎 fan-in、流式工具调用、调度器饿死等正确性缺陷。**L2-L5 / M1-M2 / N1-N3 核心逻辑 + 单测已实现,但主链路尚未接线** (标 `[~]`,默认关闭、生产路径无调用点);O2 插件默认加载路径仍无进程隔离 (隔离宿主机制已可用, 接管待做);图谱召回待接入。
+
+**2026-07-26 MVP 差距复核**(对照 `docs/REQUIREMENTS.md` 十二条需求逐条代码取证, 10 域并行验证 498 次代码检索 + 一次真实启动实测)进一步发现:一批标 `[x]` **已交付**的节点(D8/E4/F1-F3/H1/H2/J1-J4/K1-K4/K7)存在与其"完成定义"矛盾的**未接线子行为**(如 D8 人格系统的情绪/表达风格/注意力漂移注入器是未注册的空桩、F3 原生 SDK 的 register_tool/command/injector 在生产被硬编码为 `None`、H1 平台适配器仅 OneBot 被生产注册、J4 SubAgent 的用量/证据在 supervisor 层被丢弃),已逐条在对应节点下补记 **"2026-07-26 MVP 缺口复核"** 说明并指向修复它的 Q 节点;这些矛盾不影响该节点已实现的其余部分,但意味着"A-K 已达可运行完成度"不等于"MVP 各项能力真实可用"。
+
+剩余工作分两条线,均定义于 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md):
+1. **P 主链路接线与激活**(§四 P 节点):P0 消息并发化 → P1 拟人化 → P2 Mesh(含 Link 细粒度 ACL) → P3 检索深化(图谱+Reranker) → P4 身份归一 → P5 企业化收尾。
+2. **Q MVP 收尾**(§四 Q 节点,新增):补齐 P 节点未覆盖、但 MVP 必需的缺口 —— **Q1 记忆写入回路与身份稳定化**(最高优先级,检索链路全通但生产从未写入,未被任何 P 节点覆盖)、Q0 开箱可触达与配置纠偏、Q2 人格差异化实现、Q3 插件与 MCP 生态数据面接线、Q4 多模态工具注册与计量收尾、Q5 WebUI 与控制面收尾、Q6 SubAgent 用量与安全补漏。Q0/Q1 不依赖 P0,可与 P 节点并行甚至优先推进。
+
+另有 **O4 平台扩展**(需二次确认平台: 飞书/微信/Slack)、**O5 视频生成 Provider**(需二次确认端点: Sora/Runway/Kling)、**MemoryConsolidator**、**I 节点复核** 独立于 P/Q,可并行插入。MVP 准入线(P0-P2 + Q0-Q1 完成)见 [docs/ROADMAP.md](./docs/ROADMAP.md) MVP 里程碑;节点定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §四,进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
 
 ## 目录速查
 
