@@ -1,13 +1,14 @@
 """ConversationRuntime 框架骨架测试 (L1)。
 
 验证契约、状态机、registry 隔离与上限、主动队列就位, 且默认关闭时对现有主链路
-零行为变化。debounce / wait 回填 / 主动调度 / 打断闭环属实现节点 (L2-L4) 范畴,
-本文件只覆盖骨架级行为。
+零行为变化。L2 已落地后 enter_wait 为 async、resolve_wait 接 WaitEndReason 枚举。
 """
 
 from __future__ import annotations
 
 from types import SimpleNamespace
+
+import pytest
 
 from isac.runtime.conversation import (
     ConversationRuntime,
@@ -16,6 +17,7 @@ from isac.runtime.conversation import (
     ForcedTurnState,
     ProactiveTask,
     ProactiveTaskQueue,
+    WaitEndReason,
     WaitState,
 )
 
@@ -41,14 +43,16 @@ def test_register_and_drain_messages() -> None:
     assert rt.drain_new_messages() == []
 
 
-def test_enter_and_resolve_wait() -> None:
+@pytest.mark.asyncio
+async def test_enter_and_resolve_wait() -> None:
     rt = ConversationRuntime("a1", "s1")
     wait = WaitState(tool_call_id="c1", started_at=1.0, requested_seconds=5.0, reason="等回复")
-    rt.enter_wait(wait)
+    await rt.enter_wait(wait)
     assert rt.state is ConversationState.WAITING
     assert rt.pending_wait is wait
-    resolved = rt.resolve_wait("timeout")
+    resolved = rt.resolve_wait(WaitEndReason.TIMEOUT)
     assert resolved is wait
+    assert resolved.end_reason is WaitEndReason.TIMEOUT
     assert rt.pending_wait is None
     assert rt.state is ConversationState.IDLE
 

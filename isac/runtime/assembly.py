@@ -163,6 +163,11 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # L1: 会话级拟人运行时注册表 (每 Agent 独立, 会话间隔离)。默认不接入主链路,
     # conversation.enabled=True 时由 manager.handle_message 启用消息缓存/状态机。
     agent_services["conversation_registry"] = ConversationRuntimeRegistry()
+    # L2: 把 conversation.enabled 标志透传给 wait 工具等子模块, 避免每个工具都重读
+    # global_config; 默认 False 保持零行为变化。
+    agent_services["conversation_enabled"] = bool(
+        global_config.get("conversation", {}).get("enabled", False)
+    )
 
     loop = ISACAgentLoop(
         llm=llm,

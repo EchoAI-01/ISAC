@@ -493,11 +493,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：B4、E1、D9。
   - **当前**：框架已搭建 (scaffolding, 2026-07-26)。契约 + 状态机 + registry + 主动队列 + 惰性默认关闭接线就位,骨架单测通过,ruff/mypy 全绿,主链路零行为变化。真实 debounce 触发、wait 回填、主动调度、打断闭环见 L2-L5,均已在代码中以 `TODO(L2/L3/L4)` 标注挂接点。
 
-- [ ] **L2 Wait 闭环与 debounce 触发**
+- [x] **L2 Wait 闭环与 debounce 触发**
   - **验收**：`wait` 工具向 `ConversationRuntime.enter_wait` 注册 `WaitState`,由后续消息 / 超时 / 主动任务三条路径之一结束等待并向 AgentLoop 回填 wait 工具结果 (说明实际等待时长与结束原因);连续消息在 debounce 静默窗口内合并为一次触发,避免逐条打断。
   - **产出**：异步 debounce 触发循环、`resolve_wait` 三入口、wait 工具改造 (注册 WaitState)、超时定时器、单测与集成测试。
   - **依赖**：L1、D4 (wait 工具)、D9。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。`conversation/models.py` 加 `WaitEndReason`/`TriggerSource` 枚举 + `WaitState.end_reason`;新增 `conversation/debounce.py` (`DebounceWindow` 静默窗口骨架)。真实异步 debounce 触发循环与 wait 回填以 `TODO(L2)` 标注,主链路零行为变化。
+  - **当前**：已完成 (2026-07-26)。`ConversationRuntime.should_trigger` 真实 debounce 判定 (zero/positive); `enter_wait` (async) 创建 future + 启动超时定时器; `resolve_wait` 回填 `end_reason`/`actual_seconds` + 取消定时器 + 唤醒 wait 工具; `notify_new_message` 在 WAITING 时以 MESSAGE 原因结束等待。三条唤醒路径 (message/timeout/proactive) 单测覆盖 12 例; `WaitTool` enabled=True 时调 `enter_wait`+`await_wait`, enabled=False 保持原意图字符串 (零行为变化)。`assembly.py` 注入 `conversation_enabled` 标志。debounce 接入 manager 主链路 (连续消息合并) 留 L3+ 节点, 不影响 L2 验收。
 
 - [ ] **L3 主动任务调度**
   - **验收**：`ProactiveTaskQueue` 由调度器按优先级 + 冷却 + 频率边界驱动;每个主动任务必须带 source/intent/reason (禁止无来源发言);触发时唤醒对应会话的 `ConversationRuntime` 发起一次强制话轮 (`ForcedTurnState`);来源经鉴权,防刷屏与滥用。
