@@ -165,6 +165,22 @@ async def test_wait_tool_resolves_on_new_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_wait_tool_seconds_zero_still_resolves_via_timeout() -> None:
+    """CR2-Fix-2: seconds<=0 (LLM 可能传负数, "0" 字面值因 `or 5` 短路已被当成 5)
+    不应变成 requested_seconds=None (不创建超时定时器); 否则在 MESSAGE/PROACTIVE
+    均未被触发的场景下会永久挂起。应有一个最小下限。"""
+    tool = WaitTool()
+    session = _make_session()
+    agent_context = _make_agent_context(session)
+    registry = ConversationRuntimeRegistry()
+    services = {"conversation_registry": registry, "conversation_enabled": True, "agent_id": "a1"}
+    ctx = ToolContext(args={"seconds": -1}, agent_context=agent_context, services=services)
+    task = asyncio.create_task(tool.execute(ctx))
+    result = await asyncio.wait_for(task, timeout=2.0)
+    assert "超时" in result.content or "timeout" in result.content.lower()
+
+
+@pytest.mark.asyncio
 async def test_wait_tool_resolves_on_proactive() -> None:
     """主动任务唤醒 wait (PROACTIVE 原因)."""
     tool = WaitTool()

@@ -36,7 +36,9 @@ class WaitTool(Tool):
 
         enabled=False (默认) 时返回意图字符串, 保持现有行为 (零行为变化)。
         """
-        seconds = max(0, int(context.args.get("seconds", 5) or 5))
+        # CR2-Fix-2: 至少 1 秒下限, 不能是 0/负数——requested_seconds=None 不会创建
+        # 超时定时器, 若 MESSAGE/PROACTIVE 唤醒路径也未被触发就会永久挂起。
+        seconds = max(1, int(context.args.get("seconds", 5) or 5))
         session_id = getattr(context.agent_context.session, "session_id", "")
         agent_id = str(context.services.get("agent_id", "") or "")
         registry = context.services.get("conversation_registry")
@@ -49,7 +51,7 @@ class WaitTool(Tool):
         wait = WaitState(
             tool_call_id=tool_call_id,
             started_at=time.time(),
-            requested_seconds=float(seconds) if seconds > 0 else None,
+            requested_seconds=float(seconds),
             reason="wait_tool",
         )
         await runtime.enter_wait(wait)
