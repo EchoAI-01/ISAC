@@ -160,6 +160,11 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
 
     agent_services["progress_reporter_factory"] = _progress_reporter_factory
 
+    # CR2-Fix-1: 供 wait 工具等经 context.services 取用; 必须与 AgentInstance.agent_id
+    # 一致 (manager._dispatch_message 用 instance.agent_id 写 ConversationRuntime,
+    # 两处不一致会导致 wait 工具操作另一个 registry key, 永远等不到真实唤醒)。
+    agent_services["agent_id"] = config.agent_id
+
     # L1: 会话级拟人运行时注册表 (每 Agent 独立, 会话间隔离)。默认不接入主链路,
     # conversation.enabled=True 时由 manager.handle_message 启用消息缓存/状态机。
     agent_services["conversation_registry"] = ConversationRuntimeRegistry()
