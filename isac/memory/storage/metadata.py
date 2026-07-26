@@ -324,6 +324,23 @@ class MetadataStore:
             rows = await cursor.fetchall()
         return [(str(row[0]), str(row[1])) for row in rows]
 
+    async def delete_namespace(self, agent_id: str) -> int:
+        """Q0: 硬删除某命名空间的全部记忆数据 (episodes/person_profiles/jargon_entries)。
+
+        供 ``AgentManager.destroy(keep_memory=False)`` 调用。episodes 的 AFTER
+        DELETE 触发器同步清理 episodes_fts 倒排索引 (显式 DELETE 语句总会触发,
+        无需 recursive_triggers)。agent_id 为多租户场景下已含前缀的完整命名空间,
+        天然租户隔离。返回删除的 episodes 行数。
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("DELETE FROM episodes WHERE agent_id = ?", (agent_id,))
+            removed = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+            await db.execute("DELETE FROM person_profiles WHERE agent_id = ?", (agent_id,))
+            await db.execute("DELETE FROM jargon_entries WHERE agent_id = ?", (agent_id,))
+            await db.commit()
+        logger.info("记忆命名空间已清空", agent_id=agent_id, episodes_removed=removed)
+        return removed
+
     async def get_person_profile(self, agent_id: str, person_id: str) -> dict | None:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row

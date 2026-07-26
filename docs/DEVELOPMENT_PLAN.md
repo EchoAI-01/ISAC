@@ -691,12 +691,16 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 依赖顺序：Q0/Q1 不依赖任何 P 节点,可立即开工(Q1 最高优先级);Q2-Q6 相互独立、与 P 节点亦无强依赖,可按人力并行插入。
 
-- [ ] **Q0 开箱可触达与配置纠偏**(纯接线与纠偏,不依赖 P 节点)
+- [x] **Q0 开箱可触达与配置纠偏**(纯接线与纠偏,不依赖 P 节点)
   - **目标**：让"拷贝 `config.sample.jsonc` 并启动"就能获得至少一条零外部依赖的可聊通道,并修正一批会误导新用户的样例配置死键与生产健壮性缺口。
   - **验收**：`main()` 补齐 Telegram/Discord/WebChat 三个注册分支(镜像 OneBot 分支);裸部署(无 `data/routing.jsonc`)时已启用平台有默认路由,不再全部 DROP;`config.sample.jsonc` 修正 `control.auth_token`→`api_token`、`channels.onebot.ws_reverse_url`→`host/port`、`channels.webchat` 死配置、`alerting` 死键;Dockerfile 补 `COPY uv.lock` + `uv sync --frozen`(构建可复现);`docker-compose.yml` 按需补 OneBot 场景的 8080 端口映射说明;Windows `main()` 用 `try/finally` 包 `shutdown()` 且捕获 `KeyboardInterrupt`,Ctrl+C 走优雅关闭;`web_search` 默认策略由 `allow` 改 `deny`(无后端时不出现在 LLM schema 里);`ProviderManager._agent_providers` 在 `reload_config`/`destroy` 时失效缓存(PATCH 改 llm 立即热生效);`AgentManager.destroy(keep_memory=False)` 清理 `data/agents/<id>/memory`;`agent/tools/registry.py` 修正过期的 `task`→`task_runner` 映射(改查 `subagent_supervisor`,否则 SubAgent 委派被挡死)。
   - **产出**：`main.py` 三个 channel 注册分支、`config.sample.jsonc` 修正、`Dockerfile`/`docker-compose.yml` 修正、`main.py` 优雅关闭修正、`ProviderManager`/`AgentManager` 缓存失效修正、`registry.py` 映射修正、对应单测与一次多平台冒烟。
   - **依赖**：H1(适配器实现)、K1(生命周期)、K8(CI/Docker)。均已具备,本节点是纯接线与纠偏。
-  - **当前**：未开始。
+  - **当前**：已完成 (2026-07-27)。验收清单逐项落地:
+    - `main._register_channel_adapters` 四平台按 `channels.*` 配置惰性注册 (未启用零 import);`main._ensure_default_routing` 裸部署 (bindings 与 default_agents 全空) 时为已注册平台登记默认 Agent (仅内存不落盘, 用户显式配置过任何路由即不动)。
+    - `config.sample.jsonc` 四死键修正 (`api_token`/`host+port`/webchat 注释附 curl 示例/alerting 标注未接线);Dockerfile `COPY uv.lock` + `--frozen`;compose 附 8080/8090 端口映射注释;`main()` try/finally 优雅关闭;`web_search` 全局与 RESTRICTED 模板均改 deny;`ProviderManager.invalidate_agent_provider` + `AgentManager.reload_config/destroy` 接线 (含 aclose 释放连接池);`destroy(keep_memory=False)` 经 pipeline 的 namespace/MetadataStore 硬删三表 + `SparseBM25Index.clear` (shared 命名空间拒绝清理, 原 TODO 落地);registry `task` 门改为 `("subagent_supervisor", "task_runner")` 任一注入即放行 (restricted 门支持备选服务键)。
+    - **冒烟发现并修复两个开箱不可聊的隐藏缺陷**: ① `_send_reply` 构造回复不带 session_id;② 更根本的 —— `SessionManager.get_or_create` 会把消息 session_id 改写为内部 `sess_*`, 平台侧会话键丢失, WebChat 回复与 D9 进度帧都落错队列 → `process_message` 现在在改写前捕获 `platform_session_id` 并透传 `_send_reply`/`_make_progress_sender`。
+    - 真实启动冒烟通过: 拷 sample 起进程 → `POST /webchat/send` → 默认路由 → StubProvider 回复 → `GET /webchat/poll` 按客户端会话键取回。附 `tests/unit/test_q0_wiring.py` (14 测试)。
 
 - [ ] **Q1 记忆写入回路与身份稳定化**(MVP 最高优先级,不依赖 P0)
   - **目标**：补齐 K3 验收要求但从未接线的"消息/会话结束后真实写入 Episode"——这是记忆检索/注入/治理整条链路能真正发挥作用的前提,当前该链路读侧全通但生产端零写入,记忆恒为空。同时稳定化 person_id 与 Session。

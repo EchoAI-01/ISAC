@@ -73,9 +73,15 @@ async def process_message(
         return  # 路由无匹配 → DROP
     routed_message = dataclasses.replace(message, content=decision.content)
 
+    # Q0: 在 get_or_create 改写 session_id 为内部 sess_* 之前, 捕获适配器侧的
+    # 平台会话键 (如 WebChat 客户端自带的 session_id)。出站回复/进度帧必须用
+    # 平台键路由, 否则 WebChat 队列键与客户端轮询键对不上, 回复永远取不到。
+    platform_session_id = routed_message.session_id
     session = await session_mgr.get_or_create(routed_message, agent_id=decision.agent_id)
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
-    progress_sender = _make_progress_sender(channel_registry, routed_message, decision.agent_id)
+    progress_sender = _make_progress_sender(
+        channel_registry, routed_message, decision.agent_id, platform_session_id
+    )
     try:
         reply = await agent_manager.handle_message(
             decision.agent_id, routed_message, session, profile, progress_sender=progress_sender
@@ -85,7 +91,7 @@ async def process_message(
         raise
     metrics.counter("isac_messages_processed_total").inc()
     if reply:
-        await _send_reply(channel_registry, routed_message, reply, decision.agent_id)
+        await _send_reply(channel_registry, routed_message, reply, decision.agent_id, platform_session_id)
     await event_bus.fire_async(EventType.POST_MESSAGE, routed_message)
 
 
@@ -94,8 +100,14 @@ async def _send_reply(
     incoming: ISACMessage,
     reply_text: str,
     agent_id: str,
+    platform_session_id: str = "",
 ) -> None:
-    """把 Agent 的文本回复经原 Channel 适配器发送。"""
+    """把 Agent 的文本回复经原 Channel 适配器发送。
+
+    Q0: platform_session_id 是 gateway 改写前的适配器侧会话键 (WebChat 客户端
+    的 session_id); 出站按平台键路由, 客户端才能按自己的键轮询到回复。适配器
+    未提供平台键时 (OneBot 等按 group/user 路由的平台) 回退内部 session_id。
+    """
     adapter = channel_registry.get(incoming.platform)
     if adapter is None:
         logger.warning("未找到对应平台适配器，无法发送回复", platform=incoming.platform, agent_id=agent_id)
@@ -108,6 +120,7 @@ async def _send_reply(
         user_id=incoming.user_id,
         user_name="",  # 发送方是 Bot，无需昵称
         group_id=incoming.group_id,
+        session_id=platform_session_id or incoming.session_id,
         content=reply_text,
         reply_to=incoming.msg_id,
     )
@@ -119,7 +132,7 @@ async def _send_reply(
 
 
 def _make_progress_sender(
-    channel_registry: ChannelRegistry, incoming: ISACMessage, agent_id: str
+    channel_registry: ChannelRegistry, incoming: ISACMessage, agent_id: str, platform_session_id: str = ""
 ) -> Callable[[str, ProgressEvent], Awaitable[None]]:
     """D9: 构造绑定到本次到达消息所属 Channel 的进度 sender。
 
@@ -127,6 +140,8 @@ def _make_progress_sender(
     ISACMessage, 附 metadata.message_kind=progress 供 Channel 侧按需特殊处理
     (WebChat 输出原生 kind 字段, 其余平台按普通文本发送)。找不到 adapter / 发送失败
     时只记日志, 不得影响主任务 (进度是旁路信号)。
+    Q0: 与 _send_reply 一致改用 platform_session_id (gateway 改写前的平台会话键)
+    路由, WebChat 进度帧此前落在内部 sess_* 键下, 客户端同样轮询不到。
     """
 
     async def sender(text: str, event: ProgressEvent) -> None:
@@ -140,7 +155,7 @@ def _make_progress_sender(
             user_id=incoming.user_id,
             user_name="",
             group_id=incoming.group_id,
-            session_id=incoming.session_id,
+            session_id=platform_session_id or incoming.session_id,
             content=text,
             reply_to=incoming.msg_id,
             metadata={"message_kind": "progress", "task_id": event.task_id, "progress_stage": event.stage},
@@ -151,6 +166,66 @@ def _make_progress_sender(
             logger.warning("进度通知发送失败, 已忽略", platform=incoming.platform, agent_id=agent_id, error=str(exc))
 
     return sender
+
+
+def _register_channel_adapters(channel_registry: ChannelRegistry, global_config: dict[str, Any]) -> None:
+    """Q0: 按 channels.* 配置注册各平台适配器。
+
+    此前生产入口只有 OneBot 一个注册分支, Telegram/Discord/WebChat 三个适配器
+    实现+单测齐全却零调用点 (开箱只有需要外部 NapCat 的 QQ 一条可聊通道)。
+    全部惰性导入: 未启用的平台不 import 对应模块, 可选依赖不成为强制依赖。
+    """
+    channels_config = global_config.get("channels", {}) or {}
+
+    onebot_config = channels_config.get("onebot")
+    if onebot_config and onebot_config.get("enabled"):
+        from isac.channel.adapters.onebot.adapter import OneBotAdapter
+
+        channel_registry.register(OneBotAdapter(onebot_config))
+    telegram_config = channels_config.get("telegram")
+    if telegram_config and telegram_config.get("enabled"):
+        from isac.channel.adapters.telegram.adapter import TelegramAdapter
+
+        channel_registry.register(TelegramAdapter(telegram_config))
+    discord_config = channels_config.get("discord")
+    if discord_config and discord_config.get("enabled"):
+        from isac.channel.adapters.discord.adapter import DiscordAdapter
+
+        channel_registry.register(DiscordAdapter(discord_config))
+    webchat_config = channels_config.get("webchat")
+    if webchat_config and webchat_config.get("enabled"):
+        from isac.channel.adapters.webchat.adapter import WebChatAdapter
+
+        channel_registry.register(WebChatAdapter(webchat_config))
+    registered = [adapter.platform_name for adapter in channel_registry.list()]
+    if registered:
+        logger.info("Channel 适配器已注册", platforms=registered)
+    else:
+        logger.info("未启用任何 Channel 适配器 (channels.* 均未 enabled)")
+
+
+def _ensure_default_routing(router: MessageRouter, channel_registry: ChannelRegistry, fallback_agent_id: str) -> None:
+    """Q0: 裸部署 (未配置任何路由规则) 时为每个已注册平台登记默认 Agent。
+
+    此前无 data/routing.jsonc 时所有无触发词消息在 router 层全部 DROP, 新用户
+    首跑收不到任何回复。仅在规则完全为空 (无 bindings 且无 default_agents) 时
+    兜底 —— 用户显式配置过任何路由即完全不动, 保留有意的 DROP 语义; 只改内存
+    规则不落盘, 不把隐式默认写进用户配置文件。
+    """
+    rules = router.get_rules()
+    if rules.bindings or rules.default_agents:
+        return
+    platforms = [adapter.platform_name for adapter in channel_registry.list()]
+    if not platforms:
+        return
+    for platform in platforms:
+        rules.default_agents[platform] = fallback_agent_id
+    router.set_rules(rules)
+    logger.info(
+        "未配置任何路由规则, 已为已启用平台登记默认 Agent (仅内存, 不落盘)",
+        platforms=platforms,
+        agent_id=fallback_agent_id,
+    )
 
 
 def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[str, Any]) -> None:
@@ -576,13 +651,7 @@ async def main() -> None:
 
     # ── Channel ─────────────────────────────────────────────
     channel_registry = ChannelRegistry()
-    onebot_config = global_config.get("channels", {}).get("onebot")
-    if onebot_config and onebot_config.get("enabled"):
-        # 惰性导入 OneBot 适配器，避免 aiocqhttp 成为强制依赖
-        from isac.channel.adapters.onebot.adapter import OneBotAdapter
-
-        onebot_adapter = OneBotAdapter(onebot_config)
-        channel_registry.register(onebot_adapter)
+    _register_channel_adapters(channel_registry, global_config)
 
     # ── Gateway ─────────────────────────────────────────────
     event_bus = EventBus()
@@ -687,7 +756,9 @@ async def main() -> None:
     restore_report = await load_persisted_agents(agent_manager, agents_dir)
     if restore_report:
         logger.info("持久化 Agent 恢复完成", report=restore_report)
-    await ensure_default_agent(agent_manager, global_config)
+    default_instance = await ensure_default_agent(agent_manager, global_config)
+    # Q0: 裸部署无任何路由规则时, 已启用平台的消息兜底路由到默认 Agent (否则全 DROP)
+    _ensure_default_routing(router, channel_registry, default_instance.agent_id)
     await event_bus.fire_async(EventType.ON_START, {"config": global_config})
 
     # ── 进入 runtime (启动 TaskGroup + 触发所有 register_lifecycle.start) ──
@@ -696,9 +767,15 @@ async def main() -> None:
     # 必须在 runtime.start() 之后调用 (subagent_journal 已 start, DB 连接就绪)。
     await _restore_subagent_interrupts(services)
     logger.info("ISAC 启动完成")
-    await runtime.serve_forever()
-    await runtime.shutdown()
-    logger.info("ISAC 已退出")
+    # Q0: try/finally 保证优雅关闭 —— Windows 上 add_signal_handler 注册失败,
+    # Ctrl+C 以 KeyboardInterrupt/CancelledError 穿透 serve_forever, 此前会跳过
+    # shutdown() 留下未释放的连接与后台任务; POSIX 信号路径 (serve_forever 正常
+    # 返回) 行为不变。
+    try:
+        await runtime.serve_forever()
+    finally:
+        await runtime.shutdown()
+        logger.info("ISAC 已退出")
 
 
 async def _register_control_plane(
