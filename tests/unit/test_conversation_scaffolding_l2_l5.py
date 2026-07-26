@@ -11,7 +11,6 @@ from __future__ import annotations
 from isac.runtime.conversation import (
     ConversationSnapshot,
     ConversationStateStore,
-    DebounceWindow,
     ForcedTurnState,
     InterruptState,
     ProactiveScheduler,
@@ -22,7 +21,7 @@ from isac.runtime.conversation import (
     WaitState,
 )
 
-# ── L2: 枚举 + WaitState.end_reason + DebounceWindow ──────────────
+# ── L2: 枚举 + WaitState.end_reason ────────────────────────────────
 
 
 def test_trigger_source_and_wait_end_reason_values() -> None:
@@ -37,20 +36,6 @@ def test_wait_state_end_reason_defaults_none_and_is_settable() -> None:
     assert wait.end_reason is None  # 尾部默认字段, 不破坏既有关键字构造
     wait.end_reason = WaitEndReason.MESSAGE
     assert wait.end_reason is WaitEndReason.MESSAGE
-
-
-def test_debounce_window_zero_is_always_settled() -> None:
-    # debounce<=0 退化为不去抖 (每条立即可触发), 与现有行为一致
-    win = DebounceWindow(debounce_seconds=0.0)
-    win.touch(now=100.0)
-    assert win.is_settled(now=100.0) is True
-
-
-def test_debounce_window_positive_respects_silence_window() -> None:
-    win = DebounceWindow(debounce_seconds=5.0)
-    win.touch(now=100.0)
-    assert win.is_settled(now=103.0) is False  # 窗口内
-    assert win.is_settled(now=105.0) is True  # 窗口已过
 
 
 # ── L3: ProactiveScheduler ──────────────────────────────────────
