@@ -38,7 +38,8 @@ RESTRICTED_TOOLS_POLICY: dict[str, str] = {
     "send_image": "allow",
     "query_memory": "allow",
     "query_person_profile": "allow",
-    "web_search": "allow",
+    # Q0: 与全局默认一致改 deny (无搜索后端, allow 只会让 LLM 反复调用死工具)
+    "web_search": "deny",
     "fetch_history": "allow",
     "switch_chat": "allow",
     "view_forward_message": "allow",

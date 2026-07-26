@@ -24,7 +24,7 @@
 | N | 记忆深化 | 部分接线 | N2 治理已完整接入生产(含检索期软删除过滤,CR2-Fix-12);N1 MemoryItem/Adapter、N3 IdentityResolver 核心+单测完成但 **无调用点**(悬空)→ 见 P3/P4 |
 | O | 企业化与平台扩展 | 实现待接线 | O1/O2/O3 核心+单测完成但 **零调用点**(未接 store/loader/control)→ 见 P5;O4 平台适配器/O5 Video Provider 未开始(`[ ]`) |
 | P | 主链路接线与激活 | 未开始 | P0 消息并发化→P1 拟人化→P2 Mesh→P3 检索深化→P4 身份归一→P5 企业化;把上述 `[~]` 能力接入主链路,是 `[~]`→`[x]` 的收尾。定义见 DEVELOPMENT_PLAN §四 P |
-| Q | MVP 收尾(新增) | 未开始 | 2026-07-26 差距复核发现、未被 P0-P5 覆盖但 MVP 必需的缺口:**Q1 记忆写入回路**(最高优先级)、Q0 开箱可触达、Q2 人格差异化、Q3 插件/MCP 生态接线、Q4 多模态工具注册、Q5 WebUI/控制面收尾、Q6 SubAgent 补漏。定义见 DEVELOPMENT_PLAN §四 Q |
+| Q | MVP 收尾(新增) | Q0 完成 | 2026-07-26 差距复核发现、未被 P0-P5 覆盖但 MVP 必需的缺口。**Q0 开箱可触达已完成 (2026-07-27)**: 四平台注册+裸部署默认路由+样例死键修正+WebChat 端到端可聊 (冒烟顺带修复出站会话键丢失缺陷);其余 **Q1 记忆写入回路**(最高优先级)、Q2 人格差异化、Q3 插件/MCP 生态接线、Q4 多模态工具注册、Q5 WebUI/控制面收尾、Q6 SubAgent 补漏 未开始。定义见 DEVELOPMENT_PLAN §四 Q |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
 ## 可运行性状态
@@ -111,7 +111,7 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 | 能力 | 现状 | 对应节点 |
 |------|------|---------|
 | **Q1 记忆写入回路与身份稳定化** | episodic/画像/关系/行话读链路(检索/注入/治理/持久化)全部就绪,但生产 `_dispatch_message`/`process_message` 全程无 `store_episode`/`upsert_person_profile`/`upsert_jargon` 调用;`Session`/`UserMapper` 纯内存无持久化。**MVP 最高优先级,不依赖 P0,可立即开始** | Q1(新增,K3/K4 delta) |
-| Q0 开箱可触达与配置纠偏 | 生产入口只注册 OneBot;WebChat/Telegram/Discord 零调用点;`config.sample.jsonc` 四处死键(`auth_token` 应为 `api_token` 等);裸部署无默认路由消息全 DROP;Windows Ctrl+C 不走优雅关闭;Dockerfile 未冻结 uv.lock | Q0(新增,H1/K1/K8 delta) |
+| Q0 开箱可触达与配置纠偏 | **已完成 (2026-07-27)**: 四平台注册分支+裸部署默认路由+样例死键修正+Dockerfile 冻结+Windows 优雅关闭+web_search deny+Provider 缓存失效+destroy 记忆清理+task 门修正;冒烟另修复出站平台会话键丢失 (WebChat 回复/进度帧落错队列) | Q0 ✅ |
 | Q2 人格差异化实现 | `AgentConfig.persona` 文本不进 System Prompt;Mood/ExpressionStyle/AttentionDrift 三个注入器是返回空串的桩且未注册(`assembly.py` 自认"待落地") | Q2(新增,D8 delta) |
 | Q3 插件与 MCP 生态数据面接线 | Native SDK `register_tool/command/injector` 在生产被硬编码 `None`;AstrBot/MaiBot 插件加载后不桥接,handler 永不触发;`PluginManager` 未传入 `EnableMatrix`(plugins_allow/deny 对插件钩子不生效);`AgentConfig.mcp_servers` 零消费者 | Q3(新增,E4/F1-F4/H2 delta) |
 | Q4 多模态工具注册与计量收尾 | Provider/Router/Catalog/ArtifactStore 就绪,但 6 个语义媒体工具从未注册进 ToolRegistry;出站不经 MediaResolver;入站媒体无落盘;多模态 6 个 `record_*` 计量方法零调用;价目表恒空 | Q4(新增,J1/J2 delta) |

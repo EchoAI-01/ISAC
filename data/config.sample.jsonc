@@ -131,19 +131,27 @@
   },
 
   // 控制面 (G1 Admin API)
+  // api_token: Bearer Token (留空 = 开发模式无认证, 仅监听 127.0.0.1 时可接受);
+  //            也可用环境变量 ISAC_API_TOKEN 覆盖。
+  //            (Q0 修正: 此前样例误写 auth_token, 代码不读该键, 照样例配置会
+  //             得到无认证的控制面)
   "control": {
     "enabled": false,
     "host": "127.0.0.1",
     "port": 8091,
     "agents_dir": "data/agents",
-    "auth_token": ""
+    "api_token": ""
   },
 
-  // Channel 适配器
+  // Channel 适配器 (Q0 起 4 个平台均在 main() 真实注册, enabled=true 即生效)
   "channels": {
+    // OneBot/QQ: 反向 WebSocket 服务端, NapCat 等客户端连到 host:port
+    // (Q0 修正: 此前样例误写 ws_reverse_url, 代码实际读 host/port)
     "onebot": {
       "enabled": false,
-      "ws_reverse_url": "ws://127.0.0.1:8080"
+      "host": "127.0.0.1",
+      "port": 8080,
+      "access_token": ""
     },
     "telegram": {
       "enabled": false,
@@ -153,6 +161,10 @@
       "enabled": false,
       "bot_token": ""
     },
+    // WebChat: 零外部依赖的内置 HTTP 聊天通道, 开箱即可体验:
+    //   发消息: curl -X POST http://127.0.0.1:8090/webchat/send \
+    //           -d '{"session_id":"s1","user_id":"me","content":"你好"}'
+    //   收回复: curl "http://127.0.0.1:8090/webchat/poll?session_id=s1"
     "webchat": {
       "enabled": true,
       "bind_host": "127.0.0.1",
@@ -162,6 +174,8 @@
   },
 
   // 监控告警 (I5)
+  // 注意: 本节当前未被生产代码消费 (AlertManager 使用内置默认规则启动,
+  // check_interval_seconds/webhook_url 均不生效), 保留作为规划位。
   "alerting": {
     "enabled": true,
     "check_interval_seconds": 30,

@@ -37,6 +37,13 @@ class SparseBM25Index:
             self._inverted_index.setdefault(term, set()).add(memory_id)
         self._total_doc_length += len(terms)
 
+    def clear(self) -> None:
+        """清空整个索引 (Q0: Agent 销毁且 keep_memory=False 时清理内存态)。"""
+        self._doc_terms.clear()
+        self._doc_term_counts.clear()
+        self._inverted_index.clear()
+        self._total_doc_length = 0
+
     def remove(self, memory_id: str) -> None:
         """删除文档, 从倒排索引与统计量中撤销其贡献。"""
         terms = self._doc_terms.pop(memory_id, None)

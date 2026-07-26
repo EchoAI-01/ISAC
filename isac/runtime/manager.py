@@ -94,12 +94,58 @@ class AgentManager:
 
     async def destroy(self, agent_id: str, *, keep_memory: bool = True) -> None:
         """销毁 Agent。keep_memory=True 时保留记忆数据。"""
-        self._require(agent_id)
+        instance = self._require(agent_id)
         del self._agents[agent_id]
         self._config_locks.pop(agent_id, None)
         self._update_active_gauge()
-        # TODO: keep_memory=False 时清理 data/agents/<id>/memory/
+        # Q0: 失效独立 Provider 缓存 (否则重建同名 Agent 仍拿到旧 llm 配置的 Provider)
+        await self._invalidate_agent_provider(agent_id)
+        if not keep_memory:
+            await self._purge_memory(instance)
         logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
+
+    async def _invalidate_agent_provider(self, agent_id: str) -> None:
+        """Q0: 让 ProviderManager 丢弃该 Agent 的独立 Provider 缓存并释放连接池。
+
+        此前缓存全仓无失效点: PATCH 修改 AgentConfig.llm 后 for_agent 仍返回旧
+        Provider (换模型必须重启进程), destroy 后重建同名 Agent 也继承旧凭据。
+        """
+        provider_manager = self._services.get("provider_manager")
+        if provider_manager is None:
+            return
+        invalidate = getattr(provider_manager, "invalidate_agent_provider", None)
+        if invalidate is None:
+            return
+        try:
+            await invalidate(agent_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Agent Provider 缓存失效失败, 已忽略", agent_id=agent_id, error=str(exc))
+
+    @staticmethod
+    async def _purge_memory(instance: AgentInstance) -> None:
+        """Q0: keep_memory=False 时清理该 Agent 命名空间的记忆数据 (原 TODO 落地)。
+
+        经 instance.memory (pipeline) 取已含租户前缀的 namespace 与 MetadataStore,
+        硬删 episodes/person_profiles/jargon_entries 并清空 BM25 内存索引。
+        shared 命名空间被多 Agent 共享, 一律拒绝清理。向量分库文件保留: 孤儿向量
+        经 get_episodes_by_ids 的 ACL 过滤不会泄露, 文件按 namespace 隔离。
+        """
+        pipeline = instance.memory
+        namespace = str(getattr(pipeline, "namespace", "") or "")
+        metadata = getattr(pipeline, "metadata", None)
+        if metadata is None or not namespace:
+            return  # NoOpMemoryPipeline / memory 未启用: 无可清理数据
+        if namespace == "shared" or namespace.endswith(":shared"):
+            logger.warning("shared 记忆命名空间被多 Agent 共享, 拒绝清理", namespace=namespace)
+            return
+        try:
+            removed = await metadata.delete_namespace(namespace)
+            sparse = getattr(pipeline, "sparse", None)
+            if sparse is not None:
+                sparse.clear()
+            logger.info("Agent 记忆已清理", namespace=namespace, episodes_removed=removed)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Agent 记忆清理失败, 已忽略", namespace=namespace, error=str(exc))
 
     def acquire_config_lock(self, agent_id: str) -> asyncio.Lock:
         """按 agent_id 取配置锁 (Fix-2, 不存在则创建)。
@@ -130,6 +176,8 @@ class AgentManager:
         TODO: 差量更新 gating/persona/权限, 避免整实例重建。
         """
         was_running = self._require(agent_id).status == "running"
+        # Q0: 失效独立 Provider 缓存, PATCH 修改 llm 后 for_agent 才会按新配置重建
+        await self._invalidate_agent_provider(agent_id)
         instance = await assemble_agent(config, self._services)
         instance.status = "running" if was_running else "stopped"
         self._agents[agent_id] = instance
