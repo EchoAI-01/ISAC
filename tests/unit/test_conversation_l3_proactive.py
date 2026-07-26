@@ -63,6 +63,23 @@ def test_queue_poll_empty_returns_none() -> None:
     assert ProactiveTaskQueue().poll() is None
 
 
+def test_queue_enqueue_returns_true_when_under_capacity() -> None:
+    q = ProactiveTaskQueue(max_size=2)
+    assert q.enqueue(_task("t1")) is True
+    assert len(q) == 1
+
+
+def test_queue_enqueue_rejects_when_at_capacity() -> None:
+    """CR2-Fix-5: 队列无容量上限时任何来源可无限入队。超过 max_size 拒绝新任务,
+    队列长度不变, enqueue 返回 False 供调用方感知。"""
+    q = ProactiveTaskQueue(max_size=2)
+    assert q.enqueue(_task("t1")) is True
+    assert q.enqueue(_task("t2")) is True
+    assert q.enqueue(_task("t3")) is False
+    assert len(q) == 2
+    assert q.poll().task_id == "t1"  # type: ignore[union-attr]
+
+
 # ── ProactiveScheduler.authorize ──────────────────────────────────
 
 
