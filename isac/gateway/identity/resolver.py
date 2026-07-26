@@ -89,11 +89,15 @@ class IdentityResolver:
         """
         await self._ensure_schema()
         # 1. verified 命中
+        # CR2-Fix-17: 此前这里没有 AND verified = 1, 任何 confidence/verified 值
+        # 的行都会被当作"verified 命中"直接返回 (包括步骤 2 启发式写入的低置信度
+        # 记录), 与本步骤自己的注释语义矛盾, 也让 heuristic_enabled=False 时写入
+        # 的记录 (若存在) 意外被信任。
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
                 "SELECT person_id, verified, confidence FROM person_identities "
-                "WHERE platform = ? AND platform_user_id = ?",
+                "WHERE platform = ? AND platform_user_id = ? AND verified = 1",
                 (platform, user_id),
             )
             row = await cursor.fetchone()

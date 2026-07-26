@@ -92,6 +92,31 @@ async def test_resolve_heuristic_disabled_only_uses_verified(resolver: IdentityR
     assert result is not None
 
 
+@pytest.mark.asyncio
+async def test_resolve_does_not_treat_unverified_row_as_verified_hit(resolver: IdentityResolver) -> None:
+    """CR2-Fix-17: resolve() 步骤 1 此前没有 verified=1 条件, 任何 verified 值的行
+    都被当作"verified 命中"直接返回, 与该步骤自己的注释"1. verified 命中"矛盾。"""
+    # 直接写入一条 verified=0 的低置信度记录 (模拟一次不可靠的历史启发式匹配)
+    await resolver._ensure_schema()
+    await resolver._write_identity_row(
+        person_id="p_low_confidence",
+        platform="qq",
+        platform_user_id="u9",
+        display_name="旧昵称",
+        verified=0,
+        confidence=0.3,
+        source="heuristic",
+    )
+    resolver.heuristic_enabled = False  # 隔离变量: 命中只能来自步骤 1, 不受步骤 2 影响
+
+    result = await resolver.resolve("qq", "u9", "新昵称")
+
+    # 修复前: 步骤 1 不检查 verified, 直接把这条 verified=0 的行当"验证命中"返回。
+    # 修复后: 步骤 1 查不到 (verified != 1), 启发式已关闭, 落到步骤 3 UserMapper
+    # 兜底创建新 person —— 不应是那条未验证记录的 person_id。
+    assert result != "p_low_confidence"
+
+
 # ── bind ─────────────────────────────────────────────────────────
 
 
