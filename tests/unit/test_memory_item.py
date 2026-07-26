@@ -67,6 +67,25 @@ def _jargon_row(**kw: object) -> dict[str, object]:
     return base
 
 
+def _relationship_row(**kw: object) -> dict[str, object]:
+    """构造 RelationshipState (HUMANLIKE_RUNTIME.md §6.1) 的一行 (dict)。
+
+    注意: RelationshipState 没有 description/自由文本字段。
+    """
+    base: dict[str, object] = {
+        "agent_id": "a1",
+        "person_id": "p1",
+        "session_id": "s1",
+        "relationship_depth": 0.6,
+        "familiarity": 0.4,
+        "trust": 0.7,
+        "interaction_count": 8,
+        "last_interaction_at": 1700000200,
+    }
+    base.update(kw)
+    return base
+
+
 # ── from_episode / to_episode ────────────────────────────────────
 
 
@@ -161,6 +180,34 @@ def test_to_jargon_roundtrip_preserves_known_fields() -> None:
     assert back["word"] == "emo"
     assert back["meaning"] == "情绪低落"
     assert back["usage_count"] == 5
+
+
+# ── from_relationship / to_relationship ──────────────────────────
+
+
+def test_from_relationship_full_field_mapping() -> None:
+    """CR2-Fix-16: RelationshipState (§6.1) 无 description 字段, content 应
+    默认空串, 不臆造语义; session_id 应纳入 metadata。"""
+    row = _relationship_row()
+    item = MemoryItem.from_relationship(row)
+    assert item.agent_id == "a1"
+    assert item.scope is MemoryScope.USER_GLOBAL
+    assert item.subject_id == "p1"
+    assert item.content == ""
+    assert item.memory_type is MemoryType.RELATIONSHIP
+    assert item.metadata["session_id"] == "s1"
+    assert item.metadata["relationship_depth"] == 0.6
+    assert item.metadata["familiarity"] == 0.4
+    assert item.metadata["trust"] == 0.7
+    assert item.metadata["interaction_count"] == 8
+    assert item.metadata["last_interaction_at"] == 1700000200
+
+
+def test_to_relationship_roundtrip_preserves_known_fields() -> None:
+    row = _relationship_row()
+    item = MemoryItem.from_relationship(row)
+    back = item.to_relationship()
+    assert back == row
 
 
 # ── MemoryItemAdapter: MemoryItem ↔ MemoryHit ───────────────────
