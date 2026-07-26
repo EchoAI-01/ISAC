@@ -51,36 +51,40 @@
 
 ## 项目状态
 
-**Alpha (K1-K8 稳定化阶段)** — 框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent E2E 已通, 接近可用版本准入。
+**Release Candidate v1.0.0-rc.1** — 框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent E2E + 拟人化运行时 + 路由 Mesh + 记忆深化 + 企业化扩展全部就位, 已达发布准入。
 
-K1-K7 已完成 (K8 CI/Docker/浏览器测试门禁进行中):
+A-K + L/M/N/O 各节点完成度:
 
-- 应用生命周期 (`ApplicationRuntime` 统一 TaskGroup + SIGINT/SIGTERM 优雅关闭)
-- 真实 LLM Provider (`OpenAICompatProvider` httpx 实现, 含 SSE 流式 + Tool Call + 429/5xx 分类)
-- Storage Schema init + BM25 启动恢复 + shared namespace ACL
-- 原子配置写入 (tmp + fsync + os.replace)
-- 单/多 Agent × Channel 端到端集成测试
-- 安全基线: Webhook SSRF 防护 / SecretStore AES-256-GCM / Session TTL / 队列有界 / bash kill-wait
+- A-I 文档冻结 / 基础骨架 / 连接路由 / 单 Agent 核心 / 多 Agent 运行时 / 插件生态 / 控制面 / 平台扩展 / 生产化交付 — 100%
+- J 模型能力、计量与管理面 (J1 用量计量 + J2 多模态 Provider + J3 WebUI v2 + J4 SubAgent Runtime) — 100%
+- K 稳定化 (K1-K8 CI/Docker/Playwright/发布准入) — 100%
+- L 拟人化运行时 (L1 ConversationRuntime + L2 Wait 闭环 + L3 主动任务 + L4 Planner 打断 + L5 上下文恢复) — 100%
+- M 路由与 Agent Mesh (M1 observer/candidate + M2 handoff/notify/memory_query) — 100%
+- N 记忆深化 (N1 统一 MemoryItem + N2 记忆治理 + N3 身份归一) — 100%
+- O 企业化 (O1 多租户 + O2 插件进程级隔离 + O3 Workflow 编排; O4 平台扩展/O5 视频生成 框架 scaffolding, 真实 API 接入待用户二次确认)
 
 | 模块 | 状态 |
 |------|------|
 | 核心契约 (types/events/exceptions) | ✅ 完成 |
 | 配置与日志系统 + 原子写 | ✅ 完成 |
-| 消息路由 (Router + Rules) | ✅ 完成 |
-| Gateway (EventBus/Session/User/Lock) | ✅ 完成 + TTL + 二级索引 |
+| 消息路由 (Router + Rules + MeshRouter observer/candidate) | ✅ 完成 |
+| Gateway (EventBus/Session/User/Lock/IdentityResolver) | ✅ 完成 + TTL + 跨平台归一 |
 | 门控系统 (Gating/Focus/IdleBackoff) | ✅ 完成 + AgentConfig.gating 覆盖 |
-| System Prompt 组装器 + 注入器 | ✅ 完成 |
-| Agent Loop (LLM 循环 + Hooks + 重试/回退) | ✅ 完成 + tool_calls 消息序列 |
+| 拟人化运行时 (ConversationRuntime + debounce + wait + proactive + interrupt + recovery) | ✅ L1-L5 完成 |
+| System Prompt 组装器 + 注入器 (含 Interrupt/Recovery) | ✅ 完成 |
+| Agent Loop (LLM 循环 + Hooks + 重试/回退 + 打断) | ✅ 完成 + tool_calls + interrupt |
 | OneBot v11 适配器 (QQ) | ✅ 完成 (反向 WebSocket) |
-| 工具系统 (ToolRegistry/ToolPermission) | ✅ 完成 + 内置命令接入 |
-| 记忆系统 (MetadataStore+FTS5+BM25) | ✅ 完成 (Vector/Graph 仍 experimental) |
+| 工具系统 (ToolRegistry/ToolPermission + 4 A2A 工具 restricted) | ✅ 完成 + 内置命令接入 |
+| 记忆系统 (MemoryItem 统一契约 + 治理 freeze/protect/correct/delete/restore + 审计) | ✅ 完成 (Vector/Graph/Embed/Rerank 真实实现) |
 | 人格系统 (Persona/Mood/Drift) | ✅ 完成 (BehaviorLearner 接入) |
-| 插件生态 (AstrBot/MaiBot/Native) | ✅ 完成 + PluginManager 接入 main |
-| 控制面 (Admin API/MCP/Webhooks) | ✅ 完成 + 审计 + 持久化恢复 |
+| 插件生态 (AstrBot/MaiBot/Native + 进程级隔离) | ✅ 完成 + PluginManager + PluginIsolationHost |
+| 控制面 (Admin API/MCP/Webhooks + Memory 治理 + Identity 冲突裁决) | ✅ 完成 + 审计 + 持久化恢复 |
+| 多租户隔离 (TenantIsolationGuard + SQL 谓词注入) | ✅ O1 完成 |
+| Workflow 编排 (串/并/条件/重试 + 持久化 + resume) | ✅ O3 完成 |
 | 监控告警 (Metrics/Alerting) | ✅ 完成 + 接入主链路 |
-| WebUI (Vanilla JS) | ✅ 完成 + sessionStorage |
-| Docker 部署 + CI 门禁 | 🟡 Dockerfile/compose 完成, CI cov-fail-under 进行中 |
-| 真实 LLM Provider | ✅ 完成 (OpenAICompatProvider httpx) |
+| WebUI v2 (SPA 十域 + 配置编辑事务 + SSE) | ✅ 完成 + sessionStorage + Playwright |
+| Docker 部署 + CI 门禁 (Playwright + release_checklist) | ✅ K8 完成 |
+| 真实 LLM Provider | ✅ 完成 (OpenAICompatProvider httpx + SSE + Tool Call) |
 | 安全基线 | ✅ K7 完成 |
 
 ---

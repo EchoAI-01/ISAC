@@ -5,11 +5,12 @@
 
 ## 项目状态
 
-**当前定位**: 可运行(Alpha→接近可用)。框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent 端到端已就位。
+**当前定位**: Release Candidate v1.0.0-rc.1。框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent 端到端 + 拟人化运行时 + 路由 Mesh + 记忆深化 + 企业化扩展全部就位, 1093 单测全绿。
 
 - 进度事实源: [docs/PROGRESS.md](./docs/PROGRESS.md)
 - 文档导航: [docs/README.md](./docs/README.md)
 - 需求清单: [docs/REQUIREMENTS.md](./docs/REQUIREMENTS.md)
+- 变更记录: [CHANGELOG.md](./CHANGELOG.md)
 
 ## 核心文档
 
@@ -46,7 +47,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-D9/J1/J2/J3/J4 能力框架已落地;可观测性增强 (trace 贯穿 + 分级日志) 已横切落地。拟人化/协作/记忆/企业化四大节点 **L/M/N/O 全部 14 子节点框架已搭建 (scaffolding)**——契约 + 骨架类 + 惰性默认关闭接线就位,主链路零行为变化,各节点 `TODO(节点)` 标注挂接点,业务实现待续。experimental 桩见 VectorStore/GraphStore/Reranker/MemoryConsolidator。详见 [docs/PROGRESS.md](./docs/PROGRESS.md) 与 [docs/ROADMAP.md](./docs/ROADMAP.md)。
+A-K + L/M/N/O 各节点已完成 (J1-J4 + K1-K8 + L1-L5 + M1-M2 + N1-N3 + O1-O3 + EXP-1/2/3 全部落地)。剩余仅 **O4 平台扩展** (需用户二次确认选哪个真实平台接入: 飞书/微信/Slack) 与 **O5 视频生成 Provider** (需用户二次确认 API 端点选型: Sora/Runway/Kling/自托管)。详见 [docs/PROGRESS.md](./docs/PROGRESS.md) 与 [docs/ROADMAP.md](./docs/ROADMAP.md)。
 
 ## 目录速查
 
