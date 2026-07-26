@@ -541,11 +541,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 **目标**：把当前分散的记忆结构统一为 `MemoryItem` 模型,补齐记忆治理与身份归一。
 
-- [ ] **N1 统一 MemoryItem 模型**
+- [x] **N1 统一 MemoryItem 模型**
   - **验收**：episodic/profile/jargon 等记忆统一到一个 `MemoryItem` 契约 (类型 + 载荷 + 元数据 + 命名空间),存储/检索/注入围绕它展开;迁移不破坏既有数据。
   - **产出**：`MemoryItem` 契约、存储层适配、迁移脚本、单测。
   - **依赖**：D5-D7、K3。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `isac/memory/model/` (`MemoryItem` 全字段对齐 §4.1 + `MemoryType`/`MemoryScope` + `from_episode`/`to_episode` 适配桩)。既有 `metadata.py` 三表仍为权威。真实迁移以 `TODO(N1)` 标注。
+  - **当前**：已完成 (2026-07-26)。`MemoryItem.from_episode/to_episode` 补齐完整字段映射 (summary/topics/participants/emotion/session_id/group_id 进 metadata); 新增 `from_profile/to_profile` (name/traits/relationship_depth/interaction_count/first_seen/last_seen/embedding_hash); `from_jargon/to_jargon` (word/context/usage_count); `from_relationship/to_relationship` (familiarity/trust/last_interaction_at)。新增 `isac/memory/model/adapter.py:MemoryItemAdapter` 实现 `MemoryItem ↔ MemoryHit` 双向适配 (hit_type → memory_type, 未知类型默认 EPISODE 兜底)。既有 metadata.py 三表 schema 不动, 本模块只做读写适配层。10 例单测覆盖四种类型 from/to roundtrip + adapter 双向 + 未知列降级。
 
 - [ ] **N2 记忆治理 (freeze/protect/correct/delete)**
   - **验收**：支持冻结、保护、纠错、删除记忆条目;操作经权限校验并审计;纠错保留可追溯历史。
