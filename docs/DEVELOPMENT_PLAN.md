@@ -577,11 +577,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：F (插件生态)、K7 (安全基线)。
   - **当前**：已完成 (2026-07-26)。`PluginIsolationHost.spawn` 用 `multiprocessing.Process` (fork on POSIX) 启动子进程 + `Pipe` 建立 IPC; 子进程入口 `_plugin_worker` 设资源限额 (`resource.setrlimit` RLIMIT_CPU=1s / RLIMIT_NOFILE=64 / RLIMIT_AS=256MB, 平台不支持时跳过); `call` 编码 IPCEnvelope → JSON → 管道发送 → asyncio.to_thread(recv) → 解码返回; 子进程崩溃 (BrokenPipeError/EOFError) 触发 `_on_crash` 自动重启 (最多 max_restart_attempts=3 次, 超过放弃); `kill` 优雅终止 (terminate + join 2s + kill 强杀); `is_alive` 属性。既有 `loader.py` 进程内兼容层不变 (仍默认)。6 例单测覆盖 spawn/call/kill roundtrip + 未 spawn 抛 + 重复 kill 幂等 + 崩溃重启计数 + 超限放弃 + 默认零行为变化。
 
-- [ ] **O3 Workflow 编排**
+- [x] **O3 Workflow 编排**
   - **验收**：多步骤任务可用声明式 Workflow 编排 (串/并/条件/重试);步骤可跨 Agent/工具;执行可观测、可恢复。
   - **产出**：Workflow 引擎、步骤契约、执行器、可观测与恢复、单测。
   - **依赖**：J4 (SubAgent)、D9 (进度)、L (运行时)。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `isac/runtime/workflow/` (`Workflow`/`Stage`/`Transition` + `WorkflowStatus`/`StageStatus`/`TransitionKind` + `WorkflowEngine` register/start/step/resume no-op)。真实串/并/条件/重试编排以 `TODO(O3)` 标注。
+  - **当前**：已完成 (2026-07-26)。`WorkflowEngine.start` 按 transitions 调度 stages: 串行按 `TransitionKind.SEQUENTIAL` 递归执行, 并行用 `asyncio.gather` 同时跑多个 `PARALLEL` 目标, 条件 `CONDITIONAL` 按 `condition_evaluator` 返回决定执行或标 `SKIPPED`, 重试 `RETRY` 在 `_execute_stage` 内按 `max_retries=3` 重试; 状态机 `PENDING→RUNNING→SUCCEEDED/FAILED`; `step` 推进单个 PENDING stage; `resume` 把 RUNNING 标为 FAILED (中断后不续跑, 与 L5 一致); 持久化到 `data/workflows/<id>.json` (原子写)。`set_action_handler`/`set_condition_evaluator` 注入测试/生产回调; 无 handler 时 stage 视为 noop (零行为变化)。12 例单测覆盖串/并/条件/重试/step/resume/持久化/默认。
 
 - [ ] **O4 平台扩展 (微信 / Slack / 飞书 …)**
   - **验收**：新增 IM 平台适配器,复用 Channel 抽象;媒体/富文本能力按平台声明适配。

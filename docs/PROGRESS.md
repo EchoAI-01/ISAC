@@ -22,7 +22,7 @@
 | L | 拟人化运行时落地 | 100% | L1 框架 + L2/L3/L4/L5 全部实现 (wait 闭环 + debounce + 三唤醒路径; 主动任务 priority+冷却+鉴权+后台循环; 打断次数限制+Prompt 注入; 上下文恢复短/中/长窗口) |
 | M | 路由与 Agent Mesh 深化 | 100% | M1/M2 全部实现 (observer/candidate 路由 + 多候选仲裁 + SWITCH_MARGIN 防抖; MeshActionBroker ACL + bus 投递 + 4 A2A 工具 restricted) |
 | N | 记忆深化 | 100% | N1/N2/N3 全部实现 (MemoryItem 统一契约 + 四类型 from/to + MemoryItemAdapter; 记忆治理 freeze/protect/correct/delete/restore/export + 审计; 跨平台身份归一 + person_identities/identity_conflicts 表 + 启发式/冲突裁决) |
-| O | 企业化与平台扩展 | 进行中 | O1/O2 已实现 (多租户隔离 + SQL 谓词注入; 插件进程级隔离 + multiprocessing + IPC + 资源限额 + 崩溃重启);O3-O5 框架 scaffolding 待续 |
+| O | 企业化与平台扩展 | 进行中 | O1/O2/O3 已实现 (多租户隔离; 插件进程级隔离; Workflow 串/并/条件/重试);O4/O5 框架 scaffolding 待续 |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
 ## 可运行性状态
