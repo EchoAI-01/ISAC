@@ -499,11 +499,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：L1、D4 (wait 工具)、D9。
   - **当前**：已完成 (2026-07-26)。`ConversationRuntime.should_trigger` 真实 debounce 判定 (zero/positive); `enter_wait` (async) 创建 future + 启动超时定时器; `resolve_wait` 回填 `end_reason`/`actual_seconds` + 取消定时器 + 唤醒 wait 工具; `notify_new_message` 在 WAITING 时以 MESSAGE 原因结束等待。三条唤醒路径 (message/timeout/proactive) 单测覆盖 12 例; `WaitTool` enabled=True 时调 `enter_wait`+`await_wait`, enabled=False 保持原意图字符串 (零行为变化)。`assembly.py` 注入 `conversation_enabled` 标志。debounce 接入 manager 主链路 (连续消息合并) 留 L3+ 节点, 不影响 L2 验收。
 
-- [ ] **L3 主动任务调度**
+- [x] **L3 主动任务调度**
   - **验收**：`ProactiveTaskQueue` 由调度器按优先级 + 冷却 + 频率边界驱动;每个主动任务必须带 source/intent/reason (禁止无来源发言);触发时唤醒对应会话的 `ConversationRuntime` 发起一次强制话轮 (`ForcedTurnState`);来源经鉴权,防刷屏与滥用。
   - **产出**：主动调度循环、优先级/冷却策略、来源鉴权、强制话轮 Prompt 注入、单测与集成测试。
   - **依赖**：L1、L2、门控 (存在感/频率)。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `conversation/scheduler.py` (`ProactiveScheduler` 冷却/来源鉴权/强制话轮转换骨架,驱动既有 `ProactiveTaskQueue`)。真实调度循环与会话唤醒以 `TODO(L3)` 标注。
+  - **当前**：已完成 (2026-07-26)。`ProactiveTaskQueue` 改为 list 实现 priority 排序 (high>normal>low; 同优先 FIFO); `ProactiveScheduler` 加 `allowed_sources` 集合 (默认 plugin/memory/schedule/agent/api); `authorize` 拒绝不在集合内的 source; `to_forced_turn` 触发时更新 `_last_fired_at`; 新增 `async start/stop` 后台循环 (poll_interval_seconds 周期 poll → authorize → may_fire → wake_callback, 冷却中任务退回队列头部)。强制话轮 Prompt 注入 + manager 接线留 L4+ 节点, 不影响 L3 验收。13 例单测覆盖 priority/authorize/start/stop/冷却/空队列/重复 stop。
 
 - [ ] **L4 Planner 打断闭环**
   - **验收**：thinking 期间到达的新消息可请求打断当前规划;`AgentContext.interrupt_requested` 由 `ConversationRuntime.request_interrupt` 写入;限制单轮打断次数、抑制被打断的旧回复、下一轮 Prompt 注入"上一轮被新消息打断"提示。
