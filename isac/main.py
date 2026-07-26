@@ -78,6 +78,9 @@ async def process_message(
     # 平台键路由, 否则 WebChat 队列键与客户端轮询键对不上, 回复永远取不到。
     platform_session_id = routed_message.session_id
     session = await session_mgr.get_or_create(routed_message, agent_id=decision.agent_id)
+    # P1: 平台会话键落到 Session, 出站主动消息 (强制话轮) 才能路由回正确队列
+    if platform_session_id and not session.platform_session_id:
+        session.platform_session_id = platform_session_id
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
     progress_sender = _make_progress_sender(
         channel_registry, routed_message, decision.agent_id, platform_session_id
@@ -196,6 +199,24 @@ def make_message_dispatcher(
     inflight: set[asyncio.Task[None]] = set()
 
     async def _process_locked(message: ISACMessage) -> None:
+        # P1: 锁外拟人化信号 —— 会话锁被正在 thinking 的上一条消息持有时, 新消息
+        # 的缓存/唤醒/打断信号必须先于锁到达 ConversationRuntime (conversation
+        # 关闭时 notify_incoming 内部短路, 零行为变化)。路由与会话解析幂等,
+        # process_message 会再次执行 (代价可忽略)。get_or_create 会把
+        # message.session_id 改写为内部 sess_*, 信号阶段结束后还原为平台会话键,
+        # 保证 process_message 自己的 platform_session_id 捕获不受影响。
+        platform_session_id = message.session_id
+        try:
+            decision = await router.route(message)
+            if decision is not None:
+                session = await session_mgr.get_or_create(message, agent_id=decision.agent_id)
+                if platform_session_id and not session.platform_session_id:
+                    session.platform_session_id = platform_session_id
+                await agent_manager.notify_incoming(decision.agent_id, session.session_id, message)
+        except Exception:  # noqa: BLE001
+            logger.warning("锁外拟人化信号处理失败, 不影响主处理", exc_info=True)
+        finally:
+            message.session_id = platform_session_id
         lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
         lock = await session_lock.acquire(lock_key)
         # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
@@ -732,6 +753,12 @@ async def main() -> None:
     # 人物画像与记忆按归一身份聚合的前提)
     user_mapper = UserMapper(str(DATA_DIR / "gateway" / "identity.db"))
     session_lock = SessionLockManager()
+    # P1: 注入 gateway/channel 句柄到共享 services —— 主动任务强制话轮需要按
+    # session_id 反查会话 (session_mgr)、经会话锁串行 (session_lock)、把回复
+    # 发回原 Channel (channel_registry); /mute 等命令路径也读 session_mgr。
+    services["session_mgr"] = session_mgr
+    services["session_lock"] = session_lock
+    services["channel_registry"] = channel_registry
 
     # P0: 消息处理并发化 —— handle_message 只负责派生任务立即返回, 适配器收取
     # 循环不再被单条消息的 LLM 往返阻塞 (跨会话真并行); 单会话仍靠会话锁串行。

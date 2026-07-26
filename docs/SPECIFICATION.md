@@ -98,6 +98,12 @@ class Session:
     last_active: int = 0                     # 最后活跃时间
     state: str = "active"                    # "active" | "idle" | "closed"
 
+    # P1: 适配器侧平台会话键 (gateway 把 session_id 改写为内部 sess_* 之前,
+    # 平台自带的会话标识, 如 WebChat 客户端的 session_id)。出站主动消息 (主动
+    # 任务/强制话轮) 必须用它路由, 客户端才能按自己的键取到回复; 按 group/user
+    # 路由的平台 (OneBot 等) 可为空。
+    platform_session_id: str = ""
+
     # 运行时状态 (不持久化)
     context: Optional[SessionContext] = None
 
@@ -280,6 +286,11 @@ class AgentConfig:
     tools_policy: dict = field(default_factory=dict)      # 覆盖全局工具权限
     commands_allow: list[str] = field(default_factory=lambda: ["*"])
     mcp_servers: list[str] = field(default_factory=list)  # 允许使用的 MCP Server 名
+
+    # P1: 拟人化会话配置覆盖 (与全局 conversation 节合并, Agent 级优先)。
+    # 可覆盖键: debounce_seconds / max_interrupts_per_turn / proactive.* 等;
+    # enabled 总开关仍以全局 conversation.enabled 为准。
+    conversation: dict = field(default_factory=dict)
 
 
 @dataclass

@@ -19,11 +19,11 @@
 | I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成;浏览器测试 CI 已随 K8 接入,待复核升 100% |
 | J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步);2026-07-26 五维度代码评审发现的 J2/J3/J4 缺口 (媒体校验未接线、J4 执行循环未接线、Token Scope/SSE scope 过滤/CSRF 会话缺失等 20 项) 已逐项修复,详见下方"J2/J3/J4 补充修复"|
 | K | 稳定化与可用版本闭环 | 100% | K1-K8 全部完成 (K8-2 Playwright CI + release_checklist 已落地) |
-| L | 拟人化运行时落地 | 实现待接线 | L1-L5 核心逻辑+单测完成;wait 闭环已接生产,但 debounce 合并/主动调度启停/打断闭环/上下文恢复 **主链路未接线**(默认关闭)→ 见 P0/P1 |
+| L | 拟人化运行时落地 | 100% | **P1 已接线 (2026-07-27)**: debounce 合并/wait 三路唤醒/thinking 期打断+旧回复抑制/主动任务强制话轮/会话快照恢复 全部接入生产主链路 (conversation.enabled 开关, 默认关闭零行为变化); L1-L5 升级为 [x] |
 | M | 路由与 Agent Mesh 深化 | 实现待接线 | M1/M2 核心逻辑+单测完成(observer/candidate 仲裁+SWITCH_MARGIN; MeshActionBroker ACL+投递; 4 A2A 工具);但 observe_message/mesh_role/broker 注入 **未接线** → 见 P2 |
 | N | 记忆深化 | 部分接线 | N2 治理已完整接入生产(含检索期软删除过滤,CR2-Fix-12);N1 MemoryItem/Adapter、N3 IdentityResolver 核心+单测完成但 **无调用点**(悬空)→ 见 P3/P4 |
 | O | 企业化与平台扩展 | 实现待接线 | O1/O2/O3 核心+单测完成但 **零调用点**(未接 store/loader/control)→ 见 P5;O4 平台适配器/O5 Video Provider 未开始(`[ ]`) |
-| P | 主链路接线与激活 | P0 完成 | **P0 消息并发化已完成 (2026-07-27)**: handle_message 任务化 (跨会话真并行+单会话串行+drain 优雅关闭, channels 生命周期改最后注册);P1 拟人化→P2 Mesh→P3 检索深化→P4 身份归一→P5 企业化 未开始。定义见 DEVELOPMENT_PLAN §四 P |
+| P | 主链路接线与激活 | P0/P1 完成 | **P0 消息并发化 + P1 拟人化激活已完成 (2026-07-27)**: handle_message 任务化 (跨会话真并行+单会话串行+drain 优雅关闭) + 锁外拟人化信号 (notify_incoming) + debounce/打断/主动任务/恢复端到端; P2 Mesh→P3 检索深化→P4 身份归一→P5 企业化 未开始。定义见 DEVELOPMENT_PLAN §四 P |
 | Q | MVP 收尾(新增) | Q0/Q1 完成 | 2026-07-26 差距复核发现、未被 P0-P5 覆盖但 MVP 必需的缺口。**Q0 开箱可触达已完成 (2026-07-27)**: 四平台注册+裸部署默认路由+样例死键修正+WebChat 端到端可聊;**Q1 记忆写入回路与身份稳定化已完成 (2026-07-27)**: 回复后 episodic 写入+画像/关系回路+UserMapper SQLite 持久化, "越聊越熟"闭环打通 (聊→重启→检索命中);其余 Q2 人格差异化、Q3 插件/MCP 生态接线、Q4 多模态工具注册、Q5 WebUI/控制面收尾、Q6 SubAgent 补漏 未开始。定义见 DEVELOPMENT_PLAN §四 Q |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
@@ -77,7 +77,7 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 
 | 能力 | 现状 | 接线节点 |
 |------|------|---------|
-| L2-L5 拟人化 | wait 闭环已接生产;debounce 合并 / 主动调度启停 / 打断闭环 / 恢复加载 未接线 (CR3-M6 已修调度器冷却饿死) | P0 → P1 |
+| L2-L5 拟人化 | **已接线 (P1, 2026-07-27)**: debounce 合并/主动调度启停/打断闭环/恢复加载全部进生产主链路 | P1 ✅ |
 | M1-M2 Mesh | 仲裁 / ACL / bus 投递 / 4 A2A 工具 已实现 (CR3-M2 已修 bus notify 假成功);observe_message / mesh_role / broker 注入 未接线 | P2 |
 | N1 MemoryItem | 契约 + Adapter 实现;`pipeline.search()` 从不调用(悬空适配层) | P3 |
 | N3 身份归一 | IdentityResolver 实现;gateway 无调用点(悬空库) | P4 |

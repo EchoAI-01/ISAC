@@ -513,34 +513,34 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 **目标**：把 `HUMANLIKE_RUNTIME.md` 描述的会话级拟人行为(消息合并、主动等待、主动任务、被打断、上下文恢复)从设计蓝图落成可运行代码。所有子节点默认由 `conversation.enabled` 开关控制,关闭时主链路零行为变化。
 
-- [~] **L1 ConversationRuntime**(骨架完成,已由 L2-L5 充实;主链路接线见 P1)
+- [x] **L1 ConversationRuntime**(骨架完成,已由 L2-L5 充实;主链路接线见 P1)
   - **验收**：每个 (agent_id, session_id) 一个 `ConversationRuntime`;具备消息缓存、状态机 (idle/thinking/acting/waiting/stopped)、`WaitState`/`ForcedTurnState` 契约、per-session 注册表 (FIFO 上限) 与主动任务队列;`conversation.enabled=False` 时 `handle_message` 完全走原路径。
   - **产出**：`runtime/conversation/{__init__,models,runtime,registry,proactive}.py`、`assembly` 注入 `conversation_registry`、`manager.handle_message` 惰性接线、`tests/unit/test_conversation_runtime.py`。
   - **依赖**：B4、E1、D9。
   - **当前**：骨架完成 + L2-L5 已实现核心逻辑 (2026-07-26)。契约 + 状态机 + registry + 主动队列 + 惰性默认关闭接线就位,单测通过,ruff/mypy 全绿,主链路零行为变化。debounce 触发 / wait 回填 / 主动调度 / 打断闭环 / 上下文恢复 见 L2-L5(均已实现核心逻辑)。**接线待办 → 见 §四 P0/P1**:把 L1-L5 接入生产主链路。
 
-- [~] **L2 Wait 闭环与 debounce 触发**
+- [x] **L2 Wait 闭环与 debounce 触发**(P1 已接线, 2026-07-27)
   - **验收**：`wait` 工具向 `ConversationRuntime.enter_wait` 注册 `WaitState`,由后续消息 / 超时 / 主动任务三条路径之一结束等待并向 AgentLoop 回填 wait 工具结果 (说明实际等待时长与结束原因);连续消息在 debounce 静默窗口内合并为一次触发,避免逐条打断。
   - **产出**：异步 debounce 触发循环、`resolve_wait` 三入口、wait 工具改造 (注册 WaitState)、超时定时器、单测与集成测试。
   - **依赖**：L1、D4 (wait 工具)、D9。
   - **当前**：已完成 (2026-07-26)。`ConversationRuntime.should_trigger` 真实 debounce 判定 (zero/positive); `enter_wait` (async) 创建 future + 启动超时定时器; `resolve_wait` 回填 `end_reason`/`actual_seconds` + 取消定时器 + 唤醒 wait 工具; `notify_new_message` 在 WAITING 时以 MESSAGE 原因结束等待。三条唤醒路径 (message/timeout/proactive) 单测覆盖 12 例; `WaitTool` enabled=True 时调 `enter_wait`+`await_wait`, enabled=False 保持原意图字符串 (零行为变化)。`assembly.py` 注入 `conversation_enabled` 标志。debounce 接入 manager 主链路 (连续消息合并) 留 §四 P1, 不影响 L2 骨架验收。
   - **接线待办 → 见 §四 P1**:debounce 连续消息合并接入 manager (依赖 P0 消息并发化)。
 
-- [~] **L3 主动任务调度**
+- [x] **L3 主动任务调度**(P1 已接线, 2026-07-27)
   - **验收**：`ProactiveTaskQueue` 由调度器按优先级 + 冷却 + 频率边界驱动;每个主动任务必须带 source/intent/reason (禁止无来源发言);触发时唤醒对应会话的 `ConversationRuntime` 发起一次强制话轮 (`ForcedTurnState`);来源经鉴权,防刷屏与滥用。
   - **产出**：主动调度循环、优先级/冷却策略、来源鉴权、强制话轮 Prompt 注入、单测与集成测试。
   - **依赖**：L1、L2、门控 (存在感/频率)。
   - **当前**：已完成 (2026-07-26)。`ProactiveTaskQueue` 改为 list 实现 priority 排序 (high>normal>low; 同优先 FIFO); `ProactiveScheduler` 加 `allowed_sources` 集合 (默认 plugin/memory/schedule/agent/api); `authorize` 拒绝不在集合内的 source; `to_forced_turn` 触发时更新 `_last_fired_at`; 新增 `async start/stop` 后台循环 (poll_interval_seconds 周期 poll → authorize → may_fire → wake_callback, 冷却中任务退回队列头部)。强制话轮 Prompt 注入 + manager 接线留 §四 P1, 不影响 L3 骨架验收。
   - **接线待办 → 见 §四 P1**:ProactiveScheduler 注入 assembly + 生命周期注册 start/stop + 强制话轮 Prompt 注入。13 例单测覆盖 priority/authorize/start/stop/冷却/空队列/重复 stop。
 
-- [~] **L4 Planner 打断闭环**
+- [x] **L4 Planner 打断闭环**(P1 已接线, 2026-07-27)
   - **验收**：thinking 期间到达的新消息可请求打断当前规划;`AgentContext.interrupt_requested` 由 `ConversationRuntime.request_interrupt` 写入;限制单轮打断次数、抑制被打断的旧回复、下一轮 Prompt 注入"上一轮被新消息打断"提示。
   - **产出**：打断信号写入路径、打断次数限制、旧回复抑制、Prompt 提示注入、单测。
   - **依赖**：L1、L2、`agent/loop.py`。
   - **当前**：已完成 (2026-07-26)。`ConversationRuntime` 加 `interrupt_state` + `max_interrupts_per_turn` (默认 1, 保守); `request_interrupt(reason)` 单轮次数限制 + 置 `superseded=True` + `interrupt_count++`; `clear_interrupt` 进入下一轮前重置。新增 `agent/injectors/interrupt.py:InterruptInjector` 注入"上一轮被打断"内部参考 (含打断次数与原因), 注入后清空状态避免重复注入。AgentLoop 接线 (thinking 后读 `superseded`) 与 manager 并发处理消息 (thinking 期间收到新消息调 `request_interrupt`) 留 §四 P0+P1, 因这两者需要 manager 用 asyncio.create_task 并发处理消息的大改动, 超出 L4 骨架验收线。
   - **接线待办 → 见 §四 P0+P1**:manager 并发处理消息 (asyncio.create_task) + thinking 期新消息调 request_interrupt + loop 读 superseded 抑制旧回复 + InterruptInjector 注册 prompt_builder。9 例单测覆盖 request/clear/单轮上限/可配置/注入/清空/默认零行为变化。
 
-- [~] **L5 上下文恢复**
+- [x] **L5 上下文恢复**(P1 已接线, 2026-07-27)
   - **验收**：进程重启后,会话的拟人状态 (未决 wait、被打断标记、主动任务) 可从持久化恢复到合理起点 (与 D9/J4 "中断后不恢复旧进度" 思路一致,标为终止/复位而非续跑)。
   - **产出**：ConversationRuntime 状态持久化 schema、启动恢复编排、恢复测试。
   - **依赖**：L1-L4、K4 (持久化恢复框架)。
@@ -651,12 +651,18 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
     - 优雅关闭: `drain_inflight` 带超时等待在途任务; channels 生命周期改到**最后注册** (LIFO 关闭最先执行: 停收取 → drain → 再关 journal/usage/providers 等下游; 此前 channels 最先注册 → 最后关闭, providers 连接池会在在途消息处理完之前被关掉)。
     - 集成测试 `tests/integration/test_p0_concurrent_dispatch.py` (3): 跨会话并发峰值≥2 / 同会话串行且回复有序 / drain 不丢在途消息。
 
-- [ ] **P1 拟人化激活**(依赖 P0 + L1-L5)
+- [x] **P1 拟人化激活**(依赖 P0 + L1-L5)
   - **目标**：把 L2-L5 已实现能力接入主链路 —— debounce 连续消息合并接入 manager(L2);ProactiveScheduler 注入 assembly + 生命周期注册 start/stop(L3);thinking 期新消息调 `request_interrupt`、loop 读 `superseded` 抑制旧回复、InterruptInjector 注册 prompt_builder(L4);启动时 `ConversationStateStore.load` 恢复 + RecoveryInjector 注册(L5);AgentConfig 增 `conversation` 配置段。
   - **验收**：`conversation.enabled=True` 时 wait/debounce/主动任务/打断/恢复端到端可用 + 集成测试;`enabled=False` 时主链路零行为变化。
   - **产出**：manager 接线、assembly 注入与注册、AgentConfig 配置段、集成测试。
   - **依赖**：P0、L2-L5。
-  - **当前**：未开始。激活后 L2-L5 升级为 `[x]`。
+  - **当前**：已完成 (2026-07-27)。L1-L5 全部升级为 `[x]`。关键设计: **拟人化信号必须在会话锁外发出** —— P0 dispatcher 在获取锁前调 `AgentManager.notify_incoming` (缓存消息 + WAITING 时 MESSAGE 唤醒 wait + THINKING 时 request_interrupt), 否则锁被正在 thinking 的上一条消息持有时信号永远到不了。
+    - **L2 debounce**: `_dispatch_message` 在命令拦截后 sleep 静默窗口, 窗口内有更新消息则本条弃权, 由最新消息统一 `drain_new_messages` 合并 (带说话人前缀多行输入, 一次 LLM 调用); 门控积压数按未 drain 缓存计。
+    - **L4 打断**: Loop 每轮 POST_LLM 后读 `services["conversation_runtime"].interrupt_state.superseded`, 命中即 `AgentResult(interrupted=True)` 抑制旧回复; manager 转 THINKING/IDLE 状态; 下一轮 InterruptInjector 注入"被打断"提示后清空。
+    - **L3 主动任务**: assembly 按 `conversation.proactive` 配置构造 ProactiveScheduler; AgentManager start/stop/destroy/reload 驱动调度循环生命周期; 唤醒回调经会话锁执行强制话轮 (合成消息带 source/intent/reason), 回复经 `session.platform_session_id` 发回原 Channel; WAITING 会话只做 PROACTIVE 唤醒不另发话轮。
+    - **L5 恢复**: 快照键改用**重启稳定**的会话键 (platform:group/user, 内部 sess_* 每次重启重生成导致旧键永不命中); 回复后随记忆写入任务落快照; assembly 组装时 `load_all` 批量恢复进 RecoveryInjector, 同会话第一轮注入"刚醒来"提示。
+    - 配置: `AgentConfig.conversation` 覆盖段 (SPECIFICATION 1.7 同步) + `Session.platform_session_id` 字段 (SPECIFICATION 1.2 同步) + `config.sample.jsonc` conversation 节。
+    - 集成测试 `tests/integration/test_p1_humanlike_activation.py` (5): debounce 合并单次 LLM 调用 / 打断抑制旧回复+提示注入 / 主动任务强制话轮真实送达 / 快照稳定键往返恢复 / wait 被新消息唤醒 (远早于超时)。`enabled=False` 零行为变化由既有 1178 测试兜底。
 
 - [ ] **P2 Mesh 激活**(依赖 M1/M2 + E3 bus)
   - **目标**：AgentConfig 增 `mesh_role`;`manager.observe_message` 实现旁听/候选路由(M1);assembly 注入 `MeshRouter`/`MeshActionBroker`,4 个 A2A 工具(notify/handoff/list/memory_query)获得 broker 后真正可用(M2);动作审计埋点。**(2026-07-26 差距复核扩充)** broker 注入只让 `list_available_agents` 真正可用——`notify`/`handoff`/`memory_query` 若要成为"真正可用"而非"能发一条消息",还需:①`InterAgentLink` 增 `permissions`/`visible_memory_scopes`/`max_context_messages` 配置面(`links.jsonc` 与控制面 API),按 (from_agent, to_agent) 解析出对应 `MeshLinkPolicy` 注入(而非当前假设的单值 `services["mesh_link_policy"]`);②`handoff_conversation` 需接收端识别 `HANDOFF` 类型消费 `context.summary` + Router/manager 侧临时切换 `primary_agent_id`,实现真正的会话所有权转移(当前只是发了一条普通消息);③`memory_query_agent` 需接收端按 `context.filters.scopes` 过滤检索记忆,并把结果经 `bus.send` 的 response 通道同步返回给查询方(当前 `_send` 忽略 `bus.send` 返回值,查询方永远拿不到结果)。

@@ -53,6 +53,10 @@ class AgentConfig:
     commands_allow: list[str] = field(default_factory=lambda: ["*"])
     mcp_servers: list[str] = field(default_factory=list)  # 允许使用的 MCP Server 名
 
+    # P1: 拟人化会话配置覆盖 (与全局 conversation 节合并, Agent 级优先;
+    # enabled 总开关仍以全局 conversation.enabled 为准, SPECIFICATION.md 1.7)
+    conversation: dict[str, Any] = field(default_factory=dict)
+
     # J3-2: 配置版本号, 用于乐观锁 (If-Match); 每次 save_agent_config +1
     revision: int = 1
 

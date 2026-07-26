@@ -39,6 +39,11 @@ class Session:
     # GatingSystem.evaluate 在门控阶段检查它, 直接返回 WAIT。
     muted_until: float = 0.0
 
+    # P1: 适配器侧平台会话键 (gateway 改写 session_id 前平台自带的会话标识,
+    # 如 WebChat 客户端的 session_id)。出站主动消息 (主动任务/强制话轮) 用它
+    # 路由; 按 group/user 路由的平台可为空 (SPECIFICATION.md 1.2)。
+    platform_session_id: str = ""
+
     # 运行时状态 (不持久化)
     context: SessionContext | None = None
 

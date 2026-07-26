@@ -117,6 +117,23 @@
     "reranker": {}
   },
 
+  // P1 拟人化会话运行时 (默认关闭 = 每条消息即时处理, 零行为变化)
+  // enabled=true 后:
+  //   - debounce_seconds: 静默窗口秒数, 窗口内的连续消息合并为一轮处理 (0 = 不合并)
+  //   - 新消息可唤醒 wait 工具、可打断正在思考的回合 (被打断的旧回复被抑制)
+  //   - max_interrupts_per_turn: 单轮最多被打断次数
+  //   - proactive: 主动任务调度 (经 ProactiveScheduler, 冷却按 session 隔离)
+  // 每个 Agent 可在 AgentConfig.conversation 覆盖除 enabled 外的键。
+  "conversation": {
+    "enabled": false,
+    "debounce_seconds": 1.5,
+    "max_interrupts_per_turn": 1,
+    "proactive": {
+      "min_interval_seconds": 600,
+      "poll_interval_seconds": 1.0
+    }
+  },
+
   // 多租户隔离 (O1, 默认关闭 = 单租户零行为变化)
   // enabled=true 且填入非 default 的 org/tenant 时: 记忆命名空间加 org:tenant 前缀,
   // episodes 读写带租户谓词/打标 (多个租户进程共享同一数据目录时互不可见)。

@@ -89,12 +89,33 @@ class ConversationStateStore:
         path = self._snapshot_path(agent_id, session_id)
         if not path.exists():
             return None
+        return self._load_path(path, agent_id, session_id)
+
+    def load_all(self, agent_id: str) -> dict[str, ConversationSnapshot]:
+        """P1(L5): 载入某 Agent 的全部未过期会话快照, 按快照内 session_id (稳定键) 索引。
+
+        供 assembly 在 Agent 组装时批量恢复 → 填充 RecoveryInjector.snapshots。
+        文件名是稳定键的 lossy 转义, 真实键以 JSON 内的 session_id 字段为准。
+        """
+        directory = Path(self._base_dir) / agent_id / "conversation"
+        if not directory.exists():
+            return {}
+        result: dict[str, ConversationSnapshot] = {}
+        for path in sorted(directory.glob("*.json")):
+            snap = self._load_path(path, agent_id, path.stem)
+            if snap is not None:
+                result[snap.session_id] = snap
+        return result
+
+    def _load_path(self, path: Path, agent_id: str, fallback_session_id: str) -> ConversationSnapshot | None:
+        """读取单个快照文件并应用短/中/长窗口判定 (load/load_all 共用)。"""
         try:
             with path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("会话快照读取失败, 视为新会话", path=str(path), error=str(exc))
             return None
+        session_id = str(data.get("session_id", fallback_session_id))
         last_active_at = float(data.get("last_active_at", 0.0))
         elapsed = time.time() - last_active_at
         # 超过 24h 不恢复 (视为新会话)
@@ -109,7 +130,7 @@ class ConversationStateStore:
         hint = self._build_recovery_hint(elapsed)
         snap = ConversationSnapshot(
             agent_id=str(data.get("agent_id", agent_id)),
-            session_id=str(data.get("session_id", session_id)),
+            session_id=session_id,
             state="idle",  # 复位运行态 (中断后不续跑旧进度)
             pending_wait=None,  # 未决 wait 标记为终止
             recent_message_ids=list(data.get("recent_message_ids", [])),

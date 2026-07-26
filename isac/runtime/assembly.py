@@ -54,12 +54,66 @@ from isac.memory.injector.mid_term import MidTermMemoryInjector
 from isac.memory.injector.person_profile import PersonProfileInjector
 from isac.persona.manager import PersonaManager
 from isac.runtime.config import AgentConfig
-from isac.runtime.conversation import ConversationRuntimeRegistry
+from isac.runtime.conversation import (
+    ConversationRuntimeRegistry,
+    ConversationStateStore,
+    ProactiveScheduler,
+)
 from isac.runtime.instance import AgentInstance
 from isac.runtime.progress import build_progress_reporter
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+async def _setup_conversation_runtime(
+    config: AgentConfig,
+    global_config: dict,
+    agent_services: dict[str, Any],
+    prompt_builder: SystemPromptBuilder,
+) -> None:
+    """P1: 拟人化会话子系统装配 (registry/开关/打断恢复注入器/调度器/状态存储)。
+
+    - L1: 会话级运行时注册表 (每 Agent 独立, 会话间隔离); 配置为
+      全局 conversation 节 ∪ Agent 级覆盖 (AgentConfig.conversation, enabled 除外)。
+    - CR2-Fix-8: InterruptInjector 经 runtime_provider 闭包按 session 查询;
+      enabled=False 时短路返回 None, 零行为变化。
+    - P1(L3/L5): enabled=True 时构造 ProactiveScheduler (start/stop 由 AgentManager
+      随 Agent 生命周期驱动) + ConversationStateStore, 并把未过期会话快照批量恢复
+      进 RecoveryInjector (下一轮对话注入"刚醒来"提示)。
+    """
+    conv_merged = {**(global_config.get("conversation", {}) or {}), **(config.conversation or {})}
+    agent_services["conversation_registry"] = ConversationRuntimeRegistry(
+        max_interrupts_per_turn=max(1, int(conv_merged.get("max_interrupts_per_turn", 1) or 1))
+    )
+    conversation_enabled = bool(global_config.get("conversation", {}).get("enabled", False))
+    agent_services["conversation_enabled"] = conversation_enabled
+
+    def _interrupt_runtime_provider(session_id: str):  # noqa: ANN001, ANN202
+        if not agent_services["conversation_enabled"]:
+            return None
+        return agent_services["conversation_registry"].get(config.agent_id, session_id)
+
+    prompt_builder.register(InterruptInjector(runtime_provider=_interrupt_runtime_provider))
+    recovery_injector = RecoveryInjector()
+    prompt_builder.register(recovery_injector)
+
+    if not conversation_enabled:
+        return
+    import asyncio as _asyncio
+
+    proactive_cfg = conv_merged.get("proactive", {}) or {}
+    agent_services["proactive_scheduler"] = ProactiveScheduler(
+        min_interval_seconds=float(proactive_cfg.get("min_interval_seconds", 600) or 0),
+        poll_interval_seconds=float(proactive_cfg.get("poll_interval_seconds", 1.0) or 1.0),
+    )
+    state_store = ConversationStateStore()
+    agent_services["conversation_state_store"] = state_store
+    snapshots = await _asyncio.to_thread(state_store.load_all, config.agent_id)
+    for stable_key, snapshot in snapshots.items():
+        recovery_injector.add_snapshot(stable_key, snapshot)
+    if snapshots:
+        logger.info("会话拟人状态快照已恢复", agent_id=config.agent_id, count=len(snapshots))
 
 
 async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> AgentInstance:
@@ -182,27 +236,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # 两处不一致会导致 wait 工具操作另一个 registry key, 永远等不到真实唤醒)。
     agent_services["agent_id"] = config.agent_id
 
-    # L1: 会话级拟人运行时注册表 (每 Agent 独立, 会话间隔离)。默认不接入主链路,
-    # conversation.enabled=True 时由 manager.handle_message 启用消息缓存/状态机。
-    agent_services["conversation_registry"] = ConversationRuntimeRegistry()
-    # L2: 把 conversation.enabled 标志透传给 wait 工具等子模块, 避免每个工具都重读
-    # global_config; 默认 False 保持零行为变化。
-    agent_services["conversation_enabled"] = bool(
-        global_config.get("conversation", {}).get("enabled", False)
-    )
-
-    # CR2-Fix-8: InterruptInjector/RecoveryInjector 此前从未注册进 prompt_builder,
-    # 即使 ConversationRuntime.request_interrupt/恢复快照被触发, 提示也不会出现在
-    # System Prompt 里。runtime_provider 用闭包固定 config.agent_id, 按
-    # context.session.session_id 动态查询对应 ConversationRuntime; enabled=False
-    # 时短路返回 None, 不调用 registry.get(), 不创建任何实例 (零行为变化)。
-    def _interrupt_runtime_provider(session_id: str):  # noqa: ANN001, ANN202
-        if not agent_services["conversation_enabled"]:
-            return None
-        return agent_services["conversation_registry"].get(config.agent_id, session_id)
-
-    prompt_builder.register(InterruptInjector(runtime_provider=_interrupt_runtime_provider))
-    prompt_builder.register(RecoveryInjector())  # 已按 session_id 动态查快照, 无需改造
+    await _setup_conversation_runtime(config, global_config, agent_services, prompt_builder)
 
     loop = ISACAgentLoop(
         llm=llm,
