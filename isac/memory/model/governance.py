@@ -22,6 +22,21 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# CR2-Fix-13: correct() 对 new_content 的最大字节长度; 超出截断, 防止治理接口
+# 被当作"塞任意大小文本"的载体 (风格与 subagent/journal.py 的 max_log_bytes
+# 截断惯例一致: 按字节截断 + errors="ignore" 丢弃残余多字节字符 + 追加后缀)。
+_MAX_CORRECTED_CONTENT_BYTES = 20_000
+_TRUNCATION_SUFFIX = "...(已截断)"
+
+
+def _truncate_content(content: str, *, max_bytes: int = _MAX_CORRECTED_CONTENT_BYTES) -> str:
+    encoded = content.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return content
+    suffix_bytes = _TRUNCATION_SUFFIX.encode("utf-8")
+    truncated = encoded[: max(0, max_bytes - len(suffix_bytes))].decode("utf-8", errors="ignore")
+    return truncated + _TRUNCATION_SUFFIX
+
 
 class MemoryGovernor:
     """记忆治理器 (freeze/protect/correct/delete/restore/export)。
@@ -121,17 +136,26 @@ class MemoryGovernor:
         return True
 
     async def correct(self, item_id: str, new_content: str, agent_id: str) -> bool:
-        """纠正记忆内容 (保留可追溯历史到 memory_revisions)。无 store 或不属于 agent_id 返回 False。"""
+        """纠正记忆内容 (保留可追溯历史到 memory_revisions)。
+
+        无 store、不属于 agent_id 或条目已 frozen (不再自动更新, 与 delete() 对
+        protected 的拒绝方式一致) 时返回 False。new_content 超长时截断
+        (见 _MAX_CORRECTED_CONTENT_BYTES), 防止治理接口被当作任意大小文本载体。
+        """
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
         revision_id = uuid.uuid4().hex
         now = int(time.time())
+        new_content = _truncate_content(new_content)
         async with aiosqlite.connect(db_path) as db:
             cursor = await db.execute(
-                "SELECT content FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+                "SELECT content, frozen FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
             )
             row = await cursor.fetchone()
+            if row and row[1] == 1:
+                logger.info("记忆条目已冻结, 拒绝纠正", item_id=item_id)
+                return False
             old_content = row[0] if row else ""
             await db.execute(
                 "INSERT INTO memory_revisions (revision_id, item_id, old_content, new_content, corrected_at, reason) "
