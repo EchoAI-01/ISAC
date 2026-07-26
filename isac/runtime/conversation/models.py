@@ -79,6 +79,9 @@ class ProactiveTask:
     priority: str = "normal"
     created_at: float = 0.0
     metadata: dict = field(default_factory=dict)
+    # CR2-Fix-7: 供 ProactiveScheduler.authorize 做来源令牌校验 (source_tokens 配置了
+    # 对应 source 时必须匹配); 默认空串, 未配置 source_tokens 时不参与校验 (向后兼容)。
+    caller_token: str = ""
 
 
 @dataclass

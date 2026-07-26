@@ -9,6 +9,7 @@ wake_callback (manager 注入, 唤醒对应会话 ConversationRuntime)。默认 
 from __future__ import annotations
 
 import asyncio
+import hmac
 from collections.abc import Awaitable, Callable
 
 from isac.runtime.conversation.models import ForcedTurnState, ProactiveTask, TriggerSource
@@ -39,6 +40,7 @@ class ProactiveScheduler:
         min_interval_seconds: float = 0.0,
         allowed_sources: frozenset[str] | set[str] | None = None,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        source_tokens: dict[str, str] | None = None,
     ) -> None:
         # 用 is None 判定而非 `queue or ...`: 空队列 __len__==0 为 falsy, or 会误建新队列。
         self.queue = queue if queue is not None else ProactiveTaskQueue()
@@ -47,6 +49,9 @@ class ProactiveScheduler:
             frozenset(allowed_sources) if allowed_sources is not None else DEFAULT_ALLOWED_SOURCES
         )
         self.poll_interval_seconds = max(0.05, float(poll_interval_seconds))
+        # CR2-Fix-7: source → 期望 caller_token 的映射。未配置的 source 不参与
+        # token 校验 (保持纯字符串白名单的向后兼容行为)。
+        self.source_tokens: dict[str, str] = dict(source_tokens) if source_tokens else {}
         # CR2-Fix-6: 按 session_id 隔离冷却状态 (曾是调度器级单一时间戳, 会让
         # 一个高频会话占用整个 Agent 唯一的冷却窗口, 饿死其他会话的合法提醒)。
         # 未传 session_id 时用 "" 作为 key, 等价于旧的单一冷却状态 (向后兼容)。
@@ -70,10 +75,19 @@ class ProactiveScheduler:
         """校验主动任务来源合法 (禁止无来源随机发言)。
 
         L3: source 在 allowed_sources 中 + source/intent/reason 非空。
+        CR2-Fix-7: source_tokens 里配置了该 source 的期望 token 时, 还必须
+        task.caller_token 恒定时间比较匹配 —— 单纯字符串白名单不能证明调用方
+        真的是它声称的来源, 任何能构造 ProactiveTask(source=...) 的代码都能
+        通过纯白名单检查。未配置 token 的 source 保持原白名单行为 (向后兼容)。
         """
         if not (task.source and task.intent and task.reason):
             return False
-        return task.source in self.allowed_sources
+        if task.source not in self.allowed_sources:
+            return False
+        expected_token = self.source_tokens.get(task.source)
+        if expected_token is not None and not hmac.compare_digest(task.caller_token, expected_token):
+            return False
+        return True
 
     def to_forced_turn(self, task: ProactiveTask, *, now: float | None = None) -> ForcedTurnState:
         """把一个主动任务转成强制话轮状态 (供 ConversationRuntime 发起)。

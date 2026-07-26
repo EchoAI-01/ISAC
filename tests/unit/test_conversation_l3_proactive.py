@@ -100,6 +100,24 @@ def test_scheduler_default_allowed_sources_allows_known_sources() -> None:
         assert sched.authorize(_task(source=s)) is True
 
 
+def test_scheduler_authorize_rejects_forged_source_without_matching_token() -> None:
+    """CR2-Fix-7: authorize() 此前只是字符串白名单, 任何能构造
+    ProactiveTask(source="plugin", ...) 的代码都能通过鉴权, 没有身份/签名校验。
+    配置了 source_tokens 后, 该 source 的任务必须带匹配的 caller_token。"""
+    sched = ProactiveScheduler(source_tokens={"plugin": "real-secret"})
+    # 持有正确 token 的合法调用方通过
+    assert sched.authorize(_task(source="plugin", caller_token="real-secret")) is True
+    # 伪造 source 但不持有正确 token 的调用方被拒绝
+    assert sched.authorize(_task(source="plugin", caller_token="forged")) is False
+    assert sched.authorize(_task(source="plugin", caller_token="")) is False
+
+
+def test_scheduler_authorize_skips_token_check_for_unconfigured_source() -> None:
+    """未在 source_tokens 中配置 token 的 source 保持现状白名单行为 (向后兼容)。"""
+    sched = ProactiveScheduler(source_tokens={"plugin": "real-secret"})
+    assert sched.authorize(_task(source="memory", caller_token="")) is True
+
+
 # ── ProactiveScheduler.to_forced_turn ─────────────────────────────
 
 
