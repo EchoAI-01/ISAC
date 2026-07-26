@@ -204,7 +204,7 @@ class MetadataStore:
         clean_query = " ".join(str(query or "").split())
         if not clean_query:
             return []
-        conditions = ["episodes_fts MATCH ?", "episodes.agent_id = ?"]
+        conditions = ["episodes_fts MATCH ?", "episodes.agent_id = ?", "episodes.deleted = 0"]
         params: list[Any] = [self._fts_query(clean_query), agent_id]
         if group_id:
             conditions.append("episodes.group_id = ?")
@@ -240,7 +240,7 @@ class MetadataStore:
         if not ordered_ids:
             return []
         placeholders = ",".join("?" for _ in ordered_ids)
-        conditions = ["agent_id = ?", f"id IN ({placeholders})"]
+        conditions = ["agent_id = ?", f"id IN ({placeholders})", "deleted = 0"]
         params: list[Any] = [agent_id, *ordered_ids]
         if group_id:
             conditions.append("group_id = ?")
