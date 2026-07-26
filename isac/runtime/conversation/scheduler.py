@@ -47,19 +47,24 @@ class ProactiveScheduler:
             frozenset(allowed_sources) if allowed_sources is not None else DEFAULT_ALLOWED_SOURCES
         )
         self.poll_interval_seconds = max(0.05, float(poll_interval_seconds))
-        self._last_fired_at: float = 0.0
+        # CR2-Fix-6: 按 session_id 隔离冷却状态 (曾是调度器级单一时间戳, 会让
+        # 一个高频会话占用整个 Agent 唯一的冷却窗口, 饿死其他会话的合法提醒)。
+        # 未传 session_id 时用 "" 作为 key, 等价于旧的单一冷却状态 (向后兼容)。
+        self._last_fired_at: dict[str, float] = {}
         self._loop_task: asyncio.Task[None] | None = None
         self._wake_callback: WakeCallback | None = None
 
-    def may_fire(self, now: float) -> bool:
+    def may_fire(self, now: float, session_id: str = "") -> bool:
         """是否已过冷却窗口、允许再触发一个主动任务。
 
-        L3: min_interval_seconds<=0 恒 True; 否则按 _last_fired_at + min_interval 判定。
+        L3: min_interval_seconds<=0 恒 True; 否则按该 session 的
+        _last_fired_at + min_interval 判定, 不同 session 互不影响。
         effective_frequency (存在感/关系/专注度) 留后续节点接入。
         """
         if self.min_interval_seconds <= 0.0:
             return True
-        return (now - self._last_fired_at) >= self.min_interval_seconds
+        last_fired = self._last_fired_at.get(session_id, 0.0)
+        return (now - last_fired) >= self.min_interval_seconds
 
     def authorize(self, task: ProactiveTask) -> bool:
         """校验主动任务来源合法 (禁止无来源随机发言)。
@@ -73,12 +78,13 @@ class ProactiveScheduler:
     def to_forced_turn(self, task: ProactiveTask, *, now: float | None = None) -> ForcedTurnState:
         """把一个主动任务转成强制话轮状态 (供 ConversationRuntime 发起)。
 
-        L3: 触发时更新 _last_fired_at (供下次 may_fire 判定)。now 参数便于测试。
+        L3: 触发时按 task.session_id 更新 _last_fired_at (供下次 may_fire 判定)。
+        now 参数便于测试。
         """
         import time as _time
 
         fired_at = now if now is not None else _time.time()
-        self._last_fired_at = fired_at
+        self._last_fired_at[task.session_id] = fired_at
         return ForcedTurnState(
             source=TriggerSource.PROACTIVE.value,
             reason=task.reason,
@@ -124,7 +130,7 @@ class ProactiveScheduler:
                     continue
                 import time as _time
 
-                if not self.may_fire(_time.time()):
+                if not self.may_fire(_time.time(), session_id=task.session_id):
                     # 冷却中: 任务退回队列头部, 等下次轮询 (保持 FIFO 顺序, 优先级不变)。
                     self.queue._queue.insert(0, task)  # noqa: SLF001
                     continue

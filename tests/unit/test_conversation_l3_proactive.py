@@ -109,8 +109,20 @@ def test_scheduler_to_forced_turn_marks_proactive_and_records_time() -> None:
     assert isinstance(forced, ForcedTurnState)
     assert forced.source == TriggerSource.PROACTIVE.value
     assert forced.reason == "生日提醒"
-    # 触发后 _last_fired_at 已更新 (供下次 may_fire 判定)
-    assert sched._last_fired_at == 100.0  # noqa: SLF001
+    # 触发后按 session_id 记录的 _last_fired_at 已更新 (供下次 may_fire 判定)
+    assert sched._last_fired_at["s1"] == 100.0  # noqa: SLF001
+
+
+def test_scheduler_may_fire_cooldown_is_isolated_per_session() -> None:
+    """CR2-Fix-6: 冷却此前是调度器级单一时间戳, 一个高频会话触发的主动任务会
+    占用整个 Agent 唯一的冷却窗口, 饿死其他会话的合法主动提醒。应按 session_id
+    隔离冷却状态。"""
+    sched = ProactiveScheduler(min_interval_seconds=10.0)
+    sched.to_forced_turn(_task(session_id="s1"), now=100.0)
+    # s1 刚触发过, 在冷却窗口内
+    assert sched.may_fire(105.0, session_id="s1") is False
+    # s2 从未触发过, 不受 s1 的冷却影响
+    assert sched.may_fire(105.0, session_id="s2") is True
 
 
 # ── ProactiveScheduler.start/stop 后台循环 ────────────────────────
@@ -158,8 +170,8 @@ async def test_scheduler_start_skips_when_within_cooldown() -> None:
     import time as _time
 
     sched = ProactiveScheduler(min_interval_seconds=10.0, poll_interval_seconds=0.02)
-    # 模拟"刚触发过一次": _last_fired_at 设为当前时间, 此时 may_fire 应 False
-    sched._last_fired_at = _time.time()  # noqa: SLF001
+    # 模拟"刚触发过一次": s1 的 _last_fired_at 设为当前时间, 此时 may_fire 应 False
+    sched._last_fired_at["s1"] = _time.time()  # noqa: SLF001
     sched.queue.enqueue(_task(task_id="t1"))
     fired: list[ProactiveTask] = []
 
