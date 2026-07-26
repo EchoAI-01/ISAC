@@ -21,7 +21,7 @@
 | K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试 CI 接入与发布准入收尾 |
 | L | 拟人化运行时落地 | 100% | L1 框架 + L2/L3/L4/L5 全部实现 (wait 闭环 + debounce + 三唤醒路径; 主动任务 priority+冷却+鉴权+后台循环; 打断次数限制+Prompt 注入; 上下文恢复短/中/长窗口) |
 | M | 路由与 Agent Mesh 深化 | 框架就位 | M1/M2 scaffolding 已落地 (runtime/mesh/ + A2A 工具骨架, 默认 deny);仲裁/投递待续 |
-| N | 记忆深化 | 进行中 | N1/N2 已实现 (MemoryItem 统一契约 + 四类型 from/to + MemoryItemAdapter; 记忆治理 freeze/protect/correct/delete/restore/export 真实 SQL + 审计);N3 框架 scaffolding 待续 |
+| N | 记忆深化 | 100% | N1/N2/N3 全部实现 (MemoryItem 统一契约 + 四类型 from/to + MemoryItemAdapter; 记忆治理 freeze/protect/correct/delete/restore/export + 审计; 跨平台身份归一 + person_identities/identity_conflicts 表 + 启发式/冲突裁决) |
 | O | 企业化与平台扩展 | 框架就位 | O1-O5 scaffolding 已落地 (多租户/插件隔离/Workflow/平台模板/Video Provider);业务实现待续 |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 

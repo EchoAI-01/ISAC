@@ -553,11 +553,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：N1、G (控制面)。
   - **当前**：已完成 (2026-07-26)。`MetadataStore.init_schema` 给 `episodes` 加 `frozen`/`protected`/`deleted`/`corrected_by` 治理列 (向后兼容老库, 默认 0/NULL); 新增 `memory_revisions` (corrected 历史保留) + `memory_audit` (审计日志) 表。`MemoryGovernor` 真实实现 6 类治理动作: freeze/protect 置标志位 + 审计; correct 写新版本 + memory_revisions 保留旧内容 + corrected_by 关系; delete 软删除 + protected 拒绝; restore 反向复位; export 组织为 `list[MemoryItem]` (治理状态进 metadata)。`routes_memory_admin.py` 真实接入 governor + 新增 `GET /memory/{id}/items` 列表端点。8 例单测覆盖 freeze/protect/correct/delete/restore/export + protected 拒绝 + 不存在条目返回 False。
 
-- [ ] **N3 身份归一 (IdentityResolver)**
+- [x] **N3 身份归一 (IdentityResolver)**
   - **验收**：跨平台 (不同 IM 的同一用户) 身份归一到统一 identity;记忆按归一后身份聚合;归一规则可配置、冲突可人工裁决。
   - **产出**：`IdentityResolver`、跨平台映射存储、冲突处理、单测。
   - **依赖**：C (Gateway/UserMapper)、N1。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `isac/gateway/identity/` (`PlatformIdentity`/`PersonIdentity` + `IdentityResolver` 组合既有 `UserMapper`)。`user_mapper.py` 不改。真实归一算法与冲突裁决以 `TODO(N3)` 标注。
+  - **当前**：已完成 (2026-07-26)。`IdentityResolver` 新增 `person_identities` (verified/confidence/source) + `identity_conflicts` 表 (惰性建表, sqlite3 + aiosqlite 双轨)。`resolve` 先查 verified 命中, 未命中且 heuristic_enabled=True 时按 nickname 启发式匹配 (confidence≤0.5), 仍无则委托 UserMapper 创建新 person; `bind` 写 verified=1/confidence=1.0/source=manual + 同步 UserMapper.bind (若 master_id 已存在); `merge` 合并 aliases (去重) + platform_accounts (按 (platform, user_id) 去重), confidence 取较低, verified 取 AND; `arbitrate_conflict` 按 confidence 降序取最高, <0.7 写 identity_conflicts 供人工裁决。heuristic 默认 False (防误合并)。11 例单测覆盖 resolve/bind/merge/arbitrate + heuristic 开关 + 无 mapper 兜底 + 冲突写入。
 
 ---
 
