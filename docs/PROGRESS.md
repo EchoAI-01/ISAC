@@ -81,7 +81,7 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 
 **既有桩待补:**
 
-- Reranker 真实后端 (`RerankerProvider` 目前只有 `StubRerankerProvider`)
+- ~~Reranker 真实后端 (`RerankerProvider` 目前只有 `StubRerankerProvider`)~~ 已补: `OpenAICompatRerankerProvider` (Cohere/Jina 双协议, 见 `isac/provider/rerank/openai_compat.py`)
 - MemoryConsolidator
 - L/M/N/O 全部 14 子节点的**业务实现** (契约 + 骨架已 scaffolding, 见上表);各节点 TODO(节点) 标注挂接点
 
