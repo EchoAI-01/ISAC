@@ -178,6 +178,28 @@ async def test_rerank_400_raises_non_retriable_llm_error() -> None:
         await provider.aclose()
 
 
+@pytest.mark.asyncio
+async def test_rerank_timeout_raises_retriable_llm_error_with_timeout_message() -> None:
+    """CR2-Fix-21: httpx 真实抛出的是 httpx.TimeoutException 及其子类 (如
+    ReadTimeout), 不是内建 TimeoutError —— 此前 except TimeoutError 分支是
+    死代码, 真实超时会落入下面的通用 except Exception 分支 (_wrap_network_error),
+    产生"OpenAI 网络错误 (ReadTimeout): ..."这种不提及超时、且措辞借用了 LLM
+    Provider 上下文的消息, 而不是本应更明确的"Rerank 请求超时"。两条路径的
+    retriable 都是 True, 因此用消息内容 (而非 retriable) 区分死代码是否命中。
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("simulated timeout")
+
+    provider = _make_provider(handler)
+    try:
+        with pytest.raises(LLMError) as exc_info:
+            await provider.rerank("q", ["c1"])
+        assert exc_info.value.retriable is True
+        assert "超时" in str(exc_info.value)
+    finally:
+        await provider.aclose()
+
+
 # ── JSON 解析失败 ───────────────────────────────────────────────
 
 

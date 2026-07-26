@@ -81,9 +81,16 @@ class OpenAICompatRerankerProvider(RerankerProvider):
             "top_n": len(candidates),
         }
         client = self._get_client()
+        import httpx
+
         try:
             response = await client.post("/rerank", json=payload)
-        except TimeoutError as exc:
+        except httpx.TimeoutException as exc:
+            # CR2-Fix-21: httpx 真实抛出的是 httpx.TimeoutException (及其子类
+            # ReadTimeout/ConnectTimeout/WriteTimeout/PoolTimeout), 不是内建
+            # TimeoutError —— 此前 except TimeoutError 是死代码, 真实超时会
+            # 落入下面的通用 except Exception 分支 (retriable 结果相同, 但
+            # 消息借用了 LLM Provider 上下文的措辞, 不提及"超时")。
             raise LLMError(f"Rerank 请求超时: {exc}", retriable=True) from exc
         except Exception as exc:
             raise OpenAICompatProvider._wrap_network_error(exc) from exc
