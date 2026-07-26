@@ -19,7 +19,7 @@
 | I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成 (浏览器测试 CI 接入待 K8-2) |
 | J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步);2026-07-26 五维度代码评审发现的 J2/J3/J4 缺口 (媒体校验未接线、J4 执行循环未接线、Token Scope/SSE scope 过滤/CSRF 会话缺失等 20 项) 已逐项修复,详见下方"J2/J3/J4 补充修复"|
 | K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试 CI 接入与发布准入收尾 |
-| L | 拟人化运行时落地 | 进行中 | L1 框架 + L2/L3 已实现 (wait 闭环 + debounce + 三唤醒路径; 主动任务 priority+冷却+鉴权+后台循环);L4/L5 框架 scaffolding 待续 |
+| L | 拟人化运行时落地 | 进行中 | L1 框架 + L2/L3/L4 已实现 (wait 闭环 + debounce + 三唤醒路径; 主动任务 priority+冷却+鉴权+后台循环; 打断次数限制+Prompt 注入);L5 框架 scaffolding 待续 |
 | M | 路由与 Agent Mesh 深化 | 框架就位 | M1/M2 scaffolding 已落地 (runtime/mesh/ + A2A 工具骨架, 默认 deny);仲裁/投递待续 |
 | N | 记忆深化 | 框架就位 | N1/N2/N3 scaffolding 已落地 (MemoryItem/MemoryGovernor/IdentityResolver);迁移/治理/归一待续 |
 | O | 企业化与平台扩展 | 框架就位 | O1-O5 scaffolding 已落地 (多租户/插件隔离/Workflow/平台模板/Video Provider);业务实现待续 |

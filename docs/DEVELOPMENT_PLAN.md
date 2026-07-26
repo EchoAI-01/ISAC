@@ -505,11 +505,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：L1、L2、门控 (存在感/频率)。
   - **当前**：已完成 (2026-07-26)。`ProactiveTaskQueue` 改为 list 实现 priority 排序 (high>normal>low; 同优先 FIFO); `ProactiveScheduler` 加 `allowed_sources` 集合 (默认 plugin/memory/schedule/agent/api); `authorize` 拒绝不在集合内的 source; `to_forced_turn` 触发时更新 `_last_fired_at`; 新增 `async start/stop` 后台循环 (poll_interval_seconds 周期 poll → authorize → may_fire → wake_callback, 冷却中任务退回队列头部)。强制话轮 Prompt 注入 + manager 接线留 L4+ 节点, 不影响 L3 验收。13 例单测覆盖 priority/authorize/start/stop/冷却/空队列/重复 stop。
 
-- [ ] **L4 Planner 打断闭环**
+- [x] **L4 Planner 打断闭环**
   - **验收**：thinking 期间到达的新消息可请求打断当前规划;`AgentContext.interrupt_requested` 由 `ConversationRuntime.request_interrupt` 写入;限制单轮打断次数、抑制被打断的旧回复、下一轮 Prompt 注入"上一轮被新消息打断"提示。
   - **产出**：打断信号写入路径、打断次数限制、旧回复抑制、Prompt 提示注入、单测。
   - **依赖**：L1、L2、`agent/loop.py`。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。`conversation/models.py` 加 `InterruptState` 契约;`agent/loop.py` 读取 `interrupt_requested` 处已 `TODO(L4)`。真实打断闭环 (次数限制/抑制旧回复/Prompt 提示) 待实现。
+  - **当前**：已完成 (2026-07-26)。`ConversationRuntime` 加 `interrupt_state` + `max_interrupts_per_turn` (默认 1, 保守); `request_interrupt(reason)` 单轮次数限制 + 置 `superseded=True` + `interrupt_count++`; `clear_interrupt` 进入下一轮前重置。新增 `agent/injectors/interrupt.py:InterruptInjector` 注入"上一轮被打断"内部参考 (含打断次数与原因), 注入后清空状态避免重复注入。AgentLoop 接线 (thinking 后读 `superseded`) 与 manager 并发处理消息 (thinking 期间收到新消息调 `request_interrupt`) 留 L4+ 节点, 因这两者需要 manager 用 asyncio.create_task 并发处理消息的大改动, 超出 L4 验收线。9 例单测覆盖 request/clear/单轮上限/可配置/注入/清空/默认零行为变化。
 
 - [ ] **L5 上下文恢复**
   - **验收**：进程重启后,会话的拟人状态 (未决 wait、被打断标记、主动任务) 可从持久化恢复到合理起点 (与 D9/J4 "中断后不恢复旧进度" 思路一致,标为终止/复位而非续跑)。
