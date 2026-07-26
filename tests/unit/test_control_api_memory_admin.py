@@ -149,3 +149,47 @@ class TestAuditLogging:
         assert audit_resp.status_code == 200
         actions = [entry["action"] for entry in audit_resp.json()]
         assert "freeze_memory_item" in actions
+
+
+class TestAgentIdCrossTenantValidation:
+    """CR2-Fix-11: 治理操作按 URL 里的 agent_id 校验, 不能用别的 agent_id 段操作
+    实际属于其他 Agent 的 item_id (此前 5 个写操作只按 item_id 判定, agent_id
+    段形同摆设)。"""
+
+    def test_freeze_with_wrong_agent_id_segment_is_rejected(self, metadata_store: MetadataStore) -> None:
+        import asyncio
+
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep1"))
+        client = TestClient(_make_app(metadata_store, {"api_token": "secret-token"}))
+        headers = {"Authorization": "Bearer secret-token"}
+        # ep1 实际属于 agent-a, 用 agent-b 段调用应被当作"不存在"拒绝, 而非误操作
+        resp = client.post("/api/v1/memory/agent-b/items/ep1/freeze", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
+        # 用正确的 agent_id 段仍能成功 (确认拒绝只针对越权, 不是端点整体坏了)
+        resp2 = client.post("/api/v1/memory/agent-a/items/ep1/freeze", headers=headers)
+        assert resp2.json()["ok"] is True
+
+    def test_correct_with_wrong_agent_id_segment_is_rejected(self, metadata_store: MetadataStore) -> None:
+        import asyncio
+
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep1"))
+        client = TestClient(_make_app(metadata_store, {"api_token": "secret-token"}))
+        headers = {"Authorization": "Bearer secret-token"}
+        resp = client.patch(
+            "/api/v1/memory/agent-b/items/ep1",
+            params={"new_content": "被篡改的内容"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
+
+    def test_delete_with_wrong_agent_id_segment_is_rejected(self, metadata_store: MetadataStore) -> None:
+        import asyncio
+
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep1"))
+        client = TestClient(_make_app(metadata_store, {"api_token": "secret-token"}))
+        headers = {"Authorization": "Bearer secret-token"}
+        resp = client.delete("/api/v1/memory/agent-b/items/ep1", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False

@@ -38,10 +38,18 @@ class MemoryGovernor:
             return None
         return self._store.db_path
 
-    async def _item_exists(self, db_path: str, item_id: str) -> bool:
-        """检查 item 是否存在 (用于幂等判定)。"""
+    async def _item_exists(self, db_path: str, item_id: str, agent_id: str) -> bool:
+        """检查 item 是否存在且属于指定 agent_id (幂等判定 + 跨 Agent 越权拦截)。
+
+        CR2-Fix-11: 此前只按 item_id 判定存在性, 未校验 agent_id, 导致 URL 路径
+        里的 {agent_id} 段形同摆设 —— 任何 agent_id 都能操作任意 item_id, 只要
+        item 存在。加 agent_id 条件后, item 存在但属于别的 agent 时视为"不存在"
+        (幂等语义: 返回 False, 不泄露"item 存在但属于别人"的信息)。
+        """
         async with aiosqlite.connect(db_path) as db:
-            cursor = await db.execute("SELECT 1 FROM episodes WHERE id = ?", (item_id,))
+            cursor = await db.execute(
+                "SELECT 1 FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+            )
             return await cursor.fetchone() is not None
 
     async def _write_audit(self, db_path: str, item_id: str, action: str, *, detail: str = "") -> None:
@@ -82,45 +90,47 @@ class MemoryGovernor:
             for r in rows
         ]
 
-    async def freeze(self, item_id: str) -> bool:
-        """冻结记忆条目 (不再自动更新); 幂等。无 store 返回 False。"""
+    async def freeze(self, item_id: str, agent_id: str) -> bool:
+        """冻结记忆条目 (不再自动更新); 幂等。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id):
+        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
         async with aiosqlite.connect(db_path) as db:
             await db.execute(
-                "UPDATE episodes SET frozen = 1, updated_at = ? WHERE id = ?",
-                (int(time.time()), item_id),
+                "UPDATE episodes SET frozen = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
+                (int(time.time()), item_id, agent_id),
             )
             await db.commit()
-        logger.info("记忆条目已冻结", item_id=item_id)
+        logger.info("记忆条目已冻结", item_id=item_id, agent_id=agent_id)
         await self._write_audit(db_path, item_id, "freeze")
         return True
 
-    async def protect(self, item_id: str) -> bool:
-        """保护记忆条目 (不被自动清理/覆盖); 幂等。无 store 返回 False。"""
+    async def protect(self, item_id: str, agent_id: str) -> bool:
+        """保护记忆条目 (不被自动清理/覆盖); 幂等。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id):
+        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
         async with aiosqlite.connect(db_path) as db:
             await db.execute(
-                "UPDATE episodes SET protected = 1, updated_at = ? WHERE id = ?",
-                (int(time.time()), item_id),
+                "UPDATE episodes SET protected = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
+                (int(time.time()), item_id, agent_id),
             )
             await db.commit()
-        logger.info("记忆条目已保护", item_id=item_id)
+        logger.info("记忆条目已保护", item_id=item_id, agent_id=agent_id)
         await self._write_audit(db_path, item_id, "protect")
         return True
 
-    async def correct(self, item_id: str, new_content: str) -> bool:
-        """纠正记忆内容 (保留可追溯历史到 memory_revisions)。无 store 返回 False。"""
+    async def correct(self, item_id: str, new_content: str, agent_id: str) -> bool:
+        """纠正记忆内容 (保留可追溯历史到 memory_revisions)。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id):
+        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
         revision_id = uuid.uuid4().hex
         now = int(time.time())
         async with aiosqlite.connect(db_path) as db:
-            cursor = await db.execute("SELECT content FROM episodes WHERE id = ?", (item_id,))
+            cursor = await db.execute(
+                "SELECT content FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+            )
             row = await cursor.fetchone()
             old_content = row[0] if row else ""
             await db.execute(
@@ -129,46 +139,48 @@ class MemoryGovernor:
                 (revision_id, item_id, old_content, new_content, now, "correct"),
             )
             await db.execute(
-                "UPDATE episodes SET content = ?, corrected_by = ?, updated_at = ? WHERE id = ?",
-                (new_content, revision_id, now, item_id),
+                "UPDATE episodes SET content = ?, corrected_by = ?, updated_at = ? WHERE id = ? AND agent_id = ?",
+                (new_content, revision_id, now, item_id, agent_id),
             )
             await db.commit()
         logger.info("记忆条目已纠正", item_id=item_id, revision_id=revision_id)
         await self._write_audit(db_path, item_id, "correct", detail=f"revision_id={revision_id}")
         return True
 
-    async def delete(self, item_id: str) -> bool:
-        """软删除记忆条目 (deleted=1); protected 条目拒绝。无 store 返回 False。"""
+    async def delete(self, item_id: str, agent_id: str) -> bool:
+        """软删除记忆条目 (deleted=1); protected 条目拒绝。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id):
+        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
         async with aiosqlite.connect(db_path) as db:
-            cursor = await db.execute("SELECT protected FROM episodes WHERE id = ?", (item_id,))
+            cursor = await db.execute(
+                "SELECT protected FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+            )
             row = await cursor.fetchone()
             if row and row[0] == 1:
                 logger.info("记忆条目受保护, 拒绝删除", item_id=item_id)
                 return False
             await db.execute(
-                "UPDATE episodes SET deleted = 1, updated_at = ? WHERE id = ?",
-                (int(time.time()), item_id),
+                "UPDATE episodes SET deleted = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
+                (int(time.time()), item_id, agent_id),
             )
             await db.commit()
-        logger.info("记忆条目已软删除", item_id=item_id)
+        logger.info("记忆条目已软删除", item_id=item_id, agent_id=agent_id)
         await self._write_audit(db_path, item_id, "delete")
         return True
 
-    async def restore(self, item_id: str) -> bool:
-        """恢复被删除/冻结的条目 (反向操作: deleted=0, frozen=0)。无 store 返回 False。"""
+    async def restore(self, item_id: str, agent_id: str) -> bool:
+        """恢复被删除/冻结的条目 (反向操作: deleted=0, frozen=0)。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id):
+        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
         async with aiosqlite.connect(db_path) as db:
             await db.execute(
-                "UPDATE episodes SET deleted = 0, frozen = 0, updated_at = ? WHERE id = ?",
-                (int(time.time()), item_id),
+                "UPDATE episodes SET deleted = 0, frozen = 0, updated_at = ? WHERE id = ? AND agent_id = ?",
+                (int(time.time()), item_id, agent_id),
             )
             await db.commit()
-        logger.info("记忆条目已恢复", item_id=item_id)
+        logger.info("记忆条目已恢复", item_id=item_id, agent_id=agent_id)
         await self._write_audit(db_path, item_id, "restore")
         return True
 

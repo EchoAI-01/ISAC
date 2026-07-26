@@ -42,28 +42,28 @@ def build_router(
 
     @router.post("/memory/{agent_id}/items/{item_id}/freeze", dependencies=write_deps)
     async def freeze(agent_id: str, item_id: str) -> dict:
-        ok = await governor.freeze(item_id)
+        ok = await governor.freeze(item_id, agent_id)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}/freeze"
         await _audit_if_ok(audit_log, ok, "POST", path, "freeze_memory_item", item_id)
         return {"ok": ok, "detail": "frozen" if ok else "item not found or already frozen"}
 
     @router.post("/memory/{agent_id}/items/{item_id}/protect", dependencies=write_deps)
     async def protect(agent_id: str, item_id: str) -> dict:
-        ok = await governor.protect(item_id)
+        ok = await governor.protect(item_id, agent_id)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}/protect"
         await _audit_if_ok(audit_log, ok, "POST", path, "protect_memory_item", item_id)
         return {"ok": ok, "detail": "protected" if ok else "item not found or already protected"}
 
     @router.patch("/memory/{agent_id}/items/{item_id}", dependencies=write_deps)
     async def correct(agent_id: str, item_id: str, new_content: str = "") -> dict:
-        ok = await governor.correct(item_id, new_content)
+        ok = await governor.correct(item_id, new_content, agent_id)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}"
         await _audit_if_ok(audit_log, ok, "PATCH", path, "correct_memory_item", item_id)
         return {"ok": ok, "detail": "corrected with revision history" if ok else "item not found"}
 
     @router.delete("/memory/{agent_id}/items/{item_id}", dependencies=write_deps)
     async def delete(agent_id: str, item_id: str) -> dict:
-        ok = await governor.delete(item_id)
+        ok = await governor.delete(item_id, agent_id)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}"
         await _audit_if_ok(audit_log, ok, "DELETE", path, "delete_memory_item", item_id)
         return {
@@ -73,7 +73,7 @@ def build_router(
 
     @router.post("/memory/{agent_id}/items/{item_id}/restore", dependencies=write_deps)
     async def restore(agent_id: str, item_id: str) -> dict:
-        ok = await governor.restore(item_id)
+        ok = await governor.restore(item_id, agent_id)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}/restore"
         await _audit_if_ok(audit_log, ok, "POST", path, "restore_memory_item", item_id)
         return {"ok": ok, "detail": "restored" if ok else "item not found"}

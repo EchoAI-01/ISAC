@@ -44,9 +44,9 @@ async def test_freeze_sets_frozen_flag_and_writes_audit(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:
     store, gov = store_and_governor
-    assert await gov.freeze("ep1") is True
+    assert await gov.freeze("ep1", "a1") is True
     # 二次 freeze 应幂等 (仍 True)
-    assert await gov.freeze("ep1") is True
+    assert await gov.freeze("ep1", "a1") is True
     # 数据库行 frozen=1
     async with _connect(store) as db:
         cursor = await db.execute("SELECT frozen FROM episodes WHERE id = ?", ("ep1",))
@@ -63,7 +63,7 @@ async def test_protect_sets_protected_flag_and_writes_audit(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:
     store, gov = store_and_governor
-    assert await gov.protect("ep1") is True
+    assert await gov.protect("ep1", "a1") is True
     async with _connect(store) as db:
         cursor = await db.execute("SELECT protected FROM episodes WHERE id = ?", ("ep1",))
         row = await cursor.fetchone()
@@ -77,7 +77,7 @@ async def test_correct_writes_new_version_and_keeps_history(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:
     store, gov = store_and_governor
-    assert await gov.correct("ep1", "纠正后内容") is True
+    assert await gov.correct("ep1", "纠正后内容", "a1") is True
     # episodes.content 已更新为新内容
     async with _connect(store) as db:
         cursor = await db.execute("SELECT content, corrected_by FROM episodes WHERE id = ?", ("ep1",))
@@ -97,7 +97,7 @@ async def test_delete_soft_deletes_and_writes_audit(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:
     store, gov = store_and_governor
-    assert await gov.delete("ep1") is True
+    assert await gov.delete("ep1", "a1") is True
     # 软删除: deleted=1, 行仍在
     async with _connect(store) as db:
         cursor = await db.execute("SELECT deleted FROM episodes WHERE id = ?", ("ep1",))
@@ -112,8 +112,8 @@ async def test_delete_protected_item_is_rejected(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:
     store, gov = store_and_governor
-    await gov.protect("ep1")
-    assert await gov.delete("ep1") is False  # protected 拒绝
+    await gov.protect("ep1", "a1")
+    assert await gov.delete("ep1", "a1") is False  # protected 拒绝
     # 行未被删除
     async with _connect(store) as db:
         cursor = await db.execute("SELECT deleted FROM episodes WHERE id = ?", ("ep1",))
@@ -126,9 +126,9 @@ async def test_restore_resets_deleted_and_frozen(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:
     store, gov = store_and_governor
-    await gov.freeze("ep1")
-    await gov.delete("ep1")
-    assert await gov.restore("ep1") is True
+    await gov.freeze("ep1", "a1")
+    await gov.delete("ep1", "a1")
+    assert await gov.restore("ep1", "a1") is True
     async with _connect(store) as db:
         cursor = await db.execute("SELECT deleted, frozen FROM episodes WHERE id = ?", ("ep1",))
         row = await cursor.fetchone()
@@ -158,7 +158,69 @@ async def test_freeze_nonexistent_returns_false(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:
     _store, gov = store_and_governor
-    assert await gov.freeze("nonexistent_id") is False
+    assert await gov.freeze("nonexistent_id", "a1") is False
+
+
+# ── CR2-Fix-11: 治理操作按 agent_id 校验, 拒绝跨 Agent 操作 ──────────
+
+
+@pytest.mark.asyncio
+async def test_freeze_rejects_item_belonging_to_different_agent(
+    store_and_governor: tuple[MetadataStore, MemoryGovernor],
+) -> None:
+    """ep1 属于 a1; 用 a2 的 agent_id 调用 freeze 应被拒绝, 而非误判为"存在"。"""
+    store, gov = store_and_governor
+    assert await gov.freeze("ep1", "a2") is False
+    async with _connect(store) as db:
+        cursor = await db.execute("SELECT frozen FROM episodes WHERE id = ?", ("ep1",))
+        row = await cursor.fetchone()
+        assert row is not None and row[0] == 0  # 未被冻结
+
+
+@pytest.mark.asyncio
+async def test_protect_rejects_item_belonging_to_different_agent(
+    store_and_governor: tuple[MetadataStore, MemoryGovernor],
+) -> None:
+    _store, gov = store_and_governor
+    assert await gov.protect("ep1", "a2") is False
+
+
+@pytest.mark.asyncio
+async def test_correct_rejects_item_belonging_to_different_agent(
+    store_and_governor: tuple[MetadataStore, MemoryGovernor],
+) -> None:
+    store, gov = store_and_governor
+    assert await gov.correct("ep1", "被篡改的内容", "a2") is False
+    async with _connect(store) as db:
+        cursor = await db.execute("SELECT content FROM episodes WHERE id = ?", ("ep1",))
+        row = await cursor.fetchone()
+        assert row is not None and row[0] == "原始内容"  # 内容未被跨 Agent 篡改
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_item_belonging_to_different_agent(
+    store_and_governor: tuple[MetadataStore, MemoryGovernor],
+) -> None:
+    store, gov = store_and_governor
+    assert await gov.delete("ep1", "a2") is False
+    async with _connect(store) as db:
+        cursor = await db.execute("SELECT deleted FROM episodes WHERE id = ?", ("ep1",))
+        row = await cursor.fetchone()
+        assert row is not None and row[0] == 0  # 未被删除
+
+
+@pytest.mark.asyncio
+async def test_restore_rejects_item_belonging_to_different_agent(
+    store_and_governor: tuple[MetadataStore, MemoryGovernor],
+) -> None:
+    """先用 a1 冻结 (合法), 再用 a2 尝试 restore, 应被拒绝且冻结状态不变。"""
+    store, gov = store_and_governor
+    await gov.freeze("ep1", "a1")
+    assert await gov.restore("ep1", "a2") is False
+    async with _connect(store) as db:
+        cursor = await db.execute("SELECT frozen FROM episodes WHERE id = ?", ("ep1",))
+        row = await cursor.fetchone()
+        assert row is not None and row[0] == 1  # 仍处于冻结状态
 
 
 # ── 辅助 ────────────────────────────────────────────────────────
