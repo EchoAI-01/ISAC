@@ -178,7 +178,7 @@ class TestAgentIdCrossTenantValidation:
         headers = {"Authorization": "Bearer secret-token"}
         resp = client.patch(
             "/api/v1/memory/agent-b/items/ep1",
-            params={"new_content": "被篡改的内容"},
+            json={"new_content": "被篡改的内容"},
             headers=headers,
         )
         assert resp.status_code == 200
@@ -193,3 +193,36 @@ class TestAgentIdCrossTenantValidation:
         resp = client.delete("/api/v1/memory/agent-b/items/ep1", headers=headers)
         assert resp.status_code == 200
         assert resp.json()["ok"] is False
+
+
+class TestCorrectRequestBody:
+    """CR2-Fix-14: new_content 通过 JSON body 传入, 不再绑定为 query 参数
+    (长文本进 URL 会污染访问日志/代理场景)。"""
+
+    def test_correct_via_json_body_succeeds(self, metadata_store: MetadataStore) -> None:
+        import asyncio
+
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep1"))
+        client = TestClient(_make_app(metadata_store, {"api_token": "secret-token"}))
+        headers = {"Authorization": "Bearer secret-token"}
+        resp = client.patch(
+            "/api/v1/memory/agent-a/items/ep1",
+            json={"new_content": "纠正后的内容"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_correct_via_query_string_alone_no_longer_binds(self, metadata_store: MetadataStore) -> None:
+        """只传 query string、不传 JSON body 应 422 (证明 new_content 已不再
+        从 query 参数绑定, 与此前"裸 str 参数被 FastAPI 绑成 query"的行为不同)。"""
+        import asyncio
+
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep1"))
+        client = TestClient(_make_app(metadata_store, {"api_token": "secret-token"}))
+        headers = {"Authorization": "Bearer secret-token"}
+        resp = client.patch(
+            "/api/v1/memory/agent-a/items/ep1?new_content=试图通过query串绕过",
+            headers=headers,
+        )
+        assert resp.status_code == 422
