@@ -641,12 +641,15 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 依赖顺序：P0 → P1;P2 与 P3 可并行;P4 依赖 P3;P5 独立。每个子节点完成后,把它激活的 `[~]` 节点在 §四 升级为 `[x]`。
 
-- [ ] **P0 消息处理并发化**(P1 前置基础)
+- [x] **P0 消息处理并发化**(P1 前置基础)
   - **目标**：`manager` 从"单条即时同步处理"升级为 `asyncio.create_task` 并发处理,保留单会话串行、优雅关闭等待在途任务。这是 L2 debounce 合并、L4 thinking 期打断的共同前提(L4/L2 备注均指向它)。
   - **验收**：并发处理多会话不串话;同一会话消息串行;`shutdown` 等待在途任务不丢消息;集成测试。
   - **产出**：manager 并发调度、单会话锁/队列、在途任务生命周期登记、单测与集成测试。
   - **依赖**：K1(生命周期)、E(多 Agent 运行时)。
-  - **当前**：未开始。
+  - **当前**：已完成 (2026-07-27)。
+    - `main.make_message_dispatcher` (模块级工厂, 可测): `handle_message` 派生 `asyncio.Task` 立即返回 —— 适配器收取循环不再被单条消息的 LLM 往返阻塞, Telegram/Discord/WebChat 轮询循环下跨会话真并行; 单会话串行保持 (锁键 platform:user:group, 同会话任务按到达顺序创建, asyncio FIFO 就绪队列 + 公平锁保证按序获取); 任务持强引用 (inflight 集合 + done 自清理), 异常任务内捕获记日志。
+    - 优雅关闭: `drain_inflight` 带超时等待在途任务; channels 生命周期改到**最后注册** (LIFO 关闭最先执行: 停收取 → drain → 再关 journal/usage/providers 等下游; 此前 channels 最先注册 → 最后关闭, providers 连接池会在在途消息处理完之前被关掉)。
+    - 集成测试 `tests/integration/test_p0_concurrent_dispatch.py` (3): 跨会话并发峰值≥2 / 同会话串行且回复有序 / drain 不丢在途消息。
 
 - [ ] **P1 拟人化激活**(依赖 P0 + L1-L5)
   - **目标**：把 L2-L5 已实现能力接入主链路 —— debounce 连续消息合并接入 manager(L2);ProactiveScheduler 注入 assembly + 生命周期注册 start/stop(L3);thinking 期新消息调 `request_interrupt`、loop 读 `superseded` 抑制旧回复、InterruptInjector 注册 prompt_builder(L4);启动时 `ConversationStateStore.load` 恢复 + RecoveryInjector 注册(L5);AgentConfig 增 `conversation` 配置段。

@@ -168,6 +168,78 @@ def _make_progress_sender(
     return sender
 
 
+def make_message_dispatcher(
+    *,
+    event_bus: EventBus,
+    router: MessageRouter,
+    session_mgr: SessionManager,
+    user_mapper: UserMapper,
+    agent_manager: AgentManager,
+    channel_registry: ChannelRegistry,
+    metrics: MetricsCollector,
+    session_lock: SessionLockManager,
+    drain_timeout_seconds: float = 30.0,
+) -> tuple[Callable[[ISACMessage], Awaitable[None]], Callable[[], Awaitable[None]]]:
+    """P0: 构造并发消息分发器, 返回 (handle_message, drain_inflight)。
+
+    此前 handle_message 同步 await 整条处理链 (门控→LLM→工具→回复), 适配器的
+    收取循环被单条消息阻塞 —— 跨会话并行度完全取决于 Channel 库自身调度
+    (Telegram/Discord/WebChat 的轮询循环整体串行)。现在:
+    - handle_message 派生 asyncio.Task 后立即返回, 不同会话真并行;
+    - 单会话串行保持: 锁键 platform:user:group (消息 session_id 尚未赋值),
+      同会话任务按到达顺序创建, asyncio FIFO 就绪队列 + 公平锁保证按序获取;
+    - 任务持强引用 (inflight 集合 + done 自清理), 异常在任务内捕获记日志,
+      不产生 "Task exception was never retrieved";
+    - drain_inflight 供优雅关闭调用: 停止收取后等待在途任务完成 (带超时),
+      保证 shutdown 不丢已接收的消息。
+    """
+    inflight: set[asyncio.Task[None]] = set()
+
+    async def _process_locked(message: ISACMessage) -> None:
+        lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
+        lock = await session_lock.acquire(lock_key)
+        # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
+        # SessionLockManager 的 K7 锁回收 (否则 _locks/_waiters 无界增长)。
+        try:
+            async with lock:
+                await process_message(
+                    message,
+                    event_bus=event_bus,
+                    router=router,
+                    session_mgr=session_mgr,
+                    user_mapper=user_mapper,
+                    agent_manager=agent_manager,
+                    channel_registry=channel_registry,
+                    metrics=metrics,
+                )
+        except Exception:
+            # 任务化后异常不再冒泡到适配器循环, 必须就地捕获记录
+            logger.error(
+                "消息处理任务异常", platform=message.platform, msg_id=message.msg_id, exc_info=True
+            )
+        finally:
+            session_lock.release(lock_key)
+
+    async def handle_message(message: ISACMessage) -> None:
+        task = asyncio.create_task(
+            _process_locked(message),
+            name=f"msg-{message.platform}-{message.msg_id or 'anon'}",
+        )
+        inflight.add(task)
+        task.add_done_callback(inflight.discard)
+
+    async def drain_inflight() -> None:
+        pending = [t for t in inflight if not t.done()]
+        if not pending:
+            return
+        logger.info("等待在途消息处理完成", count=len(pending))
+        _done, still_pending = await asyncio.wait(pending, timeout=drain_timeout_seconds)
+        if still_pending:
+            logger.warning("在途消息处理未在超时内完成, 继续关闭", count=len(still_pending))
+
+    return handle_message, drain_inflight
+
+
 def _register_channel_adapters(channel_registry: ChannelRegistry, global_config: dict[str, Any]) -> None:
     """Q0: 按 channels.* 配置注册各平台适配器。
 
@@ -661,31 +733,18 @@ async def main() -> None:
     user_mapper = UserMapper(str(DATA_DIR / "gateway" / "identity.db"))
     session_lock = SessionLockManager()
 
-    async def handle_message(message: ISACMessage) -> None:
-        """入口: 会话锁保证同一会话串行 (SPECIFICATION.md 2.5)。
-
-        注意: 此时 message.session_id 尚未赋值，因此锁键使用 platform:user_id:group_id，
-        避免退化为全局串行。
-        """
-        lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
-        lock = await session_lock.acquire(lock_key)
-        # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
-        # SessionLockManager 的 K7 锁回收; 此前主链路只 acquire 不 release, 导致
-        # _locks/_waiters 按不同 platform:user:group 无界增长 (长期运行内存泄漏)。
-        try:
-            async with lock:
-                await process_message(
-                    message,
-                    event_bus=event_bus,
-                    router=router,
-                    session_mgr=session_mgr,
-                    user_mapper=user_mapper,
-                    agent_manager=agent_manager,
-                    channel_registry=channel_registry,
-                    metrics=metrics,
-                )
-        finally:
-            session_lock.release(lock_key)
+    # P0: 消息处理并发化 —— handle_message 只负责派生任务立即返回, 适配器收取
+    # 循环不再被单条消息的 LLM 往返阻塞 (跨会话真并行); 单会话仍靠会话锁串行。
+    handle_message, drain_inflight = make_message_dispatcher(
+        event_bus=event_bus,
+        router=router,
+        session_mgr=session_mgr,
+        user_mapper=user_mapper,
+        agent_manager=agent_manager,
+        channel_registry=channel_registry,
+        metrics=metrics,
+        session_lock=session_lock,
+    )
 
     # 注入 Channel 适配器的消息回调
     for adapter in channel_registry.list():
@@ -697,13 +756,10 @@ async def main() -> None:
         alert_manager.add_rule(rule)
 
     # ── 启动编排 (K1): 所有资源通过 register_lifecycle 注册到 runtime ──
-    # 启动顺序: Channel 适配器 → Control Plane (可选) → Alert → Provider 连接池关闭
-    # 关闭顺序 (LIFO): Provider → Alert → Control → Channel
-    runtime.register_lifecycle(
-        "channels",
-        channel_registry.start_all,
-        channel_registry.stop_all,
-    )
+    # P0: channels 改到最后注册 (见 runtime.start() 前) —— LIFO 关闭时最先停止
+    # 消息入口并 drain 在途任务, 之后才关 journal/usage/providers 等下游资源;
+    # 此前 channels 最先注册 → 最后关闭, providers 连接池会在在途消息还没
+    # 处理完时先被关掉。启动侧 channels 最后 start 也更合理 (一切就绪才开闸)。
     control_config = global_config.get("control", {}) or {}
     if control_config.get("enabled"):
         # CR3: session_mgr/event_bus 此前经 services.get() 取值恒 None (键根本
@@ -749,6 +805,19 @@ async def main() -> None:
     _register_usage_lifecycle(runtime, services)
     # J4: 子任务日志生命周期 (仅启用 subagent.enabled 时注册)。
     _register_subagent_lifecycle(runtime, services)
+
+    # P0: channels 最后注册 —— 启动侧一切资源就绪后才开消息闸; 关闭侧 (LIFO
+    # 最先执行) 先停适配器收取, 再 drain 在途消息任务, 保证 journal/usage/
+    # providers 等下游资源关闭时不再有消息在途 (不丢消息)。
+    async def _stop_channels_and_drain() -> None:
+        await channel_registry.stop_all()
+        await drain_inflight()
+
+    runtime.register_lifecycle(
+        "channels",
+        channel_registry.start_all,
+        _stop_channels_and_drain,
+    )
 
     # 先恢复持久化 Agent (data/agents/*/config.jsonc, enabled=true 的自动 start),
     # 再回退到默认 Agent 保证无任何持久化配置时也能跑通 (CODE_REVIEW_REPORT.md #2)。
