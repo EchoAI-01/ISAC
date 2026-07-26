@@ -9,7 +9,9 @@ from typing import Any
 
 from isac.agent.hooks import AgentHooks
 from isac.agent.injectors.base_identity import BaseIdentityInjector
+from isac.agent.injectors.interrupt import InterruptInjector
 from isac.agent.injectors.model_capabilities import ModelCapabilitiesInjector
+from isac.agent.injectors.recovery import RecoveryInjector
 from isac.agent.injectors.tools_available import ToolsAvailableInjector
 from isac.agent.loop import ISACAgentLoop
 from isac.agent.prompt_builder import SystemPromptBuilder
@@ -173,6 +175,19 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     agent_services["conversation_enabled"] = bool(
         global_config.get("conversation", {}).get("enabled", False)
     )
+
+    # CR2-Fix-8: InterruptInjector/RecoveryInjector 此前从未注册进 prompt_builder,
+    # 即使 ConversationRuntime.request_interrupt/恢复快照被触发, 提示也不会出现在
+    # System Prompt 里。runtime_provider 用闭包固定 config.agent_id, 按
+    # context.session.session_id 动态查询对应 ConversationRuntime; enabled=False
+    # 时短路返回 None, 不调用 registry.get(), 不创建任何实例 (零行为变化)。
+    def _interrupt_runtime_provider(session_id: str):  # noqa: ANN001, ANN202
+        if not agent_services["conversation_enabled"]:
+            return None
+        return agent_services["conversation_registry"].get(config.agent_id, session_id)
+
+    prompt_builder.register(InterruptInjector(runtime_provider=_interrupt_runtime_provider))
+    prompt_builder.register(RecoveryInjector())  # 已按 session_id 动态查快照, 无需改造
 
     loop = ISACAgentLoop(
         llm=llm,
