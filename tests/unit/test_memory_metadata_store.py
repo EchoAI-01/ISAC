@@ -224,6 +224,51 @@ async def test_search_fts_group_chat_is_shared_across_members(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_fts_excludes_soft_deleted_episodes(tmp_path) -> None:
+    """CR2-Fix-12: 软删除 (deleted=1) 的条目此前仍会出现在 FTS 检索结果里,
+    软删除形同没有生效。"""
+    db_path = str(tmp_path / "memory.db")
+    store = MetadataStore(db_path)
+    await store.init_schema()
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_1", "session_id": "sess_1", "user_id": "user_1", "content": "ISAC 待删除记忆"},
+    )
+    before = await store.search_fts("agent_a", "ISAC 待删除记忆", limit=5)
+    assert [item["id"] for item in before] == ["mem_1"]
+
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("UPDATE episodes SET deleted = 1 WHERE id = ?", ("mem_1",))
+        await db.commit()
+
+    after = await store.search_fts("agent_a", "ISAC 待删除记忆", limit=5)
+    assert after == []
+
+
+@pytest.mark.asyncio
+async def test_get_episodes_by_ids_excludes_soft_deleted_episodes(tmp_path) -> None:
+    """CR2-Fix-12: get_episodes_by_ids 此前不过滤 deleted, 软删除条目仍可被按 ID 读回。"""
+    db_path = str(tmp_path / "memory.db")
+    store = MetadataStore(db_path)
+    await store.init_schema()
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_1", "session_id": "sess_1", "user_id": "user_1", "content": "待删除记忆"},
+    )
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_2", "session_id": "sess_1", "user_id": "user_1", "content": "保留记忆"},
+    )
+
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("UPDATE episodes SET deleted = 1 WHERE id = ?", ("mem_1",))
+        await db.commit()
+
+    results = await store.get_episodes_by_ids("agent_a", ["mem_1", "mem_2"])
+    assert [item["id"] for item in results] == ["mem_2"]
+
+
+@pytest.mark.asyncio
 async def test_person_profile_upsert_and_read(tmp_path) -> None:
     store = MetadataStore(str(tmp_path / "memory.db"))
     await store.init_schema()
