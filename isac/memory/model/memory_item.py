@@ -199,17 +199,23 @@ class MemoryItem:
     def from_relationship(cls, row: dict) -> MemoryItem:
         """把 relationship 行 (HUMANLIKE_RUNTIME.md §6.1 RelationshipState) 适配为 MemoryItem。
 
-        N1: scope=USER_GLOBAL; subject_id=person_id; content=关系描述;
-        memory_type=RELATIONSHIP; relationship_depth/familiarity/trust 进 metadata。
+        N1: scope=USER_GLOBAL; subject_id=person_id; memory_type=RELATIONSHIP。
+
+        CR2-Fix-16: RelationshipState 实际字段是 agent_id/person_id/session_id/
+        relationship_depth/familiarity/trust/last_interaction_at/interaction_count
+        (无 description 字段, 此前误读了一个不存在的字段); content 没有可映射的
+        自由文本字段来源, 默认空串 (不臆造语义)。session_id 纳入 metadata,
+        与 to_relationship 对称 round-trip。
         """
         return cls(
             id=f"{row.get('agent_id', '')}:{row.get('person_id', '')}:rel",
             agent_id=str(row.get("agent_id", "")),
             scope=MemoryScope.USER_GLOBAL,
             subject_id=str(row.get("person_id", "")),
-            content=str(row.get("description", "") or ""),
+            content="",
             memory_type=MemoryType.RELATIONSHIP,
             metadata={
+                "session_id": str(row.get("session_id", "") or ""),
                 "relationship_depth": float(row.get("relationship_depth", 0.0) or 0.0),
                 "familiarity": float(row.get("familiarity", 0.0) or 0.0),
                 "trust": float(row.get("trust", 0.0) or 0.0),
@@ -219,11 +225,11 @@ class MemoryItem:
         )
 
     def to_relationship(self) -> dict:
-        """把 MemoryItem 反向映射为 relationship 行。"""
+        """把 MemoryItem 反向映射为 relationship 行 (与 from_relationship 对称)。"""
         return {
             "agent_id": self.agent_id,
             "person_id": self.subject_id,
-            "description": self.content,
+            "session_id": str(self.metadata.get("session_id", "") or ""),
             "relationship_depth": float(self.metadata.get("relationship_depth", 0.0) or 0.0),
             "familiarity": float(self.metadata.get("familiarity", 0.0) or 0.0),
             "trust": float(self.metadata.get("trust", 0.0) or 0.0),
