@@ -33,6 +33,26 @@ async def test_assemble_agent_registers_safe_tools_and_memory_injectors() -> Non
 
 
 @pytest.mark.asyncio
+async def test_assembled_services_agent_id_matches_instance_agent_id() -> None:
+    """CR2-Fix-1: agent_services["agent_id"] 必须与 AgentInstance.agent_id 一致,
+    否则 wait 工具 (从 services 取 agent_id) 和 manager._dispatch_message (从
+    instance.agent_id 取) 会用不同的 key 操作 ConversationRuntimeRegistry,
+    互相唤醒不到对方。"""
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    agent = await assemble_agent(
+        AgentConfig(agent_id="agent_c"),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        },
+    )
+
+    assert agent.services["agent_id"] == agent.agent_id == "agent_c"
+
+
+@pytest.mark.asyncio
 async def test_progress_reporter_factory_wires_resolved_llm_for_llm_rendering() -> None:
     """D9-6: persona_rendering="llm" 时, 工厂构造的 Reporter 应复用本 Agent 已解析的
     llm Provider (与 loop.llm 同一个实例), 而不是重新创建或留空。"""
