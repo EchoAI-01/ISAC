@@ -131,22 +131,27 @@ class ProactiveScheduler:
         """后台调度循环: poll_interval_seconds 周期 poll queue。
 
         未通过 authorize 的任务被丢弃 (不阻塞队列, 不调 wake_callback);
-        may_fire=False 时任务退回队列头部, 等下次轮询。
+        may_fire=False 的任务留在队列原位, 本轮跳过它取下一个就绪任务。
+
+        CR3-M6: 此前冷却中的任务被 insert(0) 退回队首、而 poll() 又总取索引 0,
+        循环反复重取同一任务, 该会话冷却期间其他会话的就绪任务全部无法触发
+        (恰好瓦解 CR2-Fix-6 的 per-session 冷却隔离)。改用 poll_ready() 按优先级
+        顺序取第一个"就绪 (或注定被鉴权丢弃)"的任务, 冷却任务原位等待下次轮询。
         """
         try:
             while True:
                 await asyncio.sleep(self.poll_interval_seconds)
-                task = self.queue.poll()
+                import time as _time
+
+                now = _time.time()
+                # 鉴权失败的任务也取出来 (随后丢弃), 避免死任务永久占据队列容量。
+                task = self.queue.poll_ready(
+                    lambda t: not self.authorize(t) or self.may_fire(now, session_id=t.session_id)
+                )
                 if task is None:
                     continue
                 if not self.authorize(task):
                     logger.info("主动任务鉴权失败, 已丢弃", task_id=task.task_id, source=task.source)
-                    continue
-                import time as _time
-
-                if not self.may_fire(_time.time(), session_id=task.session_id):
-                    # 冷却中: 任务退回队列头部, 等下次轮询 (保持 FIFO 顺序, 优先级不变)。
-                    self.queue._queue.insert(0, task)  # noqa: SLF001
                     continue
                 # 触发: 转 forced turn + 唤醒 callback
                 self.to_forced_turn(task)

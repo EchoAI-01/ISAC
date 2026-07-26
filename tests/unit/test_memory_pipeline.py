@@ -11,9 +11,37 @@ from isac.memory.storage.graph import GraphStore
 from isac.memory.storage.metadata import MetadataStore
 from isac.memory.storage.sparse import SparseBM25Index
 from isac.memory.storage.vector import VectorStore
+from isac.provider.base import EmbeddingProvider
 
 
-async def make_pipeline(tmp_path, namespace: str = "agent_a", metrics=None) -> MemoryRetrievalPipeline:
+class _KeywordEmbeddingProvider(EmbeddingProvider):
+    """确定性 3 维向量: 按关键词命中生成, 让"语义相近但词面无重叠"可被测试构造。
+
+    含 "天气"/"weather" → [1,0,0]; 含 "美食"/"food" → [0,1,0]; 其余 → [0,0,1]。
+    """
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self._vec(text) for text in texts]
+
+    async def embed_query(self, query: str) -> list[float]:
+        return self._vec(query)
+
+    def dimension(self) -> int:
+        return 3
+
+    @staticmethod
+    def _vec(text: str) -> list[float]:
+        lowered = text.lower()
+        if "天气" in lowered or "weather" in lowered:
+            return [1.0, 0.0, 0.0]
+        if "美食" in lowered or "food" in lowered:
+            return [0.0, 1.0, 0.0]
+        return [0.0, 0.0, 1.0]
+
+
+async def make_pipeline(
+    tmp_path, namespace: str = "agent_a", metrics=None, *, embedding_provider=None
+) -> MemoryRetrievalPipeline:
     metadata = MetadataStore(str(tmp_path / "memory.db"))
     await metadata.init_schema()
     return MemoryRetrievalPipeline(
@@ -22,7 +50,7 @@ async def make_pipeline(tmp_path, namespace: str = "agent_a", metrics=None) -> M
         vector=VectorStore(str(tmp_path / "vectors.db"), dimension=3),
         sparse=SparseBM25Index(),
         graph=GraphStore(str(tmp_path / "graph.db")),
-        embedder=EmbeddingManager({}),
+        embedder=EmbeddingManager({}, provider=embedding_provider),
         reranker=Reranker({}),
         metrics=metrics,
     )
@@ -199,3 +227,53 @@ async def test_init_schema_is_idempotent(tmp_path) -> None:
         {"id": "m1", "content": "hello", "session_id": "s1", "user_id": "u1"},
     )
     assert memory_id == "m1"
+
+
+# ── CR3-H3: 稠密 (向量) 召回接入 ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dense_recall_finds_semantic_match_without_keyword_overlap(tmp_path) -> None:
+    """CR3-H3: 与 query 无词面重叠的记忆, 通过向量召回也能检索到。"""
+    pipeline = await make_pipeline(tmp_path, embedding_provider=_KeywordEmbeddingProvider())
+
+    memory_id = await pipeline.store_episode(
+        "今天天气很好", session_id="sess_1", user_id="user_1"
+    )
+    # query 用英文 weather: 与内容 "今天天气很好" 无任何词面重叠 (FTS/BM25 均不命中),
+    # 但 _KeywordEmbeddingProvider 把两者都映射到 [1,0,0] → 向量召回命中。
+    hits = await pipeline.search("weather", top_k=3)
+
+    assert [hit.id for hit in hits] == [memory_id]
+
+
+@pytest.mark.asyncio
+async def test_dense_recall_candidates_pass_acl_filter(tmp_path) -> None:
+    """CR3-H3: 向量候选必须经 get_episodes_by_ids 的 user/group ACL 过滤。"""
+    pipeline = await make_pipeline(tmp_path, embedding_provider=_KeywordEmbeddingProvider())
+    id_a = await pipeline.store_episode("今天天气很好", session_id="sess_a", user_id="user_a")
+    id_b = await pipeline.store_episode("天气 预报 降雨", session_id="sess_b", user_id="user_b")
+    assert id_a and id_b
+
+    # user_a 私聊检索: 向量层两条都命中 [1,0,0], 但 ACL 只放行 user_a 自己的
+    hits = await pipeline.search("weather", top_k=10, user_id="user_a")
+
+    assert [hit.id for hit in hits] == [id_a]
+
+
+@pytest.mark.asyncio
+async def test_dense_recall_failure_degrades_to_sparse(tmp_path) -> None:
+    """CR3-H3: 稠密路径故障 (embed_query 抛异常) 时降级为纯稀疏检索, 不影响 FTS 命中。"""
+
+    class _BrokenEmbeddingProvider(_KeywordEmbeddingProvider):
+        async def embed_query(self, query: str) -> list[float]:
+            raise RuntimeError("embedding API down")
+
+    pipeline = await make_pipeline(tmp_path, embedding_provider=_BrokenEmbeddingProvider())
+    memory_id = await pipeline.store_episode(
+        "ISAC keyword 检索测试", session_id="sess_1", user_id="user_1"
+    )
+
+    hits = await pipeline.search("ISAC keyword", top_k=3)
+
+    assert [hit.id for hit in hits] == [memory_id]

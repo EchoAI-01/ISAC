@@ -1,12 +1,15 @@
 """PluginIsolationHost: 插件进程隔离宿主 (O2, PLUGIN_COMPATIBILITY.md)。
 
 O2 实现: 用 multiprocessing.Process spawn 子进程, stdin/stdout JSON-RPC
-IPC; spawn 时设资源限额 (resource.setrlimit CPU/RSS/NOFILE); call 编码
-IPCEnvelope → JSON → 管道发送 → 等待 result/error → 解码; 子进程崩溃
+IPC; spawn 时设资源限额 (resource.setrlimit CPU/RSS/NOFILE, POSIX only); call
+编码 IPCEnvelope → JSON → 管道发送 → 等待 result/error → 解码; 子进程崩溃
 自动重启 (最多 max_restart_attempts 次, 默认 3)。默认不接管现有 in-process
 loader (loader.py 不变), enabled=False 时主链路零行为变化。
 
-子进程入口 _plugin_worker 是一个最小 echo 服务器, 真实插件 SDK 可替换。
+CR3-H2: 子进程 worker 不再是纯 echo 桩 —— kind="load" 让隔离子进程用
+PluginLoader 真实加载插件入口 (顶层代码在子进程内执行, 不污染宿主),
+kind="call" + payload.method 调用已加载插件的方法 (async 方法用 asyncio.run);
+payload.text/echo 的 echo 语义保留 (连通性探测 + 向后兼容)。
 """
 
 from __future__ import annotations
@@ -14,65 +17,137 @@ from __future__ import annotations
 import asyncio
 import json
 import multiprocessing as mp
-import os
-import resource
-import time
+import sys
 from typing import Any
 
 from isac.plugin.isolation.protocol import IPCEnvelope
 from isac.utils.logger import get_logger
+
+# CR3-H2: resource 是 POSIX-only 模块, Windows 上顶层 import 直接 ImportError
+# (曾导致本模块在 Windows 上完全不可导入, 连测试都无法收集)。平台守卫后
+# Windows 跳过资源限额 (multiprocessing spawn 子进程会重新 import 本模块,
+# 守卫对宿主与子进程双向生效)。sys.platform 判定让 mypy 按平台窄化类型。
+if sys.platform == "win32":  # pragma: no cover - Windows 无 resource 模块
+    resource = None
+else:
+    import resource
 
 logger = get_logger(__name__)
 
 # 默认重启次数上限; 超过后放弃 (is_alive=False)
 DEFAULT_MAX_RESTART_ATTEMPTS = 3
 
+# 可 JSON 序列化的原生类型 (worker 方法返回值超出此集合时降级为 str)
+_JSON_SAFE_TYPES = (str, int, float, bool, type(None), list, dict)
 
-def _plugin_worker(plugin_id: str, pipe_conn: Any) -> None:
-    """子进程入口: 最小 echo worker (真实插件 SDK 可替换)。
 
-    读 stdin 一行 JSON → 处理 → 写 stdout 一行 JSON。
-    限制: CPU 1 核 (软), RSS 256MB, NOFILE 64 (resource.setrlimit)。
-    """
+def _apply_rlimits() -> None:
+    """子进程资源限额: CPU 1 秒 / NOFILE 64 / 地址空间 256MB (POSIX; Windows 跳过)。"""
+    if resource is None:
+        return
     try:
-        # 资源限额 (POSIX; macOS/Linux 支持, Windows 跳过)
         if hasattr(resource, "RLIMIT_CPU"):
             resource.setrlimit(resource.RLIMIT_CPU, (1, 1))  # 1 秒 CPU 软/硬上限
         if hasattr(resource, "RLIMIT_NOFILE"):
             resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
         if hasattr(resource, "RLIMIT_AS"):
-            # RSS 256MB (字节)
             resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
     except (ValueError, OSError, PermissionError):
         pass  # 权限不足或平台不支持时跳过
+
+
+def _worker_load(state: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """在子进程内真实加载插件 (CR3-H2): 插件顶层代码只在这里执行, 不进宿主。"""
+    from pathlib import Path
+
+    from isac.plugin.runtime.loader import PluginLoader
+
+    plugin_path = str(payload.get("path", "") or "")
+    if not plugin_path:
+        raise ValueError("load 缺少 payload.path")
+    loaded = asyncio.run(PluginLoader().load(Path(plugin_path)))
+    state["plugin"] = loaded.instance
+    state["plugin_name"] = loaded.name
+    return {"loaded": loaded.name, "format": loaded.format.value}
+
+
+def _worker_call(state: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """处理 call: echo 探测 (payload.text/echo) 或已加载插件的方法调用。"""
+    if "text" in payload or "echo" in payload:
+        # echo 桩语义保留: 连通性探测 + 既有调用方/测试兼容
+        return {"echo": payload.get("text", "") or payload.get("echo", "")}
+    method_name = str(payload.get("method", "") or "")
+    if not method_name:
+        raise ValueError("call 缺少 payload.method (或 payload.text 做 echo 探测)")
+    plugin = state.get("plugin")
+    if plugin is None:
+        raise RuntimeError("插件尚未加载, 先发送 kind=load")
+    if method_name.startswith("_"):
+        raise PermissionError(f"拒绝调用私有方法: {method_name}")
+    method = getattr(plugin, method_name, None)
+    if method is None or not callable(method):
+        raise AttributeError(f"插件 {state.get('plugin_name')} 无可调用方法: {method_name}")
+    kwargs = payload.get("args", {}) or {}
+    result = method(**kwargs)
+    if asyncio.iscoroutine(result):
+        result = asyncio.run(result)
+    if not isinstance(result, _JSON_SAFE_TYPES):
+        result = str(result)
+    return {"result": result}
+
+
+def _plugin_worker(plugin_id: str, pipe_conn: Any) -> None:
+    """子进程入口: 循环处理 load/call 请求 (CR3-H2: 真实加载插件, echo 兼容)。
+
+    读管道一条 JSON → 处理 → 写回一条 JSON。业务异常回 kind=error 不崩溃;
+    管道断开 (EOFError) 退出。资源限额见 _apply_rlimits (POSIX only)。
+    """
+    _apply_rlimits()
+    state: dict[str, Any] = {}
     while True:
+        correlation_id = ""
         try:
             line = pipe_conn.recv()
             if line is None:
                 break
             env = json.loads(line) if isinstance(line, str) else line
-            # echo: 把 payload.echo 回去 (或 echo 字段)
-            payload = env.get("payload", {})
-            echo_text = payload.get("text", "") or payload.get("echo", "")
-            result = {
-                "kind": "result",
-                "plugin_id": plugin_id,
-                "payload": {"echo": echo_text},
-                "correlation_id": env.get("correlation_id", ""),
-            }
-            pipe_conn.send(json.dumps(result))
+            correlation_id = str(env.get("correlation_id", "") or "")
+            kind = str(env.get("kind", "call") or "call")
+            payload = env.get("payload", {}) or {}
+            try:
+                if kind == "load":
+                    result_payload = _worker_load(state, payload)
+                else:
+                    result_payload = _worker_call(state, payload)
+                response = {
+                    "kind": "result",
+                    "plugin_id": plugin_id,
+                    "payload": result_payload,
+                    "correlation_id": correlation_id,
+                }
+            except Exception as exc:  # noqa: BLE001 业务异常回 error, 不让 worker 崩溃
+                response = {
+                    "kind": "error",
+                    "plugin_id": plugin_id,
+                    "payload": {"error": str(exc)},
+                    "correlation_id": correlation_id,
+                }
+            pipe_conn.send(json.dumps(response, ensure_ascii=False))
         except EOFError:
             break
-        except Exception as exc:  # noqa: BLE001
-            # 子进程内任何异常都返回 error, 不让 worker 崩溃
-            err = {
-                "kind": "error",
-                "plugin_id": plugin_id,
-                "payload": {"error": str(exc)},
-                "correlation_id": env.get("correlation_id", "") if "env" in dir() else "",
-            }
+        except Exception as exc:  # noqa: BLE001 协议层异常: 尽力回 error, 失败则退出
             try:
-                pipe_conn.send(json.dumps(err))
+                pipe_conn.send(
+                    json.dumps(
+                        {
+                            "kind": "error",
+                            "plugin_id": plugin_id,
+                            "payload": {"error": str(exc)},
+                            "correlation_id": correlation_id,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
             except Exception:  # noqa: BLE001
                 break
 
@@ -144,6 +219,17 @@ class PluginIsolationHost:
             self._parent_conn = None
         self._alive = False
         logger.debug("插件子进程已终止", plugin_id=self.plugin_id)
+
+    async def load_plugin(self, plugin_path: str) -> IPCEnvelope:
+        """让隔离子进程真实加载插件目录 (CR3-H2)。
+
+        插件入口文件的顶层代码在子进程内执行 —— 恶意/异常插件影响的是资源受限
+        的 worker 进程, 不是宿主。返回 kind=result (payload.loaded=插件名) 或
+        kind=error (payload.error=失败原因)。
+        """
+        return await self.call(
+            IPCEnvelope(kind="load", plugin_id=self.plugin_id, payload={"path": str(plugin_path)})
+        )
 
     async def call(self, envelope: IPCEnvelope) -> IPCEnvelope:
         """向隔离插件发起一次 IPC 调用并等待结果。
@@ -232,7 +318,3 @@ class PluginIsolationHost:
         if self._process is None:
             return False
         return self._alive and self._process.is_alive()
-
-
-# 避免未使用 import 警告
-_ = (os, time)

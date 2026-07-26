@@ -6,6 +6,8 @@ enqueue 时按 priority 插入正确位置, 不阻塞主链路。
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from isac.runtime.conversation.models import ProactiveTask
 from isac.utils.logger import get_logger
 
@@ -67,6 +69,17 @@ class ProactiveTaskQueue:
         if not self._queue:
             return None
         return self._queue.pop(0)
+
+    def poll_ready(self, predicate: Callable[[ProactiveTask], bool]) -> ProactiveTask | None:
+        """按优先级顺序取出第一个满足 predicate 的任务; 不满足的留在原位。
+
+        CR3-M6: 供调度器跳过"会话冷却中"的任务直接取下一个就绪任务, 而不是把
+        冷却任务退回队首反复重取 (那会让单个冷却会话饿死其他会话的就绪任务)。
+        """
+        for index, task in enumerate(self._queue):
+            if predicate(task):
+                return self._queue.pop(index)
+        return None
 
     def __len__(self) -> int:
         return len(self._queue)

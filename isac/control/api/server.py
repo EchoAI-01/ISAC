@@ -32,6 +32,7 @@ def create_control_app(
     session_manager: Any = None,
     metadata_store: Any = None,
     event_bus: Any = None,
+    sparse_resolver: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -43,6 +44,8 @@ def create_control_app(
     - links_path: 互联 Link 文件 (默认 data/links.jsonc)
     - audit_log_path: 审计日志 NDJSON 文件 (默认 data/audit.ndjson)
     - events_max_connections: Fix-14 SSE 同时在线连接数上限 (默认 100)
+    - metrics_auth_enabled: CR3-L6 /metrics 是否要求 Bearer 认证 (默认 False,
+      保持对 Prometheus 抓取开放; 控制面暴露到本机之外时建议开启)
     - session_auth_enabled: Fix-17 是否启用 /auth/session 会话 Cookie + CSRF
       机制 (默认 True; 未配置 api_token 也未配置 tokens[] 的纯开发模式下这个
       开关没有实际意义, 因为 make_auth_dependency 本身就会跳过认证)
@@ -121,6 +124,7 @@ def create_control_app(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
         scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
+        sparse_resolver,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -138,9 +142,18 @@ def create_control_app(
     ) -> list[dict]:
         return audit_log.query(action=action, actor=actor, path_prefix=path_prefix, limit=limit)
 
-    @app.get("/metrics")
+    # CR3-L6: /metrics 默认对 Prometheus 开放 (兼容既有部署, 且 enforce_safe_host
+    # 已把控制面兜底在 127.0.0.1); 若部署上控制面暴露到内网/网关之后, 可配置
+    # metrics_auth_enabled=true 让 /metrics 也走 Bearer 认证。
+    metrics_deps = (
+        [Depends(auth_dependency)]
+        if (config.get("metrics_auth_enabled") and auth_dependency)
+        else []
+    )
+
+    @app.get("/metrics", dependencies=metrics_deps)
     async def prometheus_metrics() -> Any:
-        """Prometheus 文本格式 (供 Prometheus 抓取, 不需认证)。"""
+        """Prometheus 文本格式 (默认不需认证; metrics_auth_enabled=true 时需要)。"""
         from fastapi.responses import PlainTextResponse
 
         return PlainTextResponse(metrics.to_prometheus(), media_type="text/plain")
@@ -231,6 +244,7 @@ def _mount_optional_routers(
     tokens: Any = None,
     events_max_connections: int | None = None,
     audit_log: Any = None,
+    sparse_resolver: Any = None,
 ) -> None:
     """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events)。"""
     if usage_store is not None:
@@ -274,13 +288,18 @@ def _mount_optional_routers(
         from isac.control.api import routes_sessions
 
         app.include_router(
-            routes_sessions.build_router(session_manager, metadata_store, auth_dependency=auth_dependency),
+            routes_sessions.build_router(
+                session_manager, metadata_store,
+                auth_dependency=auth_dependency, scope_dependency=scope_dependency,
+            ),
             prefix="/api/v1",
         )
     # J3-3: Memory 路由 (metadata_store 注入时挂载; 无则返回 None 不挂载)
     from isac.control.api import routes_memory
 
-    memory_router = routes_memory.build_router(metadata_store, auth_dependency=auth_dependency)
+    memory_router = routes_memory.build_router(
+        metadata_store, auth_dependency=auth_dependency, scope_dependency=scope_dependency,
+    )
     if memory_router is not None:
         app.include_router(memory_router, prefix="/api/v1")
     # N2: Memory 治理路由 (freeze/protect/correct/delete/restore/export);
@@ -290,6 +309,7 @@ def _mount_optional_routers(
     memory_admin_router = routes_memory_admin.build_router(
         metadata_store, auth_dependency=auth_dependency,
         scope_dependency=scope_dependency, audit_log=audit_log,
+        sparse_resolver=sparse_resolver,
     )
     if memory_admin_router is not None:
         app.include_router(memory_admin_router, prefix="/api/v1")

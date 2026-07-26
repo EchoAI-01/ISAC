@@ -101,6 +101,30 @@
     // }
   ],
 
+  // 记忆子系统 (默认关闭; 开启后 FTS5+BM25 稀疏检索立即可用)
+  // embedding 配置了 api_key+model 时启用稠密 (向量) 召回 + RRF 融合 (CR3-H3):
+  // 未配置时自动降级为纯稀疏检索, 不报错。dimension 必须与所选模型输出维度一致。
+  "memory": {
+    "enabled": false,
+    "embedding": {
+      // "provider": "openai",
+      // "api_key": "sk-your-key",
+      // "base_url": "https://api.openai.com/v1",
+      // "model": "text-embedding-3-small",
+      "dimension": 1024
+    },
+    "reranker": {}
+  },
+
+  // 多租户隔离 (O1, 默认关闭 = 单租户零行为变化)
+  // enabled=true 且填入非 default 的 org/tenant 时: 记忆命名空间加 org:tenant 前缀,
+  // episodes 读写带租户谓词/打标 (多个租户进程共享同一数据目录时互不可见)。
+  "tenancy": {
+    "enabled": false,
+    "organization_id": "default",
+    "tenant_id": "default"
+  },
+
   // 制品存储 (本地 FS, sha256 分桶)
   "artifacts": {
     "ttl_days": 7
