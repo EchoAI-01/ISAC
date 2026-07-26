@@ -185,6 +185,26 @@ async def test_export_returns_list_of_memoryitem(
 
 
 @pytest.mark.asyncio
+async def test_export_paginates_with_limit_and_offset(
+    store_and_governor: tuple[MetadataStore, MemoryGovernor],
+) -> None:
+    """CR2-Fix-15: export() 此前一次性吐出全部记忆, 无分页; 加 limit/offset 后
+    单次调用只返回 limit 条, 配合 offset 能翻页取完。"""
+    store, gov = store_and_governor
+    # fixture 已预置 ep1; 再补 2 条, 凑够 3 条 (ep1/ep2/ep3)
+    await store.store_episode("a1", {"id": "ep2", "session_id": "s1", "user_id": "u1", "content": "第二条"})
+    await store.store_episode("a1", {"id": "ep3", "session_id": "s1", "user_id": "u1", "content": "第三条"})
+
+    page1 = await gov.export("a1", limit=2, offset=0)
+    assert len(page1) == 2
+    page2 = await gov.export("a1", limit=2, offset=2)
+    assert len(page2) == 1
+
+    all_ids = {item.id for item in page1} | {item.id for item in page2}
+    assert all_ids == {"ep1", "ep2", "ep3"}  # 两页拼起来正好翻完
+
+
+@pytest.mark.asyncio
 async def test_freeze_nonexistent_returns_false(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:

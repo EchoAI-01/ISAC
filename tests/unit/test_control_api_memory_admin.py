@@ -226,3 +226,24 @@ class TestCorrectRequestBody:
             headers=headers,
         )
         assert resp.status_code == 422
+
+
+class TestListItemsPagination:
+    """CR2-Fix-15: list_items 透传 export() 的 limit/offset 分页参数。"""
+
+    def test_list_items_respects_limit_and_offset(self, metadata_store: MetadataStore) -> None:
+        import asyncio
+
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep1"))
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep2"))
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep3"))
+        client = TestClient(_make_app(metadata_store, {"api_token": "secret-token"}))
+        headers = {"Authorization": "Bearer secret-token"}
+
+        page1 = client.get("/api/v1/memory/agent-a/items?limit=2&offset=0", headers=headers)
+        assert page1.status_code == 200
+        assert page1.json()["count"] == 2
+
+        page2 = client.get("/api/v1/memory/agent-a/items?limit=2&offset=2", headers=headers)
+        assert page2.status_code == 200
+        assert page2.json()["count"] == 1
