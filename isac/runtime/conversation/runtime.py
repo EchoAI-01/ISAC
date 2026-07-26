@@ -29,6 +29,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# CR2-Fix-4: message_cache 软上限。register_message 是当前唯一在生产环境被
+# manager 真实调用的写入路径 (drain_new_messages 从未被生产代码调用), 长会话下
+# 若不设上限会无界增长。超出后丢弃最旧消息 (FIFO), 与 D9 的
+# MAX_PROGRESS_REPORTERS_PER_AGENT 同思路。
+_MAX_MESSAGE_CACHE = 200
+
 
 class ConversationRuntime:
     """某 Agent 在某会话中的拟人化运行时 (消息缓存 / 状态机 / 等待 / 打断)。"""
@@ -52,8 +58,17 @@ class ConversationRuntime:
         self._timeout_tasks: dict[str, asyncio.Task[None]] = {}
 
     def register_message(self, message: ISACMessage) -> None:
-        """把新消息追加进缓存并更新时间戳 (debounce / 合并的输入)。"""
+        """把新消息追加进缓存并更新时间戳 (debounce / 合并的输入)。
+
+        CR2-Fix-4: 超过 _MAX_MESSAGE_CACHE 时丢弃最旧消息, 并同步下修
+        last_processed_index (被丢弃的消息里若含尚未 drain 的部分, 那些消息
+        本就该被丢弃; max(0, ...) 保证索引不会变成负数)。
+        """
         self.message_cache.append(message)
+        if len(self.message_cache) > _MAX_MESSAGE_CACHE:
+            overflow = len(self.message_cache) - _MAX_MESSAGE_CACHE
+            del self.message_cache[:overflow]
+            self.last_processed_index = max(0, self.last_processed_index - overflow)
         self.last_message_received_at = time.time()
         logger.debug(
             "会话缓存新消息",
