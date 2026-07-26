@@ -93,6 +93,37 @@ async def test_correct_writes_new_version_and_keeps_history(
 
 
 @pytest.mark.asyncio
+async def test_correct_rejects_when_item_is_frozen(
+    store_and_governor: tuple[MetadataStore, MemoryGovernor],
+) -> None:
+    """CR2-Fix-13: frozen (不再自动更新) 的条目此前仍能被 correct 改写内容。"""
+    store, gov = store_and_governor
+    await gov.freeze("ep1", "a1")
+    assert await gov.correct("ep1", "试图篡改", "a1") is False
+    async with _connect(store) as db:
+        cursor = await db.execute("SELECT content FROM episodes WHERE id = ?", ("ep1",))
+        row = await cursor.fetchone()
+        assert row is not None and row[0] == "原始内容"  # 内容未被改写
+
+
+@pytest.mark.asyncio
+async def test_correct_truncates_overlong_content(
+    store_and_governor: tuple[MetadataStore, MemoryGovernor],
+) -> None:
+    """CR2-Fix-13: new_content 此前无长度限制, 可被当作任意大小文本载体。"""
+    store, gov = store_and_governor
+    overlong = "字" * 50_000  # 每个中文字符 3 字节 UTF-8, 远超 20_000 字节上限
+    assert await gov.correct("ep1", overlong, "a1") is True
+    async with _connect(store) as db:
+        cursor = await db.execute("SELECT content FROM episodes WHERE id = ?", ("ep1",))
+        row = await cursor.fetchone()
+        assert row is not None
+        stored = row[0]
+        assert len(stored.encode("utf-8")) <= 20_000
+        assert stored.endswith("已截断)")
+
+
+@pytest.mark.asyncio
 async def test_delete_soft_deletes_and_writes_audit(
     store_and_governor: tuple[MetadataStore, MemoryGovernor],
 ) -> None:
