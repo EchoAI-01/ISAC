@@ -26,6 +26,22 @@ if TYPE_CHECKING:
 
     from isac.runtime.conversation import ConversationRuntime
 
+# CR2-Fix-9: reason 长度上限。若未来接入真实消息内容作为打断原因, 无长度限制
+# 会被用作把大段任意文本塞进 system prompt 的载体。
+_MAX_REASON_LENGTH = 100
+
+
+def _sanitize_reason(reason: str) -> str:
+    """清理打断原因: 剔除换行/控制字符 (防伪装成新指令), 截断到合理长度。
+
+    str.isprintable() 对空格返回 True, 对 \\n/\\r/\\t 等控制字符返回 False,
+    足够同时保留正常文本可读性与过滤危险字符。
+    """
+    stripped = "".join(ch for ch in reason if ch.isprintable())
+    if len(stripped) > _MAX_REASON_LENGTH:
+        return stripped[:_MAX_REASON_LENGTH] + "…"
+    return stripped
+
 
 class InterruptInjector(PromptInjector):
     """注入"上一轮被打断"内部参考 (L4)。"""
@@ -55,7 +71,7 @@ class InterruptInjector(PromptInjector):
         if runtime is None or runtime.interrupt_state is None:
             return ""
         count = runtime.interrupt_state.interrupt_count
-        reason = runtime.interrupt_state.reason
+        reason = _sanitize_reason(runtime.interrupt_state.reason)
         hint = (
             "【内部参考】上一轮你正在思考时被新消息打断"
             + (f"（原因: {reason}）" if reason else "")
