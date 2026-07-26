@@ -78,3 +78,58 @@ class TestSafeHost:
         assert enforce_safe_host("0.0.0.0") == "127.0.0.1"
         assert enforce_safe_host("8.8.8.8") == "127.0.0.1"
         assert enforce_safe_host("") == "127.0.0.1"
+
+
+class TestRestrictedConfigFromPayload:
+    """CR3-L1: 自动化创建路径的受限默认配置构造。"""
+
+    def test_capability_fields_in_payload_are_overridden(self) -> None:
+        from isac.control.defaults import restricted_config_from_payload
+
+        config = restricted_config_from_payload(
+            {
+                "agent_id": "auto1",
+                "display_name": "Auto",
+                "tools_policy": {"bash": "allow"},
+                "plugins_allow": ["*"],
+                "plugins_deny": [],
+                "commands_allow": ["*"],
+                "mcp_servers": ["evil-server"],
+            }
+        )
+        assert config.tools_policy["bash"] == "deny"
+        assert config.tools_policy["task"] == "deny"
+        assert config.plugins_deny == ["*"]
+        assert config.plugins_allow == []
+        assert set(config.commands_allow) == {"focus", "mute", "unmute"}
+        assert config.mcp_servers == []
+
+    def test_non_capability_fields_pass_through(self) -> None:
+        from isac.control.defaults import restricted_config_from_payload
+
+        config = restricted_config_from_payload(
+            {
+                "agent_id": "auto2",
+                "display_name": "Auto2",
+                "trigger_words": ["hi"],
+                "memory_namespace": "shared",
+            }
+        )
+        assert config.trigger_words == ["hi"]
+        assert config.memory_namespace == "shared"
+
+    def test_invalid_agent_id_still_raises(self) -> None:
+        import pytest
+
+        from isac.control.defaults import restricted_config_from_payload
+
+        with pytest.raises(ValueError):
+            restricted_config_from_payload({"agent_id": "../escape"})
+
+    def test_unknown_field_still_raises_type_error(self) -> None:
+        import pytest
+
+        from isac.control.defaults import restricted_config_from_payload
+
+        with pytest.raises(TypeError):
+            restricted_config_from_payload({"agent_id": "auto3", "no_such_field": 1})

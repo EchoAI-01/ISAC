@@ -292,6 +292,103 @@ async def test_chat_stream_parses_usage_details() -> None:
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_accumulates_tool_call_fragments_by_index() -> None:
+    """CR3-H4: 工具调用被拆到多个 delta (首块 id+name, 后续 arguments 片段) 时
+    必须按 index 累积、流结束后装配为完整 ToolCall, 不产生幽灵空调用。"""
+    frag1 = (
+        b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+        b'"type":"function","function":{"name":"get_weather","arguments":""}}]}}]}\n\n'
+    )
+    frag2 = (
+        b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+        b'"function":{"arguments":"{\\"city\\": "}}]}}]}\n\n'
+    )
+    frag3 = (
+        b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+        b'"function":{"arguments":"\\"Tokyo\\"}"}}]}}]}\n\n'
+    )
+    finish = (
+        b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}],'
+        b'"usage":{"prompt_tokens":10,"completion_tokens":6,"total_tokens":16}}\n\n'
+    )
+    sse_body = frag1 + frag2 + frag3 + finish + b"data: [DONE]\n\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=sse_body, headers={"content-type": "text/event-stream"})
+
+    provider = _make_provider(handler)
+    chunks = []
+    async for chunk in provider.chat_stream(system="", messages=[]):
+        chunks.append(chunk)
+
+    tool_calls = [c.tool_call for c in chunks if c.tool_call]
+    assert len(tool_calls) == 1
+    assert tool_calls[0].id == "call_1"
+    assert tool_calls[0].name == "get_weather"
+    assert tool_calls[0].arguments == {"city": "Tokyo"}
+    # usage chunk 照常透传 (include_usage)
+    assert any(c.usage.total_tokens == 16 for c in chunks)
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_parallel_tool_calls_by_index() -> None:
+    """CR3-H4: 并行工具调用 (index 0/1) 不再被丢弃, 各自独立装配。"""
+    sse_body = (
+        b'data: {"choices":[{"delta":{"tool_calls":['
+        b'{"index":0,"id":"call_a","function":{"name":"tool_a","arguments":"{}"}},'
+        b'{"index":1,"id":"call_b","function":{"name":"tool_b","arguments":""}}]}}]}\n\n'
+        b'data: {"choices":[{"delta":{"tool_calls":[{"index":1,'
+        b'"function":{"arguments":"{\\"x\\": 1}"}}]}}]}\n\n'
+        b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+        b"data: [DONE]\n\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=sse_body, headers={"content-type": "text/event-stream"})
+
+    provider = _make_provider(handler)
+    chunks = []
+    async for chunk in provider.chat_stream(system="", messages=[]):
+        chunks.append(chunk)
+
+    tool_calls = [c.tool_call for c in chunks if c.tool_call]
+    assert [(tc.id, tc.name) for tc in tool_calls] == [("call_a", "tool_a"), ("call_b", "tool_b")]
+    assert tool_calls[0].arguments == {}
+    assert tool_calls[1].arguments == {"x": 1}
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_payload_requests_usage() -> None:
+    """CR3-H4: 流式请求体默认带 stream_options.include_usage (token 预算依赖)。"""
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200, content=b"data: [DONE]\n\n", headers={"content-type": "text/event-stream"}
+        )
+
+    provider = _make_provider(handler)
+    async for _ in provider.chat_stream(system="", messages=[]):
+        pass
+    assert captured.get("stream_options") == {"include_usage": True}
+    # 非流式请求不带 stream_options
+    captured.clear()
+
+    def chat_handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, content=_ok_response())
+
+    provider2 = _make_provider(chat_handler)
+    await provider2.chat(system="", messages=[])
+    assert "stream_options" not in captured
+    await provider.aclose()
+    await provider2.aclose()
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_429_raises_rate_limit() -> None:
     """流式响应 429 → RateLimitError。"""
 

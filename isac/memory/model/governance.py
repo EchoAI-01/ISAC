@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import aiosqlite
@@ -19,6 +20,7 @@ from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from isac.memory.storage.metadata import MetadataStore
+    from isac.memory.storage.sparse import SparseBM25Index
 
 logger = get_logger(__name__)
 
@@ -43,15 +45,48 @@ class MemoryGovernor:
 
     组合 MetadataStore; 通过 store.db_path 直连 SQLite 操作治理列与 memory_audit/
     memory_revisions 表。无 store 时所有操作安全返回 False / [] (不抛, 保持向后兼容)。
+
+    CR3-L3: sparse_resolver 可选注入 (namespace → SparseBM25Index), 让 delete/
+    restore/correct 同步内存 BM25 索引 —— 此前软删除只置 deleted=1, 墓碑仍留在
+    倒排索引里抬高 total_docs/平均长度, 污染存活项的 IDF 与长度归一。未注入时
+    跳过同步 (下次重启 warm_up 已按 deleted=0 过滤, 见 metadata.py)。
+
+    CR3-L5: 各治理操作接受 operator 标识 (控制面 token 指纹/调用方名) 并连同
+    agent_id 一起落 memory_audit, 让审计能回答"谁做的"而不只是"发生过"。
     """
 
-    def __init__(self, metadata_store: MetadataStore | None = None) -> None:
+    def __init__(
+        self,
+        metadata_store: MetadataStore | None = None,
+        *,
+        sparse_resolver: Callable[[str], SparseBM25Index | None] | None = None,
+    ) -> None:
         self._store = metadata_store
+        self._sparse_resolver = sparse_resolver
 
     def _db_path(self) -> str | None:
         if self._store is None:
             return None
         return self._store.db_path
+
+    def _sync_sparse(self, agent_id: str, item_id: str, content: str | None) -> None:
+        """同步内存 BM25 索引: content=None 表示移除, 否则重建该文档 (CR3-L3)。
+
+        resolver 未注入或该 namespace 无索引时静默跳过; 同步失败只记日志,
+        不影响治理操作本身的结果。
+        """
+        if self._sparse_resolver is None:
+            return
+        try:
+            sparse = self._sparse_resolver(agent_id)
+            if sparse is None:
+                return
+            if content is None:
+                sparse.remove(item_id)
+            else:
+                sparse.add(item_id, content)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("BM25 索引同步失败, 已忽略", item_id=item_id, error=str(exc))
 
     async def _item_exists(self, db_path: str, item_id: str, agent_id: str) -> bool:
         """检查 item 是否存在且属于指定 agent_id (幂等判定 + 跨 Agent 越权拦截)。
@@ -67,14 +102,23 @@ class MemoryGovernor:
             )
             return await cursor.fetchone() is not None
 
-    async def _write_audit(self, db_path: str, item_id: str, action: str, *, detail: str = "") -> None:
-        """写审计日志 (失败不阻塞主操作)。"""
+    async def _write_audit(
+        self,
+        db_path: str,
+        item_id: str,
+        action: str,
+        *,
+        agent_id: str = "",
+        operator: str = "",
+        detail: str = "",
+    ) -> None:
+        """写审计日志 (失败不阻塞主操作)。CR3-L5: 真实落 operator + agent_id。"""
         try:
             async with aiosqlite.connect(db_path) as db:
                 await db.execute(
-                    "INSERT INTO memory_audit (audit_id, item_id, action, operator, occurred_at, detail) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (uuid.uuid4().hex, item_id, action, "", int(time.time()), detail),
+                    "INSERT INTO memory_audit (audit_id, item_id, action, operator, agent_id, occurred_at, detail) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (uuid.uuid4().hex, item_id, action, operator, agent_id, int(time.time()), detail),
                 )
                 await db.commit()
         except Exception as exc:  # noqa: BLE001
@@ -88,7 +132,7 @@ class MemoryGovernor:
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT audit_id, item_id, action, operator, occurred_at, detail "
+                "SELECT audit_id, item_id, action, operator, agent_id, occurred_at, detail "
                 "FROM memory_audit WHERE item_id = ? ORDER BY occurred_at ASC",
                 (item_id,),
             )
@@ -99,13 +143,14 @@ class MemoryGovernor:
                 "item_id": r["item_id"],
                 "action": r["action"],
                 "operator": r["operator"],
+                "agent_id": r["agent_id"],
                 "occurred_at": r["occurred_at"],
                 "detail": r["detail"],
             }
             for r in rows
         ]
 
-    async def freeze(self, item_id: str, agent_id: str) -> bool:
+    async def freeze(self, item_id: str, agent_id: str, *, operator: str = "") -> bool:
         """冻结记忆条目 (不再自动更新); 幂等。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
@@ -117,10 +162,10 @@ class MemoryGovernor:
             )
             await db.commit()
         logger.info("记忆条目已冻结", item_id=item_id, agent_id=agent_id)
-        await self._write_audit(db_path, item_id, "freeze")
+        await self._write_audit(db_path, item_id, "freeze", agent_id=agent_id, operator=operator)
         return True
 
-    async def protect(self, item_id: str, agent_id: str) -> bool:
+    async def protect(self, item_id: str, agent_id: str, *, operator: str = "") -> bool:
         """保护记忆条目 (不被自动清理/覆盖); 幂等。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
@@ -132,10 +177,10 @@ class MemoryGovernor:
             )
             await db.commit()
         logger.info("记忆条目已保护", item_id=item_id, agent_id=agent_id)
-        await self._write_audit(db_path, item_id, "protect")
+        await self._write_audit(db_path, item_id, "protect", agent_id=agent_id, operator=operator)
         return True
 
-    async def correct(self, item_id: str, new_content: str, agent_id: str) -> bool:
+    async def correct(self, item_id: str, new_content: str, agent_id: str, *, operator: str = "") -> bool:
         """纠正记忆内容 (保留可追溯历史到 memory_revisions)。
 
         无 store、不属于 agent_id 或条目已 frozen (不再自动更新, 与 delete() 对
@@ -150,13 +195,14 @@ class MemoryGovernor:
         new_content = _truncate_content(new_content)
         async with aiosqlite.connect(db_path) as db:
             cursor = await db.execute(
-                "SELECT content, frozen FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+                "SELECT content, frozen, deleted FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
             )
             row = await cursor.fetchone()
             if row and row[1] == 1:
                 logger.info("记忆条目已冻结, 拒绝纠正", item_id=item_id)
                 return False
             old_content = row[0] if row else ""
+            is_deleted = bool(row and row[2] == 1)
             await db.execute(
                 "INSERT INTO memory_revisions (revision_id, item_id, old_content, new_content, corrected_at, reason) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -168,11 +214,22 @@ class MemoryGovernor:
             )
             await db.commit()
         logger.info("记忆条目已纠正", item_id=item_id, revision_id=revision_id)
-        await self._write_audit(db_path, item_id, "correct", detail=f"revision_id={revision_id}")
+        # CR3-L3: 纠正后的内容同步进 BM25 内存索引 (add 语义是先 remove 再 add);
+        # 软删除条目跳过 —— delete 时已从索引移除, 纠正不应把墓碑重新灌回索引
+        # (restore 时才会连内容一起 add 回来)。
+        if not is_deleted:
+            self._sync_sparse(agent_id, item_id, new_content)
+        await self._write_audit(
+            db_path, item_id, "correct", agent_id=agent_id, operator=operator, detail=f"revision_id={revision_id}"
+        )
         return True
 
-    async def delete(self, item_id: str, agent_id: str) -> bool:
-        """软删除记忆条目 (deleted=1); protected 条目拒绝。无 store 或不属于 agent_id 返回 False。"""
+    async def delete(self, item_id: str, agent_id: str, *, operator: str = "") -> bool:
+        """软删除记忆条目 (deleted=1); protected 条目拒绝。无 store 或不属于 agent_id 返回 False。
+
+        CR3-L3: 成功后同步 sparse.remove(), 让墓碑立即从 BM25 内存索引消失,
+        不再污染存活项的 IDF/长度归一 (此前只有重启 warm_up 才能纠正)。
+        """
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
@@ -190,11 +247,15 @@ class MemoryGovernor:
             )
             await db.commit()
         logger.info("记忆条目已软删除", item_id=item_id, agent_id=agent_id)
-        await self._write_audit(db_path, item_id, "delete")
+        self._sync_sparse(agent_id, item_id, None)
+        await self._write_audit(db_path, item_id, "delete", agent_id=agent_id, operator=operator)
         return True
 
-    async def restore(self, item_id: str, agent_id: str) -> bool:
-        """恢复被删除/冻结的条目 (反向操作: deleted=0, frozen=0)。无 store 或不属于 agent_id 返回 False。"""
+    async def restore(self, item_id: str, agent_id: str, *, operator: str = "") -> bool:
+        """恢复被删除/冻结的条目 (反向操作: deleted=0, frozen=0)。无 store 或不属于 agent_id 返回 False。
+
+        CR3-L3: 恢复后把内容重新 add 回 BM25 内存索引 (delete 时已 remove)。
+        """
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
@@ -203,9 +264,16 @@ class MemoryGovernor:
                 "UPDATE episodes SET deleted = 0, frozen = 0, updated_at = ? WHERE id = ? AND agent_id = ?",
                 (int(time.time()), item_id, agent_id),
             )
+            cursor = await db.execute(
+                "SELECT content FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+            )
+            row = await cursor.fetchone()
             await db.commit()
         logger.info("记忆条目已恢复", item_id=item_id, agent_id=agent_id)
-        await self._write_audit(db_path, item_id, "restore")
+        restored_content = str(row[0]) if row and row[0] else ""
+        if restored_content:
+            self._sync_sparse(agent_id, item_id, restored_content)
+        await self._write_audit(db_path, item_id, "restore", agent_id=agent_id, operator=operator)
         return True
 
     async def export(self, agent_id: str, limit: int = 500, offset: int = 0) -> list[MemoryItem]:

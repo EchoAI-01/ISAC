@@ -293,66 +293,80 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     """
     metrics = get_default_metrics()
 
-    # J1: 模型用量计量子系统 (默认关闭; observability.usage.enabled=true 时启用)。
-    # 未启用时 usage_recorder 为 None → ProviderManager 不计量, 主链路热路径零变化,
-    # 也不会创建任何 usage.db 文件。
-    usage_store: Any = None
-    usage_recorder: Any = None
-    usage_config = (global_config.get("observability", {}) or {}).get("usage", {}) or {}
-    if usage_config.get("enabled"):
-        from isac.observability.usage.pricing import PricingCatalog
-        from isac.observability.usage.recorder import UsageRecorder
-        from isac.observability.usage.storage import UsageStore
-
-        usage_store = UsageStore(str(DATA_DIR / "usage" / "usage.db"))
-        usage_recorder = UsageRecorder(
-            store=usage_store,
-            pricing=PricingCatalog(),
-            flush_interval_seconds=float(usage_config.get("flush_interval_seconds", 30)),
-        )
+    usage_store, usage_recorder = _build_usage_stack(global_config)
 
     provider_manager = ProviderManager(global_config.get("llm", {}), metrics=metrics, usage_recorder=usage_recorder)
     memory_config = global_config.get("memory", {})
     metadata_store: MetadataStore | None = None
-    vector_store: VectorStore | None = None
     graph_store: GraphStore | None = None
     sparse_indexes: dict[str, SparseBM25Index] = {}
+    # CR3 复核修正: VectorStore 按 namespace 分库 (vectors-<ns>.db)。此前全部
+    # Agent 共享单一 vec0 表做全库 KNN, 其他命名空间的向量会挤占 top-K 召回
+    # 槽位 (ACL 过滤后被丢弃且不回补), 多 Agent 下稠密召回系统性退化为空。
+    # 旧共享 vectors.db 无迁移负担: CR3 之前生产 embedder 从未注入 provider,
+    # 该文件不会有数据。
+    vector_stores: dict[str, VectorStore] = {}
     embedder: EmbeddingManager | None = None
     reranker: Reranker | None = None
 
+    # CR3-L2 (O1/P5): 租户隔离接线。默认 tenancy.enabled=false → guard passthrough
+    # + 默认租户, 单租户部署零行为变化; enabled=true 时记忆命名空间加租户前缀,
+    # MetadataStore 读写带租户谓词/打标 (跨租户共享同一 DB 文件时互不可见)。
+    from isac.runtime.tenancy.isolation import TenantIsolationGuard
+    from isac.runtime.tenancy.models import DEFAULT_ORG, DEFAULT_TENANT, TenantContext
+
+    tenancy_config = global_config.get("tenancy", {}) or {}
+    tenant_guard = TenantIsolationGuard(enabled=bool(tenancy_config.get("enabled")))
+    tenant_context = TenantContext(
+        organization_id=str(tenancy_config.get("organization_id") or DEFAULT_ORG),
+        tenant_id=str(tenancy_config.get("tenant_id") or DEFAULT_TENANT),
+    )
+
     if memory_config.get("enabled"):
-        memory_dir = DATA_DIR / "memory"
-        metadata_store = MetadataStore(str(memory_dir / "metadata.db"))
-        vector_store = VectorStore(
-            str(memory_dir / "vectors.db"),
-            dimension=int(memory_config.get("embedding", {}).get("dimension", 1024) or 1024),
+        metadata_store, graph_store, embedder, reranker = _build_memory_stack(
+            memory_config, tenant_guard, tenant_context
         )
-        graph_store = GraphStore(str(memory_dir / "graph.db"))
-        embedder = EmbeddingManager(memory_config.get("embedding", {}))
-        reranker = Reranker(memory_config.get("reranker", {}))
 
     async def _storage_start() -> None:
-        """K3: 启动时执行 SQLite schema init/migration (MetadataStore.init_schema
-        + VectorStore.init_schema); memory 关闭时由各 store 的 async-with 自行释放,
-        无显式 close 动作 (aiosqlite 每次连接即关)。"""
+        """K3: 启动时执行 SQLite schema init/migration (MetadataStore.init_schema);
+        VectorStore 按 namespace 惰性创建, schema 在首次 upsert/search 时自建;
+        memory 关闭时由各 store 的 async-with 自行释放, 无显式 close 动作
+        (aiosqlite 每次连接即关)。"""
         if metadata_store is not None:
             await metadata_store.init_schema()
             logger.info("MetadataStore schema 已初始化", path=metadata_store.db_path)
-        if vector_store is not None:
-            await vector_store.init_schema()
+
+    def _vector_store_for(namespace: str) -> VectorStore:
+        """按 namespace 惰性创建独立 VectorStore (vectors-<safe_ns>.db)。"""
+        store = vector_stores.get(namespace)
+        if store is None:
+            import hashlib
+            import re as _re
+
+            safe = _re.sub(r"[^A-Za-z0-9_-]", "_", namespace) or "default"
+            if safe != namespace:
+                # 含非法文件名字符 (如租户前缀的 ":") 时加短哈希防替换后碰撞
+                safe = f"{safe}-{hashlib.sha256(namespace.encode('utf-8')).hexdigest()[:8]}"
+            store = VectorStore(
+                str(DATA_DIR / "memory" / f"vectors-{safe}.db"),
+                dimension=int(memory_config.get("embedding", {}).get("dimension", 1024) or 1024),
+            )
+            vector_stores[namespace] = store
+        return store
 
     def memory_factory(namespace: str) -> Any:
+        # CR3-L2: 多租户启用时命名空间加 org:tenant 前缀 (默认租户原样返回)
+        namespace = tenant_guard.namespace_for(namespace, tenant_context)
         if not memory_config.get("enabled"):
             return NoOpMemoryPipeline(namespace)
         assert metadata_store is not None
-        assert vector_store is not None
         assert graph_store is not None
         assert embedder is not None
         sparse = sparse_indexes.setdefault(namespace, SparseBM25Index())
         return MemoryRetrievalPipeline(
             namespace=namespace,
             metadata=metadata_store,
-            vector=vector_store,
+            vector=_vector_store_for(namespace),
             sparse=sparse,
             graph=graph_store,
             embedder=embedder,
@@ -400,6 +414,14 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         "memory_factory": memory_factory,
         "metrics": metrics,
         "storage_start": _storage_start if memory_config.get("enabled") else _noop_start,
+        # CR3: 记忆存储句柄 (memory 未启用时为 None)。此前 services 里根本没有
+        # "metadata_store" 键, _register_control_plane 的 services.get() 恒 None,
+        # routes_memory / routes_memory_admin / routes_sessions 在生产从未挂载。
+        "metadata_store": metadata_store,
+        "sparse_indexes": sparse_indexes,
+        # CR3-L2: 租户上下文 (默认单租户 passthrough)
+        "tenant_guard": tenant_guard,
+        "tenant_context": tenant_context,
         # J1: 计量子系统句柄 (未启用时为 None, main 据此决定是否注册生命周期)。
         "usage_store": usage_store,
         "usage_recorder": usage_recorder,
@@ -412,6 +434,66 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         "subagent_supervisor": subagent_supervisor,
         "subagent_journal": subagent_journal,
     }
+
+
+def _build_usage_stack(global_config: dict[str, Any]) -> tuple[Any, Any]:
+    """J1: 模型用量计量子系统 (默认关闭; observability.usage.enabled=true 时启用)。
+
+    未启用时返回 (None, None) → ProviderManager 不计量, 主链路热路径零变化,
+    也不会创建任何 usage.db 文件。
+    """
+    usage_config = (global_config.get("observability", {}) or {}).get("usage", {}) or {}
+    if not usage_config.get("enabled"):
+        return None, None
+    from isac.observability.usage.pricing import PricingCatalog
+    from isac.observability.usage.recorder import UsageRecorder
+    from isac.observability.usage.storage import UsageStore
+
+    usage_store = UsageStore(str(DATA_DIR / "usage" / "usage.db"))
+    usage_recorder = UsageRecorder(
+        store=usage_store,
+        pricing=PricingCatalog(),
+        flush_interval_seconds=float(usage_config.get("flush_interval_seconds", 30)),
+    )
+    return usage_store, usage_recorder
+
+
+def _build_memory_stack(
+    memory_config: dict[str, Any],
+    tenant_guard: Any,
+    tenant_context: Any,
+) -> tuple[MetadataStore, GraphStore, EmbeddingManager, Reranker]:
+    """构造记忆子系统 (memory.enabled=true 时): 元数据/图谱存储 + 嵌入/重排管理器。
+
+    CR3-H3: memory.embedding 配置了 api_key+model 时注入真实 EmbeddingProvider
+    —— 此前 EmbeddingManager 从不注入 provider, 生产恒降级 (is_degraded=True),
+    写入白算 embedding、检索永远走不到稠密召回。
+    """
+    memory_dir = DATA_DIR / "memory"
+    metadata_store = MetadataStore(
+        str(memory_dir / "metadata.db"),
+        tenant_guard=tenant_guard,
+        tenant_context=tenant_context,
+    )
+    graph_store = GraphStore(str(memory_dir / "graph.db"))
+    embedding_config = memory_config.get("embedding", {}) or {}
+    embedding_provider = None
+    if embedding_config.get("api_key") and embedding_config.get("model"):
+        from isac.provider.embed.openai_compat import OpenAICompatEmbeddingProvider
+
+        embedding_provider = OpenAICompatEmbeddingProvider(
+            str(embedding_config.get("api_key")),
+            str(embedding_config.get("base_url", "") or ""),
+            str(embedding_config.get("model")),
+        )
+        logger.info(
+            "已注入记忆 EmbeddingProvider (稠密召回启用)",
+            model=embedding_config.get("model"),
+            base_url=embedding_config.get("base_url", ""),
+        )
+    embedder = EmbeddingManager(embedding_config, provider=embedding_provider)
+    reranker = Reranker(memory_config.get("reranker", {}))
+    return metadata_store, graph_store, embedder, reranker
 
 
 async def _noop_start() -> None:
@@ -516,17 +598,23 @@ async def main() -> None:
         """
         lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
         lock = await session_lock.acquire(lock_key)
-        async with lock:
-            await process_message(
-                message,
-                event_bus=event_bus,
-                router=router,
-                session_mgr=session_mgr,
-                user_mapper=user_mapper,
-                agent_manager=agent_manager,
-                channel_registry=channel_registry,
-                metrics=metrics,
-            )
+        # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
+        # SessionLockManager 的 K7 锁回收; 此前主链路只 acquire 不 release, 导致
+        # _locks/_waiters 按不同 platform:user:group 无界增长 (长期运行内存泄漏)。
+        try:
+            async with lock:
+                await process_message(
+                    message,
+                    event_bus=event_bus,
+                    router=router,
+                    session_mgr=session_mgr,
+                    user_mapper=user_mapper,
+                    agent_manager=agent_manager,
+                    channel_registry=channel_registry,
+                    metrics=metrics,
+                )
+        finally:
+            session_lock.release(lock_key)
 
     # 注入 Channel 适配器的消息回调
     for adapter in channel_registry.list():
@@ -547,13 +635,17 @@ async def main() -> None:
     )
     control_config = global_config.get("control", {}) or {}
     if control_config.get("enabled"):
+        # CR3: session_mgr/event_bus 此前经 services.get() 取值恒 None (键根本
+        # 不存在), routes_sessions/routes_events 在生产从未挂载; 现在把 main()
+        # 内已构造的真实实例直接传入。
         await _register_control_plane(
             runtime, control_config, agent_manager, router, bus, metrics,
             services.get("usage_store"), services.get("subagent_supervisor"),
             services.get("provider_manager"), services.get("model_catalog"),
             services.get("artifact_store"),
-            services.get("session_mgr"), services.get("metadata_store"),
-            services.get("event_bus"),
+            session_mgr, services.get("metadata_store"),
+            event_bus,
+            services=services,
         )
     runtime.register_lifecycle(
         "alerts",
@@ -624,6 +716,8 @@ async def _register_control_plane(
     session_manager: Any = None,
     metadata_store: Any = None,
     event_bus: Any = None,
+    *,
+    services: dict[str, Any] | None = None,
 ) -> None:
     """把控制面 (uvicorn Server) 注册到 runtime 的生命周期管理。
 
@@ -650,9 +744,22 @@ async def _register_control_plane(
                 load_report = await plugin_manager.load_all(plugins_dir)
                 if load_report:
                     logger.info("插件加载完成", report=load_report)
+                # CR3-H2: 接线 on_load 生命周期钩子 —— 此前 call_on_load 全仓无
+                # 调用点, 插件即使被加载也是"惰性"的 (无法注册事件订阅/互联钩子/
+                # Admin Route)。event_bus/inter_agent_bus/router 都是生产实例,
+                # 插件经 on_event_intercept/on_event_async 的订阅会真实参与
+                # process_message 主链路。tools/commands/prompt_builder 是
+                # per-Agent 注册表, 留 None (插件调用对应 register_* 会得到明确
+                # 报错并被 call_on_load 按插件隔离); per-Agent 桥接见 P 节点。
+                await _fire_plugin_on_load(
+                    plugin_manager, services or {}, event_bus=event_bus, bus=bus, router=router
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("插件加载过程异常, 不阻塞控制面", error=str(exc), exc_info=True)
 
+        # CR3-L3: BM25 内存索引解析器 (namespace → SparseBM25Index), 让治理路由的
+        # delete/restore/correct 能同步内存索引。
+        sparse_indexes = (services or {}).get("sparse_indexes") or {}
         app = create_control_app(
             agent_manager,
             router,
@@ -668,6 +775,7 @@ async def _register_control_plane(
             session_manager=session_manager,
             metadata_store=metadata_store,
             event_bus=event_bus,
+            sparse_resolver=sparse_indexes.get,
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))
@@ -697,6 +805,42 @@ async def _register_control_plane(
         logger.info("控制面已注册", host=host, port=port)
     except Exception as exc:
         logger.error("控制面注册失败 (不阻塞数据面)", error=str(exc), exc_info=True)
+
+
+async def _fire_plugin_on_load(
+    plugin_manager: Any,
+    services: dict[str, Any],
+    *,
+    event_bus: Any = None,
+    bus: Any = None,
+    router: Any = None,
+) -> None:
+    """CR3-H2: 构造 PluginContext 并触发全部 Native 插件的 on_load 钩子。
+
+    agent_hooks 是进程级共享注册表 (services["plugin_agent_hooks"]), 组装每个
+    Agent 时由 assemble_agent 合并进该 Agent 的私有 hooks; event_bus 缺失
+    (极少数测试路径) 时跳过, 不构造无效 context。失败只记日志不阻塞启动。
+    """
+    if event_bus is None:
+        logger.debug("event_bus 未注入, 跳过插件 on_load 接线")
+        return
+    try:
+        from isac.agent.hooks import AgentHooks
+        from isac.plugin.native.plugin import make_plugin_context
+
+        plugin_agent_hooks = services.setdefault("plugin_agent_hooks", AgentHooks())
+        context = make_plugin_context(
+            agent_hooks=plugin_agent_hooks,
+            event_bus=event_bus,
+            services=services,
+            inter_agent_bus=bus,
+            router=router,
+        )
+        on_load_report = await plugin_manager.call_on_load(context)
+        if on_load_report:
+            logger.info("插件 on_load 完成", report=on_load_report)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("插件 on_load 接线失败, 不阻塞控制面", error=str(exc), exc_info=True)
 
 
 def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:

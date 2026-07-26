@@ -198,8 +198,15 @@ class OpenAICompatProvider(LLMProvider):
         }
         if tools:
             payload["tools"] = tools
+        if stream:
+            # CR3-H4: 要求最终 chunk 携带 usage (OpenAI 语义), 否则流式回合的
+            # token 预算永远记 0、Budget 门控对流式失效。调用方可用
+            # kwargs stream_options=None 显式关闭 (个别兼容端点不认该字段)。
+            payload.setdefault("stream_options", {"include_usage": True})
         # kwargs 覆盖默认参数 (temperature/top_p/max_tokens 等)
         payload.update(kwargs)
+        if payload.get("stream_options") is None:
+            payload.pop("stream_options", None)
         return payload
 
     async def _post_and_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -286,27 +293,41 @@ class OpenAICompatProvider(LLMProvider):
         return tool_calls
 
     async def _parse_sse_stream(self, response: Any) -> AsyncIterator[LLMChunk]:
-        """解析 SSE 流: data: <json>\\n\\n; 末尾 data: [DONE] 结束。"""
+        """解析 SSE 流: data: <json>\\n\\n; 末尾 data: [DONE] 结束。
+
+        CR3-H4: 真实 OpenAI 流式把一个工具调用拆到 N 个 delta (首块带 id+name,
+        后续只带 arguments 片段, 并行调用按 index 区分)。此前把每个 delta 当完整
+        调用、对片段单独 json.loads —— 合并结果是参数为空的调用 + 一串 id/name
+        为空的幽灵调用。现在按 index 累积分片, 流结束后装配为完整 ToolCall 逐个
+        yield (与 LLMChunk 契约一致: tool_call 只在完整时出现)。
+        """
+        pending_tool_calls: dict[int, dict[str, str]] = {}
         async for raw_line in response.aiter_lines():
             line = raw_line.strip()
             if not line or not line.startswith("data:"):
                 continue
             data_str = line[len("data:"):].strip()
             if data_str == "[DONE]":
-                return
+                break
             try:
                 chunk_json = json.loads(data_str)
             except json.JSONDecodeError as exc:
                 logger.warning("SSE chunk JSON 解析失败, 跳过", error=str(exc), line=line)
                 continue
-            yield self._parse_chunk(chunk_json)
+            yield self._parse_chunk(chunk_json, pending_tool_calls)
+        for tool_call in self._assemble_tool_calls(pending_tool_calls):
+            yield LLMChunk(tool_call=tool_call, finish_reason="tool_calls")
 
     @staticmethod
-    def _parse_chunk(chunk_json: dict[str, Any]) -> LLMChunk:
-        """从单个 SSE chunk JSON 提取 delta + tool_call + usage。"""
+    def _parse_chunk(chunk_json: dict[str, Any], pending_tool_calls: dict[int, dict[str, str]]) -> LLMChunk:
+        """从单个 SSE chunk JSON 提取 delta/usage, 并把工具调用分片累积进 pending。
+
+        分片累积 (CR3-H4): delta.tool_calls 的每个条目按 index 归并 —— id/name
+        只在首个分片出现 (非空才覆盖), arguments 是字符串片段做拼接; 完整装配
+        推迟到流结束 (_assemble_tool_calls), 本方法产出的 chunk 不携带 tool_call。
+        """
         delta_content = ""
         delta_reasoning = ""
-        tool_call: ToolCall | None = None
         finish_reason: str | None = None
         usage = TokenUsage()
 
@@ -316,19 +337,20 @@ class OpenAICompatProvider(LLMProvider):
             delta = choice.get("delta", {}) or {}
             delta_content = str(delta.get("content", "") or "")
             delta_reasoning = str(delta.get("reasoning_content", "") or "")
-            tc_list = delta.get("tool_calls", [])
-            if tc_list:
-                tc = tc_list[0]
-                function = tc.get("function", {}) or {}
+            for tc in delta.get("tool_calls", []) or []:
                 try:
-                    arguments = json.loads(function.get("arguments", "{}") or "{}")
-                except json.JSONDecodeError:
-                    arguments = {}
-                tool_call = ToolCall(
-                    id=str(tc.get("id", "")),
-                    name=str(function.get("name", "")),
-                    arguments=arguments,
-                )
+                    index = int(tc.get("index", 0) or 0)
+                except (TypeError, ValueError):
+                    index = 0
+                entry = pending_tool_calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
+                if tc.get("id"):
+                    entry["id"] = str(tc["id"])
+                function = tc.get("function", {}) or {}
+                if function.get("name"):
+                    entry["name"] = str(function["name"])
+                fragment = function.get("arguments", "")
+                if fragment:
+                    entry["arguments"] += str(fragment)
             finish_reason = choice.get("finish_reason")
         usage_data = chunk_json.get("usage")
         if usage_data:
@@ -336,10 +358,36 @@ class OpenAICompatProvider(LLMProvider):
         return LLMChunk(
             delta_content=delta_content,
             delta_reasoning=delta_reasoning,
-            tool_call=tool_call,
+            tool_call=None,
             finish_reason=finish_reason,
             usage=usage,
         )
+
+    @staticmethod
+    def _assemble_tool_calls(pending_tool_calls: dict[int, dict[str, str]]) -> list[ToolCall]:
+        """把累积的工具调用分片装配为完整 ToolCall 列表 (按 index 升序)。
+
+        参数片段拼接后整体 json.loads; 解析失败或 id/name 均为空的残片跳过
+        (与非流式 _parse_tool_calls 的"单个失败不阻塞整体"策略一致)。
+        """
+        tool_calls: list[ToolCall] = []
+        for index in sorted(pending_tool_calls):
+            entry = pending_tool_calls[index]
+            if not entry["id"] and not entry["name"]:
+                logger.warning("流式工具调用分片缺 id/name, 跳过", index=index)
+                continue
+            try:
+                arguments = json.loads(entry["arguments"] or "{}")
+            except json.JSONDecodeError as exc:
+                logger.warning(
+                    "流式工具调用参数拼接后 JSON 解析失败, 参数置空",
+                    index=index, name=entry["name"], error=str(exc),
+                )
+                arguments = {}
+            if not isinstance(arguments, dict):
+                arguments = {}
+            tool_calls.append(ToolCall(id=entry["id"], name=entry["name"], arguments=arguments))
+        return tool_calls
 
     @staticmethod
     def _map_http_error(status_code: int, body: bytes) -> LLMError | RateLimitError:

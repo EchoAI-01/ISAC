@@ -76,12 +76,15 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 
 | 能力 | 现状 | 接线节点 |
 |------|------|---------|
-| L2-L5 拟人化 | wait 闭环已接生产;debounce 合并 / 主动调度启停 / 打断闭环 / 恢复加载 未接线 | P0 → P1 |
-| M1-M2 Mesh | 仲裁 / ACL / bus 投递 / 4 A2A 工具 已实现;observe_message / mesh_role / broker 注入 未接线 | P2 |
+| L2-L5 拟人化 | wait 闭环已接生产;debounce 合并 / 主动调度启停 / 打断闭环 / 恢复加载 未接线 (CR3-M6 已修调度器冷却饿死) | P0 → P1 |
+| M1-M2 Mesh | 仲裁 / ACL / bus 投递 / 4 A2A 工具 已实现 (CR3-M2 已修 bus notify 假成功);observe_message / mesh_role / broker 注入 未接线 | P2 |
 | N1 MemoryItem | 契约 + Adapter 实现;`pipeline.search()` 从不调用(悬空适配层) | P3 |
 | N3 身份归一 | IdentityResolver 实现;gateway 无调用点(悬空库) | P4 |
-| O1-O3 企业化 | 租户隔离 / 插件隔离 / Workflow 实现;零调用点(未接 store/loader/control) | P5 |
-| 向量 / 图谱召回 | VectorStore / GraphStore / Embedding 已实现;`pipeline.search()` 只写不读 | P3 |
+| O1 多租户 | **已接线 (CR3-L2)**: `tenancy.enabled` 配置开启后 MetadataStore 读写带租户谓词/打标 + 记忆命名空间加前缀;默认关闭零行为变化 | 已完成 (跨租户测试见 test_tenant_isolation) |
+| O2 插件隔离 | PluginIsolationHost 已支持子进程真实加载插件 (`load_plugin`, CR3-H2) + `on_load` 生命周期已接线;**默认加载路径仍在宿主进程内执行 (无隔离, 有护栏警告)**, 接管待做 | P5 |
+| O3 Workflow | 引擎已修多入口+fan-in 汇合语义 (CR3-M7);生产中仍未实例化 | P5 |
+| 向量召回 | **已接线 (CR3-H3)**: `pipeline.search()` 稠密召回 + RRF 融合 + ACL 一致过滤;`memory.embedding` 配 api_key+model 即生效 (main 注入 EmbeddingProvider)。图谱召回仍未接入 | P3 (图谱) |
+| 流式工具调用 | 按 index 累积分片 + stream_options.include_usage + 首 chunk 前失败回退 chat_with_retry (CR3-H4);主链路未启用 streaming | P0 |
 
 *未开始 (`[ ]`)*:
 
@@ -91,6 +94,8 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 - **I 节点复核** — WebUI 浏览器测试 CI 已随 K8 接入,复核 I 是否可由 85% 升 100%。
 
 *已补齐*: Reranker 真实后端 `OpenAICompatRerankerProvider`(Cohere/Jina 双协议,`isac/provider/rerank/openai_compat.py`,已接入检索 pipeline);N2 检索期软删除过滤已生效(CR2-Fix-12),N2 记忆治理已完整接入生产。
+
+**CR3 修复轮 (2026-07-26, 对应 Review/ISAC_待修复项清单.md 的 14 项)**: H2 插件隔离护栏+`on_load` 接线+隔离宿主真实加载 / H3 向量召回接入 pipeline(RRF+ACL)+生产 EmbeddingProvider 注入 / H4 流式工具调用按 index 累积+include_usage+失败回退 / M2 bus notify 真实投递 / M5 Gating-Focus LRU cap 1000 / M6 调度器冷却不再饿死其他会话 / M7 Workflow 多入口+fan-in 入度语义 / L1 自动化创建 Agent 强制受限沙箱 / L2 租户隔离进数据面(默认关闭) / L3 软删同步 BM25+预热过滤 / L4 SSRF 请求期固定 IP / L5 治理审计 operator+agent_id 归因 / L6 非 ASCII Token 401+/metrics 可选认证 / L8 write_file 线程池+journal 原子 seq+MCP sse 显式拒绝。附带: 控制面 sessions/memory/events 路由完成生产挂载(此前 services 键缺失恒 None), `resource` 模块 Windows 平台守卫。
 
 ## 编号约定
 

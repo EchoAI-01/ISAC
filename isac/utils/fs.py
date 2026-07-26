@@ -31,6 +31,17 @@ def atomic_write_text(file_path: str | Path, content: str) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_name, path)
+        # CR3-Fix: 仅 fsync 文件数据不够 —— os.replace 产生的目录项 (rename) 也要落盘,
+        # 否则崩溃/掉电后重启可能读不到刚写入的文件, 与本模块 "重启仍能读上一份完整
+        # 配置" 的承诺不符。best-effort 对父目录 fsync (POSIX); 平台不支持时忽略。
+        try:
+            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass  # Windows 等不支持对目录 fsync 的平台: 静默降级
     except Exception:
         try:
             os.unlink(tmp_name)

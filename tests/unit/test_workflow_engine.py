@@ -258,3 +258,236 @@ async def test_engine_without_action_handler_succeeds_with_noop_stages(engine: W
     engine.register(wf)
     status = await engine.start("w1")
     assert status is WorkflowStatus.SUCCEEDED
+
+
+# ── CR3-M7: 多入口 + fan-in 汇合语义 ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_start_runs_all_entry_stages(engine: WorkflowEngine) -> None:
+    """CR3-M7: 多个无入边的根节点必须全部启动 (此前只跑 entry_stages[0])."""
+    executed: list[str] = []
+
+    async def action_handler(stage: Stage) -> None:
+        executed.append(stage.stage_id)
+
+    engine.set_action_handler(action_handler)
+    wf = _make_workflow(
+        stages=[
+            Stage(stage_id="root_a", action="a"),
+            Stage(stage_id="root_b", action="b"),
+            Stage(stage_id="child", action="c"),
+        ],
+        transitions=[Transition(from_stage="root_a", to_stage="child")],
+    )
+    engine.register(wf)
+    status = await engine.start("w1")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert set(executed) == {"root_a", "root_b", "child"}
+
+
+@pytest.mark.asyncio
+async def test_diamond_fan_in_waits_for_all_parents(engine: WorkflowEngine) -> None:
+    """CR3-M7: 钻石 DAG (A→B, A→C, B→D, C→D) 中 D 必须等 B 和 C 都完成才执行。
+
+    B 故意 sleep 使其晚于 C 完成; 此前 D 在首个父分支 (C) 到达时就提前运行。
+    """
+    finished: list[str] = []
+
+    async def action_handler(stage: Stage) -> None:
+        if stage.stage_id == "B":
+            await asyncio.sleep(0.05)
+        finished.append(stage.stage_id)
+
+    engine.set_action_handler(action_handler)
+    wf = _make_workflow(
+        stages=[
+            Stage(stage_id="A", action="a"),
+            Stage(stage_id="B", action="b"),
+            Stage(stage_id="C", action="c"),
+            Stage(stage_id="D", action="d"),
+        ],
+        transitions=[
+            Transition(from_stage="A", to_stage="B", kind=TransitionKind.PARALLEL),
+            Transition(from_stage="A", to_stage="C", kind=TransitionKind.PARALLEL),
+            Transition(from_stage="B", to_stage="D"),
+            Transition(from_stage="C", to_stage="D"),
+        ],
+    )
+    engine.register(wf)
+    status = await engine.start("w1")
+    assert status is WorkflowStatus.SUCCEEDED
+    # D 恰好执行一次, 且在 B 与 C 都完成之后
+    assert finished.count("D") == 1
+    assert finished.index("D") > finished.index("B")
+    assert finished.index("D") > finished.index("C")
+
+
+@pytest.mark.asyncio
+async def test_fan_in_with_one_skipped_branch_still_runs(engine: WorkflowEngine) -> None:
+    """CR3-M7: 汇合节点的某个父分支被条件跳过时, 其余分支完成后汇合节点仍执行。"""
+    executed: list[str] = []
+
+    async def action_handler(stage: Stage) -> None:
+        executed.append(stage.stage_id)
+
+    engine.set_action_handler(action_handler)
+    engine.set_condition_evaluator(lambda condition: condition == "True")
+    wf = _make_workflow(
+        stages=[
+            Stage(stage_id="A", action="a"),
+            Stage(stage_id="B", action="b"),
+            Stage(stage_id="C", action="c"),
+            Stage(stage_id="D", action="d"),
+        ],
+        transitions=[
+            Transition(from_stage="A", to_stage="B", kind=TransitionKind.CONDITIONAL, condition="False"),
+            Transition(from_stage="A", to_stage="C"),
+            Transition(from_stage="B", to_stage="D"),
+            Transition(from_stage="C", to_stage="D"),
+        ],
+    )
+    engine.register(wf)
+    status = await engine.start("w1")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert executed.count("D") == 1
+    assert "B" not in executed
+    b_stage = next(s for s in engine.get("w1").stages if s.stage_id == "B")
+    assert b_stage.status is StageStatus.SKIPPED
+
+
+@pytest.mark.asyncio
+async def test_all_parents_skipped_cascades_skip(engine: WorkflowEngine) -> None:
+    """CR3-M7: 全部父分支都被条件跳过的节点级联 SKIPPED, 不执行。"""
+    executed: list[str] = []
+
+    async def action_handler(stage: Stage) -> None:
+        executed.append(stage.stage_id)
+
+    engine.set_action_handler(action_handler)
+    engine.set_condition_evaluator(lambda condition: condition == "True")
+    wf = _make_workflow(
+        stages=[
+            Stage(stage_id="A", action="a"),
+            Stage(stage_id="B", action="b"),
+            Stage(stage_id="C", action="c"),
+        ],
+        transitions=[
+            Transition(from_stage="A", to_stage="B", kind=TransitionKind.CONDITIONAL, condition="False"),
+            Transition(from_stage="B", to_stage="C"),
+        ],
+    )
+    engine.register(wf)
+    status = await engine.start("w1")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert executed == ["A"]
+    statuses = {s.stage_id: s.status for s in engine.get("w1").stages}
+    assert statuses["B"] is StageStatus.SKIPPED
+    assert statuses["C"] is StageStatus.SKIPPED
+
+
+# ── CR3 复核修正: 无效边/回环边不得让 stage 静默卡死 ──────────
+
+
+@pytest.mark.asyncio
+async def test_dangling_source_edge_does_not_starve_target(engine: WorkflowEngine) -> None:
+    """CR3 复核: from_stage 指向不存在 stage 的边被忽略, 目标 stage 正常执行。"""
+    executed: list[str] = []
+
+    async def action_handler(stage: Stage) -> None:
+        executed.append(stage.stage_id)
+
+    engine.set_action_handler(action_handler)
+    wf = _make_workflow(
+        stages=[Stage(stage_id="A", action="a"), Stage(stage_id="C", action="c")],
+        transitions=[
+            Transition(from_stage="A", to_stage="C"),
+            Transition(from_stage="X_deleted", to_stage="C"),  # 悬空来源
+        ],
+    )
+    engine.register(wf)
+    status = await engine.start("w1")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert executed == ["A", "C"]
+
+
+@pytest.mark.asyncio
+async def test_non_retry_self_loop_is_ignored(engine: WorkflowEngine) -> None:
+    """CR3 复核: 非 RETRY 自环边不计入入度, stage 正常执行一次。"""
+    executed: list[str] = []
+
+    async def action_handler(stage: Stage) -> None:
+        executed.append(stage.stage_id)
+
+    engine.set_action_handler(action_handler)
+    wf = _make_workflow(
+        stages=[Stage(stage_id="A", action="a"), Stage(stage_id="B", action="b")],
+        transitions=[
+            Transition(from_stage="A", to_stage="B"),
+            Transition(from_stage="B", to_stage="B"),  # 非 RETRY 自环
+        ],
+    )
+    engine.register(wf)
+    status = await engine.start("w1")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert executed == ["A", "B"]
+
+
+@pytest.mark.asyncio
+async def test_conditional_back_edge_cycle_runs_each_stage_once(engine: WorkflowEngine) -> None:
+    """CR3 复核: 下游回环边 (C→B) 不计入 B 的入度; A/B/C 各执行一次 (与旧实现一致)。"""
+    executed: list[str] = []
+
+    async def action_handler(stage: Stage) -> None:
+        executed.append(stage.stage_id)
+
+    engine.set_action_handler(action_handler)
+    engine.set_condition_evaluator(lambda condition: True)
+    wf = _make_workflow(
+        stages=[
+            Stage(stage_id="A", action="a"),
+            Stage(stage_id="B", action="b"),
+            Stage(stage_id="C", action="c"),
+        ],
+        transitions=[
+            Transition(from_stage="A", to_stage="B"),
+            Transition(from_stage="B", to_stage="C"),
+            Transition(from_stage="C", to_stage="B", kind=TransitionKind.CONDITIONAL, condition="retry_needed"),
+        ],
+    )
+    engine.register(wf)
+    status = await engine.start("w1")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert executed == ["A", "B", "C"]
+
+
+@pytest.mark.asyncio
+async def test_unreachable_cycle_does_not_starve_reachable_join(engine: WorkflowEngine) -> None:
+    """CR3 复核: 游离环 (B↔E) 中节点保持 PENDING (告警), 但不得饿死可达汇合节点 C。"""
+    executed: list[str] = []
+
+    async def action_handler(stage: Stage) -> None:
+        executed.append(stage.stage_id)
+
+    engine.set_action_handler(action_handler)
+    wf = _make_workflow(
+        stages=[
+            Stage(stage_id="A", action="a"),
+            Stage(stage_id="B", action="b"),
+            Stage(stage_id="C", action="c"),
+            Stage(stage_id="E", action="e"),
+        ],
+        transitions=[
+            Transition(from_stage="A", to_stage="C"),
+            Transition(from_stage="B", to_stage="C"),  # B 在游离环里, 这条边不可能被满足
+            Transition(from_stage="B", to_stage="E"),
+            Transition(from_stage="E", to_stage="B"),
+        ],
+    )
+    engine.register(wf)
+    status = await engine.start("w1")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert executed == ["A", "C"]
+    statuses = {s.stage_id: s.status for s in engine.get("w1").stages}
+    assert statuses["B"] is StageStatus.PENDING  # 不可达, 保持 PENDING (有 warning 日志)
+    assert statuses["E"] is StageStatus.PENDING

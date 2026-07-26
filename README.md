@@ -51,41 +51,43 @@
 
 ## 项目状态
 
-**Release Candidate v1.0.0-rc.1** — 框架骨架 + 真实 LLM Provider + 持久化恢复 + 安全基线 + 多 Agent E2E + 拟人化运行时 + 路由 Mesh + 记忆深化 + 企业化扩展全部就位, 已达发布准入。
+**Release Candidate v1.0.0-rc.1** — 定位为 **"主链路 MVP + 待激活子系统"**：单/多 Agent 基础回复链路、门控、命令、路由、控制面、监控、安全基线已在生产路径运行；部分子系统核心逻辑与单测已完成，但**默认关闭或尚未接入生产消息主链路**（下表用三态标注，与 `AGENTS.md §剩余工作` / `docs/PROGRESS.md` 口径一致）。
 
-A-K + L/M/N/O 各节点完成度:
+A-K + L/M/N/O 各节点完成度（核心逻辑 + 单测口径；主链路接线状态见状态表）:
 
 - A-I 文档冻结 / 基础骨架 / 连接路由 / 单 Agent 核心 / 多 Agent 运行时 / 插件生态 / 控制面 / 平台扩展 / 生产化交付 — 100%
 - J 模型能力、计量与管理面 (J1 用量计量 + J2 多模态 Provider + J3 WebUI v2 + J4 SubAgent Runtime) — 100%
-- K 稳定化 (K1-K8 CI/Docker/Playwright/发布准入) — 100%
-- L 拟人化运行时 (L1 ConversationRuntime + L2 Wait 闭环 + L3 主动任务 + L4 Planner 打断 + L5 上下文恢复) — 100%
-- M 路由与 Agent Mesh (M1 observer/candidate + M2 handoff/notify/memory_query) — 100%
-- N 记忆深化 (N1 统一 MemoryItem + N2 记忆治理 + N3 身份归一) — 100%
-- O 企业化 (O1 多租户 + O2 插件进程级隔离 + O3 Workflow 编排; O4 平台扩展/O5 视频生成 框架 scaffolding, 真实 API 接入待用户二次确认)
+- K 稳定化 (K1-K8 CI/Docker/Playwright) — 100%
+- L 拟人化运行时 / M 路由与 Agent Mesh / N 记忆深化 / O 企业化 — 核心逻辑 + 单测已交付；主链路接线按 P 节点推进（部分已在 CR3 修复轮接线，见下表）
+
+状态图例：**✅ 已接线** = 生产主链路真实运行 ·**⚙ 配置启用** = 已接线，默认关闭需配置开启 · **🔨 待接线** = 实现+单测完成，生产路径无调用点
 
 | 模块 | 状态 |
 |------|------|
-| 核心契约 (types/events/exceptions) | ✅ 完成 |
-| 配置与日志系统 + 原子写 | ✅ 完成 |
-| 消息路由 (Router + Rules + MeshRouter observer/candidate) | ✅ 完成 |
-| Gateway (EventBus/Session/User/Lock/IdentityResolver) | ✅ 完成 + TTL + 跨平台归一 |
-| 门控系统 (Gating/Focus/IdleBackoff) | ✅ 完成 + AgentConfig.gating 覆盖 |
-| 拟人化运行时 (ConversationRuntime + debounce + wait + proactive + interrupt + recovery) | ✅ L1-L5 完成 |
-| System Prompt 组装器 + 注入器 (含 Interrupt/Recovery) | ✅ 完成 |
-| Agent Loop (LLM 循环 + Hooks + 重试/回退 + 打断) | ✅ 完成 + tool_calls + interrupt |
-| OneBot v11 适配器 (QQ) | ✅ 完成 (反向 WebSocket) |
-| 工具系统 (ToolRegistry/ToolPermission + 4 A2A 工具 restricted) | ✅ 完成 + 内置命令接入 |
-| 记忆系统 (MemoryItem 统一契约 + 治理 freeze/protect/correct/delete/restore + 审计) | ✅ 完成 (Vector/Graph/Embed/Rerank 真实实现) |
-| 人格系统 (Persona/Mood/Drift) | ✅ 完成 (BehaviorLearner 接入) |
-| 插件生态 (AstrBot/MaiBot/Native + 进程级隔离) | ✅ 完成 + PluginManager + PluginIsolationHost |
-| 控制面 (Admin API/MCP/Webhooks + Memory 治理 + Identity 冲突裁决) | ✅ 完成 + 审计 + 持久化恢复 |
-| 多租户隔离 (TenantIsolationGuard + SQL 谓词注入) | ✅ O1 完成 |
-| Workflow 编排 (串/并/条件/重试 + 持久化 + resume) | ✅ O3 完成 |
-| 监控告警 (Metrics/Alerting) | ✅ 完成 + 接入主链路 |
-| WebUI v2 (SPA 十域 + 配置编辑事务 + SSE) | ✅ 完成 + sessionStorage + Playwright |
+| 核心契约 (types/events/exceptions) | ✅ 已接线 |
+| 配置与日志系统 + 原子写 (含目录 fsync) | ✅ 已接线 |
+| 消息路由 (Router + Rules) | ✅ 已接线；MeshRouter observer/candidate 🔨 待接线 (P2) |
+| Gateway (EventBus/Session/User/Lock/IdentityResolver) | ✅ 已接线 + TTL + 跨平台归一 |
+| 门控系统 (Gating/Focus/IdleBackoff + LRU 会话回收) | ✅ 已接线 + AgentConfig.gating 覆盖 |
+| 拟人化运行时 (ConversationRuntime/debounce/wait/interrupt/recovery) | ⚙ `conversation.enabled` 默认关闭；wait/interrupt 循环级联动 🔨 待接线 (P1) |
+| 主动任务 (ProactiveScheduler, 冷却按会话隔离) | 🔨 待接线 (P1; 生产中未实例化) |
+| System Prompt 组装器 + 注入器 (含 Interrupt/Recovery) | ✅ 已接线 |
+| Agent Loop (LLM 循环 + Hooks + 重试/回退 + 工具调用) | ✅ 已接线；流式(streaming) 分片合并已修复但主链路未启用流式 |
+| OneBot v11 适配器 (QQ) | ✅ 已接线 (反向 WebSocket) |
+| 工具系统 (ToolRegistry/ToolPermission + 4 A2A 工具 restricted) | ✅ 已接线 + 内置命令；A2A 工具依赖的 mesh_action_broker 🔨 待接线 (P2) |
+| 记忆系统 — FTS5+BM25 稀疏检索 + 治理 + 审计归因 | ⚙ `memory.enabled` 默认关闭 |
+| 记忆系统 — 稠密(向量)召回 + RRF 融合 | ⚙ 配置 `memory.embedding` (api_key+model) 后启用 (CR3-H3 已接线) |
+| 人格系统 (Persona/Mood/Drift) | ✅ 已接线 (BehaviorLearner) |
+| 插件生态 (AstrBot/MaiBot/Native + on_load 生命周期) | ✅ 加载与 on_load 已接线；⚠ 默认加载路径**无进程隔离**（仅可信插件, 见 plugins/README.md）|
+| 插件进程级隔离 (PluginIsolationHost 子进程真实加载) | ⚙ 机制可用 (load_plugin)；默认加载路径接管 🔨 待接线 |
+| 控制面 (Admin API/MCP/Webhooks + Memory 治理 + Sessions/Events 路由) | ✅ 已接线 + 审计 + 持久化恢复 + 自动化创建受限沙箱 |
+| 多租户隔离 (TenantIsolationGuard + 数据面租户谓词/命名空间前缀) | ⚙ `tenancy.enabled` 默认关闭 (CR3-L2 已接线) |
+| Workflow 编排 (多入口 + fan-in 汇合 + 条件/重试 + 持久化) | 🔨 待接线 (生产中未实例化) |
+| 监控告警 (Metrics/Alerting) | ✅ 已接线 |
+| WebUI v2 (SPA 十域 + 配置编辑事务 + SSE) | ✅ 已接线 + Playwright |
 | Docker 部署 + CI 门禁 (Playwright + release_checklist) | ✅ K8 完成 |
-| 真实 LLM Provider | ✅ 完成 (OpenAICompatProvider httpx + SSE + Tool Call) |
-| 安全基线 | ✅ K7 完成 |
+| 真实 LLM Provider (OpenAICompatProvider httpx + SSE + Tool Call) | ✅ 已接线 |
+| 安全基线 (K7 + CR3: SSRF 请求期固定 / 非 ASCII Token 401 / restricted 创建) | ✅ 已接线 |
 
 ---
 
@@ -134,7 +136,7 @@ uv run python -m isac
 }
 ```
 
-`OpenAICompatProvider` 正在开发中（后续将作为 Provider 主链路前置节点补齐），当前使用 `StubProvider` 占位。
+配置了 `llm.provider` 与 `llm.api_key` 后即启用真实的 `OpenAICompatProvider`（httpx + SSE + Tool Call）；未配置任何 Provider 时回退到内置 `StubProvider` 作为开发态兜底。真实模型不可达时由 `chat_with_retry` 走降级回复。
 
 ### 接入 QQ (OneBot)
 
