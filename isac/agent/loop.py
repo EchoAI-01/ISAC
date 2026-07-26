@@ -80,6 +80,9 @@ class ISACAgentLoop:
         都附带"我先理一下接下来要做的事"这类噪音 (D9)。
         """
         reported_task_progress = False
+        # P1(L4): 回合开始时快照打断序号 —— 之后只有"序号增长"才算本回合被打断
+        # (接替的新回合不会因上一回合遗留的 superseded 标志误判自己)。
+        interrupt_baseline = self._interrupt_seq(context)
         while context.budget.remaining:
             context.iteration += 1
             logger.debug(
@@ -87,6 +90,15 @@ class ISACAgentLoop:
                 iteration=context.iteration,
                 remaining_iterations=context.budget.remaining_iterations,
             )
+
+            # MVP-Fix: 在 prompt build **之前**判定打断。InterruptInjector.build()
+            # 会消费并清空 interrupt_state (注入"上一轮被打断"提示后 clear), 多步
+            # (工具) 回合里, 工具执行期间到达的打断信号会在下一轮 build 时被吞掉,
+            # 后面的 POST_LLM 检查永远读不到 → 该抑制没抑制。这里提前判定还省掉
+            # 一次注定要被丢弃的 LLM 调用。
+            if context.interrupt_requested or self._is_superseded(context, interrupt_baseline):
+                await self._emit_progress_if_task_started(context, reported_task_progress, "interrupted")
+                return AgentResult(interrupted=True)
 
             # 每轮重新构建 system prompt (记忆/画像/行话需要刷新)
             injection_context = self._to_injection_context(context)
@@ -119,10 +131,9 @@ class ISACAgentLoop:
             # P1(L4) conversation_runtime.interrupt_state.superseded (thinking 期间
             # manager.notify_incoming 在锁外调 request_interrupt 写入) —— 抑制旧
             # 回复, 下一轮由 InterruptInjector 注入"被打断"提示。
-            conv_runtime = self.services.get("conversation_runtime") or context.services.get("conversation_runtime")
-            interrupt_state = getattr(conv_runtime, "interrupt_state", None) if conv_runtime is not None else None
-            superseded = bool(interrupt_state is not None and interrupt_state.superseded)
-            if context.interrupt_requested or superseded:
+            # 这一处覆盖"打断恰好落在 LLM 调用窗口内"; 落在工具执行期间的由本轮
+            # 迭代开头的前置判定兜住 (见上方 MVP-Fix)。
+            if context.interrupt_requested or self._is_superseded(context, interrupt_baseline):
                 await self._emit_progress_if_task_started(context, reported_task_progress, "interrupted")
                 return AgentResult(interrupted=True)
 
@@ -166,6 +177,25 @@ class ISACAgentLoop:
                 await self.hooks.fire(AgentHookPoint.COMPRESS, messages, context)
 
         return AgentResult(stopped_by_budget=True)
+
+    def _interrupt_seq(self, context: AgentContext) -> int:
+        """P1(L4): 当前会话的打断序号 (单调递增); 无 runtime 时恒 0。"""
+        conv_runtime = self.services.get("conversation_runtime") or context.services.get("conversation_runtime")
+        if conv_runtime is None:
+            return 0
+        return int(getattr(conv_runtime, "interrupt_seq", 0) or 0)
+
+    def _is_superseded(self, context: AgentContext, baseline_seq: int) -> bool:
+        """P1(L4): **本回合期间**是否有新消息请求打断。
+
+        判定用单调序号相对回合开始时的基线是否增长, 而不是读 interrupt_state:
+        - interrupt_state 会被 InterruptInjector 在下一轮 prompt build 时消费清空,
+          单看它会漏判"工具执行期间到达"的打断 (该抑制没抑制);
+        - 而接替的新回合看到的是**上一回合**留下的 superseded 标志, 单看标志会让
+          它误判自己被打断而自杀 (该回复没回复)。
+        conversation 关闭 / 未注入 runtime 时序号恒 0, 永不触发 (零行为变化)。
+        """
+        return self._interrupt_seq(context) > baseline_seq
 
     async def _execute_tool(self, tool_call: ToolCall, context: AgentContext) -> ToolResult:
         """执行单个工具: PRE_TOOL 权限检查 → 执行 → POST_TOOL 副作用。"""

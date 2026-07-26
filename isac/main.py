@@ -729,27 +729,37 @@ async def _answer_memory_query(
     """P2: 接收端执行授权记忆查询, 返回格式化结果 (经 bus response 回到查询方)。
 
     scope 语义 (ROUTING_AND_AGENT_MESH.md §6.1): "user:<id>" / "group:<id>" ——
-    复用 pipeline.search 的 user/group ACL 参数做真实裁剪; scopes 为空 = 不额外
-    限定 (仍受目标 Agent 自身 namespace/shared ACL 约束); 未知格式保守跳过
+    复用 pipeline.search 的 user/group ACL 参数做真实裁剪; 未知格式保守跳过
     (绝不扩大可见范围)。检索失败返回空串 (查询方看到"无相关内容")。
+
+    MVP-Fix (安全): **scopes 为空一律拒绝**。此前空 scopes 走无 user/group 参数
+    的全量检索, 而 visible_memory_scopes 的默认值就是空 —— 管理员只授予
+    permissions=["memory_query"] 却忘了配 scopes 时, 对端可读取目标 Agent 的
+    全部记忆 (含其他用户的私聊), 违背 Link ACL 的 deny-by-default 语义。
     """
     instance = await agent_manager.get(target_agent_id)
     if instance is None or instance.status != "running":
         return ""
     filters = message.context.get("filters") or {}
     scopes = [str(s) for s in (filters.get("scopes") or []) if s]
+    if not scopes:
+        logger.warning(
+            "跨 Agent 记忆查询被拒: Link 未配置 visible_memory_scopes (空 = 拒绝, 非全量)",
+            from_agent=message.from_agent,
+            target=target_agent_id,
+        )
+        return ""
     query = message.content
     hits: list[Any] = []
     try:
-        if not scopes:
-            hits = await instance.memory.search(query, top_k=5)
-        else:
-            for scope in scopes[:5]:
-                kind, _, ident = scope.partition(":")
-                if kind == "user" and ident:
-                    hits.extend(await instance.memory.search(query, top_k=3, user_id=ident))
-                elif kind == "group" and ident:
-                    hits.extend(await instance.memory.search(query, top_k=3, group_id=ident))
+        for scope in scopes[:5]:
+            kind, _, ident = scope.partition(":")
+            if kind == "user" and ident:
+                hits.extend(await instance.memory.search(query, top_k=3, user_id=ident))
+            elif kind == "group" and ident:
+                hits.extend(await instance.memory.search(query, top_k=3, group_id=ident))
+            else:
+                logger.warning("忽略无法识别的记忆可见范围 (保守跳过)", scope=scope)
     except Exception:  # noqa: BLE001
         logger.warning("跨 Agent 记忆查询失败", target=target_agent_id, exc_info=True)
         return ""
@@ -761,6 +771,30 @@ async def _answer_memory_query(
         seen.add(hit.id)
         lines.append(f"- {hit.content[:200]}")
     return "\n".join(lines[:5])
+
+
+async def _shutdown_message_pipeline(
+    channel_registry: ChannelRegistry,
+    drain_inflight: Callable[[], Awaitable[None]],
+    agent_manager: AgentManager,
+) -> None:
+    """优雅关闭消息面: 停收取 → drain 在途消息 → drain 后台记忆 → 停主动调度。
+
+    顺序要紧: 先停适配器不再收新消息, 再等在途任务落地, 最后停调度循环 —— 之后
+    LIFO 才会去关 journal/usage/providers 等下游资源。
+    MVP-Fix (两处):
+    - 消息任务产出回复即离开 inflight, 其派生的**记忆写入**仍在跑, 此前不被
+      等待 → 最后若干轮的 episodic/画像/快照在事件循环收尾取消任务时静默丢失。
+    - ProactiveScheduler 的循环是裸 create_task (不在 runtime TaskGroup 里),
+      此前无人停 → 关闭窗口内还会对已停适配器发起强制话轮。
+    """
+    await channel_registry.stop_all()
+    await drain_inflight()
+    await agent_manager.drain_background_tasks()
+    for instance in await agent_manager.list():
+        scheduler = instance.services.get("proactive_scheduler")
+        if scheduler is not None:
+            await scheduler.stop()
 
 
 async def _noop_start() -> None:
@@ -950,8 +984,7 @@ async def main() -> None:
     # 最先执行) 先停适配器收取, 再 drain 在途消息任务, 保证 journal/usage/
     # providers 等下游资源关闭时不再有消息在途 (不丢消息)。
     async def _stop_channels_and_drain() -> None:
-        await channel_registry.stop_all()
-        await drain_inflight()
+        await _shutdown_message_pipeline(channel_registry, drain_inflight, agent_manager)
 
     runtime.register_lifecycle(
         "channels",

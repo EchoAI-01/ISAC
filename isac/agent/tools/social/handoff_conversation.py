@@ -51,15 +51,19 @@ class HandoffConversationTool(Tool):
             return ToolResult(
                 content=f"移交 {target} 失败 (Link 未配置或未授予 handoff 权限)", is_error=True
             )
-        # P2: 会话归属转移 —— router 经 services 注入 (无 router 时降级为仅投递摘要)
+        # P2: 会话归属转移 —— router 经 services 注入 (无 router 时降级为仅投递摘要)。
+        # MVP-Fix: 移交带 TTL (router.DEFAULT_HANDOFF_TTL_SECONDS), 到期归属自动
+        # 回落常规路由; 接手方把会话移交回原归属者即可提前撤销。
         router = context.services.get("router")
         session = context.agent_context.session
         if router is not None and session is not None:
-            router.set_handoff(
-                getattr(session, "platform", ""),
-                getattr(session, "group_id", None),
-                getattr(session, "user_id", ""),
-                target,
-            )
+            platform = getattr(session, "platform", "")
+            group_id = getattr(session, "group_id", None)
+            user_id = getattr(session, "user_id", "")
+            if target == agent_id:
+                # 移交给自己 = 交还归属 (撤销此前的移交覆盖)
+                router.clear_handoff(platform, group_id, user_id)
+                return ToolResult(content=f"已交还会话归属 (撤销移交), 摘要: {summary[:50]}")
+            router.set_handoff(platform, group_id, user_id, target)
             return ToolResult(content=f"已移交会话给 {target} (后续消息由其接手), 摘要: {summary[:50]}")
         return ToolResult(content=f"已通知 {target} 接手 (摘要已送达), 摘要: {summary[:50]}")

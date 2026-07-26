@@ -27,3 +27,6 @@ data/*
 
 # 日志
 *.log
+
+# 测试临时快照目录 (MVP-Fix: ConversationStateStore 隔离)
+tests/integration/_tmp_agents/

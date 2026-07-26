@@ -72,9 +72,13 @@ class InterAgentMessage:
 
     from_agent: str
     to_agent: str
-    type: str  # "request" | "response" | "notify" | "handoff"
+    type: str  # "request" | "response" | "notify" | "handoff" | "memory_query"
     content: str
     context: dict = field(default_factory=dict)
+    # MVP-Fix: 补齐 SPECIFICATION.md 2.10 已定义但实现缺失的字段 —— 让一次跨
+    # Agent 协作的日志能与发起方的消息处理串联 (LOGGING.md trace 贯穿)。
+    # 默认空串: 未显式传入时由 bus.send 从当前日志上下文自动填充。
+    trace_id: str = ""
 
 
 class InterAgentBus:
@@ -157,11 +161,18 @@ class InterAgentBus:
             )
             raise InterAgentLinkDeniedError(f"Agent {message.from_agent} 无权与 {message.to_agent} 通信")
 
+        # MVP-Fix: 未显式传 trace_id 时从当前日志上下文继承 —— 一次跨 Agent
+        # 协作的日志因此能与发起方的消息处理串联 (SPECIFICATION 2.10 / LOGGING.md)。
+        if not message.trace_id:
+            from isac.utils.logging_context import get_log_context
+
+            message.trace_id = str(get_log_context().get("trace_id", "") or "")
         logger.info(
             "互联消息",
             from_agent=message.from_agent,
             to_agent=message.to_agent,
             type=message.type,
+            trace_id=message.trace_id,
         )
         if self._deliver is None:
             return None
@@ -176,4 +187,5 @@ class InterAgentBus:
             type="response",
             content=response_content or "",
             context=message.context,
+            trace_id=message.trace_id,  # 响应沿用同一 trace, 便于串联往返
         )

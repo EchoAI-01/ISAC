@@ -52,6 +52,13 @@ class ConversationRuntime:
         # L4: 打断状态 (None = 本轮未被打断); max_interrupts_per_turn 限制单轮次数 (默认 1)。
         self.interrupt_state: InterruptState | None = None
         self.max_interrupts_per_turn: int = max(1, int(max_interrupts_per_turn))
+        # MVP-Fix: 单调递增的打断序号 —— 每次成功 request_interrupt +1, **不被
+        # clear_interrupt 复位**。AgentLoop 在回合开始时快照它, 用"序号是否增长"
+        # 判定"本回合期间是否被打断":
+        # ① interrupt_state 会被 InterruptInjector 在下一轮 prompt build 时消费清空,
+        #    单看它会漏判工具执行期间到达的打断;
+        # ② 单看 superseded 标志又会让**接替的新回合**误判自己被打断而自杀。
+        self.interrupt_seq: int = 0
         # L2: 等待 future 字典 (按 tool_call_id), wait 工具 await 之, resolve_wait 时 set_result。
         self._wait_futures: dict[str, asyncio.Future[WaitState]] = {}
         # L2: 超时定时器 task (按 tool_call_id), enter_wait 启动, resolve_wait 取消。
@@ -204,11 +211,13 @@ class ConversationRuntime:
         self.interrupt_state.interrupt_count += 1
         self.interrupt_state.superseded = True
         self.interrupt_state.reason = reason or self.interrupt_state.reason
+        self.interrupt_seq += 1  # 单调, 供 AgentLoop 判定"本回合期间被打断"
         logger.debug(
             "请求打断当前规划",
             agent_id=self.agent_id,
             session_id=self.session_id,
             count=self.interrupt_state.interrupt_count,
+            seq=self.interrupt_seq,
             reason=reason,
         )
         return True

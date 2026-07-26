@@ -107,7 +107,10 @@ async def _setup_conversation_runtime(
         min_interval_seconds=float(proactive_cfg.get("min_interval_seconds", 600) or 0),
         poll_interval_seconds=float(proactive_cfg.get("poll_interval_seconds", 1.0) or 1.0),
     )
-    state_store = ConversationStateStore()
+    # MVP-Fix: 快照目录跟随 control.agents_dir 配置 (此前硬编码默认 data/agents,
+    # 测试与多实例部署都会写进同一处真实目录)。
+    agents_dir = str((global_config.get("control", {}) or {}).get("agents_dir", "data/agents"))
+    state_store = ConversationStateStore(base_dir=agents_dir)
     agent_services["conversation_state_store"] = state_store
     snapshots = await _asyncio.to_thread(state_store.load_all, config.agent_id)
     for stable_key, snapshot in snapshots.items():
