@@ -47,7 +47,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-A-K + L/M/N/O 各节点已完成 (J1-J4 + K1-K8 + L1-L5 + M1-M2 + N1-N3 + O1-O3 + EXP-1/2/3 全部落地)。剩余仅 **O4 平台扩展** (需用户二次确认选哪个真实平台接入: 飞书/微信/Slack) 与 **O5 视频生成 Provider** (需用户二次确认 API 端点选型: Sora/Runway/Kling/自托管)。详见 [docs/PROGRESS.md](./docs/PROGRESS.md) 与 [docs/ROADMAP.md](./docs/ROADMAP.md)。
+A-K 已达可运行完成度 (J1-J4 + K1-K8 交付)。**L2-L5 / M1-M2 / N1-N3 / O1-O3 核心逻辑 + 单测已实现,但主链路尚未接线** (标 `[~]`,默认关闭、生产路径无调用点);向量/图谱/Embedding/Reranker 检索后端已实现 (召回待接入 pipeline)。剩余工作:**P 主链路接线与激活** (P0 消息并发化 → P1 拟人化 → P2 Mesh → P3 检索深化 → P4 身份归一 → P5 企业化,把上述 `[~]` 接入主链路协同)、**O4 平台扩展** (需二次确认平台: 飞书/微信/Slack)、**O5 视频生成 Provider** (需二次确认端点: Sora/Runway/Kling)、**MemoryConsolidator**、**I 节点复核**。定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §四 P 节点,进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
 
 ## 目录速查
 

@@ -21,7 +21,11 @@
 
 - **大节点**：用 A/B/C... 编号，代表一个可验收的里程碑。
 - **小节点**：用 A1/A2... 编号，代表可独立完成、可汇报的最小单元。
-- **进度汇报**：每完成一个小节点，在本文档 `[ ]` 改为 `[x]`，并简要汇报。
+- **进度标记(三态)**:标记须如实反映"是否接入生产主链路",不得用 `[x]` 掩盖"实现了但没激活"。
+  - `[x]` **已交付** — 满足下方"完成定义"(非桩实现 + 单测 + 集成/运行验证 + **主链路接线** + 文档 + `ruff`/`mypy`/CI)。
+  - `[~]` **实现完成待接线** — 核心逻辑 + 单测完成,但未接入生产主链路(默认关闭 / 生产路径无调用点);**按"完成定义"尚不算完成**。其接线项统一收敛在 §四 **P 节点**,不散落于各节点备注。
+  - `[ ]` **未开始** — 仅骨架桩(no-op / `NotImplementedError`)或尚不存在。
+- **进度汇报**:每推进一个小节点,更新本文档标记并同步 [PROGRESS.md](./PROGRESS.md),简要汇报。
 - **节点可调整**：如需新增/合并/拆分节点，先更新本文档与 `AGENTS.md`，再继续执行。
 - **完成定义**：小节点完成 = 非桩代码实现 + 单元测试 + 对应集成/运行验证 + 错误与关闭路径验证 + 相关文档同步 + `ruff` / `mypy` / CI 门禁通过。仅有接口、占位实现、静态文件或 Mock 单测不得标记完成。
 
@@ -31,24 +35,21 @@
 
 各节点进度以 [PROGRESS.md](./PROGRESS.md) 为**唯一事实源**,本文档不再另存进度表,只描述节点定义、依赖与验收。
 
-当前概况(详见 PROGRESS.md): A-C、F-H 已完成;E 经 K6 端到端验收完成;I 主体完成(WebUI 仅 v1);K1-K8 稳定化代码已落地,项目已达可运行完成度;D9/J1/J2/J4 能力框架 (scaffolding) 已落地(契约/骨架/惰性接线就位、ruff/mypy 全绿),业务实现待续。新增 **L 拟人化运行时落地**、**M 路由 Mesh 深化**、**N 记忆深化**、**O 企业化与平台扩展** 四个大节点,其下 **全部 14 个子节点 (L1-L5/M1-M2/N1-N3/O1-O5) 框架已搭建 (scaffolding)**——契约 + 骨架类 + 惰性默认关闭接线就位,957 单测通过、ruff/mypy 全绿、主链路零行为变化,业务实现待续,定义见 §四;**可观测性增强**(trace 贯穿 + 分级日志)已横切落地。技术路线全景与阶段划分见 [ROADMAP.md](./ROADMAP.md);scaffolding 范式的可复制步骤见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
+当前概况(详见 PROGRESS.md)：A-K 已达可运行完成度 —— A-C、F-H 完成;E 经 K6 端到端验收;I 主体完成(WebUI v2 已落地,浏览器测试 CI 随 K8 接入);J1-J4 完成;K1-K8 稳定化完成,进入发布候选。**L 拟人化 / M 路由 Mesh / N 记忆深化 / O 企业化** 四大节点的 14 子节点中,**L2-L5、M1-M2、N1-N3、O1-O3 核心逻辑 + 单测已实现,但主链路尚未接线**(标 `[~]`:默认关闭、生产路径无调用点,按 §二完成定义尚不算完成),O4/O5 未开始(`[ ]`);向量库 / 图谱 / Embedding / Reranker 检索后端已实现(向量/图谱召回待接入 pipeline)。为把这些 `[~]` 能力接入同一主链路协同工作,新增大节点 **P 主链路接线与激活**(P0-P5,定义见 §四)。当前 1091 单测通过、ruff/mypy 全绿、主链路零行为变化。技术路线全景见 [ROADMAP.md](./ROADMAP.md);模块开发范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
 
 ## 三之二、下一步开发计划
 
-K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可验证。剩余工作按下述优先级推进:
+K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**剩余工作 = 把标 `[~]` 的能力接入生产主链路 + 补齐未开始功能**,按下述优先级推进(详见 §四 P 节点与各 `[~]` 节点"接线待办"):
 
-1. **K8 收尾** — 补 WebUI 浏览器黄金路径测试,校准 README/AGENTS/版本号,发版时再重建变更记录,确认发布准入。
-2. **[x] D9 任务进度报告** — 实现 `ProgressEvent`/`ProgressReporter`,工具完成后按人设汇报;是 J4 与 WebUI 任务时间线的前置。已完成,详见上文 D9 节点"当前"。
-3. **[x] J1 Token 用量与成本计量** — 在 Provider 调用边界统一记录 `ModelUsageEvent`;为 J2 成本策略和 WebUI 用量页提供数据。已完成,详见下文 J1 节点"当前"。
-4. **[x] J2 多模态 Provider 与能力选择** — 落地 `ModelDescriptor`/`ModelCatalog`/`ModelRouter`/`ArtifactStore`, 填充 `provider/{embed,rerank,stt_tts}` 空目录。已完成, 详见下文 J2 节点"当前"。
-5. **[x] J4 SubAgent Runtime** — 基于 D9/J1 实现隔离子 Agent 与可追溯 `SubAgentJournal`,把 H3 `TaskRunner` 原型迁移为 `SubAgentSupervisor`。已完成, 详见下文 J4 节点"当前"。
-6. **[x] J3 WebUI v2** — 汇聚上述能力,提供十域管理与观测面板。已完成, 详见下文 J3 节点"当前"。
-7. **[框架已落地] 拟人化地基 (L 节点)** — L1-L5 全部框架已搭建 (scaffolding);L2 Wait 闭环 / L3 主动任务 / L4 打断 / L5 上下文恢复 的业务实现待续。详见 §四 L 节点。
-8. **[已落地] 可观测性增强** — trace 贯穿 + 分级日志,无报错也可追踪每步操作。详见 §四"可观测性增强"与 [LOGGING.md](./LOGGING.md)。
-9. **[框架已落地] 后续大节点** — M 路由 Mesh 深化 / N 记忆深化 / O 企业化与平台扩展 的框架 (契约 + 骨架 + 惰性接线) 均已 scaffolding,业务实现待续;见 §四与 [ROADMAP.md](./ROADMAP.md)。
-10. **experimental 桩补齐** — VectorStore(sqlite-vec)、GraphStore、Reranker、MemoryConsolidator。
+1. **P0 消息处理并发化** — `manager` 用 `asyncio.create_task` 并发处理消息 + 单会话串行 + 优雅关闭,是 P1 的前置基础。
+2. **P1 拟人化激活(最优先)** — 接入 L2-L5:debounce 合并 / 主动调度启停 / 打断闭环 / 上下文恢复,受 `conversation.enabled` 开关控制。拟人化是 ISAC 核心差异点,已接近闭合。
+3. **P2 Mesh 激活** — 接入 M1/M2:observer/candidate 路由 + 4 个 A2A 工具(assembly 注入 `mesh_action_broker`)。
+4. **P3 记忆检索深化激活** — `pipeline.search()` 接入向量/图谱召回 + 检索期治理过滤(N2 生效) + MemoryItem 接入检索链(N1)。
+5. **P4 身份归一激活** — gateway 接入 `IdentityResolver`,记忆按归一身份聚合(N3)。
+6. **P5 企业化激活** — 多租户隔离 / 插件进程隔离 / Workflow 接入 control 与主链路(O1-O3)。
+7. **未开始功能(`[ ]`)** — O4 平台适配器(微信/Slack/飞书 ≥1 真实实现)、O5 Video Provider 真实端点、MemoryConsolidator(记忆整合后台任务)、I 节点复核(浏览器测试 CI 已随 K8 接入,复核 85%→100%)。
 
-依赖顺序: K8 → D9 → J1 → J2 → J4 → J3 → L1 → (L2-L5 / M / N / O);experimental 桩可并行插入。L/M/N/O 每项完成后按强化完成定义(非桩实现 + 单元/集成测试 + 运行验证 + 文档同步)更新 PROGRESS.md。技术路线全景见 [ROADMAP.md](./ROADMAP.md)。
+依赖顺序：P0 → P1;P2 与 P3 可并行,P4 依赖 P3;P5 与 O4/O5/MemoryConsolidator/I 复核 独立,可并行插入。每项按 §二"完成定义"验收(非桩实现 + 单测 + 集成/运行验证 + 主链路接线 + 文档 + `ruff`/`mypy`/CI),完成后把 §四 对应 `[~]` 升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。技术路线全景见 [ROADMAP.md](./ROADMAP.md)。
 
 ---
 
@@ -488,35 +489,39 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 **目标**：把 `HUMANLIKE_RUNTIME.md` 描述的会话级拟人行为(消息合并、主动等待、主动任务、被打断、上下文恢复)从设计蓝图落成可运行代码。所有子节点默认由 `conversation.enabled` 开关控制,关闭时主链路零行为变化。
 
-- [ ] **L1 ConversationRuntime 骨架**(scaffolding 已落地,业务实现待续)
+- [~] **L1 ConversationRuntime**(骨架完成,已由 L2-L5 充实;主链路接线见 P1)
   - **验收**：每个 (agent_id, session_id) 一个 `ConversationRuntime`;具备消息缓存、状态机 (idle/thinking/acting/waiting/stopped)、`WaitState`/`ForcedTurnState` 契约、per-session 注册表 (FIFO 上限) 与主动任务队列;`conversation.enabled=False` 时 `handle_message` 完全走原路径。
   - **产出**：`runtime/conversation/{__init__,models,runtime,registry,proactive}.py`、`assembly` 注入 `conversation_registry`、`manager.handle_message` 惰性接线、`tests/unit/test_conversation_runtime.py`。
   - **依赖**：B4、E1、D9。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。契约 + 状态机 + registry + 主动队列 + 惰性默认关闭接线就位,骨架单测通过,ruff/mypy 全绿,主链路零行为变化。真实 debounce 触发、wait 回填、主动调度、打断闭环见 L2-L5,均已在代码中以 `TODO(L2/L3/L4)` 标注挂接点。
+  - **当前**：骨架完成 + L2-L5 已实现核心逻辑 (2026-07-26)。契约 + 状态机 + registry + 主动队列 + 惰性默认关闭接线就位,单测通过,ruff/mypy 全绿,主链路零行为变化。debounce 触发 / wait 回填 / 主动调度 / 打断闭环 / 上下文恢复 见 L2-L5(均已实现核心逻辑)。**接线待办 → 见 §四 P0/P1**:把 L1-L5 接入生产主链路。
 
-- [x] **L2 Wait 闭环与 debounce 触发**
+- [~] **L2 Wait 闭环与 debounce 触发**
   - **验收**：`wait` 工具向 `ConversationRuntime.enter_wait` 注册 `WaitState`,由后续消息 / 超时 / 主动任务三条路径之一结束等待并向 AgentLoop 回填 wait 工具结果 (说明实际等待时长与结束原因);连续消息在 debounce 静默窗口内合并为一次触发,避免逐条打断。
   - **产出**：异步 debounce 触发循环、`resolve_wait` 三入口、wait 工具改造 (注册 WaitState)、超时定时器、单测与集成测试。
   - **依赖**：L1、D4 (wait 工具)、D9。
-  - **当前**：已完成 (2026-07-26)。`ConversationRuntime.should_trigger` 真实 debounce 判定 (zero/positive); `enter_wait` (async) 创建 future + 启动超时定时器; `resolve_wait` 回填 `end_reason`/`actual_seconds` + 取消定时器 + 唤醒 wait 工具; `notify_new_message` 在 WAITING 时以 MESSAGE 原因结束等待。三条唤醒路径 (message/timeout/proactive) 单测覆盖 12 例; `WaitTool` enabled=True 时调 `enter_wait`+`await_wait`, enabled=False 保持原意图字符串 (零行为变化)。`assembly.py` 注入 `conversation_enabled` 标志。debounce 接入 manager 主链路 (连续消息合并) 留 L3+ 节点, 不影响 L2 验收。
+  - **当前**：已完成 (2026-07-26)。`ConversationRuntime.should_trigger` 真实 debounce 判定 (zero/positive); `enter_wait` (async) 创建 future + 启动超时定时器; `resolve_wait` 回填 `end_reason`/`actual_seconds` + 取消定时器 + 唤醒 wait 工具; `notify_new_message` 在 WAITING 时以 MESSAGE 原因结束等待。三条唤醒路径 (message/timeout/proactive) 单测覆盖 12 例; `WaitTool` enabled=True 时调 `enter_wait`+`await_wait`, enabled=False 保持原意图字符串 (零行为变化)。`assembly.py` 注入 `conversation_enabled` 标志。debounce 接入 manager 主链路 (连续消息合并) 留 §四 P1, 不影响 L2 骨架验收。
+  - **接线待办 → 见 §四 P1**:debounce 连续消息合并接入 manager (依赖 P0 消息并发化)。
 
-- [x] **L3 主动任务调度**
+- [~] **L3 主动任务调度**
   - **验收**：`ProactiveTaskQueue` 由调度器按优先级 + 冷却 + 频率边界驱动;每个主动任务必须带 source/intent/reason (禁止无来源发言);触发时唤醒对应会话的 `ConversationRuntime` 发起一次强制话轮 (`ForcedTurnState`);来源经鉴权,防刷屏与滥用。
   - **产出**：主动调度循环、优先级/冷却策略、来源鉴权、强制话轮 Prompt 注入、单测与集成测试。
   - **依赖**：L1、L2、门控 (存在感/频率)。
-  - **当前**：已完成 (2026-07-26)。`ProactiveTaskQueue` 改为 list 实现 priority 排序 (high>normal>low; 同优先 FIFO); `ProactiveScheduler` 加 `allowed_sources` 集合 (默认 plugin/memory/schedule/agent/api); `authorize` 拒绝不在集合内的 source; `to_forced_turn` 触发时更新 `_last_fired_at`; 新增 `async start/stop` 后台循环 (poll_interval_seconds 周期 poll → authorize → may_fire → wake_callback, 冷却中任务退回队列头部)。强制话轮 Prompt 注入 + manager 接线留 L4+ 节点, 不影响 L3 验收。13 例单测覆盖 priority/authorize/start/stop/冷却/空队列/重复 stop。
+  - **当前**：已完成 (2026-07-26)。`ProactiveTaskQueue` 改为 list 实现 priority 排序 (high>normal>low; 同优先 FIFO); `ProactiveScheduler` 加 `allowed_sources` 集合 (默认 plugin/memory/schedule/agent/api); `authorize` 拒绝不在集合内的 source; `to_forced_turn` 触发时更新 `_last_fired_at`; 新增 `async start/stop` 后台循环 (poll_interval_seconds 周期 poll → authorize → may_fire → wake_callback, 冷却中任务退回队列头部)。强制话轮 Prompt 注入 + manager 接线留 §四 P1, 不影响 L3 骨架验收。
+  - **接线待办 → 见 §四 P1**:ProactiveScheduler 注入 assembly + 生命周期注册 start/stop + 强制话轮 Prompt 注入。13 例单测覆盖 priority/authorize/start/stop/冷却/空队列/重复 stop。
 
-- [x] **L4 Planner 打断闭环**
+- [~] **L4 Planner 打断闭环**
   - **验收**：thinking 期间到达的新消息可请求打断当前规划;`AgentContext.interrupt_requested` 由 `ConversationRuntime.request_interrupt` 写入;限制单轮打断次数、抑制被打断的旧回复、下一轮 Prompt 注入"上一轮被新消息打断"提示。
   - **产出**：打断信号写入路径、打断次数限制、旧回复抑制、Prompt 提示注入、单测。
   - **依赖**：L1、L2、`agent/loop.py`。
-  - **当前**：已完成 (2026-07-26)。`ConversationRuntime` 加 `interrupt_state` + `max_interrupts_per_turn` (默认 1, 保守); `request_interrupt(reason)` 单轮次数限制 + 置 `superseded=True` + `interrupt_count++`; `clear_interrupt` 进入下一轮前重置。新增 `agent/injectors/interrupt.py:InterruptInjector` 注入"上一轮被打断"内部参考 (含打断次数与原因), 注入后清空状态避免重复注入。AgentLoop 接线 (thinking 后读 `superseded`) 与 manager 并发处理消息 (thinking 期间收到新消息调 `request_interrupt`) 留 L4+ 节点, 因这两者需要 manager 用 asyncio.create_task 并发处理消息的大改动, 超出 L4 验收线。9 例单测覆盖 request/clear/单轮上限/可配置/注入/清空/默认零行为变化。
+  - **当前**：已完成 (2026-07-26)。`ConversationRuntime` 加 `interrupt_state` + `max_interrupts_per_turn` (默认 1, 保守); `request_interrupt(reason)` 单轮次数限制 + 置 `superseded=True` + `interrupt_count++`; `clear_interrupt` 进入下一轮前重置。新增 `agent/injectors/interrupt.py:InterruptInjector` 注入"上一轮被打断"内部参考 (含打断次数与原因), 注入后清空状态避免重复注入。AgentLoop 接线 (thinking 后读 `superseded`) 与 manager 并发处理消息 (thinking 期间收到新消息调 `request_interrupt`) 留 §四 P0+P1, 因这两者需要 manager 用 asyncio.create_task 并发处理消息的大改动, 超出 L4 骨架验收线。
+  - **接线待办 → 见 §四 P0+P1**:manager 并发处理消息 (asyncio.create_task) + thinking 期新消息调 request_interrupt + loop 读 superseded 抑制旧回复 + InterruptInjector 注册 prompt_builder。9 例单测覆盖 request/clear/单轮上限/可配置/注入/清空/默认零行为变化。
 
-- [x] **L5 上下文恢复**
+- [~] **L5 上下文恢复**
   - **验收**：进程重启后,会话的拟人状态 (未决 wait、被打断标记、主动任务) 可从持久化恢复到合理起点 (与 D9/J4 "中断后不恢复旧进度" 思路一致,标为终止/复位而非续跑)。
   - **产出**：ConversationRuntime 状态持久化 schema、启动恢复编排、恢复测试。
   - **依赖**：L1-L4、K4 (持久化恢复框架)。
-  - **当前**：已完成 (2026-07-26)。`ConversationStateStore` 原子写 JSON 落盘到 `data/agents/<id>/conversation/<session_id>.json` (复用 `utils.fs.atomic_write_json`, K4 模式); `load` 读回 → 计算 elapsed → 短(<5min)/中(<1h)/长(<24h) 窗口生成 `recovery_hint` → 复位 `state=idle` + `pending_wait=None` (中断后不续跑); > 24h 不恢复。新增 `agent/injectors/recovery.py:RecoveryInjector` 注入 `recovery_hint` 到第一轮 Prompt, 注入后清空 (避免重复注入)。10 例单测覆盖 save/load 往返 + 短/中/长/24h 窗口 + 未决 wait 复位 + 原子写文件存在 + RecoveryInjector 注入/清空/无快照空串。manager 启动时调 `store.load` 填充 snapshots + 接线 RecoveryInjector 到 prompt_builder 留 L5+ 节点 (不涉及主链路行为变化)。
+  - **当前**：已完成 (2026-07-26)。`ConversationStateStore` 原子写 JSON 落盘到 `data/agents/<id>/conversation/<session_id>.json` (复用 `utils.fs.atomic_write_json`, K4 模式); `load` 读回 → 计算 elapsed → 短(<5min)/中(<1h)/长(<24h) 窗口生成 `recovery_hint` → 复位 `state=idle` + `pending_wait=None` (中断后不续跑); > 24h 不恢复。新增 `agent/injectors/recovery.py:RecoveryInjector` 注入 `recovery_hint` 到第一轮 Prompt, 注入后清空 (避免重复注入)。10 例单测覆盖 save/load 往返 + 短/中/长/24h 窗口 + 未决 wait 复位 + 原子写文件存在 + RecoveryInjector 注入/清空/无快照空串。manager 启动时调 `store.load` 填充 snapshots + 接线 RecoveryInjector 到 prompt_builder 留 §四 P1 (不涉及主链路行为变化)。
+  - **接线待办 → 见 §四 P1**:manager 启动时调 ConversationStateStore.load 恢复 + RecoveryInjector 注册 prompt_builder。
 
 ---
 
@@ -524,17 +529,19 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 **目标**：把 `ROUTING_AND_AGENT_MESH.md` 描述的旁听/候选路由与 Agent 间协作动作从设计落成实现。
 
-- [x] **M1 observer/candidate 路由**
+- [~] **M1 observer/candidate 路由**
   - **验收**：Agent 可配置为 observer (旁听,只入记忆不回复) 或 candidate (候选,多 Agent 竞争同一消息由仲裁选出回复者);路由决策可解释、可审计。
   - **产出**：路由角色模型、候选仲裁策略、observer 记忆旁路、单测与集成测试。
   - **依赖**：C (路由)、E (多 Agent)、门控。
-  - **当前**：已完成 (2026-07-26)。`MeshRouter.to_mesh_decision` 按 agent_roles 字典 (agent_id → "primary"/"observer"/"candidate") 填充 observer_agent_ids/candidate_agent_ids (primary 不动); `arbitrate(decision, gating_scores=...)` 多候选按 gating_score 降序取最高, 但需**显著高于** primary (差值 > SWITCH_MARGIN=0.3) 才切换, 避免小噪声抖动; observer 不参与仲裁 (只观察); decision.reason 记录仲裁过程供审计。无角色配置时退化为单主路由 (零行为变化)。8 例单测覆盖 to_mesh_decision + arbitrate + observer 排除 + 候选切换/不切换 + 默认零行为变化。AgentConfig.mesh_role 字段 + manager.observe_message 接线留 M2+ 节点。
+  - **当前**：已完成 (2026-07-26)。`MeshRouter.to_mesh_decision` 按 agent_roles 字典 (agent_id → "primary"/"observer"/"candidate") 填充 observer_agent_ids/candidate_agent_ids (primary 不动); `arbitrate(decision, gating_scores=...)` 多候选按 gating_score 降序取最高, 但需**显著高于** primary (差值 > SWITCH_MARGIN=0.3) 才切换, 避免小噪声抖动; observer 不参与仲裁 (只观察); decision.reason 记录仲裁过程供审计。无角色配置时退化为单主路由 (零行为变化)。8 例单测覆盖 to_mesh_decision + arbitrate + observer 排除 + 候选切换/不切换 + 默认零行为变化。AgentConfig.mesh_role 字段 + manager.observe_message 接线留 §四 P2。
+  - **接线待办 → 见 §四 P2**:AgentConfig 加 mesh_role + manager.observe_message 旁听/候选路由接线 + assembly 注入 MeshRouter。
 
-- [x] **M2 handoff / notify / memory_query**
+- [~] **M2 handoff / notify / memory_query**
   - **验收**：Agent 间可显式移交会话 (handoff)、发通知 (notify)、跨 Agent 查询记忆 (memory_query);全部经 InterAgentLink ACL 授权;动作可审计。
   - **产出**：三类 Agent 间动作工具、ACL 校验、审计埋点、单测。
   - **依赖**：E3 (InterAgentBus/Link)、N (记忆)。
   - **当前**：已完成 (2026-07-26)。`MeshActionBroker.is_permitted` 无 policy 一律拒绝, 有 policy 时 action 在 permissions 中允许; `notify/handoff/memory_query` ACL 通过后经 `bus.send` 真实投递 (handoff 把 summary 进 context.summary, memory_query 把 visible_memory_scopes 进 context.filters.scopes 让接收方裁剪); `list_available` 从 bus.links 过滤可见对端 (双向 Link 双方可见, 单向 from→to, disabled 不计入); 无 bus 时所有动作拒绝 (零行为变化)。4 个 A2A 工具 (notify_agent/handoff_conversation/list_available_agents/memory_query_agent) 接入 broker; DEFAULT_POLICY 从 deny 改 restricted; ToolRegistry._required_service 加 mesh_action_broker 校验。11 例 broker 单测 + 骨架测试更新到新行为。
+  - **接线待办 → 见 §四 P2**:assembly 注入 mesh_action_broker 到 services (否则 4 个 A2A 工具运行时报"未注入"错误) + 动作审计埋点。
 
 ---
 
@@ -542,23 +549,26 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 **目标**：把当前分散的记忆结构统一为 `MemoryItem` 模型,补齐记忆治理与身份归一。
 
-- [x] **N1 统一 MemoryItem 模型**
+- [~] **N1 统一 MemoryItem 模型**
   - **验收**：episodic/profile/jargon 等记忆统一到一个 `MemoryItem` 契约 (类型 + 载荷 + 元数据 + 命名空间),存储/检索/注入围绕它展开;迁移不破坏既有数据。
   - **产出**：`MemoryItem` 契约、存储层适配、迁移脚本、单测。
   - **依赖**：D5-D7、K3。
   - **当前**：已完成 (2026-07-26)。`MemoryItem.from_episode/to_episode` 补齐完整字段映射 (summary/topics/participants/emotion/session_id/group_id 进 metadata); 新增 `from_profile/to_profile` (name/traits/relationship_depth/interaction_count/first_seen/last_seen/embedding_hash); `from_jargon/to_jargon` (word/context/usage_count); `from_relationship/to_relationship` (familiarity/trust/last_interaction_at)。新增 `isac/memory/model/adapter.py:MemoryItemAdapter` 实现 `MemoryItem ↔ MemoryHit` 双向适配 (hit_type → memory_type, 未知类型默认 EPISODE 兜底)。既有 metadata.py 三表 schema 不动, 本模块只做读写适配层。10 例单测覆盖四种类型 from/to roundtrip + adapter 双向 + 未知列降级。
+  - **接线待办 → 见 §四 P3**:MemoryItem/MemoryItemAdapter 接入 pipeline 检索/注入链 (当前 `pipeline.search()` 从不调用适配层,悬空)。
 
 - [x] **N2 记忆治理 (freeze/protect/correct/delete)**
   - **验收**：支持冻结、保护、纠错、删除记忆条目;操作经权限校验并审计;纠错保留可追溯历史。
   - **产出**：记忆治理动作、权限与审计、单测。
   - **依赖**：N1、G (控制面)。
   - **当前**：已完成 (2026-07-26)。`MetadataStore.init_schema` 给 `episodes` 加 `frozen`/`protected`/`deleted`/`corrected_by` 治理列 (向后兼容老库, 默认 0/NULL); 新增 `memory_revisions` (corrected 历史保留) + `memory_audit` (审计日志) 表。`MemoryGovernor` 真实实现 6 类治理动作: freeze/protect 置标志位 + 审计; correct 写新版本 + memory_revisions 保留旧内容 + corrected_by 关系; delete 软删除 + protected 拒绝; restore 反向复位; export 组织为 `list[MemoryItem]` (治理状态进 metadata)。`routes_memory_admin.py` 真实接入 governor + 新增 `GET /memory/{id}/items` 列表端点。8 例单测覆盖 freeze/protect/correct/delete/restore/export + protected 拒绝 + 不存在条目返回 False。
+  - **说明**:软删除 `deleted` 已在检索路径过滤生效(metadata FTS / by-id 检索加 `deleted = 0`,CR2-Fix-12);`frozen`(冻结)语义为"不再更新、仍可被检索",非缺口。N2 记忆治理已完整接入生产。
 
-- [x] **N3 身份归一 (IdentityResolver)**
+- [~] **N3 身份归一 (IdentityResolver)**
   - **验收**：跨平台 (不同 IM 的同一用户) 身份归一到统一 identity;记忆按归一后身份聚合;归一规则可配置、冲突可人工裁决。
   - **产出**：`IdentityResolver`、跨平台映射存储、冲突处理、单测。
   - **依赖**：C (Gateway/UserMapper)、N1。
   - **当前**：已完成 (2026-07-26)。`IdentityResolver` 新增 `person_identities` (verified/confidence/source) + `identity_conflicts` 表 (惰性建表, sqlite3 + aiosqlite 双轨)。`resolve` 先查 verified 命中, 未命中且 heuristic_enabled=True 时按 nickname 启发式匹配 (confidence≤0.5), 仍无则委托 UserMapper 创建新 person; `bind` 写 verified=1/confidence=1.0/source=manual + 同步 UserMapper.bind (若 master_id 已存在); `merge` 合并 aliases (去重) + platform_accounts (按 (platform, user_id) 去重), confidence 取较低, verified 取 AND; `arbitrate_conflict` 按 confidence 降序取最高, <0.7 写 identity_conflicts 供人工裁决。heuristic 默认 False (防误合并)。11 例单测覆盖 resolve/bind/merge/arbitrate + heuristic 开关 + 无 mapper 兜底 + 冲突写入。
+  - **接线待办 → 见 §四 P4**:gateway 入站主链路接入 IdentityResolver.resolve + 记忆按归一身份聚合 (当前无调用点,悬空库)。
 
 ---
 
@@ -566,23 +576,26 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 
 **目标**：面向多租户、进程隔离、编排与更多平台的企业化能力。
 
-- [x] **O1 多租户 / 组织隔离**
+- [~] **O1 多租户 / 组织隔离**
   - **验收**：Agent/记忆/配置/用量按 organization 隔离;跨租户不可见;控制面按租户鉴权。
   - **产出**：租户模型、数据隔离、租户级鉴权、单测。
   - **依赖**：G、K3-K4、J1。
-  - **当前**：已完成 (2026-07-26)。`TenantIsolationGuard.namespace_for` enabled 时给命名空间加 `org:tenant:base` 前缀 (默认租户直通); `check_access` enabled 时跨租户不可见 (resource_org != tenant.org 且 != DEFAULT 拒绝); `assert_visible` 跨租户抛 PermissionError; `enforce(query, params, table, tenant)` 给 SQL 查询注入 `organization_id = ? AND tenant_id = ?` 谓词 (WHERE 已有时追加 AND, 无 WHERE 时加 WHERE, 用正则匹配 FROM <table> 定位)。默认 enabled=False (单租户 passthrough, 零行为变化)。16 例单测覆盖 namespace_for/check_access/enforce/assert_visible + 默认/非默认租户 + 无 WHERE 注入 + 跨租户拒绝。MetadataStore 加 tenant_id 列 + 控制面 routes_tenants 留 O2+ 节点。
+  - **当前**：已完成 (2026-07-26)。`TenantIsolationGuard.namespace_for` enabled 时给命名空间加 `org:tenant:base` 前缀 (默认租户直通); `check_access` enabled 时跨租户不可见 (resource_org != tenant.org 且 != DEFAULT 拒绝); `assert_visible` 跨租户抛 PermissionError; `enforce(query, params, table, tenant)` 给 SQL 查询注入 `organization_id = ? AND tenant_id = ?` 谓词 (WHERE 已有时追加 AND, 无 WHERE 时加 WHERE, 用正则匹配 FROM <table> 定位)。默认 enabled=False (单租户 passthrough, 零行为变化)。16 例单测覆盖 namespace_for/check_access/enforce/assert_visible + 默认/非默认租户 + 无 WHERE 注入 + 跨租户拒绝。MetadataStore 加 tenant_id 列 + 控制面 routes_tenants 留 §四 P5。
+  - **接线待办 → 见 §四 P5**:TenantIsolationGuard 接入 memory store/control/计量 + MetadataStore 加 tenant_id 列 + routes_tenants 控制面 (当前零调用点)。
 
-- [x] **O2 插件进程级隔离**
+- [~] **O2 插件进程级隔离**
   - **验收**：插件从当前"兼容层 (非安全沙箱)"升级为进程级隔离,资源与故障不影响主进程;插件崩溃可恢复。
   - **产出**：插件进程宿主、IPC 协议、资源限额、崩溃恢复、单测。
   - **依赖**：F (插件生态)、K7 (安全基线)。
   - **当前**：已完成 (2026-07-26)。`PluginIsolationHost.spawn` 用 `multiprocessing.Process` (fork on POSIX) 启动子进程 + `Pipe` 建立 IPC; 子进程入口 `_plugin_worker` 设资源限额 (`resource.setrlimit` RLIMIT_CPU=1s / RLIMIT_NOFILE=64 / RLIMIT_AS=256MB, 平台不支持时跳过); `call` 编码 IPCEnvelope → JSON → 管道发送 → asyncio.to_thread(recv) → 解码返回; 子进程崩溃 (BrokenPipeError/EOFError) 触发 `_on_crash` 自动重启 (最多 max_restart_attempts=3 次, 超过放弃); `kill` 优雅终止 (terminate + join 2s + kill 强杀); `is_alive` 属性。既有 `loader.py` 进程内兼容层不变 (仍默认)。6 例单测覆盖 spawn/call/kill roundtrip + 未 spawn 抛 + 重复 kill 幂等 + 崩溃重启计数 + 超限放弃 + 默认零行为变化。
+  - **接线待办 → 见 §四 P5**:PluginIsolationHost 接入 loader 可选隔离模式 (当前 loader 仍进程内直接 import,未装配隔离)。
 
-- [x] **O3 Workflow 编排**
+- [~] **O3 Workflow 编排**
   - **验收**：多步骤任务可用声明式 Workflow 编排 (串/并/条件/重试);步骤可跨 Agent/工具;执行可观测、可恢复。
   - **产出**：Workflow 引擎、步骤契约、执行器、可观测与恢复、单测。
   - **依赖**：J4 (SubAgent)、D9 (进度)、L (运行时)。
   - **当前**：已完成 (2026-07-26)。`WorkflowEngine.start` 按 transitions 调度 stages: 串行按 `TransitionKind.SEQUENTIAL` 递归执行, 并行用 `asyncio.gather` 同时跑多个 `PARALLEL` 目标, 条件 `CONDITIONAL` 按 `condition_evaluator` 返回决定执行或标 `SKIPPED`, 重试 `RETRY` 在 `_execute_stage` 内按 `max_retries=3` 重试; 状态机 `PENDING→RUNNING→SUCCEEDED/FAILED`; `step` 推进单个 PENDING stage; `resume` 把 RUNNING 标为 FAILED (中断后不续跑, 与 L5 一致); 持久化到 `data/workflows/<id>.json` (原子写)。`set_action_handler`/`set_condition_evaluator` 注入测试/生产回调; 无 handler 时 stage 视为 noop (零行为变化)。12 例单测覆盖串/并/条件/重试/step/resume/持久化/默认。
+  - **接线待办 → 见 §四 P5**:WorkflowEngine 暴露 control 路由/工具入口 + set_action_handler 生产注入 (当前零调用点)。
 
 - [ ] **O4 平台扩展 (微信 / Slack / 飞书 …)**
   - **验收**：新增 IM 平台适配器,复用 Channel 抽象;媒体/富文本能力按平台声明适配。
@@ -595,6 +608,56 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **产出**：Video Provider 实现、能力声明、计量埋点、单测。
   - **依赖**：J1-J2。
   - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `isac/provider/video_gen/` (`OpenAICompatVideoGenProvider` 实现 `VideoGenerationProvider` ABC,`generate` 抛 `NotImplementedError`)。**不自动注册到 ModelRouter**,真实 API 端点开工前需二次确认。
+
+---
+
+### P 主链路接线与激活
+
+**目标**：把已实现但未接入生产的 L/M/N/O 能力(§四标 `[~]`)接入同一条消息处理主链路,让它们协同工作;所有子节点默认关闭、`enabled=False` 时零行为变化。**这是 `[~]` → `[x]` 的收尾节点组**——把原先散落在各节点"当前"备注的接线待办统一收敛于此,避免功能各自孤立、无法真正激活。
+
+依赖顺序：P0 → P1;P2 与 P3 可并行;P4 依赖 P3;P5 独立。每个子节点完成后,把它激活的 `[~]` 节点在 §四 升级为 `[x]`。
+
+- [ ] **P0 消息处理并发化**(P1 前置基础)
+  - **目标**：`manager` 从"单条即时同步处理"升级为 `asyncio.create_task` 并发处理,保留单会话串行、优雅关闭等待在途任务。这是 L2 debounce 合并、L4 thinking 期打断的共同前提(L4/L2 备注均指向它)。
+  - **验收**：并发处理多会话不串话;同一会话消息串行;`shutdown` 等待在途任务不丢消息;集成测试。
+  - **产出**：manager 并发调度、单会话锁/队列、在途任务生命周期登记、单测与集成测试。
+  - **依赖**：K1(生命周期)、E(多 Agent 运行时)。
+  - **当前**：未开始。
+
+- [ ] **P1 拟人化激活**(依赖 P0 + L1-L5)
+  - **目标**：把 L2-L5 已实现能力接入主链路 —— debounce 连续消息合并接入 manager(L2);ProactiveScheduler 注入 assembly + 生命周期注册 start/stop(L3);thinking 期新消息调 `request_interrupt`、loop 读 `superseded` 抑制旧回复、InterruptInjector 注册 prompt_builder(L4);启动时 `ConversationStateStore.load` 恢复 + RecoveryInjector 注册(L5);AgentConfig 增 `conversation` 配置段。
+  - **验收**：`conversation.enabled=True` 时 wait/debounce/主动任务/打断/恢复端到端可用 + 集成测试;`enabled=False` 时主链路零行为变化。
+  - **产出**：manager 接线、assembly 注入与注册、AgentConfig 配置段、集成测试。
+  - **依赖**：P0、L2-L5。
+  - **当前**：未开始。激活后 L2-L5 升级为 `[x]`。
+
+- [ ] **P2 Mesh 激活**(依赖 M1/M2 + E3 bus)
+  - **目标**：AgentConfig 增 `mesh_role`;`manager.observe_message` 实现旁听/候选路由(M1);assembly 注入 `MeshRouter`/`MeshActionBroker`,4 个 A2A 工具(notify/handoff/list/memory_query)获得 broker 后真正可用(M2);动作审计埋点。
+  - **验收**：observer 只入记忆不回复、candidate 多 Agent 仲裁选回复者、A2A 动作经 InterAgentLink ACL 真实投递且可审计;集成测试。
+  - **产出**：AgentConfig `mesh_role`、observe_message 路由、assembly 注入、审计埋点、集成测试。
+  - **依赖**：M1、M2、E3(InterAgentBus/Link)。
+  - **当前**：未开始。激活后 M1/M2 升级为 `[x]`。
+
+- [ ] **P3 记忆检索深化激活**(依赖 N1 + VectorStore/GraphStore/Embedding/Reranker)
+  - **目标**：`pipeline.search()` 接入向量 KNN(VectorStore)+ 图谱邻居(GraphStore)召回,与现有 FTS/BM25/Reranker 融合;`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确其落地边界(N1)。(注:检索期软删除 `deleted` 过滤已由 CR2-Fix-12 生效,不在本节点范围。)
+  - **验收**：配置 embedding 时向量/图谱召回生效、被治理条目不被检索命中、`MemoryItem` 成为检索/注入统一载体;集成测试。
+  - **产出**：pipeline 召回接线、治理过滤、MemoryItem 接入、集成测试。
+  - **依赖**：N1、N2、J2(embed/rerank Provider)。
+  - **当前**：未开始。激活后 N1 升级为 `[x]`。
+
+- [ ] **P4 身份归一激活**(依赖 N3 + N1 + P3)
+  - **目标**：gateway 入站主链路接入 `IdentityResolver.resolve`,把跨平台同一用户归一到统一 identity;记忆按归一身份聚合。
+  - **验收**：不同 IM 的同一用户归一为同一 person、记忆按归一身份聚合、低置信冲突写入 `identity_conflicts` 供人工裁决;集成测试。
+  - **产出**：gateway 接线、记忆聚合按归一身份、集成测试。
+  - **依赖**：N3、N1、P3。
+  - **当前**：未开始。激活后 N3 升级为 `[x]`。
+
+- [ ] **P5 企业化激活**(依赖 O1/O2/O3)
+  - **目标**：`TenantIsolationGuard` 接入 memory store/control/用量计量 + MetadataStore 增 `tenant_id` 列 + `routes_tenants` 控制面(O1);`PluginIsolationHost` 接入 loader 作为可选隔离模式(O2);`WorkflowEngine` 暴露 control 路由/工具入口 + 生产注入 action handler(O3)。
+  - **验收**：跨租户不可见且控制面按租户鉴权、插件进程隔离可选启用且崩溃可恢复、Workflow 可声明式执行且可观测;集成测试。
+  - **产出**：租户接线 + tenant_id 列 + routes_tenants、loader 隔离模式、workflow 控制面入口、集成测试。
+  - **依赖**：O1、O2、O3、G(控制面)。
+  - **当前**：未开始。激活后 O1/O2/O3 升级为 `[x]`。
 
 ---
 
@@ -614,6 +677,8 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
 | 术语 | 解释 |
 |------|------|
 | **节点** | 本文档中的任务单元。大节点 A/B/C... 是里程碑；小节点 A1/A2... 是可独立完成并汇报的最小单元。 |
+| **`[x]` / `[~]` / `[ ]`** | 三态进度标记(见 §二)：`[x]` 已交付(含主链路接线+集成验证);`[~]` 实现完成待接线(核心逻辑+单测完成,但未接入生产主链路,接线项归 §四 P 节点);`[ ]` 未开始。 |
+| **主链路接线 / 激活** | 把已实现的能力接入生产消息处理链路(manager / loop / assembly / pipeline / gateway 等)使其真正生效,而非仅有独立实现与单测。散落的接线待办统一收敛在 §四 **P 节点**。 |
 | **SOW** | Statement of Work，工作说明书。本文档既是指令集，也是 TODO 清单。 |
 | **启用矩阵** | Agent 与 Channel 对插件/工具/命令/MCP 的启用/禁用矩阵。有效权限 = Agent 允许 ∩ Channel 允许 ∩ 全局策略。 |
 | **AgentInstance** | 运行中的 Agent，含独立的门控/PromptBuilder/记忆/人格/工具。 |
