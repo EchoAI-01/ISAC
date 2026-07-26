@@ -547,11 +547,11 @@ K1-K8 稳定化已使项目可持续运行、真实模型可用、端到端可�
   - **依赖**：D5-D7、K3。
   - **当前**：已完成 (2026-07-26)。`MemoryItem.from_episode/to_episode` 补齐完整字段映射 (summary/topics/participants/emotion/session_id/group_id 进 metadata); 新增 `from_profile/to_profile` (name/traits/relationship_depth/interaction_count/first_seen/last_seen/embedding_hash); `from_jargon/to_jargon` (word/context/usage_count); `from_relationship/to_relationship` (familiarity/trust/last_interaction_at)。新增 `isac/memory/model/adapter.py:MemoryItemAdapter` 实现 `MemoryItem ↔ MemoryHit` 双向适配 (hit_type → memory_type, 未知类型默认 EPISODE 兜底)。既有 metadata.py 三表 schema 不动, 本模块只做读写适配层。10 例单测覆盖四种类型 from/to roundtrip + adapter 双向 + 未知列降级。
 
-- [ ] **N2 记忆治理 (freeze/protect/correct/delete)**
+- [x] **N2 记忆治理 (freeze/protect/correct/delete)**
   - **验收**：支持冻结、保护、纠错、删除记忆条目;操作经权限校验并审计;纠错保留可追溯历史。
   - **产出**：记忆治理动作、权限与审计、单测。
   - **依赖**：N1、G (控制面)。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `memory/model/governance.py` (`MemoryGovernor` freeze/protect/correct/delete/restore/export no-op) + `control/api/routes_memory_admin.py` (写端点,store 缺失时不挂载)。真实治理与审计以 `TODO(N2)` 标注。
+  - **当前**：已完成 (2026-07-26)。`MetadataStore.init_schema` 给 `episodes` 加 `frozen`/`protected`/`deleted`/`corrected_by` 治理列 (向后兼容老库, 默认 0/NULL); 新增 `memory_revisions` (corrected 历史保留) + `memory_audit` (审计日志) 表。`MemoryGovernor` 真实实现 6 类治理动作: freeze/protect 置标志位 + 审计; correct 写新版本 + memory_revisions 保留旧内容 + corrected_by 关系; delete 软删除 + protected 拒绝; restore 反向复位; export 组织为 `list[MemoryItem]` (治理状态进 metadata)。`routes_memory_admin.py` 真实接入 governor + 新增 `GET /memory/{id}/items` 列表端点。8 例单测覆盖 freeze/protect/correct/delete/restore/export + protected 拒绝 + 不存在条目返回 False。
 
 - [ ] **N3 身份归一 (IdentityResolver)**
   - **验收**：跨平台 (不同 IM 的同一用户) 身份归一到统一 identity;记忆按归一后身份聚合;归一规则可配置、冲突可人工裁决。
