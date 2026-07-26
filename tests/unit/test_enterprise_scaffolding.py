@@ -79,13 +79,17 @@ def test_workflow_contracts_and_enums() -> None:
     assert t.kind is TransitionKind.SEQUENTIAL
 
 
-async def test_workflow_engine_register_and_noop_start() -> None:
-    engine = WorkflowEngine()
-    wf = Workflow(workflow_id="w1")
-    engine.register(wf)
-    assert engine.get("w1") is wf
-    assert await engine.start("w1") is WorkflowStatus.PENDING  # 骨架不推进
-    assert await engine.start("missing") is WorkflowStatus.FAILED
+async def test_workflow_engine_register_and_start_succeeds() -> None:
+    """O3 已实现: 无 stages 的 workflow start 后直接 SUCCEEDED."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = WorkflowEngine(base_dir=tmp)
+        wf = Workflow(workflow_id="w1")
+        engine.register(wf)
+        assert engine.get("w1") is wf
+        assert await engine.start("w1") is WorkflowStatus.SUCCEEDED  # 无 stage 直接成功
+        assert await engine.start("missing") is WorkflowStatus.FAILED
 
 
 # ── O4: 平台适配器模板 ───────────────────────────────────────────
