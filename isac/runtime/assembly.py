@@ -236,6 +236,15 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # 两处不一致会导致 wait 工具操作另一个 registry key, 永远等不到真实唤醒)。
     agent_services["agent_id"] = config.agent_id
 
+    # P2: 注入 MeshActionBroker —— 4 个 A2A 工具 (notify/handoff/list/memory_query)
+    # 的 restricted 门要求该服务存在, 此前生产零注入点使它们恒返回"未接入"。
+    # 策略随 Link 配置 (broker.policy_for 按对端解析), 不再依赖单值 mesh_link_policy。
+    bus = services.get("bus")
+    if bus is not None:
+        from isac.runtime.mesh.actions import MeshActionBroker
+
+        agent_services["mesh_action_broker"] = MeshActionBroker(bus=bus)
+
     await _setup_conversation_runtime(config, global_config, agent_services, prompt_builder)
 
     loop = ISACAgentLoop(

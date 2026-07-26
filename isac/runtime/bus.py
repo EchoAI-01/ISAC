@@ -26,12 +26,26 @@ PersistFn = Callable[[], None] | None
 
 @dataclass
 class InterAgentLink:
-    """Agent 互联链路 (data/links.jsonc, ACL)"""
+    """Agent 互联链路 (data/links.jsonc, ACL)
+
+    P2: 落地 SPECIFICATION.md 2.10 已定义的细粒度策略字段 —— 此前实现只有
+    方向/开关, MeshLinkPolicy 的 permissions/visible_memory_scopes 无配置来源,
+    4 个 A2A 工具即使注入 broker 也因 policy 恒 None 而全部被拒。
+    permissions 默认空 = notify/handoff/memory_query 全部拒绝 (deny-by-default);
+    ask (request/response) 不经 permissions 门, 仍由 can_talk (Link 存在即可) 管
+    —— 与"配了 Link 即可 ask_agent"的既有行为一致。
+    """
 
     from_agent: str
     to_agent: str
     direction: str = "both"  # "both" | "oneway"
     enabled: bool = True
+    # 允许的动作: ask | notify | handoff | memory_query (spec 2.10)
+    permissions: list[str] = field(default_factory=list)
+    # memory_query 可见的记忆范围 (空 = 不限定 scope, 仍受目标 Agent 自身 ACL 约束)
+    visible_memory_scopes: list[str] = field(default_factory=list)
+    # 跨 Agent 传递的上下文消息条数上限 (预留给上下文裁剪, 当前只传单条内容)
+    max_context_messages: int = 20
 
     def __post_init__(self) -> None:
         """校验 from_agent/to_agent 格式 (Fix-16)。
@@ -110,14 +124,18 @@ class InterAgentBus:
 
     def can_talk(self, from_agent: str, to_agent: str) -> bool:
         """检查 ACL: 是否存在允许 from → to 的 Link。"""
+        return self.find_link(from_agent, to_agent) is not None
+
+    def find_link(self, from_agent: str, to_agent: str) -> InterAgentLink | None:
+        """P2: 返回允许 from → to 的 enabled Link (无则 None), 供策略解析复用。"""
         for link in self._links:
             if not link.enabled:
                 continue
             if link.from_agent == from_agent and link.to_agent == to_agent:
-                return True
+                return link
             if link.direction == "both" and link.from_agent == to_agent and link.to_agent == from_agent:
-                return True
-        return False
+                return link
+        return None
 
     # ── 通信 ────────────────────────────────────────────────
 

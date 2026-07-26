@@ -46,6 +46,10 @@ class AgentConfig:
     # 路由触发词: 消息以这些词开头时路由到本 Agent
     trigger_words: list[str] = field(default_factory=list)
 
+    # P2 Mesh 角色 (ROUTING_AND_AGENT_MESH.md §2): ""/"primary" = 常规主处理者;
+    # "observer" = 旁听 (只入记忆不回复); "candidate" = 候选 (可被仲裁选为回复者)
+    mesh_role: str = ""
+
     # 能力开关: 插件 / 工具 / 命令 / MCP, 按 Agent 独立配置
     plugins_allow: list[str] = field(default_factory=lambda: ["*"])
     plugins_deny: list[str] = field(default_factory=list)
