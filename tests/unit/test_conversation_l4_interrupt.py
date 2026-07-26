@@ -18,7 +18,7 @@ import pytest
 
 from isac.agent.injectors.interrupt import InterruptInjector
 from isac.gateway.models import Session
-from isac.runtime.conversation import ConversationRuntime
+from isac.runtime.conversation import ConversationRuntime, ConversationRuntimeRegistry
 
 
 def _make_session(session_id: str = "s1") -> Session:
@@ -81,7 +81,15 @@ def test_runtime_request_interrupt_max_interrupts_configurable() -> None:
 async def test_interrupt_injector_empty_when_not_interrupted() -> None:
     """无打断状态时返回空字符串 (零行为变化)."""
     runtime = ConversationRuntime("a1", "s1")
-    injector = InterruptInjector(runtime=runtime)
+    injector = InterruptInjector(runtime_provider=lambda session_id: runtime)
+    result = await injector.build(_make_injection_context())
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_interrupt_injector_empty_when_no_provider() -> None:
+    """CR2-Fix-8: 未提供 runtime_provider 时 (默认) 直接返回空串, 零行为变化。"""
+    injector = InterruptInjector()
     result = await injector.build(_make_injection_context())
     assert result == ""
 
@@ -91,7 +99,7 @@ async def test_interrupt_injector_injects_hint_when_interrupted() -> None:
     """打断后注入"上一轮被新消息打断"内部提示."""
     runtime = ConversationRuntime("a1", "s1", max_interrupts_per_turn=1)
     runtime.request_interrupt(reason="用户发了新消息")
-    injector = InterruptInjector(runtime=runtime)
+    injector = InterruptInjector(runtime_provider=lambda session_id: runtime)
     result = await injector.build(_make_injection_context())
     assert "打断" in result or "被打断" in result
     assert "内部" in result or "参考" in result  # 注入为内部参考, 不直接告诉用户
@@ -102,12 +110,31 @@ async def test_interrupt_injector_clears_after_injection() -> None:
     """注入后清空 interrupt_state, 避免下一轮重复注入."""
     runtime = ConversationRuntime("a1", "s1", max_interrupts_per_turn=1)
     runtime.request_interrupt()
-    injector = InterruptInjector(runtime=runtime)
+    injector = InterruptInjector(runtime_provider=lambda session_id: runtime)
     first = await injector.build(_make_injection_context())
     assert first != ""
     # 注入后状态应已清空, 再次 build 返回空
     second = await injector.build(_make_injection_context())
     assert second == ""
+
+
+@pytest.mark.asyncio
+async def test_interrupt_injector_resolves_runtime_by_session_id() -> None:
+    """CR2-Fix-8: InterruptInjector 构造时绑定单一 runtime 实例无法正确服务多个
+    session (prompt_builder 是每个 Agent 一个实例, 服务该 Agent 的所有 session,
+    但 ConversationRuntime 是按 (agent_id, session_id) 创建的)。改造为
+    runtime_provider 回调, 按 context.session.session_id 动态查询对应 runtime,
+    才能让同一个 injector 实例正确服务多个并发会话。"""
+    registry = ConversationRuntimeRegistry()
+    runtime_s1 = registry.get("a1", "s1")
+    runtime_s1.request_interrupt(reason="s1 打断")
+    registry.get("a1", "s2")  # s2 从未被打断
+
+    injector = InterruptInjector(runtime_provider=lambda session_id: registry.get("a1", session_id))
+    result_s1 = await injector.build(_make_injection_context("s1"))
+    result_s2 = await injector.build(_make_injection_context("s2"))
+    assert "打断" in result_s1 or "被打断" in result_s1
+    assert result_s2 == ""
 
 
 # ── 默认零行为变化 ───────────────────────────────────────────────
