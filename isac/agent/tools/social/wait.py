@@ -1,9 +1,18 @@
-"""wait 工具: 暂缓回复，等待更多消息。"""
+"""wait 工具: 暂缓回复，等待更多消息。
+
+L2: conversation.enabled=True 时向本会话 ConversationRuntime 注册 WaitState
+(runtime.enter_wait), 由 timeout / message / proactive 结束并回填 wait 工具结果
+(说明实际等待时长); enabled=False 时返回意图字符串 (零行为变化)。
+"""
 
 from __future__ import annotations
 
+import time
+import uuid
+
 from isac.agent.tools.base import Tool, ToolContext
 from isac.core.types import ToolResult
+from isac.runtime.conversation import WaitEndReason, WaitState
 
 
 class WaitTool(Tool):
@@ -23,12 +32,43 @@ class WaitTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        """返回非阻塞等待意图。
+        """L2: enabled=True 时注册 WaitState 并 await, 唤醒后回填实际等待时长 + 原因。
 
-        TODO(L2): conversation.enabled 时改为向本会话 ConversationRuntime 注册
-        WaitState (runtime.enter_wait),由 timeout / message / proactive 结束并回填
-        wait 工具结果;骨架阶段仍返回意图字符串,保持现有行为。
+        enabled=False (默认) 时返回意图字符串, 保持现有行为 (零行为变化)。
         """
         seconds = max(0, int(context.args.get("seconds", 5) or 5))
         session_id = getattr(context.agent_context.session, "session_id", "")
-        return ToolResult(content=f"已记录等待意图：等待 {seconds} 秒或等待对方继续说。session_id={session_id}")
+        agent_id = str(context.services.get("agent_id", "") or "")
+        registry = context.services.get("conversation_registry")
+        enabled = bool(context.services.get("conversation_enabled", False))
+        if not enabled or registry is None:
+            return ToolResult(content=f"已记录等待意图：等待 {seconds} 秒或等待对方继续说。session_id={session_id}")
+        # L2: 注册 WaitState, await future 唤醒, 回填实际等待 + 原因
+        runtime = registry.get(agent_id, session_id)
+        tool_call_id = context.services.get("tool_call_id") or f"wait_{uuid.uuid4().hex}"
+        wait = WaitState(
+            tool_call_id=tool_call_id,
+            started_at=time.time(),
+            requested_seconds=float(seconds) if seconds > 0 else None,
+            reason="wait_tool",
+        )
+        await runtime.enter_wait(wait)
+        resolved = await runtime.await_wait(tool_call_id)
+        end_reason = resolved.end_reason or WaitEndReason.MESSAGE
+        return ToolResult(
+            content=(
+                f"已等待 {resolved.actual_seconds:.1f} 秒，"
+                f"唤醒原因：{_reason_label(end_reason)}。session_id={session_id}"
+            )
+        )
+
+
+def _reason_label(reason: WaitEndReason) -> str:
+    """把枚举值转成中文标签, 便于 LLM 理解 wait 工具结果。"""
+    if reason is WaitEndReason.MESSAGE:
+        return "收到新消息"
+    if reason is WaitEndReason.TIMEOUT:
+        return "等待超时"
+    if reason is WaitEndReason.PROACTIVE:
+        return "被主动任务唤醒"
+    return reason.value

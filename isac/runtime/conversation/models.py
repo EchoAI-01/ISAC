@@ -59,6 +59,8 @@ class WaitState:
     reason: str = ""
     # L2: 等待结束时回填 (None = 仍在等待)。尾部默认字段, 不影响既有关键字构造。
     end_reason: WaitEndReason | None = None
+    # L2: 实际等待秒数 (resolve_wait 时计算: time.time() - started_at)。尾部默认字段。
+    actual_seconds: float = 0.0
 
 
 @dataclass

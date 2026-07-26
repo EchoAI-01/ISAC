@@ -1,18 +1,19 @@
-"""ConversationRuntime: 会话级拟人化运行时骨架 (HUMANLIKE_RUNTIME.md 三)。
+"""ConversationRuntime: 会话级拟人化运行时 (HUMANLIKE_RUNTIME.md 三)。
 
-[框架已搭建 / scaffolding] 契约 + 状态机 + 挂接点就位;真正的异步 debounce 触发、
-wait 超时回填、主动任务调度、打断闭环留待 L1-L4 实现节点 (见各 TODO)。
+L2 实现: should_trigger 真实 debounce 判定 + wait 闭环 (enter_wait 启动超时定时器,
+resolve_wait 回填 end_reason/actual_seconds + 取消定时器, notify_new_message 在
+WAITING 时结束 wait)。三条唤醒路径: message / timeout / proactive。
 
-每个 (agent_id, session_id) 一个独立实例,由 ConversationRuntimeRegistry 管理。
-默认不接入主链路 (conversation.enabled=False),对现有 "每条消息即时处理" 零行为变化。
+默认不接入主链路 (conversation.enabled=False),对现有"每条消息即时处理"零行为变化。
 """
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import TYPE_CHECKING
 
-from isac.runtime.conversation.models import ConversationState, ForcedTurnState, WaitState
+from isac.runtime.conversation.models import ConversationState, ForcedTurnState, WaitEndReason, WaitState
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -34,6 +35,10 @@ class ConversationRuntime:
         self.last_reply_at: float = 0.0
         self.pending_wait: WaitState | None = None
         self.forced_turn: ForcedTurnState | None = None
+        # L2: 等待 future 字典 (按 tool_call_id), wait 工具 await 之, resolve_wait 时 set_result。
+        self._wait_futures: dict[str, asyncio.Future[WaitState]] = {}
+        # L2: 超时定时器 task (按 tool_call_id), enter_wait 启动, resolve_wait 取消。
+        self._timeout_tasks: dict[str, asyncio.Task[None]] = {}
 
     def register_message(self, message: ISACMessage) -> None:
         """把新消息追加进缓存并更新时间戳 (debounce / 合并的输入)。"""
@@ -46,14 +51,18 @@ class ConversationRuntime:
             cached=len(self.message_cache),
         )
 
-    def should_trigger(self, debounce_seconds: float = 0.0) -> bool:
+    def should_trigger(self, debounce_seconds: float = 0.0, *, now: float | None = None) -> bool:
         """判断是否已过静默窗口、可以触发一次处理。
 
-        TODO(L2): 实现真正的 debounce —— 结合 last_message_received_at 与
-        debounce_seconds 判断静默窗口是否结束,连续消息合并为一次触发。
-        骨架阶段恒返回 True,不改变现有 "每条即时处理" 行为。
+        L2: debounce_seconds<=0 恒 True (兼容"每条即时处理"); 否则按
+        last_message_received_at + debounce_seconds <= now 判定。now 参数便于测试。
         """
-        return True
+        if debounce_seconds <= 0.0:
+            return True
+        if self.last_message_received_at <= 0.0:
+            return True
+        current = now if now is not None else time.time()
+        return (current - self.last_message_received_at) >= debounce_seconds
 
     def transition_to(self, state: ConversationState) -> None:
         """状态机转移 (HUMANLIKE_RUNTIME.md §3.1)。"""
@@ -66,22 +75,86 @@ class ConversationRuntime:
         )
         self.state = state
 
-    def enter_wait(self, wait: WaitState) -> None:
-        """进入等待态 (wait 工具调用触发)。"""
+    async def enter_wait(self, wait: WaitState) -> None:
+        """进入等待态 (wait 工具调用触发)。
+
+        L2: 创建 future 让 wait 工具 await; requested_seconds 非空时启动超时定时器,
+        到期触发 resolve_wait(TIMEOUT)。async 因为需要 running loop 才能创建 future/task。
+        """
         self.pending_wait = wait
         self.transition_to(ConversationState.WAITING)
+        loop = asyncio.get_running_loop()
+        self._wait_futures[wait.tool_call_id] = loop.create_future()
+        if wait.requested_seconds is not None and wait.requested_seconds > 0:
+            self._timeout_tasks[wait.tool_call_id] = asyncio.create_task(self._wait_timeout(wait))
+        logger.debug(
+            "进入等待",
+            agent_id=self.agent_id,
+            session_id=self.session_id,
+            tool_call_id=wait.tool_call_id,
+            requested_seconds=wait.requested_seconds,
+        )
 
-    def resolve_wait(self, reason: str = "") -> WaitState | None:
+    async def _wait_timeout(self, wait: WaitState) -> None:
+        """超时定时器: sleep requested_seconds 后触发 resolve_wait(TIMEOUT)。
+
+        被 resolve_wait 取消时静默退出 (CancelledError); 不阻塞主链路。
+        """
+        try:
+            assert wait.requested_seconds is not None
+            await asyncio.sleep(wait.requested_seconds)
+        except asyncio.CancelledError:
+            return
+        self.resolve_wait(WaitEndReason.TIMEOUT)
+
+    def resolve_wait(self, reason: WaitEndReason) -> WaitState | None:
         """结束等待,返回被结束的 WaitState (无则 None)。
 
-        TODO(L2): 由 timeout / message / proactive 触发,并向 AgentLoop 回填
-        wait 工具结果 (说明实际等待时长)。骨架阶段仅做状态复位。
+        L2: 取消超时定时器; 回填 end_reason + actual_seconds (time.time() - started_at);
+        set future result 唤醒 wait 工具; 状态机回 IDLE。
         """
         wait = self.pending_wait
+        if wait is None:
+            return None
         self.pending_wait = None
+        # 取消超时定时器 (若存在)
+        task = self._timeout_tasks.pop(wait.tool_call_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+        # 回填 + 状态复位
+        wait.end_reason = reason
+        wait.actual_seconds = max(0.0, time.time() - wait.started_at)
         if self.state is ConversationState.WAITING:
             self.transition_to(ConversationState.IDLE)
+        # 唤醒 wait 工具
+        future = self._wait_futures.pop(wait.tool_call_id, None)
+        if future is not None and not future.done():
+            future.set_result(wait)
+        logger.debug(
+            "等待结束",
+            agent_id=self.agent_id,
+            session_id=self.session_id,
+            tool_call_id=wait.tool_call_id,
+            end_reason=reason.value,
+            actual_seconds=round(wait.actual_seconds, 3),
+        )
         return wait
+
+    async def await_wait(self, tool_call_id: str) -> WaitState:
+        """wait 工具 await 此方法, 被 resolve_wait 唤醒后返回 WaitState。"""
+        future = self._wait_futures.get(tool_call_id)
+        if future is None:
+            # 未注册 (理论上不会发生, wait 工具先 enter_wait 再 await): 返回哨兵 WaitState。
+            return WaitState(tool_call_id=tool_call_id, started_at=time.time(), end_reason=WaitEndReason.MESSAGE)
+        return await future
+
+    def notify_new_message(self) -> None:
+        """新消息到达时调用: 若处于 WAITING, 以 MESSAGE 原因结束等待。
+
+        L2: manager 在 dispatch_message 时调用, 让 wait 工具被新消息唤醒。
+        """
+        if self.state is ConversationState.WAITING and self.pending_wait is not None:
+            self.resolve_wait(WaitEndReason.MESSAGE)
 
     def request_interrupt(self) -> None:
         """请求打断当前规划 (新消息在 thinking 期间到达)。
