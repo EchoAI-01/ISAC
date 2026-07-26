@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-26 (L2-L5/M1-M2/N1-N3/O1-O3 核心逻辑+单测已实现但主链路待接线;新增 P 主链路接线与激活节点组;1091 单测通过、ruff/mypy 全绿)
+> 最近更新: 2026-07-26 (对照 `REQUIREMENTS.md` 十二条需求做 10 域并行代码取证 + 真实启动实测,发现 D8/E4/F1-F3/H1/H2/J1-J4/K1-K4/K7 等已交付节点存在与完成定义矛盾的未接线子行为,已逐条补记"MVP 缺口复核"说明;新增 **Q MVP 收尾** 节点组补齐 P 节点未覆盖的必需缺口,其中 **Q1 记忆写入回路** 为当前最高优先级缺口;K1-K7 复选框校正为 `[x]`(与本表一致);CR3 修复轮 14 项修复见下;1157 单测通过、ruff/mypy 全绿)
 
 ## 节点总览
 
@@ -24,17 +24,18 @@
 | N | 记忆深化 | 部分接线 | N2 治理已完整接入生产(含检索期软删除过滤,CR2-Fix-12);N1 MemoryItem/Adapter、N3 IdentityResolver 核心+单测完成但 **无调用点**(悬空)→ 见 P3/P4 |
 | O | 企业化与平台扩展 | 实现待接线 | O1/O2/O3 核心+单测完成但 **零调用点**(未接 store/loader/control)→ 见 P5;O4 平台适配器/O5 Video Provider 未开始(`[ ]`) |
 | P | 主链路接线与激活 | 未开始 | P0 消息并发化→P1 拟人化→P2 Mesh→P3 检索深化→P4 身份归一→P5 企业化;把上述 `[~]` 能力接入主链路,是 `[~]`→`[x]` 的收尾。定义见 DEVELOPMENT_PLAN §四 P |
+| Q | MVP 收尾(新增) | 未开始 | 2026-07-26 差距复核发现、未被 P0-P5 覆盖但 MVP 必需的缺口:**Q1 记忆写入回路**(最高优先级)、Q0 开箱可触达、Q2 人格差异化、Q3 插件/MCP 生态接线、Q4 多模态工具注册、Q5 WebUI/控制面收尾、Q6 SubAgent 补漏。定义见 DEVELOPMENT_PLAN §四 Q |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
 ## 可运行性状态
 
-**已达到「可运行」完成度**(2026-07-25 实测):
+**已达到「可运行」完成度**(2026-07-26 实测,不等于「MVP 可用」,见下方 2026-07-26 差距复核):
 
-- 主程序实测驻留(`RESIDENT_AFTER_3S=True`),支持 SIGINT/SIGTERM 优雅关闭。
-- 1091 单元/集成测试通过;Ruff 通过;Mypy 全绿。
+- 主程序实测驻留(无 `data/config.jsonc` 时兜底默认值 + StubProvider 也能启动;18 秒驻留无异常栈),支持 SIGINT/SIGTERM 优雅关闭(Windows 下 Ctrl+C 尚不走优雅关闭路径,见 Q0)。
+- 1157 单元/集成测试通过;Ruff 通过;Mypy 全绿。
 - 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke、J2 多模态全链 + Channel 投递、J4 SubAgent 全链 + Control API、J3 WebUI v2 SPA 十域。
-- 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用。
-- Agent / Session / 路由 / Link / 记忆可持久化恢复;SubAgent 任务可重启恢复 (running/queued → cancelled)。
+- 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用;主链路默认非流式,流式路径(CR3-H4 已修合并逻辑)尚未在生产启用。
+- Agent / 路由 / Link / 记忆可持久化恢复;SubAgent 任务可重启恢复 (running/queued → cancelled)。**订正**:此前"Session 可持久化恢复"表述不准确 —— `SessionManager`/`UserMapper` 实为纯内存实现(无落盘/无恢复),重启后会话状态与跨平台用户绑定丢失(对话内容因记忆子系统独立持久化不受影响);补齐计划见 Q1。
 - J3 WebUI v2 SPA 十域全部真实内容: Dashboard/Agents/Channels/Providers/Usage/Extensions/Memory/Sessions/Logs/System; 配置编辑事务 (Schema 校验 + Diff 预览 + 二次确认 + ETag 乐观锁); SSE 实时事件流; Playwright 浏览器黄金路径测试 (未装时 skip, CI 接入待 K8-2)。
 
 ## 稳定化节点 (K) 明细
@@ -93,9 +94,31 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 - **MemoryConsolidator** — 记忆整合后台任务(episodic → 画像/中期记忆归并与衰减,当前 `NotImplementedError`)。
 - **I 节点复核** — WebUI 浏览器测试 CI 已随 K8 接入,复核 I 是否可由 85% 升 100%。
 
-*已补齐*: Reranker 真实后端 `OpenAICompatRerankerProvider`(Cohere/Jina 双协议,`isac/provider/rerank/openai_compat.py`,已接入检索 pipeline);N2 检索期软删除过滤已生效(CR2-Fix-12),N2 记忆治理已完整接入生产。
+*已补齐*: N2 检索期软删除过滤已生效(CR2-Fix-12),N2 记忆治理已完整接入生产。
+
+*订正(2026-07-26)*: 此前"Reranker 已接入检索 pipeline"表述不准确。真实后端 `OpenAICompatRerankerProvider`(Cohere/Jina 双协议,`isac/provider/rerank/openai_compat.py`)确已实现,但生产 `main.py` 构造 `Reranker(memory_config.get("reranker", {}))` 时**未传入 provider**,`is_available()` 恒 `False`,`pipeline.search()` 的 rerank 步骤永不执行。补齐(仿 CR3-H3 embedding 注入写法)见 P3。
 
 **CR3 修复轮 (2026-07-26, 对应 Review/ISAC_待修复项清单.md 的 14 项)**: H2 插件隔离护栏+`on_load` 接线+隔离宿主真实加载 / H3 向量召回接入 pipeline(RRF+ACL)+生产 EmbeddingProvider 注入 / H4 流式工具调用按 index 累积+include_usage+失败回退 / M2 bus notify 真实投递 / M5 Gating-Focus LRU cap 1000 / M6 调度器冷却不再饿死其他会话 / M7 Workflow 多入口+fan-in 入度语义 / L1 自动化创建 Agent 强制受限沙箱 / L2 租户隔离进数据面(默认关闭) / L3 软删同步 BM25+预热过滤 / L4 SSRF 请求期固定 IP / L5 治理审计 operator+agent_id 归因 / L6 非 ASCII Token 401+/metrics 可选认证 / L8 write_file 线程池+journal 原子 seq+MCP sse 显式拒绝。附带: 控制面 sessions/memory/events 路由完成生产挂载(此前 services 键缺失恒 None), `resource` 模块 Windows 平台守卫。
+
+## 2026-07-26 MVP 差距复核 (对照 REQUIREMENTS.md 逐条取证)
+
+对照 `docs/REQUIREMENTS.md` 十二条原始需求,10 个领域并行验证(每条结论均落实到 文件:行号 证据,498 次代码检索 + 一次真实启动实测:无 `data/config.jsonc` 时兜底默认值也能启动、18 秒驻留无异常栈)。核心结论:**项目"能启动"但未达"MVP 可用"** —— 开箱只有 OneBot 一条可聊通道(WebChat/Telegram/Discord 已实现却零生产注册点)、**记忆写入回路完全缺失**(检索/注入/治理/持久化整条读链路就绪,但生产从未调用 `store_episode`,检索永远为空)、人格系统的情绪/表达风格/注意力漂移注入器是未注册的空桩、插件与 MCP 生态的数据面注册表在生产被硬编码为空、多模态语义工具从未注册进 ToolRegistry。
+
+同时发现一批标 `[x]` **已交付**的节点(D8/E4/F1-F3/H1/H2/J1-J4/K1-K4/K7)存在与其"完成定义"(§二:非桩实现+单测+集成验证+**主链路接线**+文档+CI)矛盾的未接线子行为 —— 已在 `DEVELOPMENT_PLAN.md` 对应节点下补记"**2026-07-26 MVP 缺口复核**"说明并指向修复它的 Q 节点,不改动其余已验证部分的 `[x]` 标记(与 J2/J3/J4 既有的"补充修复"记录方式一致)。
+
+为把这些**未被 P0-P5 任何节点覆盖**的必需缺口系统化,新增 **Q 节点组:MVP 收尾**(定义详见 `DEVELOPMENT_PLAN.md` §四 Q):
+
+| 能力 | 现状 | 对应节点 |
+|------|------|---------|
+| **Q1 记忆写入回路与身份稳定化** | episodic/画像/关系/行话读链路(检索/注入/治理/持久化)全部就绪,但生产 `_dispatch_message`/`process_message` 全程无 `store_episode`/`upsert_person_profile`/`upsert_jargon` 调用;`Session`/`UserMapper` 纯内存无持久化。**MVP 最高优先级,不依赖 P0,可立即开始** | Q1(新增,K3/K4 delta) |
+| Q0 开箱可触达与配置纠偏 | 生产入口只注册 OneBot;WebChat/Telegram/Discord 零调用点;`config.sample.jsonc` 四处死键(`auth_token` 应为 `api_token` 等);裸部署无默认路由消息全 DROP;Windows Ctrl+C 不走优雅关闭;Dockerfile 未冻结 uv.lock | Q0(新增,H1/K1/K8 delta) |
+| Q2 人格差异化实现 | `AgentConfig.persona` 文本不进 System Prompt;Mood/ExpressionStyle/AttentionDrift 三个注入器是返回空串的桩且未注册(`assembly.py` 自认"待落地") | Q2(新增,D8 delta) |
+| Q3 插件与 MCP 生态数据面接线 | Native SDK `register_tool/command/injector` 在生产被硬编码 `None`;AstrBot/MaiBot 插件加载后不桥接,handler 永不触发;`PluginManager` 未传入 `EnableMatrix`(plugins_allow/deny 对插件钩子不生效);`AgentConfig.mcp_servers` 零消费者 | Q3(新增,E4/F1-F4/H2 delta) |
+| Q4 多模态工具注册与计量收尾 | Provider/Router/Catalog/ArtifactStore 就绪,但 6 个语义媒体工具从未注册进 ToolRegistry;出站不经 MediaResolver;入站媒体无落盘;多模态 6 个 `record_*` 计量方法零调用;价目表恒空 | Q4(新增,J1/J2 delta) |
+| Q5 WebUI 与控制面收尾 | 插件页占位假数据;SubAgent 任务表路径写死恒空;配置编辑伪造 revision;后端 SSE 未被前端消费;MCP Server/Webhook 无生产启动点/路由挂载 | Q5(新增,J3/G2/G3 delta) |
+| Q6 SubAgent 用量与安全补漏 | supervisor 丢弃 `result.usage`/`evidence_refs`(时间线用量恒 0);背景摘要未传子 Agent;无并发上限;受限策略漏 `deny delegate_task` | Q6(新增,J4 delta) |
+
+Q0/Q1 不依赖 P0 消息并发化,建议与/先于 P 节点推进;P2(Mesh)、P3(记忆检索深化)的验收范围已相应扩充(Link 细粒度 ACL、Reranker 注入),不在 Q 中重复列出。MVP 准入线(P0-P2 + Q0-Q1)见 [ROADMAP.md](./ROADMAP.md) MVP 里程碑。
 
 ## 编号约定
 
