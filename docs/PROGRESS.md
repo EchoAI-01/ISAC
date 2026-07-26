@@ -18,7 +18,7 @@
 | H | 平台与工具扩展 | 100% | Telegram/Discord/WebChat + MCP Client + 实用工具 |
 | I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成 (浏览器测试 CI 接入待 K8-2) |
 | J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步);2026-07-26 五维度代码评审发现的 J2/J3/J4 缺口 (媒体校验未接线、J4 执行循环未接线、Token Scope/SSE scope 过滤/CSRF 会话缺失等 20 项) 已逐项修复,详见下方"J2/J3/J4 补充修复"|
-| K | 稳定化与可用版本闭环 | 95% | K1-K8 代码已落地;浏览器测试 CI 接入与发布准入收尾 |
+| K | 稳定化与可用版本闭环 | 100% | K1-K8 全部完成 (K8-2 Playwright CI + release_checklist 已落地) |
 | L | 拟人化运行时落地 | 100% | L1 框架 + L2/L3/L4/L5 全部实现 (wait 闭环 + debounce + 三唤醒路径; 主动任务 priority+冷却+鉴权+后台循环; 打断次数限制+Prompt 注入; 上下文恢复短/中/长窗口) |
 | M | 路由与 Agent Mesh 深化 | 100% | M1/M2 全部实现 (observer/candidate 路由 + 多候选仲裁 + SWITCH_MARGIN 防抖; MeshActionBroker ACL + bus 投递 + 4 A2A 工具 restricted) |
 | N | 记忆深化 | 100% | N1/N2/N3 全部实现 (MemoryItem 统一契约 + 四类型 from/to + MemoryItemAdapter; 记忆治理 freeze/protect/correct/delete/restore/export + 审计; 跨平台身份归一 + person_identities/identity_conflicts 表 + 启发式/冲突裁决) |
@@ -47,7 +47,7 @@
 | K5 单 Agent E2E | ✅ | FakeChannel + FakeLLMProvider 全链集成测试 |
 | K6 多 Agent E2E | ✅ | 多 Agent × 工具 × 记忆 × 控制面集成测试 (含原 E5) |
 | K7 安全基线 | ✅ | SSRF 防护 + SecretStore(AES-256-GCM) + TTL + 有界队列 + kill-wait |
-| K8 CI/发布准入 | 🟡 | CI 覆盖率门禁 + wheel/sdist smoke + Docker health 已就位;WebUI 浏览器测试待补 |
+| K8 CI/发布准入 | ✅ | CI 四 job (check+build+docker+browser) + wheel/sdist smoke + Docker 30s health 循环 + Playwright CI 接入 + scripts/release_checklist.md 七段发布清单 |
 
 ## 待实现能力
 
