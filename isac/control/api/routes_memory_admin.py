@@ -3,6 +3,11 @@
 N2 已落地: freeze/protect/correct/delete/restore/export 真实委托 MemoryGovernor
 (操作 episodes 治理列 + memory_audit + memory_revisions 表)。Bearer Token 认证;
 无 metadata_store 时整个路由不挂载 (404, 与 routes_memory 一致)。
+
+CR2-Fix-10: 此前完全没有 scope 校验 (绕开 Fix-12 建立的 Token Scope 模型),
+也没有接入项目统一审计日志 (只写内部 memory_audit 表, 查不到)。新增
+memory:read (list_items) / memory:write (freeze/protect/correct/delete/restore)
+scope, 并在每次写操作后追加调用项目统一的 _audit(), 落 data/audit.ndjson。
 """
 
 from __future__ import annotations
@@ -10,12 +15,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from isac.control.audit import AuditLog
     from isac.memory.storage.metadata import MetadataStore
 
 
 def build_router(
     metadata_store: MetadataStore | None,
     auth_dependency: Any = None,
+    scope_dependency: Any = None,
+    audit_log: AuditLog | None = None,
 ) -> Any:
     """构造 Memory 治理路由。无 metadata_store 时返回 None (不挂载)。"""
     if metadata_store is None:
@@ -27,36 +35,50 @@ def build_router(
     governor = MemoryGovernor(metadata_store)
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["memory-admin"], dependencies=deps)
+    # CR2-Fix-10: scope_dependency 为 None (未配置 control.tokens[]) 时
+    # read_deps/write_deps 都是空列表, 只受上面的 auth_dependency 约束, 行为不变。
+    read_deps = [Depends(scope_dependency("memory:read"))] if scope_dependency else []
+    write_deps = [Depends(scope_dependency("memory:write"))] if scope_dependency else []
 
-    @router.post("/memory/{agent_id}/items/{item_id}/freeze")
+    @router.post("/memory/{agent_id}/items/{item_id}/freeze", dependencies=write_deps)
     async def freeze(agent_id: str, item_id: str) -> dict:
         ok = await governor.freeze(item_id)
+        path = f"/api/v1/memory/{agent_id}/items/{item_id}/freeze"
+        await _audit_if_ok(audit_log, ok, "POST", path, "freeze_memory_item", item_id)
         return {"ok": ok, "detail": "frozen" if ok else "item not found or already frozen"}
 
-    @router.post("/memory/{agent_id}/items/{item_id}/protect")
+    @router.post("/memory/{agent_id}/items/{item_id}/protect", dependencies=write_deps)
     async def protect(agent_id: str, item_id: str) -> dict:
         ok = await governor.protect(item_id)
+        path = f"/api/v1/memory/{agent_id}/items/{item_id}/protect"
+        await _audit_if_ok(audit_log, ok, "POST", path, "protect_memory_item", item_id)
         return {"ok": ok, "detail": "protected" if ok else "item not found or already protected"}
 
-    @router.patch("/memory/{agent_id}/items/{item_id}")
+    @router.patch("/memory/{agent_id}/items/{item_id}", dependencies=write_deps)
     async def correct(agent_id: str, item_id: str, new_content: str = "") -> dict:
         ok = await governor.correct(item_id, new_content)
+        path = f"/api/v1/memory/{agent_id}/items/{item_id}"
+        await _audit_if_ok(audit_log, ok, "PATCH", path, "correct_memory_item", item_id)
         return {"ok": ok, "detail": "corrected with revision history" if ok else "item not found"}
 
-    @router.delete("/memory/{agent_id}/items/{item_id}")
+    @router.delete("/memory/{agent_id}/items/{item_id}", dependencies=write_deps)
     async def delete(agent_id: str, item_id: str) -> dict:
         ok = await governor.delete(item_id)
+        path = f"/api/v1/memory/{agent_id}/items/{item_id}"
+        await _audit_if_ok(audit_log, ok, "DELETE", path, "delete_memory_item", item_id)
         return {
             "ok": ok,
             "detail": "soft deleted" if ok else "item not found or protected (refused)",
         }
 
-    @router.post("/memory/{agent_id}/items/{item_id}/restore")
+    @router.post("/memory/{agent_id}/items/{item_id}/restore", dependencies=write_deps)
     async def restore(agent_id: str, item_id: str) -> dict:
         ok = await governor.restore(item_id)
+        path = f"/api/v1/memory/{agent_id}/items/{item_id}/restore"
+        await _audit_if_ok(audit_log, ok, "POST", path, "restore_memory_item", item_id)
         return {"ok": ok, "detail": "restored" if ok else "item not found"}
 
-    @router.get("/memory/{agent_id}/items")
+    @router.get("/memory/{agent_id}/items", dependencies=read_deps)
     async def list_items(agent_id: str) -> dict:
         items = await governor.export(agent_id)
         return {
@@ -76,3 +98,41 @@ def build_router(
         }
 
     return router
+
+
+async def _audit(
+    audit_log: AuditLog | None,
+    method: str,
+    path: str,
+    action: str,
+    target: str,
+) -> None:
+    """记录审计日志 (audit_log 为 None 时跳过, 与 routes_agents.py 的既有约定一致)。"""
+    if audit_log is None:
+        return
+    await audit_log.record(
+        actor="authenticated",
+        method=method,
+        path=path,
+        action=action,
+        target=target,
+        status_code=200,
+    )
+
+
+async def _audit_if_ok(
+    audit_log: AuditLog | None,
+    ok: bool,
+    method: str,
+    path: str,
+    action: str,
+    target: str,
+) -> None:
+    """治理操作成功时才记录审计 (失败的操作不应留下"已执行"的审计痕迹)。
+
+    独立于 build_router 之外, 避免 5 个写端点各自内联 if 分支把
+    build_router 的 mccabe 复杂度推高 (C901)。
+    """
+    if not ok:
+        return
+    await _audit(audit_log, method, path, action, target)
