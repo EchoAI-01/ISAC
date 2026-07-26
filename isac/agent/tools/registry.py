@@ -93,11 +93,15 @@ class ToolRegistry:
             return ToolResult(content=f"工具 {tool.name} 已被配置禁用", is_error=True)
         if policy == "restricted":
             required = self._required_service(tool.name)
-            if required and (not services or services.get(required) is None):
-                return ToolResult(
-                    content=f"工具 {tool.name} 为受限工具, 需注入服务 {required} 后方可使用。",
-                    is_error=True,
-                )
+            if required:
+                # Q0: 支持备选服务键 (tuple) —— 任一后端注入即放行, 如 task 工具
+                # 的 subagent_supervisor (生产) / task_runner (旧路径向后兼容)。
+                candidates = required if isinstance(required, tuple) else (required,)
+                if not services or all(services.get(key) is None for key in candidates):
+                    return ToolResult(
+                        content=f"工具 {tool.name} 为受限工具, 需注入服务 {' 或 '.join(candidates)} 后方可使用。",
+                        is_error=True,
+                    )
 
         context = ToolContext(args=tool_call.arguments, agent_context=agent_context, services=services or {})
         try:
@@ -110,17 +114,20 @@ class ToolRegistry:
             raise ToolError(f"{type(exc).__name__}: {exc}") from exc
 
     @staticmethod
-    def _required_service(tool_name: str) -> str | None:
-        """restricted 工具 → 必须注入的 service key。
+    def _required_service(tool_name: str) -> str | tuple[str, ...] | None:
+        """restricted 工具 → 必须注入的 service key (tuple = 任一注入即可)。
 
         没有列入的 restricted 工具默认只要求 services 非空 (任意后端存在即可)。
         """
-        mapping = {
+        mapping: dict[str, str | tuple[str, ...]] = {
             "read_file": "workspace_root",
             "write_file": "workspace_root",
             "bash": "bash_allowlist",
             "web_search": "web_search",
-            "task": "task_runner",
+            # Q0 修正: task 工具 J4 起优先走 subagent_supervisor (生产恒注入),
+            # 旧映射只认 task_runner (全仓无生产注入点), 使已接线的 SubAgent
+            # 委派在 restricted 门就被挡死; 现两者任一注入即放行。
+            "task": ("subagent_supervisor", "task_runner"),
             "send_emoji": "channel_send",
             "send_image": "channel_send",
             "fetch_history": "channel_history",

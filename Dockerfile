@@ -15,11 +15,13 @@ RUN pip install --no-cache-dir uv
 WORKDIR /app
 
 # 先复制依赖文件利用 Docker 层缓存
-COPY pyproject.toml ./
+# Q0: 带上 uv.lock 并用 --frozen 冻结安装, 保证构建可复现 (此前只 COPY
+# pyproject.toml, 构建期重新解析依赖, 同一 commit 不同时间构建结果可能不同)
+COPY pyproject.toml uv.lock ./
 COPY README.md ./
 
-# 安装运行时依赖 (不含 dev 组)
-RUN uv sync --no-dev --extra onebot
+# 安装运行时依赖 (不含 dev 组; --frozen 严格按 uv.lock, lock 过期时构建失败而非静默重解析)
+RUN uv sync --frozen --no-dev --extra onebot
 
 # 复制源码
 COPY isac/ ./isac/

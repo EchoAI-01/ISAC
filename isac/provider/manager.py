@@ -72,6 +72,24 @@ class ProviderManager:
         """J2: 按 (provider_id, model_id) 查询多模态 Provider; 未注册返回 None。"""
         return self._multimodal_providers.get((provider_id, model_id))
 
+    async def invalidate_agent_provider(self, agent_id: str) -> None:
+        """Q0: 失效某 Agent 的独立 Provider 缓存 (reload_config/destroy 时调用)。
+
+        此前 ``_agent_providers`` 按 agent_id 缓存后全仓无失效点, PATCH 修改
+        AgentConfig.llm 后 ``for_agent`` 仍返回旧 Provider, 换模型必须重启进程。
+        对被移除的 Provider 尽力 aclose 释放连接池 (无 aclose 或失败时静默跳过)。
+        """
+        provider = self._agent_providers.pop(agent_id, None)
+        if provider is None:
+            return
+        close = getattr(provider, "aclose", None)
+        if close is not None:
+            try:
+                await close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Agent Provider 关闭失败, 缓存已失效", agent_id=agent_id, error=str(exc))
+        logger.info("Agent Provider 缓存已失效", agent_id=agent_id)
+
     async def aclose(self) -> None:
         """关闭所有已注册 Provider 的底层连接池 (ApplicationRuntime 关闭时调用)。
 

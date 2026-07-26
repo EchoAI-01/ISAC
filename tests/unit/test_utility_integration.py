@@ -124,8 +124,22 @@ class TestBashRestrictedPolicy:
 
 class TestWebSearchBackends:
     @pytest.mark.asyncio
-    async def test_no_backend_returns_friendly_error(self) -> None:
+    async def test_default_policy_denies_web_search(self) -> None:
+        """Q0: 无搜索后端实现, 默认策略 deny (不再出现在 LLM schema 里恒失败)。"""
         registry = ToolRegistry(ToolPermission())
+        registry.register(WebSearchTool())
+        result = await registry.execute(
+            ToolCall(id="c1", name="web_search", arguments={"query": "test"}),
+            _make_agent_context(),
+            services={},
+        )
+        assert result.is_error is True
+        assert "禁用" in result.content
+
+    @pytest.mark.asyncio
+    async def test_no_backend_returns_friendly_error(self) -> None:
+        """显式 allow 但未注入后端时, 工具自身返回友好错误 (Q0 后需显式开启)。"""
+        registry = ToolRegistry(ToolPermission({"web_search": "allow"}))
         registry.register(WebSearchTool())
         result = await registry.execute(
             ToolCall(id="c1", name="web_search", arguments={"query": "test"}),
@@ -140,7 +154,7 @@ class TestWebSearchBackends:
         async def search(query: str, top_k: int = 5):
             return [{"title": "Result", "url": "https://x.com", "snippet": "snippet text"}]
 
-        registry = ToolRegistry(ToolPermission())
+        registry = ToolRegistry(ToolPermission({"web_search": "allow"}))
         registry.register(WebSearchTool())
         result = await registry.execute(
             ToolCall(id="c1", name="web_search", arguments={"query": "test"}),

@@ -14,6 +14,11 @@ services:
     ports:
       # 控制面 API + WebUI
       - "127.0.0.1:8765:8765"
+      # OneBot 反向 WebSocket (ISAC_ONEBOT_ENABLED=true 时取消注释, 否则 NapCat
+      # 等客户端无法从容器外连入 8080; 仅本机 NapCat 时建议保持 127.0.0.1 前缀)
+      # - "127.0.0.1:8080:8080"
+      # WebChat 内置聊天通道 (channels.webchat.enabled=true 且需从宿主访问时取消注释)
+      # - "127.0.0.1:8090:8090"
     volumes:
       # 持久化数据 (Agent 配置 / 记忆 / 审计 / Link)
       - isac_data:/app/data
