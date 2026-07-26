@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 
@@ -25,22 +26,43 @@ from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# CR3-M5: per-session 状态字典的容量上限, 对齐 ConversationRuntimeRegistry 的
+# cap 1000。超限时按 LRU 淘汰最久未使用的 session 条目, 防止服务大量不同会话的
+# 长跑进程内存无界增长 (已结束会话的条目永不回收)。
+MAX_TRACKED_SESSIONS = 1000
+
 
 class FocusMode:
     """专注模式管理 (来自 MaiBot, ARCHITECTURE.md 3.7)。
 
     focus 状态下: Reply Necessity 基础分提升、Idle Backoff 被绕过、Turn Scheduler 阈值降低。
+    CR3-M5: _active_until 有容量上限, enter 时惰性清理已过期条目 + LRU 淘汰,
+    不再只依赖 /unmute 显式清理。
     """
 
-    def __init__(self) -> None:
-        self._active_until: dict[str, float] = {}  # session_id -> 过期时间 (monotonic)
+    def __init__(self, max_sessions: int = MAX_TRACKED_SESSIONS) -> None:
+        self._max_sessions = max(1, int(max_sessions))
+        self._active_until: OrderedDict[str, float] = OrderedDict()  # session_id -> 过期时间 (monotonic)
 
     def is_active(self, session_id: str) -> bool:
         until = self._active_until.get(session_id, 0.0)
+        if until and time.monotonic() >= until:
+            # 已过期: 惰性回收, 避免僵尸条目占据容量
+            self._active_until.pop(session_id, None)
+            return False
         return time.monotonic() < until
 
     def enter(self, session_id: str, duration: int = 300) -> None:
-        self._active_until[session_id] = time.monotonic() + duration
+        now = time.monotonic()
+        if len(self._active_until) >= self._max_sessions:
+            expired = [key for key, until in self._active_until.items() if now >= until]
+            for key in expired:
+                del self._active_until[key]
+        self._active_until[session_id] = now + duration
+        self._active_until.move_to_end(session_id)
+        while len(self._active_until) > self._max_sessions:
+            evicted, _ = self._active_until.popitem(last=False)
+            logger.debug("FocusMode 会话条目超上限, LRU 淘汰", session_id=evicted)
 
     def exit(self, session_id: str) -> None:
         self._active_until.pop(session_id, None)
@@ -104,23 +126,33 @@ class GatingSystem:
         self._idle_backoff_factory = idle_backoff
 
         self.focus_mode = FocusMode()
-        self._turn_schedulers: dict[str, TurnScheduler] = {}
-        self._idle_backoffs: dict[str, IdleBackoffController] = {}
+        # CR3-M5: OrderedDict + LRU 上限 (对齐 ConversationRuntimeRegistry cap 1000),
+        # 避免长跑进程按 session_id 无界累积调度器/退避器实例。
+        self._turn_schedulers: OrderedDict[str, TurnScheduler] = OrderedDict()
+        self._idle_backoffs: OrderedDict[str, IdleBackoffController] = OrderedDict()
 
     def get_turn_scheduler(self, session_id: str) -> TurnScheduler:
-        """按 session_id 惰性创建/取回独立的 TurnScheduler。"""
+        """按 session_id 惰性创建/取回独立的 TurnScheduler (LRU, cap 1000)。"""
         scheduler = self._turn_schedulers.get(session_id)
         if scheduler is None:
             scheduler = self._turn_scheduler_factory()
             self._turn_schedulers[session_id] = scheduler
+        self._turn_schedulers.move_to_end(session_id)
+        while len(self._turn_schedulers) > MAX_TRACKED_SESSIONS:
+            evicted, _ = self._turn_schedulers.popitem(last=False)
+            logger.debug("TurnScheduler 会话条目超上限, LRU 淘汰", session_id=evicted)
         return scheduler
 
     def get_idle_backoff(self, session_id: str) -> IdleBackoffController:
-        """按 session_id 惰性创建/取回独立的 IdleBackoffController。"""
+        """按 session_id 惰性创建/取回独立的 IdleBackoffController (LRU, cap 1000)。"""
         backoff = self._idle_backoffs.get(session_id)
         if backoff is None:
             backoff = self._idle_backoff_factory()
             self._idle_backoffs[session_id] = backoff
+        self._idle_backoffs.move_to_end(session_id)
+        while len(self._idle_backoffs) > MAX_TRACKED_SESSIONS:
+            evicted, _ = self._idle_backoffs.popitem(last=False)
+            logger.debug("IdleBackoff 会话条目超上限, LRU 淘汰", session_id=evicted)
         return backoff
 
     async def evaluate(self, pending: list[ISACMessage], context: GatingContext) -> GateDecision:

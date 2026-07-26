@@ -124,6 +124,11 @@ class InterAgentBus:
     async def send(self, message: InterAgentMessage) -> InterAgentMessage | None:
         """发送互联消息: ACL 检查 → 投递 → 返回响应 (notify 返回 None)。
 
+        CR3-M2: notify 此前在调用 _deliver 之前就 return None —— 目标 Agent 根本
+        收不到消息, 而 NotifyAgentTool 却向 LLM 报告成功 (假成功丢消息)。现在
+        notify 也真实投递, 只是忽略目标 Agent 的响应 (fire-and-forget 语义:
+        不构造 response 消息返回); 投递失败的异常正常冒泡, 让调用方如实报告失败。
+
         TODO: handoff 类型的会话摘要交接; 超时控制。
         """
         if not self.can_talk(message.from_agent, message.to_agent):
@@ -140,7 +145,10 @@ class InterAgentBus:
             to_agent=message.to_agent,
             type=message.type,
         )
-        if message.type == "notify" or self._deliver is None:
+        if self._deliver is None:
+            return None
+        if message.type == "notify":
+            await self._deliver(message.to_agent, message)
             return None
 
         response_content = await self._deliver(message.to_agent, message)

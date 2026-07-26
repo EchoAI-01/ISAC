@@ -103,40 +103,40 @@ class SubAgentJournal:
     async def append(self, event: SubAgentEvent, *, max_log_bytes: int | None = None) -> None:
         """追加一条已脱敏 (且已按 max_log_bytes 截断) 事件。未 start 时静默跳过。
 
-        seq 自动分配: event.seq<=0 时由 DB 查 MAX(seq)+1 分配; >0 时保留调用方值
-        (用于测试或幂等重放)。max_log_bytes 未传时用 _DEFAULT_MAX_LOG_BYTES 兜底
-        (调用方知道任务生效策略时应显式传入该任务的 policy.max_log_bytes)。
+        seq 自动分配: event.seq<=0 时在单条 INSERT...SELECT 语句内计算
+        COALESCE(MAX(seq),0)+1 —— CR3-L8: 此前"先 SELECT MAX+1 再 INSERT OR
+        REPLACE"分两步, 同 task 并发 append 可算出相同 seq 互相覆盖丢事件;
+        单语句在 SQLite 中原子执行, 不再有读写间隙。event.seq>0 时保留调用方值
+        (用于测试或幂等重放, 仍走 INSERT OR REPLACE)。max_log_bytes 未传时用
+        _DEFAULT_MAX_LOG_BYTES 兜底 (调用方知道任务生效策略时应显式传入该任务
+        的 policy.max_log_bytes)。
         """
         if self._db is None:
             return
         event = self._sanitize(event, max_log_bytes=max_log_bytes)
-        # seq<=0 视为"自动分配", 避免覆盖同 (task_id, 0) 的旧行
-        if event.seq <= 0:
-            cursor = await self._db.execute(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM subagent_events WHERE task_id = ?",
-                (event.task_id,),
-            )
-            row = await cursor.fetchone()
-            await cursor.close()
-            seq = int(row[0]) if row is not None else 1
-        else:
-            seq = event.seq
-        await self._db.execute(
-            "INSERT OR REPLACE INTO subagent_events "
-            "(task_id, seq, event_type, timestamp, summary, tool_name, usage_total, evidence_refs, metadata) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
-            (
-                event.task_id,
-                seq,
-                event.event_type,
-                event.timestamp,
-                event.summary,
-                event.tool_name,
-                event.usage.total_tokens if event.usage is not None else 0,
-                json.dumps(event.evidence_refs, ensure_ascii=False),
-                json.dumps(event.metadata, ensure_ascii=False),
-            ),
+        columns = "(task_id, seq, event_type, timestamp, summary, tool_name, usage_total, evidence_refs, metadata)"
+        values = (
+            event.event_type,
+            event.timestamp,
+            event.summary,
+            event.tool_name,
+            event.usage.total_tokens if event.usage is not None else 0,
+            json.dumps(event.evidence_refs, ensure_ascii=False),
+            json.dumps(event.metadata, ensure_ascii=False),
         )
+        if event.seq <= 0:
+            # 原子自动分配: seq 在 INSERT 语句内部由子查询计算, 无读写间隙
+            await self._db.execute(
+                f"INSERT INTO subagent_events {columns} "
+                "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ? "
+                "FROM subagent_events WHERE task_id = ?",
+                (event.task_id, *values, event.task_id),
+            )
+        else:
+            await self._db.execute(
+                f"INSERT OR REPLACE INTO subagent_events {columns} VALUES (?,?,?,?,?,?,?,?,?)",
+                (event.task_id, event.seq, *values),
+            )
         await self._db.commit()
 
     async def fetch_after(self, task_id: str, after_seq: int, limit: int) -> list[SubAgentEvent]:

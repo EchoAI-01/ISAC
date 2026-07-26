@@ -178,9 +178,11 @@ class ISACMCPServer:
         name = params.get("name", "")
         args = params.get("arguments", {}) or {}
         if name == "agent_create" and self._agent_manager is not None:
-            from isac.runtime.config import AgentConfig
+            # CR3-L1: MCP 自动化创建同样走受限默认配置 (bash/task deny +
+            # plugins_deny=["*"]), 调用方 arguments 里的能力字段被丢弃并告警。
+            from isac.control.defaults import restricted_config_from_payload
 
-            instance = await self._agent_manager.create(AgentConfig(**args))
+            instance = await self._agent_manager.create(restricted_config_from_payload(args))
             return _text_result({"agent_id": instance.agent_id, "status": instance.status})
         if name == "agent_start" and self._agent_manager is not None:
             await self._agent_manager.start(args.get("agent_id", ""))

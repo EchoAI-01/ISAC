@@ -21,7 +21,7 @@ from isac.core.exceptions import LLMError
 from isac.provider.base import ImageGenerationProvider
 from isac.provider.llm.openai_compat import OpenAICompatProvider
 from isac.utils.logger import get_logger
-from isac.utils.ssrf import SSRFBlockedError, validate_webhook_url
+from isac.utils.ssrf import SSRFBlockedError, pin_validated_url
 
 if TYPE_CHECKING:
     from isac.artifacts.store import ArtifactStore
@@ -167,15 +167,17 @@ class OpenAICompatImageGenProvider(ImageGenerationProvider):
 
         安全: url 来自 Provider 的响应, 不是本进程写死的地址; 图片生成端点若被
         配置错误/劫持指向内网, 裸下载会让本进程被用作 SSRF 跳板 (读取云平台
-        元数据接口等)。下载前必须复用与 Webhook 相同的 SSRF 校验。
+        元数据接口等)。CR3-L4: 用请求期"校验即固定" (pin_validated_url) 取代
+        单纯的预校验 —— http URL 直接指向已校验 IP, 消除校验与请求之间的
+        DNS rebinding 窗口。
         """
         try:
-            validate_webhook_url(url, allow_local=False)
+            request_url, extra_headers = pin_validated_url(url, allow_local=False)
         except SSRFBlockedError as exc:
             raise LLMError(f"图片下载 URL 被 SSRF 校验拒绝: {exc}", retriable=False) from exc
         client = self._get_client()
         try:
-            response = await client.get(url)
+            response = await client.get(request_url, headers=extra_headers or None)
         except TimeoutError as exc:
             raise LLMError(f"图片下载超时: {exc}", retriable=True) from exc
         except Exception as exc:

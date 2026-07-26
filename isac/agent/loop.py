@@ -287,33 +287,54 @@ class ISACAgentLoop:
     async def _call_llm_streaming(
         self, system_prompt: str, messages: list[dict], tools_def: list[dict], context: AgentContext
     ) -> LLMResponse:
-        """流式 LLM 调用: 逐 chunk 转发 on_chunk, 结束后记录一次用量 (J1, 成功/失败都记录)。"""
+        """流式 LLM 调用: 逐 chunk 转发 on_chunk, 结束后记录一次用量 (J1, 成功/失败都记录)。
+
+        CR3-H4: 首个 chunk 之前失败时回退到非流式 chat_with_retry (重试/回退/降级)
+        —— 此时尚未向 on_chunk 推送任何内容, 回退是干净的, 只是最终回复不再逐块
+        推送。已推送过 chunk 后失败则无法干净重试, 记录 failed 后照旧抛出。
+        """
         start = time.monotonic()
-        status = "success"
-        response: LLMResponse | None = None
         chunks: list[LLMChunk] = []
         try:
             async for chunk in self.llm.chat_stream(system_prompt, messages, tools_def):
                 chunks.append(chunk)
                 if context.on_chunk:
                     await context.on_chunk(chunk)
-            response = self._merge_chunks(chunks)
-            return response
-        except Exception:
-            status = "failed"
-            raise
-        finally:
-            if self.provider_manager is not None:
+        except Exception as exc:
+            self._record_stream_attempt(context, None, start, "failed")
+            if not chunks and self.provider_manager is not None:
+                logger.warning("流式调用在首个 chunk 前失败, 回退非流式重试链路", error=str(exc))
                 agent_id, session_id, trace_id = self._correlation_ids(context)
-                self.provider_manager.record_stream_result(
+                return await self.provider_manager.chat_with_retry(
                     self.llm,
-                    response,
-                    latency_ms=int((time.monotonic() - start) * 1000),
-                    status=status,
                     agent_id=agent_id,
                     session_id=session_id,
                     trace_id=trace_id,
+                    system=system_prompt,
+                    messages=messages,
+                    tools=tools_def,
                 )
+            raise
+        response = self._merge_chunks(chunks)
+        self._record_stream_attempt(context, response, start, "success")
+        return response
+
+    def _record_stream_attempt(
+        self, context: AgentContext, response: LLMResponse | None, start: float, status: str
+    ) -> None:
+        """J1: 记录一次流式物理请求的指标与用量 (provider_manager 缺失时跳过)。"""
+        if self.provider_manager is None:
+            return
+        agent_id, session_id, trace_id = self._correlation_ids(context)
+        self.provider_manager.record_stream_result(
+            self.llm,
+            response,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            status=status,
+            agent_id=agent_id,
+            session_id=session_id,
+            trace_id=trace_id,
+        )
 
     @staticmethod
     def _correlation_ids(context: AgentContext) -> tuple[str, str, str]:
@@ -328,11 +349,21 @@ class ISACAgentLoop:
         )
 
     def _merge_chunks(self, chunks: list[LLMChunk]) -> LLMResponse:
-        """将流式 chunks 合并为完整响应。"""
+        """将流式 chunks 合并为完整响应。
+
+        CR3-H4: tool_call 由 Provider 侧按 index 累积装配后才出现在 chunk 上
+        (每个都是完整调用), 这里直接收集; usage 取最后一个非空的 (usage chunk
+        与装配出的 tool_call chunk 顺序不定, 不能盲取 chunks[-1])。
+        """
         content = "".join(c.delta_content for c in chunks)
         reasoning = "".join(c.delta_reasoning for c in chunks)
         tool_calls = [c.tool_call for c in chunks if c.tool_call]
-        usage = chunks[-1].usage if chunks else TokenUsage()
+        usage = TokenUsage()
+        for chunk in reversed(chunks):
+            chunk_usage = chunk.usage
+            if chunk_usage.total_tokens or chunk_usage.prompt_tokens or chunk_usage.completion_tokens:
+                usage = chunk_usage
+                break
         return LLMResponse(content=content, reasoning=reasoning, tool_calls=tool_calls, usage=usage)
 
     @staticmethod

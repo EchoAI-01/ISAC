@@ -94,6 +94,14 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     prompt_builder.register(ModelCapabilitiesInjector(_media_caps))
 
     hooks = AgentHooks()
+    # CR3-H2: 插件经 on_load 注册到进程级共享注册表 (services["plugin_agent_hooks"],
+    # main._fire_plugin_on_load 构造) 的钩子, 合并进本 Agent 的私有 hooks
+    # (保留 priority; 同仓读内部结构, AgentHooks._hooks 即注册表本体)。
+    plugin_hooks: AgentHooks | None = services.get("plugin_agent_hooks")
+    if plugin_hooks is not None:
+        for point, entries in plugin_hooks._hooks.items():  # noqa: SLF001
+            for priority, _seq, fn in entries:
+                hooks.register(point, fn, priority=priority)
     permission = ToolPermission(config.tools_policy)
     tools = ToolRegistry(permission, enable_matrix=enable_matrix, agent_id=config.agent_id)
     # 社交类工具: 与 Channel/记忆交互, 多为 allow 策略

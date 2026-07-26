@@ -51,10 +51,19 @@ class PluginManager:
         if not plugin_dir.exists():
             logger.info("插件目录不存在, 跳过加载", plugin_dir=str(plugin_dir))
             return {}
+        entries = [entry for entry in sorted(plugin_dir.iterdir()) if entry.is_dir()]
+        if entries:
+            # CR3-H2 护栏: 当前生产加载路径在宿主进程内 exec_module 执行插件顶层
+            # 代码, 无进程隔离/沙箱 —— 插件拥有宿主完整权限 (fs/网络/os)。
+            # PluginIsolationHost 已支持子进程真实加载 (load_plugin), 但尚未接管
+            # 本路径; 在接管之前, 只允许加载完全可信的插件。
+            logger.warning(
+                "插件在宿主进程内加载执行, 无进程隔离 —— 仅加载完全可信的插件",
+                plugin_dir=str(plugin_dir),
+                count=len(entries),
+            )
         report: dict[str, str] = {}
-        for entry in sorted(plugin_dir.iterdir()):
-            if not entry.is_dir():
-                continue
+        for entry in entries:
             try:
                 loaded = await self._loader.load(entry)
                 self._loaded[loaded.name] = loaded

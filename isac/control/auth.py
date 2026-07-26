@@ -36,10 +36,29 @@ from typing import Any
 
 
 def verify_token(token: str | None, expected: str) -> bool:
-    """校验 Bearer Token, 恒定时间比较。"""
+    """校验 Bearer Token, 恒定时间比较。
+
+    CR3-L6: hmac.compare_digest 对含非 ASCII 字符的 str 会抛 TypeError; 此前该
+    异常会冒泡成 500。这里兜底为 False (失败关闭), 让调用方返回干净的 401。
+    """
     if not token or not expected:
         return False
-    return hmac.compare_digest(token, expected)
+    try:
+        return hmac.compare_digest(token, expected)
+    except TypeError:
+        return False
+
+
+def token_fingerprint(token: str | None) -> str:
+    """把 Bearer Token 变成不可逆的短指纹 (审计归因用, CR3-L5)。
+
+    审计日志需要回答"谁做的", 但绝不能落裸 Token; 取 SHA-256 前 12 个十六进制
+    字符足够在少量 Token 间区分, 又无法反推原值。空 Token 返回空串。
+    """
+    if not token:
+        return ""
+    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return f"tok-{digest[:12]}"
 
 
 def extract_bearer(authorization: str | None) -> str | None:
