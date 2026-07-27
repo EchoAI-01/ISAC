@@ -26,12 +26,26 @@ PersistFn = Callable[[], None] | None
 
 @dataclass
 class InterAgentLink:
-    """Agent 互联链路 (data/links.jsonc, ACL)"""
+    """Agent 互联链路 (data/links.jsonc, ACL)
+
+    P2: 落地 SPECIFICATION.md 2.10 已定义的细粒度策略字段 —— 此前实现只有
+    方向/开关, MeshLinkPolicy 的 permissions/visible_memory_scopes 无配置来源,
+    4 个 A2A 工具即使注入 broker 也因 policy 恒 None 而全部被拒。
+    permissions 默认空 = notify/handoff/memory_query 全部拒绝 (deny-by-default);
+    ask (request/response) 不经 permissions 门, 仍由 can_talk (Link 存在即可) 管
+    —— 与"配了 Link 即可 ask_agent"的既有行为一致。
+    """
 
     from_agent: str
     to_agent: str
     direction: str = "both"  # "both" | "oneway"
     enabled: bool = True
+    # 允许的动作: ask | notify | handoff | memory_query (spec 2.10)
+    permissions: list[str] = field(default_factory=list)
+    # memory_query 可见的记忆范围 (空 = 不限定 scope, 仍受目标 Agent 自身 ACL 约束)
+    visible_memory_scopes: list[str] = field(default_factory=list)
+    # 跨 Agent 传递的上下文消息条数上限 (预留给上下文裁剪, 当前只传单条内容)
+    max_context_messages: int = 20
 
     def __post_init__(self) -> None:
         """校验 from_agent/to_agent 格式 (Fix-16)。
@@ -58,9 +72,13 @@ class InterAgentMessage:
 
     from_agent: str
     to_agent: str
-    type: str  # "request" | "response" | "notify" | "handoff"
+    type: str  # "request" | "response" | "notify" | "handoff" | "memory_query"
     content: str
     context: dict = field(default_factory=dict)
+    # MVP-Fix: 补齐 SPECIFICATION.md 2.10 已定义但实现缺失的字段 —— 让一次跨
+    # Agent 协作的日志能与发起方的消息处理串联 (LOGGING.md trace 贯穿)。
+    # 默认空串: 未显式传入时由 bus.send 从当前日志上下文自动填充。
+    trace_id: str = ""
 
 
 class InterAgentBus:
@@ -110,14 +128,18 @@ class InterAgentBus:
 
     def can_talk(self, from_agent: str, to_agent: str) -> bool:
         """检查 ACL: 是否存在允许 from → to 的 Link。"""
+        return self.find_link(from_agent, to_agent) is not None
+
+    def find_link(self, from_agent: str, to_agent: str) -> InterAgentLink | None:
+        """P2: 返回允许 from → to 的 enabled Link (无则 None), 供策略解析复用。"""
         for link in self._links:
             if not link.enabled:
                 continue
             if link.from_agent == from_agent and link.to_agent == to_agent:
-                return True
+                return link
             if link.direction == "both" and link.from_agent == to_agent and link.to_agent == from_agent:
-                return True
-        return False
+                return link
+        return None
 
     # ── 通信 ────────────────────────────────────────────────
 
@@ -139,11 +161,18 @@ class InterAgentBus:
             )
             raise InterAgentLinkDeniedError(f"Agent {message.from_agent} 无权与 {message.to_agent} 通信")
 
+        # MVP-Fix: 未显式传 trace_id 时从当前日志上下文继承 —— 一次跨 Agent
+        # 协作的日志因此能与发起方的消息处理串联 (SPECIFICATION 2.10 / LOGGING.md)。
+        if not message.trace_id:
+            from isac.utils.logging_context import get_log_context
+
+            message.trace_id = str(get_log_context().get("trace_id", "") or "")
         logger.info(
             "互联消息",
             from_agent=message.from_agent,
             to_agent=message.to_agent,
             type=message.type,
+            trace_id=message.trace_id,
         )
         if self._deliver is None:
             return None
@@ -158,4 +187,5 @@ class InterAgentBus:
             type="response",
             content=response_content or "",
             context=message.context,
+            trace_id=message.trace_id,  # 响应沿用同一 trace, 便于串联往返
         )

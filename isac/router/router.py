@@ -1,6 +1,7 @@
 """MessageRouter: Channel 连接与 Agent 解耦的关键 (ARCHITECTURE.md 3.2)。
 
 路由优先级 (先匹配先生效):
+0. P2 会话移交覆盖: handoff 登记的接手 Agent (带 TTL, 到期自动回落)
 1. 自定义 Router Hook (预留, Native SDK register_router_hook)
 2. 显式绑定: (platform, group_id/user_id) → agent_id
 3. 触发词: 消息以某 Agent 的 trigger_word 开头 (匹配后剥离)
@@ -10,6 +11,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Awaitable, Callable
 
 from isac.channel.model import ISACMessage
@@ -19,6 +21,11 @@ from isac.utils.logger import get_logger
 logger = get_logger(__name__)
 
 RouterHook = Callable[[ISACMessage], Awaitable[RoutingDecision | None]]
+
+# P2 会话移交的默认有效期 (秒)。移交是会话级临时归属, 不该无限期劫持路由;
+# 到期后归属回落到常规规则 (显式绑定/触发词/默认 Agent)。长期归属改
+# routing.jsonc 的 bindings。
+DEFAULT_HANDOFF_TTL_SECONDS: float = 3600.0
 
 
 class MessageRouter:
@@ -33,6 +40,9 @@ class MessageRouter:
         self._rules = rules
         self._agents_provider = agents_provider
         self._router_hooks: list[RouterHook] = []
+        # P2: 会话移交覆盖 (handoff_key → (agent_id, expires_at)), 优先级最高;
+        # 仅内存 + 带 TTL (见 set_handoff)
+        self._handoffs: dict[str, tuple[str, float]] = {}
 
     # ── 规则管理 (控制面调用) ──────────────────────────────
 
@@ -48,10 +58,67 @@ class MessageRouter:
         """预留: 自定义路由函数 (Native SDK)，在显式绑定之前执行。"""
         self._router_hooks.append(fn)
 
+    # ── P2 handoff: 会话归属临时转移 ────────────────────────
+
+    @staticmethod
+    def handoff_key(platform: str, group_id: str | None, user_id: str) -> str:
+        """会话归属键 (与消息的 platform + 群/私聊主体一致)。"""
+        target = f"group:{group_id}" if group_id else f"user:{user_id}"
+        return f"{platform}:{target}"
+
+    def set_handoff(
+        self,
+        platform: str,
+        group_id: str | None,
+        user_id: str,
+        agent_id: str,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        """P2: 登记一次会话移交 —— 后续该会话的消息路由到接手 Agent。
+
+        优先级高于显式绑定/触发词/默认 Agent (移交是用户可感知的显式动作)。
+        仅内存: 进程重启后归属回落到常规路由规则 (与 SessionManager 的内存语义
+        一致; 长期归属请改 routing.jsonc 的 bindings)。
+
+        MVP-Fix: 带 TTL (默认 `DEFAULT_HANDOFF_TTL_SECONDS`)。此前移交是**永久**
+        且全仓无 clear 调用点 —— 一次 handoff 会无限期劫持该会话的全部路由信号
+        (包括用户显式 @ 另一个 Agent 与 routing.jsonc 的绑定), 用户无从恢复。
+        移交给当前归属者自己 = 撤销 (给接手方一条"交还"的退出路径)。
+        """
+        key = self.handoff_key(platform, group_id, user_id)
+        ttl = DEFAULT_HANDOFF_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+        expires_at = time.monotonic() + ttl if ttl > 0 else float("inf")
+        self._handoffs[key] = (agent_id, expires_at)
+        logger.info("会话已移交", key=key, agent_id=agent_id, ttl_seconds=ttl)
+
+    def clear_handoff(self, platform: str, group_id: str | None, user_id: str) -> None:
+        """撤销会话移交, 归属回落到常规路由规则。"""
+        if self._handoffs.pop(self.handoff_key(platform, group_id, user_id), None) is not None:
+            logger.info("会话移交已撤销", key=self.handoff_key(platform, group_id, user_id))
+
+    def get_handoff(self, platform: str, group_id: str | None, user_id: str) -> str | None:
+        """返回当前接手 Agent; 无移交或已过期返回 None (过期即清理)。"""
+        key = self.handoff_key(platform, group_id, user_id)
+        entry = self._handoffs.get(key)
+        if entry is None:
+            return None
+        agent_id, expires_at = entry
+        if time.monotonic() >= expires_at:
+            del self._handoffs[key]
+            logger.info("会话移交已过期, 归属回落常规路由", key=key, agent_id=agent_id)
+            return None
+        return agent_id
+
     # ── 路由 ────────────────────────────────────────────────
 
     async def route(self, message: ISACMessage) -> RoutingDecision | None:
         """决定消息归属。返回 None 表示 DROP。"""
+        # P2: 会话移交覆盖 (最高优先级; handoff 后该会话由接手 Agent 处理)
+        handoff_agent = self.get_handoff(message.platform, message.group_id, message.user_id)
+        if handoff_agent:
+            return RoutingDecision(agent_id=handoff_agent, matched_by="handoff", content=message.content)
+
         # 0. 自定义 Router Hook (预留接口)
         for hook in self._router_hooks:
             try:

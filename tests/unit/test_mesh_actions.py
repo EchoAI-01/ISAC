@@ -122,24 +122,62 @@ async def test_memory_query_filters_by_visible_memory_scopes() -> None:
         ["memory_query"],
         visible_memory_scopes=["agent_private", "conversation"],
     )
-    ok = await broker.memory_query("a1", "a2", "周末计划", policy)
-    assert ok is True
+    # P2: memory_query 返回响应文本 (str) 而非 bool; deliver 返回 None → 空响应 ""
+    response = await broker.memory_query("a1", "a2", "周末计划", policy)
+    assert response is not None
     assert sent[0].type == MeshMessageType.MEMORY_QUERY.value
     # visible_memory_scopes 进 context.filters, 让接收方按 scope 裁剪
     assert sent[0].context.get("filters") == {"scopes": ["agent_private", "conversation"]}
 
 
 @pytest.mark.asyncio
+async def test_memory_query_returns_receiver_response() -> None:
+    """P2: memory_query 同步取回接收方响应文本 (此前丢弃 response, 查询方拿不到结果)。"""
+    bus = _make_bus()
+    bus.add_link(InterAgentLink(from_agent="a1", to_agent="a2"))
+
+    async def _deliver(_agent_id: str, _msg: InterAgentMessage) -> str:
+        return "- 用户上周说想去爬山"
+
+    bus.set_deliver(_deliver)
+    broker = MeshActionBroker(bus)
+    policy = _policy(["memory_query"])
+    response = await broker.memory_query("a1", "a2", "周末计划", policy)
+    assert response == "- 用户上周说想去爬山"
+
+
+@pytest.mark.asyncio
 async def test_memory_query_rejected_without_permission() -> None:
-    """memory_query 不在 permissions 时拒绝, 不投递."""
+    """memory_query 不在 permissions 时拒绝, 不投递 (P2: 拒绝返回 None)."""
     bus = _make_bus()
     sent: list[InterAgentMessage] = []
     bus.set_deliver(_make_deliver_capture(sent))
     broker = MeshActionBroker(bus)
     policy = _policy(["notify"])  # 不含 memory_query
-    ok = await broker.memory_query("a1", "a2", "x", policy)
-    assert ok is False
+    response = await broker.memory_query("a1", "a2", "x", policy)
+    assert response is None
     assert sent == []
+
+
+def test_policy_for_resolves_from_link_fields() -> None:
+    """P2: broker.policy_for 按 (from,to) 的 Link 字段解析策略; 无 Link 返回 None。"""
+    bus = _make_bus()
+    bus.add_link(
+        InterAgentLink(
+            from_agent="a1",
+            to_agent="a2",
+            permissions=["notify", "memory_query"],
+            visible_memory_scopes=["user:u1"],
+            max_context_messages=5,
+        )
+    )
+    broker = MeshActionBroker(bus)
+    policy = broker.policy_for("a1", "a2")
+    assert policy is not None
+    assert policy.permissions == ["notify", "memory_query"]
+    assert policy.visible_memory_scopes == ["user:u1"]
+    assert policy.max_context_messages == 5
+    assert broker.policy_for("a1", "a9") is None  # 无 Link → None (deny-by-default)
 
 
 # ── list_available ───────────────────────────────────────────────
@@ -171,7 +209,7 @@ async def test_broker_without_bus_rejects_all_actions() -> None:
     policy = _policy(["notify", "handoff", "memory_query"])
     assert await broker.notify("a1", "a2", "x", policy) is False
     assert await broker.handoff("a1", "a2", "x", policy) is False
-    assert await broker.memory_query("a1", "a2", "x", policy) is False
+    assert await broker.memory_query("a1", "a2", "x", policy) is None  # P2: 拒绝返回 None
 
 
 # ── 辅助 ────────────────────────────────────────────────────────
