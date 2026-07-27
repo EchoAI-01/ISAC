@@ -868,7 +868,9 @@ async def main() -> None:
             content=content,
         )
         session = await interagent_session_mgr.get_or_create(wrapped, agent_id=target_agent_id)
-        return await agent_manager.handle_message(target_agent_id, wrapped, session, None)
+        # R2-1: 经会话锁串行化 —— 此前直调 handle_message 绕过 _process_locked 的
+        # session_lock, P0 并行下两次并发投递会重叠跑同一互联会话。
+        return await agent_manager.handle_message_serialized(target_agent_id, wrapped, session, None)
 
     bus.set_deliver(_deliver_to_agent)
     # 启动时从 data/links.jsonc 恢复已持久化的互联 Link (CODE_REVIEW_REPORT.md #3)。
