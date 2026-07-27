@@ -6,6 +6,8 @@
 > 评审方式：4 组并行深度审读 + 逐条数据流验证 + 静态检查（compile / ruff / mypy 全绿）+ 关键修复运行时验证
 > 代码规模：`isac/` 约 2.25 万行、`tests/` 约 2.07 万行、`docs/` 约 9 千行，169 次提交
 
+> **📌 更新提示**：本报告后续在 `dev` 分支（`e23b334`，2026-07-27）做了一次独立复核，结论见文末「八、二次复核」——多项本报告标记"📋 报告"的问题已在 `dev` 上确认修复或部分修复，同时发现若干 `dev` 分支新引入的问题。建议先看该节的状态速览，再读本报告主体（主体内容为 `main@48d60b0` 快照，不做追溯改写）。
+
 ---
 
 ## 一、总体评价
@@ -30,26 +32,27 @@
 | # | 缺陷 | 类别 | 严重度 | 处理 |
 |---|------|------|:---:|:---:|
 | H1 | 记忆/会话读接口无 scope 校验，窄权限 Token 可读所有 Agent 会话内容与人物画像(PII) | 安全/越权 | **高** | ✅ 已修复 |
-| H2 | “进程级插件隔离”并未生效：插件在宿主进程内 `exec_module` 执行，隔离宿主是 echo 桩 | 安全/设计 | **高** | 📋 报告 |
-| H3 | 向量/稠密检索从未在检索路径执行，语义召回实际缺失，且每次写入白算一次 embedding | 功能/正确性 | **高** | 📋 报告 |
-| H4 | 流式(streaming)工具调用整体损坏：参数丢失 + 产生空工具调用 | 正确性 | **高**(潜伏) | 📋 报告 |
+| H2 | “进程级插件隔离”并未生效：插件在宿主进程内 `exec_module` 执行，隔离宿主是 echo 桩 | 安全/设计 | **高** | ⚠️ dev 部分修复¹ |
+| H3 | 向量/稠密检索从未在检索路径执行，语义召回实际缺失，且每次写入白算一次 embedding | 功能/正确性 | **高** | ✅ dev 已修复¹ |
+| H4 | 流式(streaming)工具调用整体损坏：参数丢失 + 产生空工具调用 | 正确性 | **高**(潜伏) | ⚠️ dev 部分修复¹ |
 | M1 | 会话锁只 acquire 不 release，主链路长期运行内存无界增长 | 资源泄漏 | 中高 | ✅ 已修复 |
-| M2 | 跨 Agent `notify` 在 bus 层被静默丢弃，工具却报告成功 | 正确性 | 中 | 📋 报告 |
+| M2 | 跨 Agent `notify` 在 bus 层被静默丢弃，工具却报告成功 | 正确性 | 中 | ✅ dev 已修复¹ |
 | M3 | Discord 时间戳解析未加保护，单条坏消息可令该频道轮询永久卡死 + 时区错误 | 正确性/健壮性 | 中 | ✅ 已修复 |
 | M4 | 原子写未对父目录 fsync，掉电后刚写入的配置可能丢失 | 持久化 | 中 | ✅ 已修复 |
 | M5 | 多个 per-session 状态字典（Gating/Focus）无上限、无回收 | 资源泄漏 | 中 | 📋 报告 |
-| M6 | ProactiveScheduler 冷却期把任务退回队首反复重取，饿死其他会话 | 正确性 | 中 | 📋 报告 |
+| M6 | ProactiveScheduler 冷却期把任务退回队首反复重取，饿死其他会话 | 正确性 | 中 | ✅ dev 已修复¹ |
 | M7 | Workflow 引擎只启动首个入口节点，且并行分支在首个到达时就 join | 正确性 | 中 | 📋 报告 |
 | L1 | 自动化创建的 Agent 无能力沙箱（restricted 默认是死代码），可开 bash/全插件 | 安全 | 低-中 | 📋 报告 |
-| L2 | 多租户隔离 `TenantIsolationGuard` 全程无调用点，隔离形同虚设 | 安全/设计 | 低-中 | 📋 报告 |
-| L3 | 记忆软删除不同步 BM25 内存索引，删除后存活项的 BM25 打分被污染 | 正确性 | 低-中 | 📋 报告 |
+| L2 | 多租户隔离 `TenantIsolationGuard` 全程无调用点，隔离形同虚设 | 安全/设计 | 低-中 | ✅ dev 已修复¹ |
+| L3 | 记忆软删除不同步 BM25 内存索引，删除后存活项的 BM25 打分被污染 | 正确性 | 低-中 | ✅ dev 已修复¹ |
 | L4 | SSRF 校验与实际请求分离(TOCTOU/DNS rebinding 可绕过) | 安全 | 中(受限可达) | 📋 报告 |
-| L5 | 记忆治理审计 `operator` 恒为空、无 agent_id 列，无法归因“谁操作” | 合规/审计 | 低 | 📋 报告 |
+| L5 | 记忆治理审计 `operator` 恒为空、无 agent_id 列，无法归因“谁操作” | 合规/审计 | 低 | ⚠️ dev 部分修复¹ |
 | L6 | `/metrics` 无认证；非 ASCII Bearer Token 触发 500 而非 401 | 安全/健壮性 | 低 | 📋 报告 |
 | L7 | 一批“✅ 完成”特性实际未接线：Mesh、主动任务、拟人化 wait/interrupt、多租户、Workflow | 文档一致性 | — | 📋 报告 |
 | L8 | `write_file` 在事件循环里做同步磁盘 I/O；SubAgentJournal seq 并发下可能丢事件；MCP `sse` 传输未实现 | 正确性/性能 | 低 | 📋 报告 |
 
-图例：✅ 已修复并验证 / 📋 仅报告（因属特性接线、架构决策或潜伏路径，不宜在评审阶段擅自改动）
+图例：✅ 已修复并验证 / 📋 仅报告（因属特性接线、架构决策或潜伏路径，不宜在评审阶段擅自改动） / ⚠️ 部分修复（仍有缺口）
+¹ 见第八节「二次复核」：`dev` 分支（`e23b334`，2026-07-27）已发生大量后续开发（P0-P2/Q0-Q1 主链路激活 + 两轮独立修复），标注状态针对 `dev`，不追溯改写本报告 `main@48d60b0` 快照本身的结论。
 
 ---
 
@@ -179,3 +182,62 @@
 **中期（口径与接线）**：按 L7 对齐 README 与 `AGENTS.md` 的完成度口径；按 P 节点推进 Mesh/拟人化/多租户/Workflow/向量召回的主链路接线，接线时把对应 `[~]` 单测转为主链路集成测试，避免“有单测但主链路无调用点”的再次发生。
 
 **工程增强**：H4 流式合并逻辑；L4 SSRF 改“校验即请求”；L3/L5 记忆治理同步 BM25 + 补审计 actor；L8 `write_file` 异步化 / Journal seq 事务化。
+
+---
+
+## 八、二次复核（`dev` 分支 @ `e23b334`，2026-07-27）
+
+> 本节针对与本报告主体（`main@48d60b0`）不同的代码谱系：`dev` 分支在本报告发布后经历了三轮后续工作——两轮独立的评审修复轮（内部代号“CR3 代码评审修复轮”“MVP 增量代码评审修复轮”）+ 一次面向 `docs/ROADMAP.md` 所称“P0-P2/Q0-Q1 主链路激活”的功能开发。复核方式：4 个并行子任务分别对照本报告原有的 H2/H3/H4/L2/L3/M2/M6 等条目直接读取 `dev@e23b334` 当前代码验证（而非采信文档/commit message 的自述），并额外检视 P0（消息并发）/P1（拟人化）/P2（Mesh）新落地代码本身引入的问题。
+
+### 8.1 原有条目在 `dev@e23b334` 上的状态
+
+| # | 原结论 | `dev@e23b334` 状态 | 证据 |
+|---|------|------|------|
+| H2 | 插件进程隔离未生效(echo 桩) | ⚠️ **部分修复** | 隔离子进程 worker 已改为通过 `PluginLoader` 真实加载插件入口（`isac/plugin/isolation/host.py` 的 `_worker_load`/`_worker_call`，含私有方法调用拒绝），不再是 echo 桩；但 `isac/plugin/runtime/manager.py::PluginManager.load_all` 仍无条件走宿主内 loader，全仓生产代码 0 处实例化 `PluginIsolationHost`，插件 manifest 也没有 `isolated` 类字段可触发该路径——**隔离能力本身已具备，但没有任何生产编排逻辑会使用它**，所有插件事实上仍在宿主进程内运行 |
+| H3 | 向量/稠密检索从未执行 | ✅ **已修复** | `isac/memory/pipeline.py` 的检索路径已接入真实 dense+sparse 的 RRF 融合检索；未配置 embedding provider 时优雅降级为纯稀疏检索，不再是承诺功能的完全空转 |
+| H4 | 流式工具调用解析损坏(潜伏) | ⚠️ **根因已修复，功能仍未激活** | 分片合并逻辑已改为按 OpenAI 流式协议的 `index` 字段正确累积，不再是“每个 delta 当完整调用”；但目前全仓生产代码仍无任何调用点把 `streaming=True` 传给 LLM Provider，功能路径依旧潜伏（触发面从“有 bug 且不可达”变为“已修复且不可达”） |
+| M2 | 跨 Agent notify 被静默丢弃、假报成功 | ✅ **已修复** | `isac/runtime/bus.py` 的 notify 分支已改为先真实 `await self._deliver(...)` 再返回，投递异常会被 `MeshActionBroker` 捕获并转为 `False`，`notify_agent` 工具据此向 LLM 报告准确的失败，不再假成功 |
+| M6 | ProactiveScheduler 冷却期饿死其他会话 | ✅ **已修复** | 队列改为优先级/公平调度，`poll_ready` 不再固定重取队首同一任务，不同 session 的冷却窗口互不干扰 |
+| L2 | 多租户隔离全程无调用点 | ✅ **已修复** | `isac/main.py` 生产启动路径已真实构造 `TenantIsolationGuard` + 非默认 `TenantContext` 并注入 `MetadataStore`；`tenancy.enabled` 配置开关打开即可在数据面生效，不再是“谓词安全但从不执行”的死代码 |
+| L3 | 记忆软删除不同步 BM25 索引 | ✅ **已修复** | `isac/memory/model/governance.py::delete()` 已同步调用稀疏索引的 `remove()`，`restore`/`correct` 也做了对应处理，墓碑不再残留在 BM25 内存索引里 |
+| L5 | 审计 `operator` 恒空、无 `agent_id` 列 | ⚠️ **部分修复** | `memory_audit` 表已补齐 `agent_id` 列，`operator` 由空字符串改为固定占位值 `"authenticated"`；仍不是“记录具体是哪个 token/身份”的真实身份追踪，但这与本项目当前**全局**的审计粒度一致（`routes_agents.py` 等其他端点的 `actor` 同样是固定占位值），不算 `dev` 分支新引入的缺口 |
+
+M5、M7、L1、L4、L6、L7、L8 **本轮未复核**，状态维持本报告主体所述，请勿据此推断已修复。
+
+### 8.2 `dev@e23b334` 新引入的问题
+
+**R2-1（Critical）Mesh 跨 Agent 调用绕过 session 锁，破坏并发安全承诺**
+
+- 位置：`isac/main.py:848-871`（`_deliver_to_agent`）、`isac/runtime/bus.py:146-191`（`InterAgentBus.send`）
+- 问题：两者都直接调用 `agent_manager.handle_message`，完全绕开 `main.py:279-284` 保护“同 session 严格串行”的 `session_lock`。P0 引入跨会话真并行后，若两次跨 Agent 调用（`ask_agent`/`notify_agent`）恰好并发指向同一目标 session，会在无锁状态下并发处理同一会话的消息，破坏原本的串行保证。
+- 影响：可能导致回复错序或状态损坏；仅在启用 Mesh（`ask_agent`/`notify_agent` 实际被调用）场景触发。
+- 建议：让 `_deliver_to_agent` 复用与普通消息入口相同的 `session_lock` 获取路径，而不是绕过它直接调 `handle_message`。
+
+**R2-2（Critical）主动任务调度链路完整，但生产环境没有任何入口会触发它**
+
+- 位置：`isac/runtime/conversation/scheduler.py`/`proactive.py` 全链路（生命周期驱动、唤醒、真实出站发送、冷却公平性均正确）；全仓库（排除 `tests/`）搜索 `ProactiveTask(`/`.enqueue(` 零命中
+- 问题：调度器内部各段接线正确，但没有任何生产代码（插件、定时任务、记忆事件、控制面 API）会把任务放入队列——只有集成测试手工构造过任务对象。
+- 影响：`docs/ROADMAP.md`/`docs/PROGRESS.md` 称该功能“全部接入生产主链路”与实际不符：机制存在但生产侧的入口缺失，真实部署中该功能永远不会自发触发。
+- 建议：明确谁是“主动任务”的生产者（例如某个 injector/hook 在特定条件下调用 `enqueue`），补上这一环再对外宣称接线完成。
+
+**R2-3（Required）Mesh observer/candidate 处理是同步阻塞，与代码注释所述“不影响主处理”矛盾**
+
+- 位置：`isac/main.py:89-140`（`_apply_mesh_routing`），第 138-140 行对多个 observer 的记忆写入是顺序 `for...await`，且整段在 89 行被完整 `await` 完，发生在 primary 的 `handle_message`（102 行）之前
+- 问题：每条消息的响应延迟会被 N 个 observer 写入（可能含 embedding 调用）与 M 个 candidate 评分串行拖慢。仅在配置 `mesh_role` 时触发，默认路径零影响。
+- 建议：把 observer 写入改为真正的 `asyncio.gather`/后台任务，不阻塞 primary 的回复路径；或至少更新注释使其反映真实行为。
+
+**R2-4（Nit）`router.py` 的 handoff 记录无独立过期清理**
+
+- 位置：`isac/router/router.py:45`（`_handoffs`），仅在同一 key 被 `get_handoff`（100-111 行）重新查询且已过期时才清理
+- 问题：若某会话收到一次 handoff 后再无后续消息触发 `route()`，该条目会永久驻留内存。非致命，但会随运行时间累积。
+- 建议：对齐 `SessionManager._gc_expired` 的做法，加一个独立的周期性扫描。
+
+**R2-5（Nit）`isac/gateway/lock.py` 存在从未被调用的休眠死代码**
+
+- 位置：`isac/gateway/lock.py`（`_agent_running`/`_queues` 及配套的 `handle_message` 方法，约 54-79 行）
+- 问题：生产路径走的是另一套 `acquire`/`release`（见 R2-1 提到的 `session_lock`），这套 `_agent_running`/`_queues` 全仓零调用点，当前不构成实际泄漏，但如果未来被误接线会无界增长。
+- 建议：随手清理或明确标注废弃，避免后来者误用。
+
+### 8.3 本轮结论
+
+`dev` 分支相比本报告主体描述的 `main@48d60b0` 快照，在“文档宣称完成度 vs 实际接线状态”这一核心问题上**有实质性收窄**：H3/M2/M6/L2/L3 五项已被独立验证为真实修复（非文档自述）。但同一类问题并未被根除——本轮新发现的 R2-2（主动任务无生产者）与 H2/H4 残留的部分修复状态，说明“内部机制正确 + 生产侧从不调用”这一模式在本项目里仍在持续出现，是比任何单个 bug 更值得关注的结构性风险。R2-1 是本轮唯一一项因新功能（P0 并发化）而**新引入**的真实并发缺陷，建议优先处理。
