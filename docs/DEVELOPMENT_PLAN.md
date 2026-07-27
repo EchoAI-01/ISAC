@@ -736,7 +736,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 - [x] **S3 图谱召回 `_graph_search` 骨架**(→ P3)
   - 见 §四 P3"当前"。`enable_graph_recall` 默认关闭,`_merge_results` 第四路 RRF 就位。
 - [x] **S4 身份归一主链路接线锚点**(→ P4)
-  - 见 §四 P4"当前"。`_resolve_identity` + `_build_identity_resolver` 默认关闭。
+  - 见 §四 P4"当前"。`_resolve_identity` + `_build_identity_resolver` 默认关闭。**2026-07-28 激活**: IdentityResolver 新增 `resolve_conflict` (人工裁决 conflict + 更新 person_id); 新建 `routes_identity.py` (bind / list conflicts / resolve conflict 三个 REST 入口, scope=identity:read/write, 无 resolver 注入时返回 None 不挂载); `server.create_control_app`/`_mount_optional_routers` 接收 `identity_resolver`; `main` 把 `services["identity_resolver"]` 注入并经 `_register_control_plane` 透传 (helper `_mount_identity_workflow_routers` 抽出避免 C901 超)。新增 `test_routes_identity.py` (7 例) 覆盖 bind 落 verified / list_conflicts / resolve_conflict 404 / resolve 标 resolved 后 list 不再返回。
 - [x] **S5 Workflow 控制面入口骨架**(→ P5/O3)
   - 见 §四 P5"当前"。`routes_workflows`(list/get/start)+ `WorkflowEngine.list_workflows()` 访问器,`control.workflow.enabled` 默认关闭。
 - [x] **S6 O5 视频 Provider 注册挂点**

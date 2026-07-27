@@ -19,7 +19,9 @@ from isac.core.constants import INTERAGENT_PLATFORM
 from isac.core.events import EventType
 from isac.core.types import ProgressEvent
 from isac.gateway.event_bus import EventBus
+from isac.gateway.identity.resolver import IdentityResolver
 from isac.gateway.lock import SessionLockManager
+from isac.gateway.models import UserProfile
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
 from isac.memory.embedder import EmbeddingManager
@@ -47,6 +49,46 @@ logger = get_logger(__name__)
 DATA_DIR = Path("data")
 
 
+async def _resolve_identity(
+    profile: UserProfile,
+    identity_resolver: IdentityResolver | None,
+    message: ISACMessage,
+) -> None:
+    """S4: 身份归一锚点 —— 命中归一 person_id 时就地覆盖 profile.user_id。
+
+    identity.enabled 时把 (platform, user_id) 归一到统一 person_id, 使下游记忆读写
+    (以 profile.user_id 为主键) 按归一身份聚合。identity_resolver=None (默认关闭) 时
+    直接返回, 零行为变化; 无 verified/启发式绑定时 resolver 兜底委托同一 user_mapper,
+    person_id 不变 = 无副作用; resolver 抛异常时降级用基础画像 (不冒泡到主链路)。
+    """
+    if identity_resolver is None:
+        return
+    try:
+        person_id = await identity_resolver.resolve(message.platform, message.user_id, message.user_name)
+        if person_id:
+            profile.user_id = person_id
+    except Exception:  # noqa: BLE001
+        logger.warning("身份归一失败, 降级用基础画像", platform=message.platform, exc_info=True)
+
+
+def _build_identity_resolver(
+    global_config: dict[str, Any], user_mapper: UserMapper
+) -> IdentityResolver | None:
+    """S4: 按 identity.enabled 构造跨平台身份归一器 (默认关闭 → None → 主链路零行为变化)。
+
+    启用时组合同一 user_mapper (不改动它), 只把 verified/启发式绑定命中的归一 person_id
+    覆盖到 profile.user_id; heuristic_enabled 默认 False 防误合并。
+    """
+    identity_config = global_config.get("identity", {}) or {}
+    if not identity_config.get("enabled"):
+        return None
+    return IdentityResolver(
+        user_mapper,
+        heuristic_enabled=bool(identity_config.get("heuristic_enabled", False)),
+        db_path=str(DATA_DIR / "gateway" / "person_identities.db"),
+    )
+
+
 async def process_message(
     message: ISACMessage,
     *,
@@ -56,6 +98,7 @@ async def process_message(
     user_mapper: UserMapper,
     agent_manager: AgentManager,
     channel_registry: ChannelRegistry,
+    identity_resolver: IdentityResolver | None = None,
     metrics: MetricsCollector | None = None,
 ) -> None:
     """消息主链路: EventBus → Router → Agent (DEVELOP.md 1.2 依赖注入)。"""
@@ -83,6 +126,8 @@ async def process_message(
     if platform_session_id and not session.platform_session_id:
         session.platform_session_id = platform_session_id
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
+    # S4: 身份归一锚点 (identity_resolver=None 时零行为变化, 见 _resolve_identity)。
+    await _resolve_identity(profile, identity_resolver, routed_message)
 
     # P2 Mesh: 候选仲裁 (可能改写归属 Agent) + observer 旁听 (只入记忆不回复)。
     # 无 Agent 配置 mesh_role 时整段短路 = 单主路由, 零行为变化。
@@ -243,6 +288,7 @@ def make_message_dispatcher(
     channel_registry: ChannelRegistry,
     metrics: MetricsCollector,
     session_lock: SessionLockManager,
+    identity_resolver: IdentityResolver | None = None,
     drain_timeout_seconds: float = 30.0,
 ) -> tuple[Callable[[ISACMessage], Awaitable[None]], Callable[[], Awaitable[None]]]:
     """P0: 构造并发消息分发器, 返回 (handle_message, drain_inflight)。
@@ -293,6 +339,7 @@ def make_message_dispatcher(
                     user_mapper=user_mapper,
                     agent_manager=agent_manager,
                     channel_registry=channel_registry,
+                    identity_resolver=identity_resolver,
                     metrics=metrics,
                 )
         except Exception:
@@ -352,6 +399,23 @@ def _register_channel_adapters(channel_registry: ChannelRegistry, global_config:
         from isac.channel.adapters.webchat.adapter import WebChatAdapter
 
         channel_registry.register(WebChatAdapter(webchat_config))
+    # O4 骨架适配器 (feishu/wechat/qq_official): start/stop no-op、send 返回 False,
+    # 连接与收发待 O4 实现节点填充。仅在显式 enabled 时注册, 默认不接入 → 零行为变化。
+    feishu_config = channels_config.get("feishu")
+    if feishu_config and feishu_config.get("enabled"):
+        from isac.channel.adapters.feishu.adapter import FeishuAdapter
+
+        channel_registry.register(FeishuAdapter(feishu_config))
+    wechat_config = channels_config.get("wechat")
+    if wechat_config and wechat_config.get("enabled"):
+        from isac.channel.adapters.wechat.adapter import WeChatAdapter
+
+        channel_registry.register(WeChatAdapter(wechat_config))
+    qq_official_config = channels_config.get("qq_official")
+    if qq_official_config and qq_official_config.get("enabled"):
+        from isac.channel.adapters.qq_official.adapter import QQOfficialAdapter
+
+        channel_registry.register(QQOfficialAdapter(qq_official_config))
     registered = [adapter.platform_name for adapter in channel_registry.list()]
     if registered:
         logger.info("Channel 适配器已注册", platforms=registered)
@@ -412,6 +476,7 @@ def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[st
 # 每个 mm 配置字段: kind / provider / api_key / base_url / model / cost_tier / latency_tier
 _MM_KIND_TO_OPERATIONS: dict[str, set[str]] = {
     "image_gen": {"image_gen"},
+    "video_gen": {"video_gen"},
     "stt": {"stt"},
     "tts": {"tts"},
     "embed": {"embed"},
@@ -421,6 +486,7 @@ _MM_KIND_TO_OPERATIONS: dict[str, set[str]] = {
 
 _MM_KIND_TO_MODALITIES: dict[str, tuple[set[str], set[str]]] = {
     "image_gen": ({"text"}, {"image"}),
+    "video_gen": ({"text"}, {"video"}),
     "stt": ({"audio"}, {"text"}),
     "tts": ({"text"}, {"audio"}),
     "embed": ({"text"}, {"embedding"}),
@@ -442,6 +508,15 @@ def _build_multimodal_provider(
     if kind == "image_gen":
         from isac.provider.image_gen.openai_compat import OpenAICompatImageGenProvider
         return OpenAICompatImageGenProvider(api_key, base_url, model, artifact_store)
+    if kind == "video_gen":
+        # S6 (O5): 视频生成注册挂点。默认配置无 video_gen 项 → 不构造 → 零行为变化;
+        # Provider.generate 仍抛 NotImplementedError (端点开工前需二次确认), 注册本身
+        # 不触发调用, 仅当 Agent 真正请求视频生成时才暴露"未实现"。构造参数顺序
+        # (api_base, api_key) 与 image_gen 不同, 用关键字传参避免错位。
+        from isac.provider.video_gen.openai_compat import OpenAICompatVideoGenProvider
+        return OpenAICompatVideoGenProvider(
+            api_base=base_url, api_key=api_key, model=model, artifact_store=artifact_store
+        )
     if kind == "stt":
         from isac.provider.stt_tts.openai_compat import OpenAICompatSTTProvider
         return OpenAICompatSTTProvider(api_key, base_url, model)
@@ -602,6 +677,8 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
             embedder=embedder,
             reranker=reranker,
             metrics=metrics,
+            # S3: 图谱邻居召回开关 (默认关闭; 骨架期即使开启也零产出, 零行为变化)。
+            enable_graph_recall=bool(memory_config.get("graph_recall", {}).get("enabled", False)),
         )
 
     # J2: 模型能力目录 / 路由 / 制品存储 (轻量, 始终构造, 无 I/O 副作用)。
@@ -904,6 +981,11 @@ async def main() -> None:
     # Q1: 跨平台身份映射 SQLite 持久化 (master_id/person_id 跨重启稳定,
     # 人物画像与记忆按归一身份聚合的前提)
     user_mapper = UserMapper(str(DATA_DIR / "gateway" / "identity.db"))
+    # S4: 跨平台身份归一器 (默认关闭 → None → 主链路走 user_mapper 原路径, 零行为变化)。
+    identity_resolver = _build_identity_resolver(global_config, user_mapper)
+    # S4 控制面入口 (bind/conflicts): 放进 services 让 _register_control_plane 透传给
+    # create_control_app。仅在 identity.enabled=true 时非空, 默认关闭不挂载路由。
+    services["identity_resolver"] = identity_resolver
     session_lock = SessionLockManager()
     # P1: 注入 gateway/channel 句柄到共享 services —— 主动任务强制话轮需要按
     # session_id 反查会话 (session_mgr)、经会话锁串行 (session_lock)、把回复
@@ -923,6 +1005,7 @@ async def main() -> None:
         channel_registry=channel_registry,
         metrics=metrics,
         session_lock=session_lock,
+        identity_resolver=identity_resolver,
     )
 
     # 注入 Channel 适配器的消息回调
@@ -1088,6 +1171,16 @@ async def _register_control_plane(
         # CR3-L3: BM25 内存索引解析器 (namespace → SparseBM25Index), 让治理路由的
         # delete/restore/correct 能同步内存索引。
         sparse_indexes = (services or {}).get("sparse_indexes") or {}
+        # S5 (O3): 工作流引擎 (默认关闭: control.workflow.enabled!=true → None → 路由
+        # 不挂载, 零行为变化)。启用时构造并注入, WorkflowEngine 按 base_dir 持久化实例。
+        workflow_engine = None
+        workflow_cfg = (control_config.get("workflow", {}) or {}) if isinstance(control_config, dict) else {}
+        if workflow_cfg.get("enabled"):
+            from isac.runtime.workflow.engine import WorkflowEngine
+
+            workflow_engine = WorkflowEngine(
+                base_dir=str(workflow_cfg.get("base_dir") or (DATA_DIR / "workflows"))
+            )
         app = create_control_app(
             agent_manager,
             router,
@@ -1104,6 +1197,8 @@ async def _register_control_plane(
             metadata_store=metadata_store,
             event_bus=event_bus,
             sparse_resolver=sparse_indexes.get,
+            workflow_engine=workflow_engine,
+            identity_resolver=(services or {}).get("identity_resolver"),
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))

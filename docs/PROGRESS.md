@@ -2,7 +2,7 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> 最近更新: 2026-07-28 (**S1+S2 激活**: S1 三个主动任务生产者填真实产出逻辑 + 注入 memory; S2 MemoryConsolidator run_once 实现去重/剪枝/画像归纳三步 + 注入 llm; 26 例新测试, 全量 1297 单测通过、ruff/mypy 全绿。详见 DEVELOPMENT_PLAN §四"S 骨架轮 / S1+S2"。上一轮 2026-07-27 **骨架轮 S1-S7**: 为 P3 图谱召回 / P4 身份归一 / P5 Workflow 控制面 / MemoryConsolidator / proactive-ext 生产者 / O4 飞书·微信·QQ 官方三平台 / O5 视频 Provider 一次性补齐**骨架 + 默认关闭接线锚点**,均 default-off、主链路零行为变化;1271 单测基线。骨架≠交付,真实激活按 P3/P4/P5 验收执行。上一轮 2026-07-26 对照 `REQUIREMENTS.md` 十二条需求做 10 域并行代码取证 + 真实启动实测,新增 **Q MVP 收尾** 节点组,其中 **Q1 记忆写入回路** 已完成)
+> 最近更新: 2026-07-28 (**S1+S2+S4 激活**: S1 三个主动任务生产者填真实产出逻辑 + 注入 memory; S2 MemoryConsolidator run_once 实现去重/剪枝/画像归纳三步 + 注入 llm; S4 身份归一控制面 routes_identity (bind/conflicts/resolve) + IdentityResolver.resolve_conflict + main/server 注入; 33 例新测试, 全量 1304 单测通过、ruff/mypy 全绿。详见 DEVELOPMENT_PLAN §四"S 骨架轮 / S1+S2+S4"。上一轮 2026-07-27 **骨架轮 S1-S7**: 为 P3 图谱召回 / P4 身份归一 / P5 Workflow 控制面 / MemoryConsolidator / proactive-ext 生产者 / O4 飞书·微信·QQ 官方三平台 / O5 视频 Provider 一次性补齐**骨架 + 默认关闭接线锚点**,均 default-off、主链路零行为变化;1271 单测基线。骨架≠交付,真实激活按 P3/P4/P5 验收执行。上一轮 2026-07-26 对照 `REQUIREMENTS.md` 十二条需求做 10 域并行代码取证 + 真实启动实测,新增 **Q MVP 收尾** 节点组,其中 **Q1 记忆写入回路** 已完成)
 
 ## 节点总览
 
