@@ -169,3 +169,69 @@ class TestPluginManagerUnload:
         manager = PluginManager({})
         result = await manager.unload("not_exist")
         assert result is False
+
+
+class TestPluginManagerIsolation:
+    """H2: manifest isolated=true 的插件经 PluginIsolationHost 在子进程加载并可 IPC 调用。"""
+
+    @staticmethod
+    def _make_isolated_plugin(root: Path, name: str = "iso_hello") -> None:
+        plugin_dir = root / name
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "manifest.jsonc").write_text(
+            json.dumps({"name": name, "version": "1.0.0", "entry": "plugin.py", "isolated": True}),
+            encoding="utf-8",
+        )
+        (plugin_dir / "plugin.py").write_text(
+            "from isac.plugin.native.plugin import ISACPlugin\n"
+            "class IsoPlugin(ISACPlugin):\n"
+            "    def ping(self):\n"
+            "        return 'pong'\n",
+            encoding="utf-8",
+        )
+
+    @pytest.mark.asyncio
+    async def test_isolated_plugin_loads_in_subprocess(self, tmp_path: Path) -> None:
+        root = tmp_path / "plugins"
+        root.mkdir()
+        self._make_isolated_plugin(root)
+        manager = PluginManager({})
+        try:
+            report = await manager.load_all(root)
+            assert report["iso_hello"] == "loaded (isolated)"
+            assert manager.is_isolated("iso_hello") is True
+            # 隔离插件不在宿主进程内 loader 里 (get 从 _loaded 取)
+            assert manager.get("iso_hello") is None
+            # 子进程真实加载了插件, 可经 IPC 调用其方法
+            assert await manager.call_isolated("iso_hello", "ping") == "pong"
+        finally:
+            await manager.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_non_isolated_plugin_still_loads_in_process(self, tmp_path: Path) -> None:
+        root = tmp_path / "plugins"
+        root.mkdir()
+        plugin_dir = root / "plain"
+        plugin_dir.mkdir()
+        (plugin_dir / "manifest.jsonc").write_text(
+            json.dumps({"name": "plain", "entry": "plugin.py"}), encoding="utf-8"
+        )
+        (plugin_dir / "plugin.py").write_text(
+            "from isac.plugin.native.plugin import ISACPlugin\nclass PlainPlugin(ISACPlugin):\n    pass\n",
+            encoding="utf-8",
+        )
+        manager = PluginManager({})
+        await manager.load_all(root)
+        assert manager.is_isolated("plain") is False
+        assert manager.get("plain") is not None  # 内进程加载
+
+    @pytest.mark.asyncio
+    async def test_unload_isolated_kills_host(self, tmp_path: Path) -> None:
+        root = tmp_path / "plugins"
+        root.mkdir()
+        self._make_isolated_plugin(root)
+        manager = PluginManager({})
+        await manager.load_all(root)
+        assert manager.is_isolated("iso_hello") is True
+        assert await manager.unload("iso_hello") is True
+        assert manager.is_isolated("iso_hello") is False

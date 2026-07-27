@@ -1063,6 +1063,8 @@ async def _register_control_plane(
         # 自身错误隔离 (CODE_REVIEW_REPORT.md #27)。
         plugin_config = (control_config.get("plugins", {}) or {}) if isinstance(control_config, dict) else {}
         plugin_manager = PluginManager(plugin_config)
+        # H2: 隔离插件跑在子进程 (daemon), 优雅关闭时显式终止, 不留残余子进程。
+        runtime.register_lifecycle("plugins", _noop_start, plugin_manager.shutdown)
         plugins_dir = Path(control_config.get("plugins_dir", "plugins"))
         # 用 to_thread 包装 Path.exists 避免 event loop 内 blocking IO (ruff ASYNC240)。
         if await asyncio.to_thread(plugins_dir.exists):
