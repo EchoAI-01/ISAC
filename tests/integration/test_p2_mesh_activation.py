@@ -22,7 +22,7 @@ from isac.channel.registry import ChannelRegistry
 from isac.gateway.event_bus import EventBus
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
-from isac.main import _answer_memory_query, process_message
+from isac.main import _answer_memory_query, _apply_mesh_routing, process_message
 from isac.memory.embedder import EmbeddingManager
 from isac.memory.pipeline import MemoryRetrievalPipeline, NoOpMemoryPipeline
 from isac.memory.storage.graph import GraphStore
@@ -32,7 +32,7 @@ from isac.memory.storage.vector import VectorStore
 from isac.observability import get_default_metrics
 from isac.provider.manager import ProviderManager
 from isac.router.router import MessageRouter
-from isac.router.types import RoutingRules
+from isac.router.types import RoutingDecision, RoutingRules
 from isac.runtime.bus import InterAgentBus, InterAgentLink, InterAgentMessage
 from isac.runtime.config import AgentConfig
 from isac.runtime.manager import AgentManager
@@ -167,6 +167,36 @@ async def test_observer_hears_message_without_replying(tmp_path: Path) -> None:
     rows = await metadata_store.search_fts("obs", "today_secret_keyword")
     assert len(rows) == 1
     assert rows[0]["content"].startswith("u1:")
+
+
+@pytest.mark.asyncio
+async def test_observer_write_is_backgrounded_not_blocking_primary(monkeypatch) -> None:
+    """R2-3: observer 旁听写入不阻塞 primary 回复路径 —— _apply_mesh_routing 调度
+    后台任务后立即返回, 慢速旁听写入在 drain 时才完成 (此前是顺序 await 内联)。"""
+    am, router, sm, _cr, _channel, _bus, _provider, _ = await _build_env(
+        agents=[
+            AgentConfig(agent_id="a", display_name="A"),
+            AgentConfig(agent_id="obs", display_name="Obs", mesh_role="observer"),
+        ],
+    )
+    observed = {"done": False}
+
+    async def slow_observe(agent_id, message, session, profile) -> None:  # noqa: ANN001
+        await asyncio.sleep(0.1)
+        observed["done"] = True
+
+    monkeypatch.setattr(am, "observe_message", slow_observe)
+
+    msg = _msg("hello", at=False)
+    decision = RoutingDecision(agent_id="a", matched_by="default", content="hello")
+    session = await sm.get_or_create(msg, agent_id="a")
+    final = await _apply_mesh_routing(decision, msg, session, None, sm, am)
+
+    assert final == "a"  # observer 不改变归属
+    assert observed["done"] is False  # 旁听写入被后台化, 未阻塞 _apply_mesh_routing
+    assert len(am._memory_tasks) == 1  # noqa: SLF001  已调度为后台任务
+    await am.drain_background_tasks()
+    assert observed["done"] is True  # drain 等到旁听写入完成
 
 
 @pytest.mark.asyncio

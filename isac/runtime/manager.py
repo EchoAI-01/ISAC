@@ -918,6 +918,27 @@ class AgentManager:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("旁听写入失败, 已忽略", agent_id=agent_id, error=str(exc))
 
+    def schedule_observe_message(
+        self,
+        agent_id: str,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+    ) -> None:
+        """R2-3: 后台旁听写入 —— 不阻塞 primary 的回复路径。
+
+        此前 _apply_mesh_routing 对每个 observer 顺序 `await observe_message`, 使 primary
+        的回复延迟被 N 个 observer 的记忆写入 (可能含 embedding API 调用) 串行拖慢。
+        改为派生后台任务, 复用 _memory_tasks 的强引用集合 + drain_background_tasks,
+        保证优雅关闭时旁听记忆不丢。observe_message 自身已捕获异常, 任务不会抛。
+        """
+        task = asyncio.create_task(
+            self.observe_message(agent_id, message, session, user_profile),
+            name=f"observe-{agent_id}-{session.session_id}",
+        )
+        self._memory_tasks.add(task)
+        task.add_done_callback(self._memory_tasks.discard)
+
     # ── 内部 ────────────────────────────────────────────────
 
     def _conversation_enabled(self) -> bool:
