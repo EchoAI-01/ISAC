@@ -33,6 +33,8 @@ def create_control_app(
     metadata_store: Any = None,
     event_bus: Any = None,
     sparse_resolver: Any = None,
+    workflow_engine: Any = None,
+    identity_resolver: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -124,7 +126,7 @@ def create_control_app(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
         scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
-        sparse_resolver,
+        sparse_resolver, workflow_engine, identity_resolver,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -245,8 +247,10 @@ def _mount_optional_routers(
     events_max_connections: int | None = None,
     audit_log: Any = None,
     sparse_resolver: Any = None,
+    workflow_engine: Any = None,
+    identity_resolver: Any = None,
 ) -> None:
-    """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events)。"""
+    """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events / workflows / identity)。"""
     if usage_store is not None:
         from isac.control.api import routes_usage
 
@@ -324,3 +328,34 @@ def _mount_optional_routers(
             routes_events.build_router(event_bus, auth_dependency=auth_dependency, tokens=tokens, **kwargs),
             prefix="/api/v1",
         )
+    # S4/S5 (P4/P5): identity 与 workflow 控制面路由 (注入时挂载; 无则返回 None 不挂载)。
+    _mount_identity_workflow_routers(
+        app, identity_resolver, workflow_engine,
+        auth_dependency=auth_dependency, scope_dependency=scope_dependency, audit_log=audit_log,
+    )
+
+
+def _mount_identity_workflow_routers(
+    app: Any,
+    identity_resolver: Any,
+    workflow_engine: Any,
+    *,
+    auth_dependency: Any,
+    scope_dependency: Any,
+    audit_log: Any,
+) -> None:
+    """挂载 identity (S4) 与 workflow (S5) 控制面路由 (helper 抽出避免 C901)。"""
+    from isac.control.api import routes_identity, routes_workflows
+
+    workflow_router = routes_workflows.build_router(
+        workflow_engine, auth_dependency=auth_dependency,
+        scope_dependency=scope_dependency, audit_log=audit_log,
+    )
+    if workflow_router is not None:
+        app.include_router(workflow_router, prefix="/api/v1")
+    identity_router = routes_identity.build_router(
+        identity_resolver, auth_dependency=auth_dependency,
+        scope_dependency=scope_dependency, audit_log=audit_log,
+    )
+    if identity_router is not None:
+        app.include_router(identity_router, prefix="/api/v1")

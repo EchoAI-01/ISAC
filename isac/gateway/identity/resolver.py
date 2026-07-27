@@ -364,3 +364,32 @@ class IdentityResolver:
             }
             for r in rows
         ]
+
+    async def resolve_conflict(self, conflict_id: str, person_id: str) -> bool:
+        """S4: 人工裁决冲突 —— 标记 resolved=1, 并把 person_id 更新为人工选择结果。
+
+        不存在的 conflict_id 返回 False; 存在但已 resolved 仍幂等返回 True。
+        人工选择的 person_id 与自动 winner 不同时, 更新该行的 person_id 字段。
+        """
+        import sqlite3
+
+        if not conflict_id or not person_id:
+            return False
+        self._ensure_schema_sync()
+        with sqlite3.connect(self._db_path) as db:
+            cursor = db.execute(
+                "SELECT conflict_id FROM identity_conflicts WHERE conflict_id = ?",
+                (conflict_id,),
+            )
+            if cursor.fetchone() is None:
+                return False
+            db.execute(
+                "UPDATE identity_conflicts SET resolved = 1, person_id = ? WHERE conflict_id = ?",
+                (person_id, conflict_id),
+            )
+            db.commit()
+        logger.info(
+            "身份冲突已裁决",
+            conflict_id=conflict_id, person_id=person_id,
+        )
+        return True
