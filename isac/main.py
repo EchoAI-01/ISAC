@@ -134,10 +134,13 @@ async def _apply_mesh_routing(
     from isac.runtime.mesh.router import MeshRouter
 
     mesh_decision = MeshRouter(agent_roles=roles).to_mesh_decision(decision)
-    # observer 旁听: 并发写各自记忆, 失败不影响主处理
+    # observer 旁听: 后台并发写各自记忆, 不阻塞 primary 回复 (R2-3)。get_or_create
+    # 是内存操作可直接 await; 真正耗时的 observe_message (store_episode 可能含
+    # embedding 调用) 派生为后台任务, 由 AgentManager._memory_tasks 承接并在优雅
+    # 关闭时 drain。
     for observer_id in mesh_decision.observer_agent_ids:
         observer_session = await session_mgr.get_or_create(message, agent_id=observer_id)
-        await agent_manager.observe_message(observer_id, message, observer_session, profile)
+        agent_manager.schedule_observe_message(observer_id, message, observer_session, profile)
     if not mesh_decision.candidate_agent_ids:
         return decision.agent_id
     # 候选仲裁: primary 与各候选各自评分 (纯启发式, 不调 LLM)
