@@ -68,16 +68,18 @@ def build_router(
 
     @router.post("/memory/{agent_id}/items/{item_id}/freeze", dependencies=write_deps)
     async def freeze(agent_id: str, item_id: str, request: Request) -> dict:
-        ok = await governor.freeze(item_id, agent_id, operator=_resolve_operator(request))
+        operator = _resolve_operator(request)
+        ok = await governor.freeze(item_id, agent_id, operator=operator)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}/freeze"
-        await _audit_if_ok(audit_log, ok, "POST", path, "freeze_memory_item", item_id)
+        await _audit_if_ok(audit_log, ok, "POST", path, "freeze_memory_item", item_id, actor=operator)
         return {"ok": ok, "detail": "frozen" if ok else "item not found or already frozen"}
 
     @router.post("/memory/{agent_id}/items/{item_id}/protect", dependencies=write_deps)
     async def protect(agent_id: str, item_id: str, request: Request) -> dict:
-        ok = await governor.protect(item_id, agent_id, operator=_resolve_operator(request))
+        operator = _resolve_operator(request)
+        ok = await governor.protect(item_id, agent_id, operator=operator)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}/protect"
-        await _audit_if_ok(audit_log, ok, "POST", path, "protect_memory_item", item_id)
+        await _audit_if_ok(audit_log, ok, "POST", path, "protect_memory_item", item_id, actor=operator)
         return {"ok": ok, "detail": "protected" if ok else "item not found or already protected"}
 
     @router.patch("/memory/{agent_id}/items/{item_id}", dependencies=write_deps)
@@ -87,16 +89,18 @@ def build_router(
         routes_agents.py::patch_agent 的 payload: dict 惯例一致。
         """
         new_content = str(payload.get("new_content", ""))
-        ok = await governor.correct(item_id, new_content, agent_id, operator=_resolve_operator(request))
+        operator = _resolve_operator(request)
+        ok = await governor.correct(item_id, new_content, agent_id, operator=operator)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}"
-        await _audit_if_ok(audit_log, ok, "PATCH", path, "correct_memory_item", item_id)
+        await _audit_if_ok(audit_log, ok, "PATCH", path, "correct_memory_item", item_id, actor=operator)
         return {"ok": ok, "detail": "corrected with revision history" if ok else "item not found"}
 
     @router.delete("/memory/{agent_id}/items/{item_id}", dependencies=write_deps)
     async def delete(agent_id: str, item_id: str, request: Request) -> dict:
-        ok = await governor.delete(item_id, agent_id, operator=_resolve_operator(request))
+        operator = _resolve_operator(request)
+        ok = await governor.delete(item_id, agent_id, operator=operator)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}"
-        await _audit_if_ok(audit_log, ok, "DELETE", path, "delete_memory_item", item_id)
+        await _audit_if_ok(audit_log, ok, "DELETE", path, "delete_memory_item", item_id, actor=operator)
         return {
             "ok": ok,
             "detail": "soft deleted" if ok else "item not found or protected (refused)",
@@ -104,9 +108,10 @@ def build_router(
 
     @router.post("/memory/{agent_id}/items/{item_id}/restore", dependencies=write_deps)
     async def restore(agent_id: str, item_id: str, request: Request) -> dict:
-        ok = await governor.restore(item_id, agent_id, operator=_resolve_operator(request))
+        operator = _resolve_operator(request)
+        ok = await governor.restore(item_id, agent_id, operator=operator)
         path = f"/api/v1/memory/{agent_id}/items/{item_id}/restore"
-        await _audit_if_ok(audit_log, ok, "POST", path, "restore_memory_item", item_id)
+        await _audit_if_ok(audit_log, ok, "POST", path, "restore_memory_item", item_id, actor=operator)
         return {"ok": ok, "detail": "restored" if ok else "item not found"}
 
     @router.get("/memory/{agent_id}/items", dependencies=read_deps)
@@ -137,12 +142,19 @@ async def _audit(
     path: str,
     action: str,
     target: str,
+    *,
+    actor: str = "authenticated",
 ) -> None:
-    """记录审计日志 (audit_log 为 None 时跳过, 与 routes_agents.py 的既有约定一致)。"""
+    """记录审计日志 (audit_log 为 None 时跳过, 与 routes_agents.py 的既有约定一致)。
+
+    CR3-L5: actor 由 _resolve_operator 解析出的 token 指纹传入 (不再固定
+    "authenticated"), 让 GET /api/v1/audit 能回答"谁做的记忆治理操作"; 未显式
+    传 actor 时退化为 "authenticated", 保持与其他端点一致的兜底粒度。
+    """
     if audit_log is None:
         return
     await audit_log.record(
-        actor="authenticated",
+        actor=actor,
         method=method,
         path=path,
         action=action,
@@ -158,6 +170,8 @@ async def _audit_if_ok(
     path: str,
     action: str,
     target: str,
+    *,
+    actor: str = "authenticated",
 ) -> None:
     """治理操作成功时才记录审计 (失败的操作不应留下"已执行"的审计痕迹)。
 
@@ -166,4 +180,4 @@ async def _audit_if_ok(
     """
     if not ok:
         return
-    await _audit(audit_log, method, path, action, target)
+    await _audit(audit_log, method, path, action, target, actor=actor)
