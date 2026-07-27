@@ -34,8 +34,8 @@ class NotifyAgentTool(Tool):
     async def execute(self, context: ToolContext) -> ToolResult:
         """M2: 经 MeshActionBroker.notify → InterAgentBus 发 NOTIFY 消息。
 
-        services 需注入 mesh_action_broker (broker) + mesh_link_policy (policy);
-        缺失时返回受限工具错误 (ToolRegistry 自动拒绝)。
+        P2: 策略按 (from, to) 从 Link 解析 (broker.policy_for), 不再依赖单值
+        services["mesh_link_policy"] —— 显式注入时仍优先用它 (测试/特殊场景)。
         """
         broker = context.services.get("mesh_action_broker")
         if broker is None:
@@ -47,6 +47,6 @@ class NotifyAgentTool(Tool):
         ok = await broker.notify(agent_id, target, content, policy)
         if not ok:
             return ToolResult(
-                content=f"通知 {target} 失败 (ACL 拒绝或 Link 未配置)", is_error=True
+                content=f"通知 {target} 失败 (Link 未配置或未授予 notify 权限)", is_error=True
             )
         return ToolResult(content=f"已通知 {target}: {content[:50]}")

@@ -15,6 +15,7 @@ from typing import Any
 
 from isac.channel.model import ISACMessage
 from isac.channel.registry import ChannelRegistry
+from isac.core.constants import INTERAGENT_PLATFORM
 from isac.core.events import EventType
 from isac.core.types import ProgressEvent
 from isac.gateway.event_bus import EventBus
@@ -78,21 +79,82 @@ async def process_message(
     # 平台键路由, 否则 WebChat 队列键与客户端轮询键对不上, 回复永远取不到。
     platform_session_id = routed_message.session_id
     session = await session_mgr.get_or_create(routed_message, agent_id=decision.agent_id)
+    # P1: 平台会话键落到 Session, 出站主动消息 (强制话轮) 才能路由回正确队列
+    if platform_session_id and not session.platform_session_id:
+        session.platform_session_id = platform_session_id
     profile = await user_mapper.resolve(routed_message.platform, routed_message.user_id, routed_message.user_name)
+
+    # P2 Mesh: 候选仲裁 (可能改写归属 Agent) + observer 旁听 (只入记忆不回复)。
+    # 无 Agent 配置 mesh_role 时整段短路 = 单主路由, 零行为变化。
+    final_agent_id = await _apply_mesh_routing(
+        decision, routed_message, session, profile, session_mgr, agent_manager
+    )
+    if final_agent_id != decision.agent_id:
+        # 仲裁换了回复者: 会话按新 Agent 重新解析 (Session 含 agent_id 维度)
+        session = await session_mgr.get_or_create(routed_message, agent_id=final_agent_id)
+        if platform_session_id and not session.platform_session_id:
+            session.platform_session_id = platform_session_id
+
     progress_sender = _make_progress_sender(
-        channel_registry, routed_message, decision.agent_id, platform_session_id
+        channel_registry, routed_message, final_agent_id, platform_session_id
     )
     try:
         reply = await agent_manager.handle_message(
-            decision.agent_id, routed_message, session, profile, progress_sender=progress_sender
+            final_agent_id, routed_message, session, profile, progress_sender=progress_sender
         )
     except Exception:
         metrics.counter("isac_messages_failed_total").inc()
         raise
     metrics.counter("isac_messages_processed_total").inc()
     if reply:
-        await _send_reply(channel_registry, routed_message, reply, decision.agent_id, platform_session_id)
+        await _send_reply(channel_registry, routed_message, reply, final_agent_id, platform_session_id)
     await event_bus.fire_async(EventType.POST_MESSAGE, routed_message)
+
+
+async def _apply_mesh_routing(
+    decision: Any,
+    message: ISACMessage,
+    session: Any,
+    profile: Any,
+    session_mgr: SessionManager,
+    agent_manager: AgentManager,
+) -> str:
+    """P2: observer 旁听 + candidate 仲裁, 返回最终处理该消息的 agent_id。
+
+    - 无 Agent 配置 mesh_role → 直接返回 decision.agent_id (零行为变化)
+    - observer: 各自用**自己的会话**旁听入记忆 (不回复, 与主处理并发执行)
+    - candidate: 按 ReplyNecessityJudge 评分与 primary 比较, 显著更高 (>SWITCH_MARGIN)
+      才切换回复者, 避免噪声抖动 (MeshRouter.arbitrate)
+    """
+    # getattr 防御: 旧测试替身/未升级的自定义 manager 无 mesh_roles → 单主路由
+    roles_fn = getattr(agent_manager, "mesh_roles", None)
+    roles = roles_fn() if roles_fn is not None else {}
+    if not roles:
+        return decision.agent_id
+    from isac.runtime.mesh.router import MeshRouter
+
+    mesh_decision = MeshRouter(agent_roles=roles).to_mesh_decision(decision)
+    # observer 旁听: 并发写各自记忆, 失败不影响主处理
+    for observer_id in mesh_decision.observer_agent_ids:
+        observer_session = await session_mgr.get_or_create(message, agent_id=observer_id)
+        await agent_manager.observe_message(observer_id, message, observer_session, profile)
+    if not mesh_decision.candidate_agent_ids:
+        return decision.agent_id
+    # 候选仲裁: primary 与各候选各自评分 (纯启发式, 不调 LLM)
+    scores: dict[str, float] = {
+        decision.agent_id: await agent_manager.gating_score(decision.agent_id, message, session, profile)
+    }
+    for candidate_id in mesh_decision.candidate_agent_ids:
+        candidate_session = await session_mgr.get_or_create(message, agent_id=candidate_id)
+        scores[candidate_id] = await agent_manager.gating_score(
+            candidate_id, message, candidate_session, profile
+        )
+    winner = MeshRouter(agent_roles=roles).arbitrate(mesh_decision, gating_scores=scores)
+    if winner and winner != decision.agent_id:
+        logger.info(
+            "Mesh 仲裁改写回复者", primary=decision.agent_id, winner=winner, reason=mesh_decision.reason
+        )
+    return winner or decision.agent_id
 
 
 async def _send_reply(
@@ -196,6 +258,24 @@ def make_message_dispatcher(
     inflight: set[asyncio.Task[None]] = set()
 
     async def _process_locked(message: ISACMessage) -> None:
+        # P1: 锁外拟人化信号 —— 会话锁被正在 thinking 的上一条消息持有时, 新消息
+        # 的缓存/唤醒/打断信号必须先于锁到达 ConversationRuntime (conversation
+        # 关闭时 notify_incoming 内部短路, 零行为变化)。路由与会话解析幂等,
+        # process_message 会再次执行 (代价可忽略)。get_or_create 会把
+        # message.session_id 改写为内部 sess_*, 信号阶段结束后还原为平台会话键,
+        # 保证 process_message 自己的 platform_session_id 捕获不受影响。
+        platform_session_id = message.session_id
+        try:
+            decision = await router.route(message)
+            if decision is not None:
+                session = await session_mgr.get_or_create(message, agent_id=decision.agent_id)
+                if platform_session_id and not session.platform_session_id:
+                    session.platform_session_id = platform_session_id
+                await agent_manager.notify_incoming(decision.agent_id, session.session_id, message)
+        except Exception:  # noqa: BLE001
+            logger.warning("锁外拟人化信号处理失败, 不影响主处理", exc_info=True)
+        finally:
+            message.session_id = platform_session_id
         lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
         lock = await session_lock.acquire(lock_key)
         # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
@@ -643,6 +723,80 @@ def _build_memory_stack(
     return metadata_store, graph_store, embedder, reranker
 
 
+async def _answer_memory_query(
+    agent_manager: AgentManager, target_agent_id: str, message: InterAgentMessage
+) -> str:
+    """P2: 接收端执行授权记忆查询, 返回格式化结果 (经 bus response 回到查询方)。
+
+    scope 语义 (ROUTING_AND_AGENT_MESH.md §6.1): "user:<id>" / "group:<id>" ——
+    复用 pipeline.search 的 user/group ACL 参数做真实裁剪; 未知格式保守跳过
+    (绝不扩大可见范围)。检索失败返回空串 (查询方看到"无相关内容")。
+
+    MVP-Fix (安全): **scopes 为空一律拒绝**。此前空 scopes 走无 user/group 参数
+    的全量检索, 而 visible_memory_scopes 的默认值就是空 —— 管理员只授予
+    permissions=["memory_query"] 却忘了配 scopes 时, 对端可读取目标 Agent 的
+    全部记忆 (含其他用户的私聊), 违背 Link ACL 的 deny-by-default 语义。
+    """
+    instance = await agent_manager.get(target_agent_id)
+    if instance is None or instance.status != "running":
+        return ""
+    filters = message.context.get("filters") or {}
+    scopes = [str(s) for s in (filters.get("scopes") or []) if s]
+    if not scopes:
+        logger.warning(
+            "跨 Agent 记忆查询被拒: Link 未配置 visible_memory_scopes (空 = 拒绝, 非全量)",
+            from_agent=message.from_agent,
+            target=target_agent_id,
+        )
+        return ""
+    query = message.content
+    hits: list[Any] = []
+    try:
+        for scope in scopes[:5]:
+            kind, _, ident = scope.partition(":")
+            if kind == "user" and ident:
+                hits.extend(await instance.memory.search(query, top_k=3, user_id=ident))
+            elif kind == "group" and ident:
+                hits.extend(await instance.memory.search(query, top_k=3, group_id=ident))
+            else:
+                logger.warning("忽略无法识别的记忆可见范围 (保守跳过)", scope=scope)
+    except Exception:  # noqa: BLE001
+        logger.warning("跨 Agent 记忆查询失败", target=target_agent_id, exc_info=True)
+        return ""
+    seen: set[str] = set()
+    lines: list[str] = []
+    for hit in hits:
+        if hit.id in seen:
+            continue
+        seen.add(hit.id)
+        lines.append(f"- {hit.content[:200]}")
+    return "\n".join(lines[:5])
+
+
+async def _shutdown_message_pipeline(
+    channel_registry: ChannelRegistry,
+    drain_inflight: Callable[[], Awaitable[None]],
+    agent_manager: AgentManager,
+) -> None:
+    """优雅关闭消息面: 停收取 → drain 在途消息 → drain 后台记忆 → 停主动调度。
+
+    顺序要紧: 先停适配器不再收新消息, 再等在途任务落地, 最后停调度循环 —— 之后
+    LIFO 才会去关 journal/usage/providers 等下游资源。
+    MVP-Fix (两处):
+    - 消息任务产出回复即离开 inflight, 其派生的**记忆写入**仍在跑, 此前不被
+      等待 → 最后若干轮的 episodic/画像/快照在事件循环收尾取消任务时静默丢失。
+    - ProactiveScheduler 的循环是裸 create_task (不在 runtime TaskGroup 里),
+      此前无人停 → 关闭窗口内还会对已停适配器发起强制话轮。
+    """
+    await channel_registry.stop_all()
+    await drain_inflight()
+    await agent_manager.drain_background_tasks()
+    for instance in await agent_manager.list():
+        scheduler = instance.services.get("proactive_scheduler")
+        if scheduler is not None:
+            await scheduler.stop()
+
+
 async def _noop_start() -> None:
     """无启动动作的资源 (如 Provider 连接池: 惰性创建, 无需 start) 占位。"""
     return None
@@ -685,23 +839,35 @@ async def main() -> None:
 
     configure_subagent_runner(services["subagent_supervisor"], agent_manager)
     bus = InterAgentBus()
+    # 互联投递专用 SessionManager: P2 起进程内共享一个实例 (此前每次投递新建,
+    # 跨 Agent 会话永不复用, 目标 Agent 每条互联消息都像陌生会话)。
+    interagent_session_mgr = SessionManager(global_config)
+
     # 投递回调: 把 InterAgentMessage 路由到目标 Agent 的 handle_message。
     # 命令 (ask_agent) 现在能拿到 response 而不是恒 None (CODE_REVIEW_REPORT.md #3)。
     async def _deliver_to_agent(target_agent_id: str, message: InterAgentMessage) -> str | None:
+        # P2: MEMORY_QUERY 不进 LLM 聊天 —— 按 visible_memory_scopes 裁剪后直接跑
+        # 目标 Agent 的记忆检索, 结果经 bus response 同步返回查询方。
+        if message.type == "memory_query":
+            return await _answer_memory_query(agent_manager, target_agent_id, message)
         # 互联消息复用原消息的 session 上下文; 跨 Agent 时把 from_agent 当作 user_id
         # 让目标 Agent 不会因 has_at=False 而被门控过滤。但目标 Agent 的 handle_message
         # 依赖真实 Session/UserProfile; 这里构造一个最小可路由会话。
+        content = message.content
+        if message.type == "handoff":
+            # P2: 接手方明确知道这是会话交接 (摘要), 而非用户发来的普通消息
+            summary = str(message.context.get("summary", "") or message.content)
+            content = f"[会话交接] 来自 {message.from_agent} 的交接摘要: {summary}"
         wrapped = ISACMessage(
             msg_id="",
-            platform="interagent",
+            platform=INTERAGENT_PLATFORM,
             timestamp=0,
             user_id=message.from_agent,
             user_name="",
             group_id=None,
-            content=message.content,
+            content=content,
         )
-        session_mgr = SessionManager(global_config)
-        session = await session_mgr.get_or_create(wrapped, agent_id=target_agent_id)
+        session = await interagent_session_mgr.get_or_create(wrapped, agent_id=target_agent_id)
         return await agent_manager.handle_message(target_agent_id, wrapped, session, None)
 
     bus.set_deliver(_deliver_to_agent)
@@ -720,6 +886,8 @@ async def main() -> None:
     # ── Router (Channel 与 Agent 解耦) ──────────────────────
     rules = load_rules(global_config.get("router", {}).get("rules_file", DATA_DIR / "routing.jsonc"))
     router = MessageRouter(rules, agents_provider=agent_manager.routing_infos)
+    # P2: handoff_conversation 工具经 services["router"] 登记会话归属转移
+    services["router"] = router
 
     # ── Channel ─────────────────────────────────────────────
     channel_registry = ChannelRegistry()
@@ -732,6 +900,12 @@ async def main() -> None:
     # 人物画像与记忆按归一身份聚合的前提)
     user_mapper = UserMapper(str(DATA_DIR / "gateway" / "identity.db"))
     session_lock = SessionLockManager()
+    # P1: 注入 gateway/channel 句柄到共享 services —— 主动任务强制话轮需要按
+    # session_id 反查会话 (session_mgr)、经会话锁串行 (session_lock)、把回复
+    # 发回原 Channel (channel_registry); /mute 等命令路径也读 session_mgr。
+    services["session_mgr"] = session_mgr
+    services["session_lock"] = session_lock
+    services["channel_registry"] = channel_registry
 
     # P0: 消息处理并发化 —— handle_message 只负责派生任务立即返回, 适配器收取
     # 循环不再被单条消息的 LLM 往返阻塞 (跨会话真并行); 单会话仍靠会话锁串行。
@@ -810,8 +984,7 @@ async def main() -> None:
     # 最先执行) 先停适配器收取, 再 drain 在途消息任务, 保证 journal/usage/
     # providers 等下游资源关闭时不再有消息在途 (不丢消息)。
     async def _stop_channels_and_drain() -> None:
-        await channel_registry.stop_all()
-        await drain_inflight()
+        await _shutdown_message_pipeline(channel_registry, drain_inflight, agent_manager)
 
     runtime.register_lifecycle(
         "channels",

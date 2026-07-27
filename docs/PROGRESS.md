@@ -19,11 +19,11 @@
 | I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成;浏览器测试 CI 已随 K8 接入,待复核升 100% |
 | J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步);2026-07-26 五维度代码评审发现的 J2/J3/J4 缺口 (媒体校验未接线、J4 执行循环未接线、Token Scope/SSE scope 过滤/CSRF 会话缺失等 20 项) 已逐项修复,详见下方"J2/J3/J4 补充修复"|
 | K | 稳定化与可用版本闭环 | 100% | K1-K8 全部完成 (K8-2 Playwright CI + release_checklist 已落地) |
-| L | 拟人化运行时落地 | 实现待接线 | L1-L5 核心逻辑+单测完成;wait 闭环已接生产,但 debounce 合并/主动调度启停/打断闭环/上下文恢复 **主链路未接线**(默认关闭)→ 见 P0/P1 |
-| M | 路由与 Agent Mesh 深化 | 实现待接线 | M1/M2 核心逻辑+单测完成(observer/candidate 仲裁+SWITCH_MARGIN; MeshActionBroker ACL+投递; 4 A2A 工具);但 observe_message/mesh_role/broker 注入 **未接线** → 见 P2 |
+| L | 拟人化运行时落地 | 100% | **P1 已接线 (2026-07-27)**: debounce 合并/wait 三路唤醒/thinking 期打断+旧回复抑制/主动任务强制话轮/会话快照恢复 全部接入生产主链路 (conversation.enabled 开关, 默认关闭零行为变化); L1-L5 升级为 [x] |
+| M | 路由与 Agent Mesh 深化 | 100% | **P2 已接线 (2026-07-27)**: observer 旁听/candidate 仲裁/notify·handoff·memory_query 全部接入生产 (Link 细粒度 permissions + handoff 归属转移 + memory_query 同步返回+scope 裁剪); M1/M2 升级为 [x] |
 | N | 记忆深化 | 部分接线 | N2 治理已完整接入生产(含检索期软删除过滤,CR2-Fix-12);N1 MemoryItem/Adapter、N3 IdentityResolver 核心+单测完成但 **无调用点**(悬空)→ 见 P3/P4 |
 | O | 企业化与平台扩展 | 实现待接线 | O1/O2/O3 核心+单测完成但 **零调用点**(未接 store/loader/control)→ 见 P5;O4 平台适配器/O5 Video Provider 未开始(`[ ]`) |
-| P | 主链路接线与激活 | P0 完成 | **P0 消息并发化已完成 (2026-07-27)**: handle_message 任务化 (跨会话真并行+单会话串行+drain 优雅关闭, channels 生命周期改最后注册);P1 拟人化→P2 Mesh→P3 检索深化→P4 身份归一→P5 企业化 未开始。定义见 DEVELOPMENT_PLAN §四 P |
+| P | 主链路接线与激活 | P0/P1/P2 完成 | **P0 并发化 + P1 拟人化 + P2 Mesh 已完成 (2026-07-27)**; P3 检索深化(图谱+Reranker)→P4 身份归一→P5 企业化 未开始。定义见 DEVELOPMENT_PLAN §四 P |
 | Q | MVP 收尾(新增) | Q0/Q1 完成 | 2026-07-26 差距复核发现、未被 P0-P5 覆盖但 MVP 必需的缺口。**Q0 开箱可触达已完成 (2026-07-27)**: 四平台注册+裸部署默认路由+样例死键修正+WebChat 端到端可聊;**Q1 记忆写入回路与身份稳定化已完成 (2026-07-27)**: 回复后 episodic 写入+画像/关系回路+UserMapper SQLite 持久化, "越聊越熟"闭环打通 (聊→重启→检索命中);其余 Q2 人格差异化、Q3 插件/MCP 生态接线、Q4 多模态工具注册、Q5 WebUI/控制面收尾、Q6 SubAgent 补漏 未开始。定义见 DEVELOPMENT_PLAN §四 Q |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
@@ -77,8 +77,8 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 
 | 能力 | 现状 | 接线节点 |
 |------|------|---------|
-| L2-L5 拟人化 | wait 闭环已接生产;debounce 合并 / 主动调度启停 / 打断闭环 / 恢复加载 未接线 (CR3-M6 已修调度器冷却饿死) | P0 → P1 |
-| M1-M2 Mesh | 仲裁 / ACL / bus 投递 / 4 A2A 工具 已实现 (CR3-M2 已修 bus notify 假成功);observe_message / mesh_role / broker 注入 未接线 | P2 |
+| L2-L5 拟人化 | **已接线 (P1, 2026-07-27)**: debounce 合并/主动调度启停/打断闭环/恢复加载全部进生产主链路 | P1 ✅ |
+| M1-M2 Mesh | **已接线 (P2, 2026-07-27)**: observer/candidate 路由 + broker 注入 + 4 A2A 工具真实可用 (Link permissions/handoff 归属转移/memory_query 同步返回) | P2 ✅ |
 | N1 MemoryItem | 契约 + Adapter 实现;`pipeline.search()` 从不调用(悬空适配层) | P3 |
 | N3 身份归一 | IdentityResolver 实现;gateway 无调用点(悬空库) | P4 |
 | O1 多租户 | **已接线 (CR3-L2)**: `tenancy.enabled` 配置开启后 MetadataStore 读写带租户谓词/打标 + 记忆命名空间加前缀;默认关闭零行为变化 | 已完成 (跨租户测试见 test_tenant_isolation) |
@@ -99,6 +99,18 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 *订正(2026-07-26)*: 此前"Reranker 已接入检索 pipeline"表述不准确。真实后端 `OpenAICompatRerankerProvider`(Cohere/Jina 双协议,`isac/provider/rerank/openai_compat.py`)确已实现,但生产 `main.py` 构造 `Reranker(memory_config.get("reranker", {}))` 时**未传入 provider**,`is_available()` 恒 `False`,`pipeline.search()` 的 rerank 步骤永不执行。补齐(仿 CR3-H3 embedding 注入写法)见 P3。
 
 **CR3 修复轮 (2026-07-26, 对应 Review/ISAC_待修复项清单.md 的 14 项)**: H2 插件隔离护栏+`on_load` 接线+隔离宿主真实加载 / H3 向量召回接入 pipeline(RRF+ACL)+生产 EmbeddingProvider 注入 / H4 流式工具调用按 index 累积+include_usage+失败回退 / M2 bus notify 真实投递 / M5 Gating-Focus LRU cap 1000 / M6 调度器冷却不再饿死其他会话 / M7 Workflow 多入口+fan-in 入度语义 / L1 自动化创建 Agent 强制受限沙箱 / L2 租户隔离进数据面(默认关闭) / L3 软删同步 BM25+预热过滤 / L4 SSRF 请求期固定 IP / L5 治理审计 operator+agent_id 归因 / L6 非 ASCII Token 401+/metrics 可选认证 / L8 write_file 线程池+journal 原子 seq+MCP sse 显式拒绝。附带: 控制面 sessions/memory/events 路由完成生产挂载(此前 services 键缺失恒 None), `resource` 模块 Windows 平台守卫。
+
+## 2026-07-27 MVP 增量代码评审修复轮 (MVP-Fix)
+
+P0-P2 + Q0-Q1 达成 MVP 准入线后，对整个增量 diff (23 文件 / +1430 行) 做 5 维度并行审查 + 每条发现 2 票独立对抗性验证 (22 代理 / 405 次代码检索)：**17 项发现 → 13 项确认、4 项证伪**，全部修复并配 12 例回归测试 (`tests/integration/test_mvp_review_fixes.py`)。
+
+高危 5 项：多步(工具)回合的打断被 `InterruptInjector` 吞掉 (改用单调 `interrupt_seq` 基线判定) / 突发消息重复回复 (drain 空即弃权 + 去重键改 `msg_id`，根因是 `dataclasses.replace` 使身份去重永不命中) / 门控只评估突发末条 (drain 提到门控前，`has_at` 取并集) / 后台记忆写入不被 drain (`drain_background_tasks` 接入关闭链) / **memory_query 空 scopes 泄露全部记忆**(改为 deny-by-default)。
+
+中危 4 项：handoff 永久劫持路由 (加 TTL + 交还路径) / 强制话轮释放他人会话锁 (`acquired` 标志) / 互联消息被 debounce 拦截 (豁免) / UserMapper 并发身份分裂 (锁串行化)。
+
+低危及顺带：快照过期清理 + 目录跟随 `control.agents_dir` (此前测试污染真实 `data/agents`) / `config.sample` embedding 维度矛盾 / 补齐 `InterAgentMessage.trace_id` / **记忆保真度**(合并回合改为写入完整 burst，冒烟发现)。
+
+验证：1203 单测通过、ruff/mypy 全绿；真实启动冒烟确认 3 条突发消息恰好产生 1 条合并回复、记忆与画像正确落库。
 
 ## 2026-07-26 MVP 差距复核 (对照 REQUIREMENTS.md 逐条取证)
 

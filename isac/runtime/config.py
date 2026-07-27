@@ -46,12 +46,20 @@ class AgentConfig:
     # 路由触发词: 消息以这些词开头时路由到本 Agent
     trigger_words: list[str] = field(default_factory=list)
 
+    # P2 Mesh 角色 (ROUTING_AND_AGENT_MESH.md §2): ""/"primary" = 常规主处理者;
+    # "observer" = 旁听 (只入记忆不回复); "candidate" = 候选 (可被仲裁选为回复者)
+    mesh_role: str = ""
+
     # 能力开关: 插件 / 工具 / 命令 / MCP, 按 Agent 独立配置
     plugins_allow: list[str] = field(default_factory=lambda: ["*"])
     plugins_deny: list[str] = field(default_factory=list)
     tools_policy: dict[str, str] = field(default_factory=dict)  # 覆盖全局工具权限
     commands_allow: list[str] = field(default_factory=lambda: ["*"])
     mcp_servers: list[str] = field(default_factory=list)  # 允许使用的 MCP Server 名
+
+    # P1: 拟人化会话配置覆盖 (与全局 conversation 节合并, Agent 级优先;
+    # enabled 总开关仍以全局 conversation.enabled 为准, SPECIFICATION.md 1.7)
+    conversation: dict[str, Any] = field(default_factory=dict)
 
     # J3-2: 配置版本号, 用于乐观锁 (If-Match); 每次 save_agent_config +1
     revision: int = 1
