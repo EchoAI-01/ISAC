@@ -248,6 +248,46 @@ class AgentManager:
             logger.debug("消息进入 Agent 处理", content_len=len(message.content))
             return await self._dispatch_message(instance, message, session, user_profile, progress_sender)
 
+    async def handle_message_serialized(
+        self,
+        agent_id: str,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+        progress_sender: Callable[[str, ProgressEvent], Awaitable[None]] | None = None,
+    ) -> str | None:
+        """R2-1: 经会话锁串行化的 handle_message —— 供跨 Agent 投递 (bus → _deliver_to_agent) 复用。
+
+        普通消息入口在 dispatcher 的 `_process_locked` 里已被 session_lock 包裹, 但 bus
+        投递此前直调 handle_message 完全绕过锁: P0 跨会话真并行后, 两次并发指向同一
+        (目标 Agent, 互联会话) 的投递会重叠跑同一会话的门控/Loop/会话状态机, 破坏
+        "单会话串行"。这里用与 `_run_forced_turn` 一致的 acquire/release 配对补锁; 锁键
+        含 target agent_id, 精确隔离到"目标 Agent × 会话"(不同目标/不同来源仍并行)。
+
+        锁键的平台段对互联消息恒为 INTERAGENT_PLATFORM, 与普通入口的
+        `platform:user:group` 键天然不同 —— 互联会话与普通会话本就是两套独立命名空间,
+        不应互相阻塞。session_lock 未注入时退化为直调 (与旧行为一致)。
+
+        注意: 普通入口 process_message 已在锁内, 不得改走本方法 (asyncio.Lock 不可重入)。
+        """
+        lock_mgr = self._services.get("session_lock")
+        if lock_mgr is None:
+            return await self.handle_message(agent_id, message, session, user_profile, progress_sender)
+        lock_key = (
+            f"{session.platform}:{agent_id}:"
+            f"{session.user_id or 'unknown'}:{session.group_id or 'private'}"
+        )
+        lock = await lock_mgr.acquire(lock_key)
+        acquired = False
+        try:
+            await lock.acquire()
+            acquired = True
+            return await self.handle_message(agent_id, message, session, user_profile, progress_sender)
+        finally:
+            if acquired:
+                lock.release()
+            lock_mgr.release(lock_key)
+
     async def _dispatch_message(
         self,
         instance: AgentInstance,
