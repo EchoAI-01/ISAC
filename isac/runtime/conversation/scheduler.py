@@ -41,6 +41,7 @@ class ProactiveScheduler:
         allowed_sources: frozenset[str] | set[str] | None = None,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         source_tokens: dict[str, str] | None = None,
+        task_producer: Callable[[float], list[ProactiveTask]] | None = None,
     ) -> None:
         # 用 is None 判定而非 `queue or ...`: 空队列 __len__==0 为 falsy, or 会误建新队列。
         self.queue = queue if queue is not None else ProactiveTaskQueue()
@@ -52,6 +53,9 @@ class ProactiveScheduler:
         # CR2-Fix-7: source → 期望 caller_token 的映射。未配置的 source 不参与
         # token 校验 (保持纯字符串白名单的向后兼容行为)。
         self.source_tokens: dict[str, str] = dict(source_tokens) if source_tokens else {}
+        # R2-2: 每个 poll 周期调用 (now → 待入队任务列表), 使调度器有真实的生产侧
+        # 入口 (此前队列恒空, 主动任务不可达)。None = 无生产者 (向后兼容/默认关闭)。
+        self._task_producer: Callable[[float], list[ProactiveTask]] | None = task_producer
         # CR2-Fix-6: 按 session_id 隔离冷却状态 (曾是调度器级单一时间戳, 会让
         # 一个高频会话占用整个 Agent 唯一的冷却窗口, 饿死其他会话的合法提醒)。
         # 未传 session_id 时用 "" 作为 key, 等价于旧的单一冷却状态 (向后兼容)。
@@ -144,6 +148,14 @@ class ProactiveScheduler:
                 import time as _time
 
                 now = _time.time()
+                # R2-2: 先让生产者按当前状态产出任务并入队 (队列满时 enqueue 返回
+                # False, 静默丢弃; 生产者异常不拖垮调度循环)。
+                if self._task_producer is not None:
+                    try:
+                        for produced in self._task_producer(now):
+                            self.queue.enqueue(produced)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("主动任务生产者异常, 已忽略", error=str(exc))
                 # 鉴权失败的任务也取出来 (随后丢弃), 避免死任务永久占据队列容量。
                 task = self.queue.poll_ready(
                     lambda t: not self.authorize(t) or self.may_fire(now, session_id=t.session_id)

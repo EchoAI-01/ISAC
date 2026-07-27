@@ -57,6 +57,7 @@ from isac.runtime.config import AgentConfig
 from isac.runtime.conversation import (
     ConversationRuntimeRegistry,
     ConversationStateStore,
+    IdleReengageProducer,
     ProactiveScheduler,
 )
 from isac.runtime.instance import AgentInstance
@@ -103,9 +104,21 @@ async def _setup_conversation_runtime(
     import asyncio as _asyncio
 
     proactive_cfg = conv_merged.get("proactive", {}) or {}
+    # R2-2: 空闲重连生产者 —— 给主动任务队列一个真实的生产侧入口 (此前调度器只是
+    # 消费者, 队列恒空, 主动任务功能不可达)。默认 idle_reengage_seconds=0 时不构造,
+    # 主链路零行为变化; 配置 > 0 时会话静默超阈值即主动关心一次 (按新消息重新武装)。
+    idle_reengage_seconds = float(proactive_cfg.get("idle_reengage_seconds", 0) or 0)
+    task_producer = None
+    if idle_reengage_seconds > 0:
+        task_producer = IdleReengageProducer(
+            agent_id=config.agent_id,
+            registry=agent_services["conversation_registry"],
+            idle_seconds=idle_reengage_seconds,
+        )
     agent_services["proactive_scheduler"] = ProactiveScheduler(
         min_interval_seconds=float(proactive_cfg.get("min_interval_seconds", 600) or 0),
         poll_interval_seconds=float(proactive_cfg.get("poll_interval_seconds", 1.0) or 1.0),
+        task_producer=task_producer,
     )
     # MVP-Fix: 快照目录跟随 control.agents_dir 配置 (此前硬编码默认 data/agents,
     # 测试与多实例部署都会写进同一处真实目录)。

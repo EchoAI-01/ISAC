@@ -42,5 +42,13 @@ class ConversationRuntimeRegistry:
         """移除某会话的运行时 (会话结束回收)。"""
         self._runtimes.pop((agent_id, session_id), None)
 
+    def active_runtimes(self) -> list[tuple[str, ConversationRuntime]]:
+        """返回 (session_id, runtime) 列表 (供主动任务生产者按会话活跃度枚举)。
+
+        本 registry 是单个 Agent 私有的, 所有 key 的 agent_id 相同, 故只回 session_id。
+        返回快照 list 而非视图, 避免调用方在迭代期间触发惰性创建/淘汰导致 RuntimeError。
+        """
+        return [(session_id, runtime) for (_agent_id, session_id), runtime in self._runtimes.items()]
+
     def __len__(self) -> int:
         return len(self._runtimes)

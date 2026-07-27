@@ -267,3 +267,27 @@ async def test_wait_tool_woken_by_new_message() -> None:
         m for call in provider.calls for m in call["messages"] if m.get("role") == "tool"
     ]
     assert any("收到新消息" in m.get("content", "") for m in wait_result_msgs)
+
+
+@pytest.mark.asyncio
+async def test_assembly_wires_idle_reengage_producer_when_configured() -> None:
+    """R2-2: conversation.proactive.idle_reengage_seconds > 0 时, 装配出的
+    ProactiveScheduler 带真实生产者 (task_producer) —— 主动任务子系统有了真实的
+    生产侧入口, 不再是恒空队列。"""
+    provider = FakeLLMProvider(scripted_replies=[make_final_reply("ok")])
+    am, _ch, _drain, _sm = await _build_env(
+        provider, conversation={"proactive": {"idle_reengage_seconds": 60}}
+    )
+    instance = await am.get("a")
+    scheduler = instance.services["proactive_scheduler"]
+    assert scheduler._task_producer is not None  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_assembly_no_producer_by_default() -> None:
+    """默认 (未配置 idle_reengage_seconds) 不构造生产者 —— 主链路零行为变化。"""
+    provider = FakeLLMProvider(scripted_replies=[make_final_reply("ok")])
+    am, _ch, _drain, _sm = await _build_env(provider)
+    instance = await am.get("a")
+    scheduler = instance.services["proactive_scheduler"]
+    assert scheduler._task_producer is None  # noqa: SLF001

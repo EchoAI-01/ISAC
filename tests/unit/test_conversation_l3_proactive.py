@@ -16,7 +16,9 @@ from typing import Any
 import pytest
 
 from isac.runtime.conversation import (
+    ConversationRuntimeRegistry,
     ForcedTurnState,
+    IdleReengageProducer,
     ProactiveScheduler,
     ProactiveTask,
     ProactiveTaskQueue,
@@ -237,3 +239,70 @@ def test_scheduler_default_no_background_loop_until_started() -> None:
     """scheduler 构造后不启动后台循环 (零行为变化)."""
     sched = ProactiveScheduler()
     assert sched._loop_task is None  # noqa: SLF001
+
+
+# ── R2-2: IdleReengageProducer (主动任务的真实生产者) ──────────────
+
+
+def _registry_with_session(session_id: str = "s1", last_activity: float = 100.0) -> ConversationRuntimeRegistry:
+    registry = ConversationRuntimeRegistry()
+    registry.get("a1", session_id).last_message_received_at = last_activity
+    return registry
+
+
+def test_idle_producer_yields_task_for_idle_session() -> None:
+    """会话静默超过 idle_seconds → 产出一个 source=schedule 的 re-engage 任务。"""
+    producer = IdleReengageProducer(agent_id="a1", registry=_registry_with_session("s1", 100.0), idle_seconds=60.0)
+    tasks = producer(now=200.0)  # 静默 100s > 60s
+    assert len(tasks) == 1
+    task = tasks[0]
+    assert task.agent_id == "a1"
+    assert task.session_id == "s1"
+    assert task.source == "schedule"
+    assert task.intent and task.reason  # authorize 要求非空
+
+
+def test_idle_producer_skips_recently_active_session() -> None:
+    producer = IdleReengageProducer(agent_id="a1", registry=_registry_with_session("s1", 180.0), idle_seconds=60.0)
+    assert producer(now=200.0) == []  # 仅静默 20s < 60s
+
+
+def test_idle_producer_skips_never_messaged_session() -> None:
+    """从未收到消息的会话 (last_message_received_at=0) 不主动打扰。"""
+    registry = ConversationRuntimeRegistry()
+    registry.get("a1", "s1")  # last_message_received_at 默认 0.0
+    producer = IdleReengageProducer(agent_id="a1", registry=registry, idle_seconds=60.0)
+    assert producer(now=200.0) == []
+
+
+def test_idle_producer_dedups_until_new_activity() -> None:
+    """同一静默窗口只 re-engage 一次 (防刷屏); 新用户消息到达后重新武装。"""
+    registry = _registry_with_session("s1", 100.0)
+    producer = IdleReengageProducer(agent_id="a1", registry=registry, idle_seconds=60.0)
+    assert len(producer(now=200.0)) == 1  # 首次
+    assert producer(now=260.0) == []  # 同窗口不重复
+    registry.get("a1", "s1").last_message_received_at = 300.0  # 新消息
+    assert len(producer(now=400.0)) == 1  # 新静默窗口再次 re-engage
+
+
+@pytest.mark.asyncio
+async def test_scheduler_with_producer_enqueues_and_fires_idle_reengage() -> None:
+    """R2-2: 配置 task_producer 后, 调度循环真实产出并触发主动任务 —— 此前生产侧
+    无任何入口 enqueue, 队列恒空, 主动任务功能完全不可达。"""
+    import time as _time
+
+    registry = ConversationRuntimeRegistry()
+    registry.get("a1", "s1").last_message_received_at = _time.time() - 1000.0  # 早已静默
+    producer = IdleReengageProducer(agent_id="a1", registry=registry, idle_seconds=1.0)
+    sched = ProactiveScheduler(task_producer=producer, min_interval_seconds=0.0, poll_interval_seconds=0.02)
+    fired: list[ProactiveTask] = []
+
+    async def wake(task: ProactiveTask) -> None:
+        fired.append(task)
+
+    await sched.start(wake_callback=wake)
+    await asyncio.sleep(0.1)
+    await sched.stop()
+    assert len(fired) == 1  # 生产者入队 + 循环触发, 且去重不刷屏
+    assert fired[0].source == "schedule"
+    assert fired[0].session_id == "s1"
