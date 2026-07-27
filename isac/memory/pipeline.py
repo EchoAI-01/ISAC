@@ -5,6 +5,17 @@
 CR3-H3: 稠密 (向量) 召回已接入 search() —— embedder 未降级时 embed_query +
 vector.search 参与 RRF 融合; 向量候选统一经 get_episodes_by_ids 过滤
 (agent 命名空间 + user/group ACL + deleted=0), 与稀疏候选同一套访问控制。
+S3: 图谱召回 (mentioned_in 边) 已接入 search() —— store_episode 写边 (仅
+enable_graph_recall=True), _graph_search 以 user_id/group_id 为种子 (满足
+ACL), 邻居候选同样经 get_episodes_by_ids 过滤。
+
+**MemoryItem 落地边界 (S3 验收明确)**: ``MemoryItem``/``MemoryItemAdapter`` 服务于
+治理 (N2 ``MemoryGovernor.export``) 与跨表适配 (N1 四类 from_*/to_*), **检索热路径
+(``search()``/``_merge_results()``) 继续用轻量 ``MemoryHit``** —— 不在每次查询
+上做双向包装, 避免为尚无消费者的抽象层增加每请求开销。``MemoryItemAdapter.
+to_hit``/``from_hit`` 作为治理 ↔ 检索边界转换的公开手段保留, 待治理路径有真实
+跨表消费者时再接入; 检索路径的 ``MemoryHit`` 直接构造即可。
+
 契约见 SPECIFICATION.md 2.4；错误处理: 检索失败返回空列表 (SPECIFICATION.md 5.1)。
 """
 
@@ -42,10 +53,12 @@ class MemoryRetrievalPipeline:
         embedder: EmbeddingManager,
         reranker: Reranker | None = None,
         metrics: MetricsCollector | None = None,
+        enable_graph_recall: bool = False,
     ):
         """
         Args:
             namespace: 记忆命名空间 (通常 = agent_id; "shared" 跨 Agent 共享)
+            enable_graph_recall: S3 图谱邻居召回开关 (默认关闭; 骨架期即使开启也零产出)
         """
         self.namespace = namespace
         self.metadata = metadata
@@ -55,6 +68,7 @@ class MemoryRetrievalPipeline:
         self.embedder = embedder
         self.reranker = reranker
         self._metrics = metrics
+        self._enable_graph_recall = enable_graph_recall
 
     async def search(
         self,
@@ -101,9 +115,15 @@ class MemoryRetrievalPipeline:
             sparse_rows = self.sparse.search(clean_query, top_k=recall_limit)
             # CR3-H3: 稠密召回 (embedder 降级/失败时返回空, 不影响稀疏路径)
             dense_rows = await self._dense_search(clean_query, top_k=recall_limit)
+            # S3: 图谱邻居召回 (默认关闭 → 空; 启用时种子 = user_id/group_id, 邻居
+            # 经 graph.neighbors 取后剥 episode: 前缀, 候选统一经 get_episodes_by_ids
+            # 过滤 ACL/软删, 与稠密路同一套访问控制)
+            graph_rows = await self._graph_search(
+                clean_query, top_k=recall_limit, user_id=user_id, group_id=group_id
+            )
             fts_ids = {str(row.get("id", "")) for row in fts_rows}
             candidate_ids: list[str] = []
-            for memory_id, _score in [*sparse_rows, *dense_rows]:
+            for memory_id, _score in [*sparse_rows, *dense_rows, *graph_rows]:
                 if memory_id not in fts_ids and memory_id not in candidate_ids:
                     candidate_ids.append(memory_id)
             # 稀疏/稠密候选统一经 get_episodes_by_ids 补齐行数据 —— 它同时执行
@@ -115,7 +135,7 @@ class MemoryRetrievalPipeline:
                 user_id=user_id,
                 group_id=group_id,
             )
-            hits = self._merge_results([*fts_rows, *missing_rows], sparse_rows, dense_rows)
+            hits = self._merge_results([*fts_rows, *missing_rows], sparse_rows, dense_rows, graph_rows)
             if self.reranker is not None and self.reranker.is_available():
                 hits = await self.reranker.rerank(clean_query, hits)
             return hits[: max(1, int(top_k))]
@@ -143,6 +163,60 @@ class MemoryRetrievalPipeline:
         except Exception as exc:  # noqa: BLE001
             logger.warning("稠密检索失败, 降级为稀疏检索", namespace=self.namespace, error=str(exc))
             return []
+
+    async def _graph_search(
+        self, query: str, top_k: int, *, user_id: str = "", group_id: str = ""
+    ) -> list[tuple[str, float]]:
+        """图谱邻居召回: 从调用方已知的 user_id/group_id 出发经 graph.neighbors
+        扩展关联记忆 (S3)。
+
+        种子锚定在调用上下文自己的 user_id/group_id (不自由指向任意实体, 满足
+        ACL 铁律); graph.neighbors 返回 [(object, weight)], object 形如
+        ``episode:<id>``; 剥前缀还原 memory_id, 按 weight 降序去重截断到 top_k;
+        返回的候选在 search() 主流程里再经 get_episodes_by_ids 过滤 ACL/软删
+        (与稠密路同一套安全)。
+
+        enable_graph_recall=False 或无种子 → 返回 []; 任一步失败降级 []。
+        """
+        if not self._enable_graph_recall:
+            return []
+        if not user_id and not group_id:
+            return []  # 无 ACL 锚点不查 (避免横向查到别人)
+        _ = query  # 当前实现不依赖 query 文本 (种子来自调用上下文)
+        try:
+            rows: list[tuple[str, float]] = []
+            if user_id:
+                rows.extend(
+                    await self.graph.neighbors(
+                        self.namespace, f"user:{user_id}", relation="mentioned_in"
+                    )
+                )
+            if group_id:
+                rows.extend(
+                    await self.graph.neighbors(
+                        self.namespace, f"group:{group_id}", relation="mentioned_in"
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "图谱邻居查询失败, 降级为空", namespace=self.namespace, error=str(exc)
+            )
+            return []
+        # 剥 episode: 前缀还原 memory_id, 去重取最大 weight
+        deduped: dict[str, float] = {}
+        for obj, weight in rows:
+            if not obj.startswith("episode:"):
+                continue
+            mid = obj[len("episode:"):]
+            if not mid:
+                continue
+            w = float(weight or 0.0)
+            if mid in deduped:
+                deduped[mid] = max(deduped[mid], w)
+            else:
+                deduped[mid] = w
+        sorted_pairs = sorted(deduped.items(), key=lambda kv: (-kv[1], kv[0]))
+        return sorted_pairs[: max(1, int(top_k))]
 
     async def warm_up_sparse_index(self) -> int:
         """从 MetadataStore 加载全部 episodes 重建 SparseBM25Index 内存索引。
@@ -196,6 +270,10 @@ class MemoryRetrievalPipeline:
                 embeddings = await self.embedder.embed([clean_content])
                 if embeddings:
                     await self.vector.upsert(memory_id, embeddings[0])
+            # S3: 图谱"提及"边写入 (仅 enable_graph_recall=True 时; 不回填历史数据)。
+            # 写边失败不影响 episode 已成功存储的结果, 只记 warning。
+            if self._enable_graph_recall and memory_id:
+                await self._write_mentioned_edges(memory_id, user_id, group_id, agent_id or self.namespace)
             if self._metrics is not None:
                 self._metrics.counter("isac_memory_stores_total").inc()
             return memory_id
@@ -205,17 +283,41 @@ class MemoryRetrievalPipeline:
                 self._metrics.counter("isac_memory_store_errors_total").inc()
             return ""
 
+    async def _write_mentioned_edges(
+        self, memory_id: str, user_id: str, group_id: str, agent_id: str
+    ) -> None:
+        """S3: 写入 user/group → episode 的"提及"边 (图召回种子)。
+
+        失败只记 warning, 不影响 episode 已成功存储的结果。
+        """
+        try:
+            if user_id:
+                await self.graph.add_edge(
+                    agent_id, f"user:{user_id}", "mentioned_in", f"episode:{memory_id}",
+                )
+            if group_id:
+                await self.graph.add_edge(
+                    agent_id, f"group:{group_id}", "mentioned_in", f"episode:{memory_id}",
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "图谱 mentioned_in 边写入失败, 已忽略",
+                namespace=self.namespace, memory_id=memory_id, error=str(exc),
+            )
+
     @staticmethod
     def _merge_results(
         fts_rows: list[dict],
         sparse_rows: list[tuple[str, float]],
         dense_rows: list[tuple[str, float]] | None = None,
+        graph_rows: list[tuple[str, float]] | None = None,
     ) -> list[MemoryHit]:
-        """RRF 融合 FTS / BM25 / 稠密三路召回 (CR3-H3 加入 dense_rows)。
+        """RRF 融合 FTS / BM25 / 稠密 / 图谱四路召回 (CR3-H3 加入 dense_rows, S3 加入 graph_rows)。
 
-        dense_rows 是 (memory_id, distance) 且按距离升序 —— RRF 只用名次不用
-        距离值, 与 FTS 路的贡献公式一致 (1/(60+rank)); 未经 get_episodes_by_ids
-        补齐行数据的候选 (被 ACL/软删过滤) 在末尾 rows_by_id 检查中被丢弃。
+        dense_rows 是 (memory_id, distance) 且按距离升序、graph_rows 是 (memory_id, weight)
+        且按权重降序 —— RRF 只用名次不用原始分值, 与 FTS 路的贡献公式一致 (1/(60+rank));
+        未经 get_episodes_by_ids 补齐行数据的候选 (被 ACL/软删过滤) 在末尾 rows_by_id
+        检查中被丢弃。graph_rows 默认 None (未启用图谱召回时零贡献)。
         """
         scores: dict[str, float] = {}
         rows_by_id: dict[str, dict] = {}
@@ -228,6 +330,8 @@ class MemoryRetrievalPipeline:
         for rank, (memory_id, sparse_score) in enumerate(sparse_rows, start=1):
             scores[memory_id] = scores.get(memory_id, 0.0) + 1 / (60 + rank) + sparse_score * 0.001
         for rank, (memory_id, _distance) in enumerate(dense_rows or [], start=1):
+            scores[memory_id] = scores.get(memory_id, 0.0) + 1 / (60 + rank)
+        for rank, (memory_id, _weight) in enumerate(graph_rows or [], start=1):
             scores[memory_id] = scores.get(memory_id, 0.0) + 1 / (60 + rank)
         hits = []
         for memory_id, score in sorted(scores.items(), key=lambda item: (-item[1], item[0])):

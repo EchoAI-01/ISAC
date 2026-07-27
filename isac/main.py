@@ -799,7 +799,26 @@ def _build_memory_stack(
             base_url=embedding_config.get("base_url", ""),
         )
     embedder = EmbeddingManager(embedding_config, provider=embedding_provider)
-    reranker = Reranker(memory_config.get("reranker", {}))
+    # S3: Reranker provider 注入 (仿 CR3-H3 embedding 写法) —— 此前 main 构造
+    # Reranker(memory_config.get("reranker", {})) 时从未传入 provider, is_available()
+    # 恒 False, rerank 步骤永不执行。配置 reranker.api_key+model 即启用真实 HTTP。
+    reranker_provider = None
+    reranker_config = memory_config.get("reranker", {}) or {}
+    if reranker_config.get("api_key") and reranker_config.get("model"):
+        from isac.provider.rerank.openai_compat import OpenAICompatRerankerProvider
+
+        reranker_provider = OpenAICompatRerankerProvider(
+            str(reranker_config.get("api_key")),
+            str(reranker_config.get("base_url", "") or ""),
+            str(reranker_config.get("model")),
+            protocol=str(reranker_config.get("protocol", "cohere")),
+        )
+        logger.info(
+            "已注入记忆 RerankerProvider (rerank 启用)",
+            model=reranker_config.get("model"),
+            base_url=reranker_config.get("base_url", ""),
+        )
+    reranker = Reranker(reranker_config, provider=reranker_provider)
     return metadata_store, graph_store, embedder, reranker
 
 
