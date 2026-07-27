@@ -250,10 +250,11 @@ def _registry_with_session(session_id: str = "s1", last_activity: float = 100.0)
     return registry
 
 
-def test_idle_producer_yields_task_for_idle_session() -> None:
+@pytest.mark.asyncio
+async def test_idle_producer_yields_task_for_idle_session() -> None:
     """会话静默超过 idle_seconds → 产出一个 source=schedule 的 re-engage 任务。"""
     producer = IdleReengageProducer(agent_id="a1", registry=_registry_with_session("s1", 100.0), idle_seconds=60.0)
-    tasks = producer(now=200.0)  # 静默 100s > 60s
+    tasks = await producer(now=200.0)  # 静默 100s > 60s
     assert len(tasks) == 1
     task = tasks[0]
     assert task.agent_id == "a1"
@@ -262,27 +263,30 @@ def test_idle_producer_yields_task_for_idle_session() -> None:
     assert task.intent and task.reason  # authorize 要求非空
 
 
-def test_idle_producer_skips_recently_active_session() -> None:
+@pytest.mark.asyncio
+async def test_idle_producer_skips_recently_active_session() -> None:
     producer = IdleReengageProducer(agent_id="a1", registry=_registry_with_session("s1", 180.0), idle_seconds=60.0)
-    assert producer(now=200.0) == []  # 仅静默 20s < 60s
+    assert await producer(now=200.0) == []  # 仅静默 20s < 60s
 
 
-def test_idle_producer_skips_never_messaged_session() -> None:
+@pytest.mark.asyncio
+async def test_idle_producer_skips_never_messaged_session() -> None:
     """从未收到消息的会话 (last_message_received_at=0) 不主动打扰。"""
     registry = ConversationRuntimeRegistry()
     registry.get("a1", "s1")  # last_message_received_at 默认 0.0
     producer = IdleReengageProducer(agent_id="a1", registry=registry, idle_seconds=60.0)
-    assert producer(now=200.0) == []
+    assert await producer(now=200.0) == []
 
 
-def test_idle_producer_dedups_until_new_activity() -> None:
+@pytest.mark.asyncio
+async def test_idle_producer_dedups_until_new_activity() -> None:
     """同一静默窗口只 re-engage 一次 (防刷屏); 新用户消息到达后重新武装。"""
     registry = _registry_with_session("s1", 100.0)
     producer = IdleReengageProducer(agent_id="a1", registry=registry, idle_seconds=60.0)
-    assert len(producer(now=200.0)) == 1  # 首次
-    assert producer(now=260.0) == []  # 同窗口不重复
+    assert len(await producer(now=200.0)) == 1  # 首次
+    assert await producer(now=260.0) == []  # 同窗口不重复
     registry.get("a1", "s1").last_message_received_at = 300.0  # 新消息
-    assert len(producer(now=400.0)) == 1  # 新静默窗口再次 re-engage
+    assert len(await producer(now=400.0)) == 1  # 新静默窗口再次 re-engage
 
 
 @pytest.mark.asyncio
