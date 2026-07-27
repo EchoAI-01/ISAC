@@ -35,7 +35,7 @@
 
 各节点进度以 [PROGRESS.md](./PROGRESS.md) 为**唯一事实源**,本文档不再另存进度表,只描述节点定义、依赖与验收。
 
-当前概况(详见 PROGRESS.md)：A-K 已达可运行完成度 —— A-C、F-H 完成;E 经 K6 端到端验收;I 主体完成(WebUI v2 已落地,浏览器测试 CI 随 K8 接入);J1-J4 完成;K1-K8 稳定化完成,进入发布候选。**L 拟人化 / M 路由 Mesh / N 记忆深化 / O 企业化** 四大节点的 14 子节点中,**L2-L5、M1-M2、N1-N3、O1-O3 核心逻辑 + 单测已实现,但主链路尚未接线**(标 `[~]`:默认关闭、生产路径无调用点,按 §二完成定义尚不算完成),O4/O5 未开始(`[ ]`);向量库 / 图谱 / Embedding / Reranker 检索后端已实现(向量/图谱召回待接入 pipeline)。为把这些 `[~]` 能力接入同一主链路协同工作,新增大节点 **P 主链路接线与激活**(P0-P5,定义见 §四)。当前 1157 单测通过、ruff/mypy 全绿、主链路零行为变化。
+当前概况(详见 PROGRESS.md)：A-K 已达可运行完成度 —— A-C、F-H 完成;E 经 K6 端到端验收;I 主体完成(WebUI v2 已落地,浏览器测试 CI 随 K8 接入);J1-J4 完成;K1-K8 稳定化完成,进入发布候选。**L 拟人化 / M 路由 Mesh / N 记忆深化 / O 企业化** 四大节点的 14 子节点中,**L2-L5、M1-M2、N1-N3、O1-O3 核心逻辑 + 单测已实现,但主链路尚未接线**(标 `[~]`:默认关闭、生产路径无调用点,按 §二完成定义尚不算完成),O4/O5 未开始(`[ ]`);向量库 / 图谱 / Embedding / Reranker 检索后端已实现(向量/图谱召回待接入 pipeline)。为把这些 `[~]` 能力接入同一主链路协同工作,新增大节点 **P 主链路接线与激活**(P0-P5,定义见 §四)。当前 1271 单测通过、ruff/mypy 全绿、主链路零行为变化。**2026-07-27 骨架轮 (S1-S7)** 又为 P3 图谱召回 / P4 身份归一 / P5 Workflow 控制面 / MemoryConsolidator / O4 三平台(飞书·微信·QQ 官方)/ O5 视频 Provider 补齐**骨架 + 默认关闭接线锚点**(均 default-off、零行为变化,见各节点"当前"与文末"S 骨架轮")。
 
 **2026-07-26 MVP 差距复核**：对照 `docs/REQUIREMENTS.md` 十二条原始需求做 10 域并行代码取证(498 次代码检索 + 一次真实启动实测),发现一批标 `[x]` **已交付**的节点(D8/E4/F1-F3/H1/H2/J1-J4/K1-K4/K7)存在与其"完成定义"矛盾的未接线子行为,已在对应节点下补记"**2026-07-26 MVP 缺口复核**"说明(不改动其余已验证部分的 `[x]`);并新增大节点 **Q MVP 收尾**,收纳未被 P0-P5 覆盖、但 MVP 必需的缺口(记忆写入回路等,定义见 §四 Q)。技术路线全景见 [ROADMAP.md](./ROADMAP.md);模块开发范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
 
@@ -49,7 +49,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 4. **P3 记忆检索深化激活** — `pipeline.search()` 接入向量/图谱召回 + 检索期治理过滤(N2 生效) + MemoryItem 接入检索链(N1)。
 5. **P4 身份归一激活** — gateway 接入 `IdentityResolver`,记忆按归一身份聚合(N3)。
 6. **P5 企业化激活** — 多租户隔离 / 插件进程隔离 / Workflow 接入 control 与主链路(O1-O3)。
-7. **未开始功能(`[ ]`)** — O4 平台适配器(微信/Slack/飞书 ≥1 真实实现)、O5 Video Provider 真实端点、MemoryConsolidator(记忆整合后台任务)、I 节点复核(浏览器测试 CI 已随 K8 接入,复核 85%→100%)。
+7. **未开始功能(`[ ]`)** — O4 平台适配器(微信/Slack/飞书 ≥1 真实实现;**骨架轮 S7 已补飞书·微信·QQ 官方三平台骨架 + 默认关闭注册分支**,剩真实连接/收发)、O5 Video Provider 真实端点(**骨架轮 S6 已接注册挂点**,剩端点二次确认 + 真实调用)、MemoryConsolidator(记忆整合后台任务;**骨架轮 S2 已补骨架 + 后台生命周期挂点**,剩真实去重/合并/剪枝逻辑)、I 节点复核(浏览器测试 CI 已随 K8 接入,复核 85%→100%)。
 8. **Q MVP 收尾**(2026-07-26 新增,详见 §四 Q 节点) — 对照原始需求清单逐条代码取证后发现的、**未被 P0-P5 覆盖**的 MVP 必需缺口(按优先级排列,非编号顺序):**Q1 记忆写入回路与身份稳定化**(检索/注入/治理链路全通但生产从未写入,MVP 最高优先级,不依赖 P0)、Q0 开箱可触达与配置纠偏、Q2 人格差异化实现、Q3 插件与 MCP 生态数据面接线、Q4 多模态工具注册与计量收尾、Q5 WebUI 与控制面收尾、Q6 SubAgent 用量与安全补漏。
 
 依赖顺序：P0 → P1;P2 与 P3 可并行,P4 依赖 P3;P5 与 O4/O5/MemoryConsolidator/I 复核独立,可并行插入;**Q0/Q1 不依赖 P0,可立即开始甚至优先于 P0**,Q2-Q6 相互独立、与 P 节点也无强依赖,可并行插入。MVP 发布以 **P0-P2 + Q0-Q1** 完成为最低准入线(详见 [ROADMAP.md](./ROADMAP.md) M-MVP 里程碑)。每项按 §二"完成定义"验收(非桩实现 + 单测 + 集成/运行验证 + 主链路接线 + 文档 + `ruff`/`mypy`/CI),完成后把 §四 对应 `[~]` 升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。
@@ -592,7 +592,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **产出**：`IdentityResolver`、跨平台映射存储、冲突处理、单测。
   - **依赖**：C (Gateway/UserMapper)、N1。
   - **当前**：已完成 (2026-07-26)。`IdentityResolver` 新增 `person_identities` (verified/confidence/source) + `identity_conflicts` 表 (惰性建表, sqlite3 + aiosqlite 双轨)。`resolve` 先查 verified 命中, 未命中且 heuristic_enabled=True 时按 nickname 启发式匹配 (confidence≤0.5), 仍无则委托 UserMapper 创建新 person; `bind` 写 verified=1/confidence=1.0/source=manual + 同步 UserMapper.bind (若 master_id 已存在); `merge` 合并 aliases (去重) + platform_accounts (按 (platform, user_id) 去重), confidence 取较低, verified 取 AND; `arbitrate_conflict` 按 confidence 降序取最高, <0.7 写 identity_conflicts 供人工裁决。heuristic 默认 False (防误合并)。11 例单测覆盖 resolve/bind/merge/arbitrate + heuristic 开关 + 无 mapper 兜底 + 冲突写入。
-  - **接线待办 → 见 §四 P4**:gateway 入站主链路接入 IdentityResolver.resolve + 记忆按归一身份聚合 (当前无调用点,悬空库)。
+  - **接线待办 → 见 §四 P4**(骨架轮 S4 已就位默认关闭锚点):gateway 入站 `main._resolve_identity` 在 `identity.enabled` 时接入 `IdentityResolver.resolve` 归一 `person_id` 并覆盖 `profile.user_id`(默认关闭走 user_mapper 原路径);剩 person_identities 生产写入 + 记忆聚合验证。
 
 ---
 
@@ -619,19 +619,19 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **产出**：Workflow 引擎、步骤契约、执行器、可观测与恢复、单测。
   - **依赖**：J4 (SubAgent)、D9 (进度)、L (运行时)。
   - **当前**：已完成 (2026-07-26)。`WorkflowEngine.start` 按 transitions 调度 stages: 串行按 `TransitionKind.SEQUENTIAL` 递归执行, 并行用 `asyncio.gather` 同时跑多个 `PARALLEL` 目标, 条件 `CONDITIONAL` 按 `condition_evaluator` 返回决定执行或标 `SKIPPED`, 重试 `RETRY` 在 `_execute_stage` 内按 `max_retries=3` 重试; 状态机 `PENDING→RUNNING→SUCCEEDED/FAILED`; `step` 推进单个 PENDING stage; `resume` 把 RUNNING 标为 FAILED (中断后不续跑, 与 L5 一致); 持久化到 `data/workflows/<id>.json` (原子写)。`set_action_handler`/`set_condition_evaluator` 注入测试/生产回调; 无 handler 时 stage 视为 noop (零行为变化)。12 例单测覆盖串/并/条件/重试/step/resume/持久化/默认。
-  - **接线待办 → 见 §四 P5**:WorkflowEngine 暴露 control 路由/工具入口 + set_action_handler 生产注入 (当前零调用点)。
+  - **接线待办 → 见 §四 P5**(骨架轮 S5 已就位控制面入口):`routes_workflows` 暴露 list/get/start REST 入口(default-off,`control.workflow.enabled` 启用);剩 action handler 生产注入 + Agent 工具入口。
 
 - [ ] **O4 平台扩展 (微信 / Slack / 飞书 …)**
   - **验收**：新增 IM 平台适配器,复用 Channel 抽象;媒体/富文本能力按平台声明适配。
   - **产出**：各平台 Channel 适配器、能力声明、投递适配、单测。
   - **依赖**：H (平台扩展)、C4 (Channel 抽象)。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `isac/channel/adapters/template/` (`TemplateAdapter(PlatformAdapter)` 文档化模板,实现 4 个抽象方法 + `TODO(O4)`)。**不自动注册**,复制后按 DEVELOP.md 3.3 实现。当前支持 OneBot/Telegram/Discord/WebChat。
+  - **当前**：框架已搭建 (scaffolding, 2026-07-26 模板 + 2026-07-27 骨架轮 S7 三平台)。除 `template/` 通用模板外,新增 `feishu/`(`FeishuAdapter`)、`wechat/`(`WeChatAdapter`,公众号/企业微信)、`qq_official/`(`QQOfficialAdapter`,QQ 官方机器人,`platform_name="qq_official"` 与 OneBot 的 `qq` 并存不撞键) 三个平台骨架:实现 4 个抽象方法 + `TODO(O4)`,`start`/`stop` no-op、`send` 返回 False;`main._register_channel_adapters` 加 enabled-gated 惰性注册分支(默认不启用 → 不注册 → 零行为变化)。剩余激活: 各平台真实连接/收发 + 富媒体降级。当前 OneBot/Telegram/Discord/WebChat(真实) + feishu/wechat/qq_official(骨架)。附 `tests/unit/test_o4_platform_adapters_scaffolding.py` (12)。
 
 - [ ] **O5 Video Provider**
   - **验收**：视频理解/生成 Provider 真实接入 (Sora/Runway/Kling 等),经能力目录与 ModelRouter 选择;结果走 ArtifactStore。
   - **产出**：Video Provider 实现、能力声明、计量埋点、单测。
   - **依赖**：J1-J2。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26)。新增 `isac/provider/video_gen/` (`OpenAICompatVideoGenProvider` 实现 `VideoGenerationProvider` ABC,`generate` 抛 `NotImplementedError`)。**不自动注册到 ModelRouter**,真实 API 端点开工前需二次确认。
+  - **当前**：框架已搭建 (scaffolding, 2026-07-26 + 2026-07-27 骨架轮 S6 注册挂点)。`isac/provider/video_gen/` (`OpenAICompatVideoGenProvider` 实现 `VideoGenerationProvider` ABC,`generate` 抛 `NotImplementedError`);已接入 `main._build_multimodal_provider` 的 `kind="video_gen"` 注册挂点 (operations={"video_gen"}, modalities text→video),配置 `multimodal_providers[]` 增 `{kind:"video_gen", ...}` 即注册进 ModelCatalog/ModelRouter,默认无该项 → 不注册 → 零行为变化。**真实 API 端点开工前需二次确认**(注册不触发 generate,仅 Agent 实际请求视频生成才暴露"未实现")。附 `tests/unit/test_main_multimodal_registration.py` 新增 3 例。
 
 ---
 
@@ -683,21 +683,21 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **验收**：配置 embedding 时向量召回已生效(CR3-H3);配置 reranker 时 rerank 步骤真实执行;图谱召回生效;被治理条目不被检索命中;`MemoryItem` 成为检索/注入统一载体;集成测试。
   - **产出**：pipeline 图谱召回接线、Reranker provider 注入、MemoryItem 接入、集成测试。
   - **依赖**：N1、N2、J2(embed/rerank Provider)。
-  - **当前**：未开始。激活后 N1 升级为 `[x]`。
+  - **当前**：图谱召回**骨架 + 默认关闭接线**已就位 (骨架轮 S3, 2026-07-27):`MemoryRetrievalPipeline` 加 `enable_graph_recall` 开关 + `_graph_search` 骨架(默认关闭恒返回 [],`search`/`_merge_results` 已接入第四路 RRF),`main.memory_factory` 按 `memory.graph_recall.enabled` 注入。剩余激活: 实体抽取 + `graph.neighbors` 真实召回 + 邻居→memory_id 映射、Reranker provider 注入、MemoryItem 接入检索链。附 `tests/unit/test_graph_recall_scaffolding.py` (4)。激活后 N1 升级为 `[x]`。
 
 - [ ] **P4 身份归一激活**(依赖 N3 + N1 + P3)
   - **目标**：gateway 入站主链路接入 `IdentityResolver.resolve`,把跨平台同一用户归一到统一 identity;记忆按归一身份聚合。
   - **验收**：不同 IM 的同一用户归一为同一 person、记忆按归一身份聚合、低置信冲突写入 `identity_conflicts` 供人工裁决;集成测试。
   - **产出**：gateway 接线、记忆聚合按归一身份、集成测试。
   - **依赖**：N3、N1、P3。
-  - **当前**：未开始。激活后 N3 升级为 `[x]`。
+  - **当前**：主链路接线**锚点**已就位 (骨架轮 S4, 2026-07-27):`main.process_message` 经 `_resolve_identity` 在 `identity.enabled` 时用 `IdentityResolver.resolve` 归一 `person_id` 覆盖 `profile.user_id`(记忆按归一身份聚合);`_build_identity_resolver` 默认关闭(无 `identity.enabled` → None → 走 user_mapper 原路径,零行为变化)。剩余激活: person_identities 生产写入路径 + 冲突裁决控制面 + 集成测试。附 `tests/unit/test_identity_resolver_wiring.py` (6)。激活后 N3 升级为 `[x]`。
 
 - [ ] **P5 企业化激活**(依赖 O1/O2/O3)
   - **目标**：`TenantIsolationGuard` 接入 memory store/control/用量计量 + MetadataStore 增 `tenant_id` 列 + `routes_tenants` 控制面(O1);`PluginIsolationHost` 接入 loader 作为可选隔离模式(O2);`WorkflowEngine` 暴露 control 路由/工具入口 + 生产注入 action handler(O3)。
   - **验收**：跨租户不可见且控制面按租户鉴权、插件进程隔离可选启用且崩溃可恢复、Workflow 可声明式执行且可观测;集成测试。
   - **产出**：租户接线 + tenant_id 列 + routes_tenants、loader 隔离模式、workflow 控制面入口、集成测试。
   - **依赖**：O1、O2、O3、G(控制面)。
-  - **当前**：未开始。激活后 O1/O2/O3 升级为 `[x]`。
+  - **当前**：Workflow 控制面**入口骨架**已就位 (骨架轮 S5, 2026-07-27):新增 `control/api/routes_workflows.py`(list/get/start,`workflow_engine=None` 时 build_router 返回 None 不挂载,仿 routes_memory_admin),`server.create_control_app`/`_mount_optional_routers` 按注入的 `workflow_engine` 挂载,`main` 按 `control.workflow.enabled` 默认关闭构造。剩余激活: O1 租户接线 + tenant_id 列 + routes_tenants、O2 loader 隔离模式、O3 action handler 生产注入 + Agent 工具入口。附 `tests/unit/test_routes_workflows_scaffolding.py` (6)。激活后 O1/O2/O3 升级为 `[x]`。
 
 ---
 
@@ -722,6 +722,27 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - `InterAgentMessage.trace_id` (SPECIFICATION 2.10 已定义、实现缺失) → 补齐，未显式传入时从日志上下文继承，响应沿用同一 trace。
   - **记忆保真度**(冒烟发现)：合并回合此前只把"触发那条"写进记忆，Agent 实际看到的是整个 burst → 改为写入合并后的完整输入。
 - **被证伪 (4)**：ProactiveScheduler 孤儿循环的严重度描述、UserMapper 每消息连接开销、`_apply_mesh_routing` 的 session_id 副作用、SQLITE_BUSY 静默吞。前三项机制描述属实但后果不成立，第四项前提不成立。
+
+---
+
+### S 骨架轮 (2026-07-27)
+
+**背景**：MVP 收尾后,按"把待开发功能一次搭全骨架"的要求,为 P3-P5 与 O4/O5/MemoryConsolidator/proactive-ext 一次性补齐**骨架 + 默认关闭接线锚点**。全部遵循 MODULE_GUIDE §二"六要素"范式:契约 + 骨架类 + 惰性默认关闭接线 + 骨架单测 + ruff/mypy 绿 + 文档同步;`enabled=False`/无注入时**主链路零行为变化**,`TODO(节点)` 标注真实实现待办。**这些节点仍为 `[~]`/`[ ]`,骨架≠交付**——真实激活按 §二完成定义 + P3/P4/P5 验收执行。新增 6 个骨架测试文件(40 例),全量 1271 单测通过。
+
+- [x] **S1 主动任务其他生产者骨架**(proactive-ext,扩充 L3/P1)
+  - `isac/runtime/conversation/producer.py` 新增 `DateReminderProducer`/`TopicFollowupProducer`/`MemoryAssociationProducer`(`__call__` 恒返回 [])+ `CompositeTaskProducer`(汇总多生产者、单个异常隔离);`assembly._build_task_producer` 按 `conversation.proactive.*_enabled` 组合(默认全关 → 仅 idle_reengage 或 None)。附 `test_proactive_producers_scaffolding.py` (6)。**2026-07-28 激活**: 三个 Producer `__call__` 改 async + 填真实产出逻辑 (DateReminder 从 `memory.search` 查日期关键词+正则解析+同年同日去重; TopicFollowup 末条用户消息含延后型短语/问号结尾+冷却窗口+同窗口去重; MemoryAssociation 拼接近消息为 query 检索+score 阈值+per-session hit.id 去重); `_build_task_producer` 加 memory 参数,`_setup_conversation_runtime` 透传。ACL 锚点 = 末条消息的 user_id/group_id (复用 `memory.search` 既有 ACL)。骨架单测改为 await 调用,新增 `test_proactive_producers_s1.py` (16 例)。
+- [x] **S2 MemoryConsolidator 骨架 + 后台挂点**
+  - `isac/memory/consolidator.py` 由纯 `NotImplementedError` 重写为骨架:`run_once` 为 no-op 返回全零 `ConsolidationResult`,`start/stop` 后台循环(仿 ProactiveScheduler);`assembly._build_memory_consolidator` 按 `memory.consolidation.enabled` 默认关闭构造,`AgentManager` start/stop/destroy/reload 四处驱动生命周期(与 proactive_scheduler 同构)。附 `test_memory_consolidator_scaffolding.py` (6)。剩余: 真实去重/合并/剪枝/画像聚合。
+- [x] **S3 图谱召回 `_graph_search` 骨架**(→ P3)
+  - 见 §四 P3"当前"。`enable_graph_recall` 默认关闭,`_merge_results` 第四路 RRF 就位。
+- [x] **S4 身份归一主链路接线锚点**(→ P4)
+  - 见 §四 P4"当前"。`_resolve_identity` + `_build_identity_resolver` 默认关闭。
+- [x] **S5 Workflow 控制面入口骨架**(→ P5/O3)
+  - 见 §四 P5"当前"。`routes_workflows`(list/get/start)+ `WorkflowEngine.list_workflows()` 访问器,`control.workflow.enabled` 默认关闭。
+- [x] **S6 O5 视频 Provider 注册挂点**
+  - 见 §四 O5"当前"。`kind="video_gen"` 接入 `_build_multimodal_provider`,default-off,`generate` 仍抛 `NotImplementedError`(端点二次确认闸门)。
+- [x] **S7 O4 飞书/微信/QQ 官方三平台适配器骨架**
+  - 见 §四 O4"当前"。三平台骨架 + enabled-gated 注册分支,QQ 官方(`qq_official`)与 OneBot(`qq`)并存不撞键。
 
 ---
 
