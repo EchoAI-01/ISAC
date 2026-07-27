@@ -1192,14 +1192,8 @@ async def _register_control_plane(
         sparse_indexes = (services or {}).get("sparse_indexes") or {}
         # S5 (O3): 工作流引擎 (默认关闭: control.workflow.enabled!=true → None → 路由
         # 不挂载, 零行为变化)。启用时构造并注入, WorkflowEngine 按 base_dir 持久化实例。
-        workflow_engine = None
-        workflow_cfg = (control_config.get("workflow", {}) or {}) if isinstance(control_config, dict) else {}
-        if workflow_cfg.get("enabled"):
-            from isac.runtime.workflow.engine import WorkflowEngine
-
-            workflow_engine = WorkflowEngine(
-                base_dir=str(workflow_cfg.get("base_dir") or (DATA_DIR / "workflows"))
-            )
+        # S5 激活: 同时注入生产 action_handler + condition_evaluator + 声明式加载。
+        workflow_engine = _build_workflow_engine(control_config, agent_manager)
         app = create_control_app(
             agent_manager,
             router,
@@ -1247,6 +1241,37 @@ async def _register_control_plane(
         logger.info("控制面已注册", host=host, port=port)
     except Exception as exc:
         logger.error("控制面注册失败 (不阻塞数据面)", error=str(exc), exc_info=True)
+
+
+def _build_workflow_engine(control_config: dict[str, Any], agent_manager: AgentManager) -> Any:
+    """S5: 按 control.workflow 配置构造 WorkflowEngine + 注入 action_handler /
+    condition_evaluator + 声明式加载工作流定义文件 (抽到 helper 避免 _register_
+    control_plane 复杂度超 C901 上限)。
+
+    默认关闭 (control.workflow.enabled!=true → None); Agent 工具入口 (Agent 主动
+    触发 workflow) 是 P5 决策项, 有意未做 (避免半接线死代码)。
+    """
+    workflow_cfg = (control_config.get("workflow", {}) or {}) if isinstance(control_config, dict) else {}
+    if not workflow_cfg.get("enabled"):
+        return None
+    from isac.runtime.workflow.actions import (
+        build_default_action_handler,
+        build_default_condition_evaluator,
+    )
+    from isac.runtime.workflow.engine import WorkflowEngine
+    from isac.runtime.workflow.loader import load_workflows_from_dir
+
+    engine = WorkflowEngine(
+        base_dir=str(workflow_cfg.get("base_dir") or (DATA_DIR / "workflows"))
+    )
+    engine.set_action_handler(build_default_action_handler(agent_manager))
+    engine.set_condition_evaluator(build_default_condition_evaluator())
+    definitions_dir = workflow_cfg.get("definitions_dir")
+    if definitions_dir:
+        loaded = load_workflows_from_dir(engine, str(definitions_dir))
+        if loaded:
+            logger.info("工作流定义已声明式加载", count=loaded, dir=str(definitions_dir))
+    return engine
 
 
 async def _fire_plugin_on_load(
