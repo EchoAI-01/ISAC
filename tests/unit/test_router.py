@@ -80,3 +80,36 @@ class TestRoutingPriority:
         msg = make_isac_message()
         decision = run(router.route(msg))
         assert decision.agent_id == "hooked"  # hook 优先级最高
+
+
+class TestHandoffCleanup:
+    """R2-4: route() 无条件清理过期会话移交, 非活跃会话的条目不再永久驻留。"""
+
+    def test_route_sweeps_expired_handoffs_for_inactive_sessions(self, monkeypatch):
+        """某会话 handoff 后再无消息触发 route(), 其过期条目应被后续任意消息的
+        route() 扫掉 (此前 get_handoff 只惰性清被查询的 key)。"""
+        import isac.router.router as router_mod
+
+        fake_now = {"t": 1000.0}
+        monkeypatch.setattr(router_mod.time, "monotonic", lambda: fake_now["t"])
+        router = make_router()
+        router.set_handoff("qq", None, "userX", "agent_x", ttl_seconds=10)
+        assert len(router._handoffs) == 1
+
+        fake_now["t"] = 1020.0  # 越过 TTL (expires_at=1010)
+        # 另一个会话 Y 的消息, 不查询 X 的 key
+        run(router.route(make_isac_message(user_id="userY", group_id=None)))
+        assert router._handoffs == {}  # X 的过期条目被 route() 扫清
+
+    def test_route_keeps_unexpired_handoffs(self, monkeypatch):
+        """清理不误删未过期条目。"""
+        import isac.router.router as router_mod
+
+        fake_now = {"t": 1000.0}
+        monkeypatch.setattr(router_mod.time, "monotonic", lambda: fake_now["t"])
+        router = make_router()
+        router.set_handoff("qq", None, "userX", "agent_x", ttl_seconds=100)
+
+        fake_now["t"] = 1020.0  # 未过期 (expires_at=1100)
+        run(router.route(make_isac_message(user_id="userY", group_id=None)))
+        assert "qq:user:userX" in router._handoffs
