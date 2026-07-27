@@ -126,11 +126,13 @@ def _build_memory_consolidator(
     config: AgentConfig,
     global_config: dict,
     memory: Any,
+    llm: Any = None,
 ) -> MemoryConsolidator | None:
     """按 memory.consolidation 配置构造后台整合器; 默认关闭 (enabled!=true → None)。
 
-    骨架阶段即使启用, run_once 也是 no-op (零读写), 生命周期由 AgentManager 随
-    Agent start/stop 驱动。NoOpMemoryPipeline (无 metadata) 时不构造 (无可整合数据)。
+    S2 激活: run_once 真实三步 (去重/剪枝/画像归纳), 各步隔离异常; llm=None 时
+    画像归纳步骤跳过 (返回 updated_profiles=0, 不报错)。NoOpMemoryPipeline (无
+    metadata) 时不构造 (无可整合数据)。生命周期由 AgentManager 随 Agent start/stop 驱动。
     """
     consolidation_cfg = (global_config.get("memory", {}) or {}).get("consolidation", {}) or {}
     if not bool(consolidation_cfg.get("enabled", False)):
@@ -144,6 +146,12 @@ def _build_memory_consolidator(
         namespace=namespace,
         metadata=metadata,
         interval_seconds=float(consolidation_cfg.get("interval_seconds", 3600) or 3600),
+        llm=llm,
+        dedup_similarity=float(consolidation_cfg.get("dedup_similarity", 0.92) or 0.92),
+        prune_after_days=int(consolidation_cfg.get("prune_after_days", 30) or 30),
+        prune_importance_below=float(
+            consolidation_cfg.get("prune_importance_below", 0.2) or 0.2
+        ),
     )
 
 
@@ -310,7 +318,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
 
     # 后台记忆整合器 (默认关闭: memory.consolidation.enabled!=true → None → 生命周期不启动)。
     # 骨架期 run_once 为 no-op, 由 AgentManager 随 Agent start/stop 驱动。
-    consolidator = _build_memory_consolidator(config, global_config, memory)
+    consolidator = _build_memory_consolidator(config, global_config, memory, llm=llm)
     if consolidator is not None:
         agent_services["memory_consolidator"] = consolidator
 
