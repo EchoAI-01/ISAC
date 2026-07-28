@@ -17,6 +17,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from isac.artifacts.models import ArtifactRef, MediaInput, TranscriptionResult
 from isac.core.exceptions import LLMError
 from isac.provider.base import SpeechToTextProvider, TextToSpeechProvider
@@ -105,7 +107,7 @@ class OpenAICompatSTTProvider(SpeechToTextProvider):
             response = await client.post(
                 "/audio/transcriptions", files=files, data=data
             )
-        except TimeoutError as exc:
+        except httpx.TimeoutException as exc:
             raise LLMError(f"STT 请求超时: {exc}", retriable=True) from exc
         except Exception as exc:
             raise OpenAICompatProvider._wrap_network_error(exc) from exc
@@ -200,7 +202,7 @@ class OpenAICompatTTSProvider(TextToSpeechProvider):
         client = self._get_client()
         try:
             response = await client.post("/audio/speech", json=payload)
-        except TimeoutError as exc:
+        except httpx.TimeoutException as exc:
             raise LLMError(f"TTS 请求超时: {exc}", retriable=True) from exc
         except Exception as exc:
             raise OpenAICompatProvider._wrap_network_error(exc) from exc

@@ -161,6 +161,21 @@ async def test_generate_5xx_raises_retriable(
 
 
 @pytest.mark.asyncio
+async def test_generate_timeout_uses_timeout_error_mapping(
+    artifact_store: ArtifactStore,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("simulated timeout")
+
+    provider = _make_provider(handler, artifact_store=artifact_store)
+    with pytest.raises(LLMError) as exc:
+        await provider.generate("cat")
+    assert exc.value.retriable is True
+    assert "超时" in str(exc.value)
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
 async def test_generate_4xx_raises_non_retriable(
     artifact_store: ArtifactStore,
 ) -> None:

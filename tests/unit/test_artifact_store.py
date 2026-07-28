@@ -27,6 +27,25 @@ def store(tmp_path: Path) -> ArtifactStore:
 
 
 @pytest.mark.asyncio
+async def test_concurrent_put_same_content_does_not_raise(tmp_path: Path) -> None:
+    """并发 put 字节级相同内容: 历史上用固定 tmp 文件名, 一方抢 rename 走另一方的
+    tmp 后另一方的 replace 抛 FileNotFoundError; 现在每次唯一 tmp + 幂等兜底。
+    """
+    store = ArtifactStore(str(tmp_path / "artifacts"), ttl_days=7)
+    data = b"concurrent-duplicate-content"
+
+    async def _put_once() -> ArtifactRef:
+        return await store.put(data, kind="image", mime_type="image/png")
+
+    results = await asyncio.gather(*[_put_once() for _ in range(8)])
+
+    artifact_ids = {ref.artifact_id for ref in results}
+    assert len(artifact_ids) == 1
+    for ref in results:
+        assert ref.size_bytes == len(data)
+
+
+@pytest.mark.asyncio
 async def test_put_and_get_roundtrip(store: ArtifactStore) -> None:
     data = b"\x89PNG\r\n\x1a\n" + b"fake image content"
     ref = await store.put(data, kind="image", mime_type="image/png")

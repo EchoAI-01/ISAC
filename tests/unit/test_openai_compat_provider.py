@@ -450,6 +450,7 @@ async def test_chat_timeout_raises_retriable_llm_error() -> None:
     with pytest.raises(LLMError) as exc_info:
         await provider.chat(system="", messages=[])
     assert exc_info.value.retriable is True
+    assert "超时" in str(exc_info.value)
     await provider.aclose()
 
 

@@ -133,6 +133,26 @@ def test_list_memory_episodes_no_store_returns_404() -> None:
     assert resp.status_code == 404
 
 
+def test_memory_episode_limit_rejects_unbounded_query() -> None:
+    app = _make_app(metadata_store=object())
+    client = TestClient(app)
+    resp = client.get(
+        "/api/v1/memory/a1/episodes?limit=1000000",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert resp.status_code == 422
+
+
+def test_session_message_limit_rejects_unbounded_query() -> None:
+    app = _make_app(metadata_store=None)
+    client = TestClient(app)
+    resp = client.get(
+        "/api/v1/sessions/s1/messages?limit=1000000",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert resp.status_code == 422
+
+
 def test_token_auth_required() -> None:
     app = _make_app()
     client = TestClient(app)

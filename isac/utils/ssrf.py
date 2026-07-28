@@ -17,6 +17,9 @@ class SSRFBlockedError(ValueError):
     """URL 被 SSRF 校验拒绝 (内网/链路本地/保留地址)。"""
 
 
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
 def is_private_or_reserved_ip(ip: str) -> bool:
     """判断 IP 是否为内网/保留/链路本地地址 (SSRF 防护)。"""
     try:
@@ -30,6 +33,7 @@ def is_private_or_reserved_ip(ip: str) -> bool:
         or addr.is_reserved
         or addr.is_multicast
         or addr.is_unspecified
+        or addr in _CGNAT_NETWORK  # RFC6598 CGNAT 段, ipaddress.is_private 不覆盖
     )
 
 
