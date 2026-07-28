@@ -68,6 +68,34 @@ class TestHistogram:
         # buckets 累积: le=0.1 应包含 1 个, le=1.0 包含 2 个, le=10.0 包含 3 个
         assert h._counts == [1, 2, 3]
 
+    def test_prometheus_format_uses_cumulative_buckets(self) -> None:
+        """O1: Prometheus 直方图 _bucket{le=X} 必须累积 (cumulative), 即 le=1.0
+        的 bucket 应包含所有 le<=1.0 的观测值 (含 le=0.1 的 count)。
+
+        observe 实现已按 le<=bound 累积 (value<=bound 的所有 bucket 都 +1),
+        to_prometheus 直接输出 _counts[i] 即是 cumulative, 不需再累加。
+        本测验证输出符合 Prometheus 客户端期望的 cumulative 语义。
+        """
+        h = MetricsCollector().histogram("test_hist", buckets=(0.1, 1.0, 10.0))
+        h.observe(0.05)
+        h.observe(0.5)
+        h.observe(5)
+        lines = h.to_prometheus()
+        # 解析 le=X 的 count
+        bucket_counts: dict[str, int] = {}
+        for line in lines:
+            if "_bucket{" in line:
+                # 格式: test_hist_bucket{le="0.1"} 1
+                le = line.split('le="')[1].split('"')[0]
+                count = int(line.split("} ")[1])
+                bucket_counts[le] = count
+        # O1: cumulative 语义, le=0.1 → 1, le=1.0 → 2, le=10.0 → 3
+        assert bucket_counts["0.1"] == 1
+        assert bucket_counts["1.0"] == 2
+        assert bucket_counts["10.0"] == 3
+        # +Inf 等于 total count
+        assert bucket_counts["+Inf"] == 3
+
 
 class TestMetricsSnapshot:
     def test_snapshot_returns_json_friendly_dict(self) -> None:
