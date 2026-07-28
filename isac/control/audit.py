@@ -65,7 +65,9 @@ class AuditLog:
             status_code=status_code,
         )
         if self.log_path is not None:
-            self._append_to_file(entry)
+            # R11: 文件 IO (mkdir/open/write) 是同步阻塞, 审计爆发时
+            # 阻塞整个事件循环。用 asyncio.to_thread 包装到线程池。
+            await asyncio.to_thread(self._append_to_file, entry)
         return entry
 
     def _append_to_file(self, entry: dict[str, Any]) -> None:
