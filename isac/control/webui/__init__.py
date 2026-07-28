@@ -24,9 +24,9 @@ def mount_webui(app: Any, *, prefix: str = "/ui", api_token: str = "") -> None:
     """
     from fastapi import HTTPException
     from fastapi.responses import FileResponse
-    from fastapi.staticfiles import StaticFiles
 
     index_path = WEBUI_DIR / "index.html"
+    app_js_path = WEBUI_DIR / "app.js"
 
     @app.get(prefix + "/", include_in_schema=False)
     async def index_page() -> FileResponse:
@@ -34,8 +34,11 @@ def mount_webui(app: Any, *, prefix: str = "/ui", api_token: str = "") -> None:
             raise HTTPException(status_code=404, detail="WebUI index.html 未找到")
         return FileResponse(index_path, media_type="text/html")
 
-    # 其他静态资源 (CSS/JS/图片)
-    app.mount(prefix, StaticFiles(directory=WEBUI_DIR), name="isac_webui")
+    @app.get(prefix + "/app.js", include_in_schema=False)
+    async def app_js() -> FileResponse:
+        if not app_js_path.exists():
+            raise HTTPException(status_code=404, detail="WebUI app.js 未找到")
+        return FileResponse(app_js_path, media_type="application/javascript")
 
 
 def get_webui_html() -> str:

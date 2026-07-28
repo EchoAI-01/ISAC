@@ -40,6 +40,18 @@ def test_is_private_or_reserved_ip_false_for_public() -> None:
     assert is_private_or_reserved_ip("8.8.8.8") is False
 
 
+def test_is_private_or_reserved_ip_true_for_cgnat() -> None:
+    """100.64.0.0/10 (CGNAT, 云厂商 VPC/K8s 内网常用段) 必须被判为内网。
+
+    Python ipaddress.is_private 不覆盖此段 (它只判 RFC1918 三段), 直接放行
+    会让 SSRF 校验对 100.64.x.x 误判公网; 云环境中该段常用于 VPC/K8s 内网,
+    与 169.254.169.254 一样是 SSRF 跳板高风险目标。
+    """
+    assert is_private_or_reserved_ip("100.64.0.1") is True
+    assert is_private_or_reserved_ip("100.127.255.254") is True
+    assert is_private_or_reserved_ip("100.128.0.1") is False  # 段外仍公网
+
+
 def test_webhooks_module_reexports_for_backward_compat() -> None:
     """isac.control.webhooks 必须继续能导出这三个名字, 不破坏既有调用方。"""
     from isac.control.webhooks import SSRFBlockedError as ReExportedError

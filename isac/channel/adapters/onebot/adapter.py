@@ -285,16 +285,25 @@ class OneBotAdapter(PlatformAdapter):
     # ── 内部：ISACMessage → OneBot ────────────────────────────
 
     def _to_cq_message(self, message: ISACMessage) -> Any:
-        """把 ISACMessage 转换为 CQ 消息。"""
+        """把 ISACMessage 转换为 CQ 消息。
+
+        reply_to 非空时先插 reply 段; 若调用方未显式提供 text 段但有 content,
+        需追加 text 段 —— 此前仅插 reply 段, 非空 content 被挤掉, 出站回复只带
+        引用没有正文。
+        """
         _CQHttp, _CQHttpError, CQSegment = self._ensure_imports()
         cq_segments: list[Any] = []
-        # 如果顶层 reply_to 存在，先插入 reply 段（与入站解析对称）
+        has_text = False
         if message.reply_to:
             cq_segments.append(CQSegment.reply(message.reply_to))
         for seg in message.segments:
             converted = self._to_cq_segment(seg, CQSegment)
             if converted is not None:
+                if seg.type == "text":
+                    has_text = True
                 cq_segments.append(converted)
+        if message.content and not has_text:
+            cq_segments.append(CQSegment.text(message.content))
         if not cq_segments:
             return CQSegment.text(message.content)
         # aiocqhttp Message 支持 list[MessageSegment]

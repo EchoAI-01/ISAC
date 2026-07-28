@@ -16,6 +16,8 @@ import base64
 import json
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from isac.artifacts.models import ArtifactRef
 from isac.core.exceptions import LLMError
 from isac.provider.base import ImageGenerationProvider
@@ -101,7 +103,7 @@ class OpenAICompatImageGenProvider(ImageGenerationProvider):
         client = self._get_client()
         try:
             response = await client.post("/images/generations", json=payload)
-        except TimeoutError as exc:
+        except httpx.TimeoutException as exc:
             raise LLMError(f"图片生成请求超时: {exc}", retriable=True) from exc
         except Exception as exc:
             raise OpenAICompatProvider._wrap_network_error(exc) from exc
@@ -178,7 +180,7 @@ class OpenAICompatImageGenProvider(ImageGenerationProvider):
         client = self._get_client()
         try:
             response = await client.get(request_url, headers=extra_headers or None)
-        except TimeoutError as exc:
+        except httpx.TimeoutException as exc:
             raise LLMError(f"图片下载超时: {exc}", retriable=True) from exc
         except Exception as exc:
             raise OpenAICompatProvider._wrap_network_error(exc) from exc

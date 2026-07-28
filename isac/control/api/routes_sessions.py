@@ -24,7 +24,7 @@ def build_router(
     scope_dependency: Any = None,
 ) -> Any:
     """构造 Sessions Control API 路由。"""
-    from fastapi import APIRouter, Depends, HTTPException
+    from fastapi import APIRouter, Depends, HTTPException, Query
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["sessions"], dependencies=deps)
@@ -50,7 +50,9 @@ def build_router(
         return _session_to_dict(session)
 
     @router.get("/sessions/{session_id}/messages", dependencies=read_deps)
-    async def get_session_messages(session_id: str, limit: int = 100) -> dict:
+    async def get_session_messages(
+        session_id: str, limit: int = Query(default=100, ge=1, le=500)
+    ) -> dict:
         """列出会话消息历史 (从 MetadataStore.episodes 按 session_id 查)。"""
         if metadata_store is None:
             return {"messages": []}

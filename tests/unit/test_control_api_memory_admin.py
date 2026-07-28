@@ -276,3 +276,11 @@ class TestListItemsPagination:
         page2 = client.get("/api/v1/memory/agent-a/items?limit=2&offset=2", headers=headers)
         assert page2.status_code == 200
         assert page2.json()["count"] == 1
+
+    def test_list_items_rejects_unbounded_limit(self, metadata_store: MetadataStore) -> None:
+        client = TestClient(_make_app(metadata_store, {"api_token": "secret-token"}))
+        resp = client.get(
+            "/api/v1/memory/agent-a/items?limit=1000000",
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        assert resp.status_code == 422

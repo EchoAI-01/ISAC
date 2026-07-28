@@ -18,6 +18,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from isac.core.exceptions import LLMError, RateLimitError
 from isac.core.types import LLMChunk, LLMResponse, TokenUsage, ToolCall
 from isac.provider.base import LLMProvider, ModelCapabilities
@@ -107,7 +109,7 @@ class OpenAICompatProvider(LLMProvider):
                     yield chunk
         except (LLMError, RateLimitError):
             raise
-        except TimeoutError as exc:
+        except httpx.TimeoutException as exc:
             raise LLMError(f"OpenAI 请求超时: {exc}", retriable=True) from exc
         except Exception as exc:
             raise self._wrap_network_error(exc) from exc
@@ -214,7 +216,7 @@ class OpenAICompatProvider(LLMProvider):
         client = self._get_client()
         try:
             response = await client.post("/chat/completions", json=payload)
-        except TimeoutError as exc:
+        except httpx.TimeoutException as exc:
             raise LLMError(f"OpenAI 请求超时: {exc}", retriable=True) from exc
         except Exception as exc:
             raise self._wrap_network_error(exc) from exc

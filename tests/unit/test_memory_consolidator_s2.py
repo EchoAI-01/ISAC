@@ -16,6 +16,7 @@ from typing import Any
 import aiosqlite
 import pytest
 
+from isac.core.types import LLMResponse
 from isac.memory.consolidator import ConsolidationResult, MemoryConsolidator
 from isac.memory.storage.metadata import MetadataStore
 
@@ -41,19 +42,31 @@ async def store() -> MetadataStore:
 
 
 class _FakeLLM:
-    """记录 chat 调用 + 返回固定文本 (供画像归纳测试)。"""
+    """记录 chat 调用 + 按真实 LLMProvider 契约返回响应。"""
 
     def __init__(self, response: str = "新归纳的画像文本") -> None:
         self._response = response
         self.calls: list[dict] = []
 
-    async def chat(self, messages: list[dict], **kwargs: Any) -> str:
-        self.calls.append({"messages": messages, "kwargs": kwargs})
-        return self._response
+    async def chat(
+        self,
+        system: str,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        self.calls.append({"system": system, "messages": messages, "tools": tools, "kwargs": kwargs})
+        return LLMResponse(content=self._response)
 
 
 class _BoomLLM:
-    async def chat(self, messages: list[dict], **kwargs: Any) -> str:
+    async def chat(
+        self,
+        system: str,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
         raise RuntimeError("LLM down")
 
 
@@ -85,6 +98,40 @@ async def test_dedup_merges_similar_episodes(store: MetadataStore) -> None:
         cursor = await db.execute("SELECT deleted FROM episodes WHERE id = ?", ("ep_new",))
         row = await cursor.fetchone()
         assert row and row[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_dedup_uses_memory_namespace_for_governance(store: MetadataStore) -> None:
+    await store.store_episode(
+        "shared-memory", {"id": "ep_old", "session_id": "s1", "user_id": "u1", "content": "相同内容"}
+    )
+    await store.store_episode(
+        "shared-memory", {"id": "ep_new", "session_id": "s1", "user_id": "u1", "content": "相同内容"}
+    )
+    async with _connect(store) as db:
+        await db.execute("UPDATE episodes SET created_at = 100 WHERE id = 'ep_old'")
+        await db.execute("UPDATE episodes SET created_at = 200 WHERE id = 'ep_new'")
+        await db.commit()
+
+    result = await MemoryConsolidator(
+        agent_id="agent-a", namespace="shared-memory", metadata=store
+    ).run_once()
+
+    assert result.merged_episodes == 1
+
+
+@pytest.mark.asyncio
+async def test_dedup_does_not_merge_different_private_users(store: MetadataStore) -> None:
+    await store.store_episode(
+        "a1", {"id": "ep_u1", "session_id": "s1", "user_id": "u1", "content": "完全相同的内容"}
+    )
+    await store.store_episode(
+        "a1", {"id": "ep_u2", "session_id": "s2", "user_id": "u2", "content": "完全相同的内容"}
+    )
+
+    result = await MemoryConsolidator(agent_id="a1", namespace="a1", metadata=store).run_once()
+
+    assert result.merged_episodes == 0
 
 
 @pytest.mark.asyncio

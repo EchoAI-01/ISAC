@@ -92,8 +92,8 @@ class PricingCatalog:
         audio_input_price = Decimal(snapshot.audio_input_price_per_unit or snapshot.input_price_per_unit)
         audio_output_price = Decimal(snapshot.audio_output_price_per_unit or snapshot.output_price_per_unit)
 
-        base_prompt_tokens = usage.prompt_tokens - usage.cache_read_tokens - usage.audio_input_tokens
-        base_completion_tokens = usage.completion_tokens - usage.audio_output_tokens
+        base_prompt_tokens = max(0, usage.prompt_tokens - usage.cache_read_tokens - usage.audio_input_tokens)
+        base_completion_tokens = max(0, usage.completion_tokens - usage.audio_output_tokens)
 
         total = (
             Decimal(base_prompt_tokens) * input_price

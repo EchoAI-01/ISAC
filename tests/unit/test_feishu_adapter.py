@@ -15,6 +15,8 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from isac.channel.adapters.feishu.adapter import FeishuAdapter
 from isac.channel.model import ISACMessage
@@ -379,3 +381,63 @@ async def test_start_stop_idempotent_no_port() -> None:
     await adapter.start()  # 重复 start 不重启
     await adapter.stop()
     await adapter.stop()  # 重复 stop 安全
+
+
+def test_webhook_endpoint_accepts_real_fastapi_post() -> None:
+    """用真实 FastAPI + TestClient POST 一个 url_verification 事件, 验证路由签名可绑。
+
+    此前 _handle_event(request: Any) 的 Any 注解会让 FastAPI 把 request 当必填 query
+    参数, 真实 POST 一律 422; 用 TestClient 覆盖端到端入站路径, 防止回归。
+    """
+    adapter = _make_adapter(verification_token="tok-123")
+    app = FastAPI()
+    app.add_api_route("/feishu/events", adapter._handle_event, methods=["POST"])
+    client = TestClient(app)
+
+    resp = client.post(
+        "/feishu/events",
+        json={"challenge": "cj-real", "token": "tok-123", "type": "url_verification"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"challenge": "cj-real"}
+
+
+@pytest.mark.asyncio
+async def test_webhook_rejects_when_verification_token_missing() -> None:
+    """未配置 verification_token 时不应 fail-open 接受任意事件。
+
+    骨架期的"未配置 token 跳过校验"会让伪造身份的 webhook 直接入站; 改为显式拒绝
+    并返回 200 空 dict (不回 challenge, 不调 on_message), 防止假身份注入消息。
+    """
+    adapter = _make_adapter()  # 无 verification_token
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    app = FastAPI()
+    app.add_api_route("/feishu/events", adapter._handle_event, methods=["POST"])
+    client = TestClient(app)
+
+    resp = client.post(
+        "/feishu/events",
+        json={
+            "schema": "2.0",
+            "header": {"event_type": "im.message.receive_v1", "token": "fake-token"},
+            "event": {
+                "sender": {"sender_id": {"open_id": "ou1"}, "sender_type": "user"},
+                "message": {
+                    "message_id": "m1",
+                    "chat_id": "c1",
+                    "message_type": "text",
+                    "content": json.dumps({"text": "hi"}),
+                },
+            },
+        },
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {}
+    assert received == []

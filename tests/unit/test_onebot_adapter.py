@@ -153,6 +153,24 @@ class TestSend:
         call_args = adapter._bot.call_action.call_args
         assert call_args.args[0] == "send_private_msg"
 
+    def test_reply_message_keeps_plain_text_content(self, adapter: OneBotAdapter):
+        msg = ISACMessage(
+            msg_id="out-reply",
+            platform="qq",
+            timestamp=0,
+            user_id="123",
+            user_name="User",
+            content="reply body",
+            reply_to="incoming-1",
+        )
+
+        segments = adapter._to_cq_message(msg)
+
+        assert len(segments) == 2
+        assert segments[0]["type"] == "reply"
+        assert segments[1]["type"] == "text"
+        assert segments[1]["data"]["text"] == "reply body"
+
     @pytest.mark.asyncio
     async def test_send_group_with_segments(self, adapter: OneBotAdapter):
         adapter._bot.call_action = AsyncMock()
