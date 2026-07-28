@@ -43,6 +43,9 @@ class UsageRecorder:
         self._store = store
         self._pricing = pricing
         self._buffer: deque[ModelUsageEvent] = deque(maxlen=buffer_maxlen)
+        self._buffer_maxlen = buffer_maxlen
+        self._dropped_count: int = 0
+        self._dropped_warned = False
         self._flush_interval_seconds = max(0.001, flush_interval_seconds)
         self._running = False
         self._task: asyncio.Task[None] | None = None
@@ -52,10 +55,16 @@ class UsageRecorder:
         """当前缓冲区未落库事件数 (供监控 / 测试)。"""
         return len(self._buffer)
 
+    @property
+    def dropped_count(self) -> int:
+        """缓冲区满后丢弃的事件数 (供监控发现数据失真)。"""
+        return self._dropped_count
+
     def record(self, event: ModelUsageEvent) -> None:
         """缓冲一条用量事件 (同步非阻塞)。
 
         未知价格时保持 ``estimated_cost=None`` (不伪造成本); 任何异常都不冒泡。
+        缓冲区满时丢弃最旧事件并计数 + 首次丢弃 warning (高基数场景下避免日志风暴)。
         """
         try:
             if event.estimated_cost is None and self._pricing is not None:
@@ -63,6 +72,19 @@ class UsageRecorder:
                 if cost is not None:
                     event.estimated_cost = cost
                     event.pricing_version = self._pricing.version
+            if len(self._buffer) >= self._buffer_maxlen:
+                try:
+                    self._buffer.popleft()
+                except IndexError:
+                    pass
+                self._dropped_count += 1
+                if not self._dropped_warned:
+                    logger.warning(
+                        "用量事件缓冲已满, 丢弃最旧事件",
+                        buffer_maxlen=self._buffer_maxlen,
+                        dropped_count=self._dropped_count,
+                    )
+                    self._dropped_warned = True
             self._buffer.append(event)
         except Exception as exc:
             logger.warning("用量事件缓冲失败, 已忽略", error=str(exc))
@@ -343,6 +365,8 @@ class UsageRecorder:
             return
         pending = list(self._buffer)
         self._buffer.clear()
+        if self._dropped_warned:
+            self._dropped_warned = False
         if not pending:
             return
         try:

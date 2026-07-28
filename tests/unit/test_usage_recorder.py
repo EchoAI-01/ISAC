@@ -127,6 +127,33 @@ def test_pricing_audio_tokens_priced_separately() -> None:
     assert catalog.estimate_cost(event) == "1.10"
 
 
+def test_pricing_anomalous_audio_tokens_do_not_produce_negative_cost() -> None:
+    """异常字段 (audio 子集超过父集) 不应让基础 token 变负, 成本不为负。"""
+    catalog = PricingCatalog(
+        [
+            PriceSnapshot(
+                "P", "m", "text", "v1",
+                input_price_per_unit="0.01",
+                output_price_per_unit="0.03",
+                audio_input_price_per_unit="0.1",
+                audio_output_price_per_unit="0.2",
+            )
+        ],
+        version="v1",
+    )
+    event = _event(
+        usage=TokenUsage(
+            prompt_tokens=5,
+            completion_tokens=5,
+            audio_input_tokens=20,
+            audio_output_tokens=15,
+        )
+    )
+    cost = catalog.estimate_cost(event)
+    assert cost is not None
+    assert not cost.startswith("-")
+
+
 def test_pricing_cache_write_tokens_added_as_extra_charge() -> None:
     """cache_write_tokens 目前无 Provider 产生非 0 值; 公式按专属价 (或回退 input 价)
     作为额外加项计入, 不从 prompt_tokens 等字段中减去 (它不是任何字段的子集)。"""
@@ -165,6 +192,20 @@ def test_recorder_buffers_and_applies_pricing() -> None:
     recorder = UsageRecorder(store=None, pricing=catalog)
     recorder.record(_event(usage=TokenUsage(prompt_tokens=10, completion_tokens=0)))
     assert recorder.pending_count == 1
+
+
+def test_recorder_drops_oldest_when_buffer_full_and_counts() -> None:
+    """缓冲区满后丢弃最旧事件, 不静默: dropped_count 递增 + 首次 warning。"""
+    recorder = UsageRecorder(store=None, pricing=None, buffer_maxlen=2)
+    recorder.record(_event(event_id="e1"))
+    recorder.record(_event(event_id="e2"))
+    recorder.record(_event(event_id="e3"))  # e1 被丢弃
+
+    assert recorder.pending_count == 2
+    assert recorder.dropped_count == 1
+    pending_ids = {e.event_id for e in recorder._buffer}  # noqa: SLF001
+    assert pending_ids == {"e2", "e3"}
+
 
 
 def test_recorder_keeps_none_cost_when_unknown() -> None:
