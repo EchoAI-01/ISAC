@@ -17,6 +17,27 @@ if TYPE_CHECKING:
     from isac.runtime.manager import AgentManager
 
 
+def _warn_if_no_auth(api_token: str, parsed_tokens: Any) -> bool:
+    """R4: 控制面已启用但无认证时 CRITICAL 警告 (不阻止启动, 保 dev 模式兼容)。
+
+    create_control_app 被调用即意味着 control.enabled=true, 若 api_token 与
+    tokens[] 均空, 所有 admin 端点 (config edit / plugin load / memory admin /
+    agent create) 全部无认证暴露。生产部署应配 token 或加网络层防护。
+
+    返回 True 表示触发了 CRITICAL 警告, False 表示有认证 (early return)。
+    """
+    if api_token or parsed_tokens:
+        return False
+    from isac.utils.logger import get_logger as _get_logger
+    _get_logger(__name__).critical(
+        "control plane enabled but api_token and tokens[] both empty; "
+        "all admin endpoints are unauthenticated (config edit / plugin load / "
+        "memory admin / agent create etc.). Configure control.api_token or "
+        "control.tokens[] in production."
+    )
+    return True
+
+
 def create_control_app(
     agent_manager: AgentManager,
     router: MessageRouter,
@@ -80,6 +101,8 @@ def create_control_app(
     # Fix-12: control.tokens[] 未配置时 scope_dependency 为 None, 各路由端点的
     # scope 校验整体跳过, 行为与引入本模型之前完全一致 (只有扁平 api_token 认证)。
     parsed_tokens = parse_token_scopes(config)
+    # R4: 控制面已启用但 api_token 与 tokens[] 均空时输出 CRITICAL 警告 (不阻止启动)。
+    _warn_if_no_auth(api_token, parsed_tokens)
     # Fix-17: 认证根本没启用 (开发模式, 没配 api_token 也没配 tokens[]) 时会话
     # Cookie 机制没有意义 (没有 Token 可换); 否则默认启用, 可通过
     # session_auth_enabled=False 显式关闭 (如纯 API 网关场景不需要 WebUI)。
