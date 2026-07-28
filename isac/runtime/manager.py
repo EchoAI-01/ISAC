@@ -836,31 +836,45 @@ class AgentManager:
         无 user_profile 时退化用平台 user_id (与注入器的 session.user_id 兜底一致)。
         agent 键用 instance.agent_id (读侧用 session.agent_id, 二者相同)。
         画像文本的 LLM 归纳留 MemoryConsolidator (MVP 之后), 本回路只做启发式累积。
+
+        R12: 改用 ``increment_person_interaction`` 原子增量更新, 消除
+        read-modify-write 竞态 (同一人并发消息导致 interaction_count 丢失)。
         """
         metadata_store = getattr(instance.memory, "metadata", None)
         if metadata_store is None:
             return  # NoOpMemoryPipeline / memory 未启用
-        from isac.utils.helpers import unix_now
-
         person_id = (getattr(user_profile, "user_id", "") or message.user_id or "").strip()
         if not person_id:
             return
-        existing = await metadata_store.get_person_profile(instance.agent_id, person_id) or {}
-        now = unix_now()
-        await metadata_store.upsert_person_profile(
+        # name 仅在首次出现 (新 person_id) 时用 user_name 兜底; 已存在行由
+        # increment_person_interaction 走 ON CONFLICT DO UPDATE, 不覆盖 name
+        # (避免每次消息把 LLM 归纳的 name 重置为平台 user_name)。
+        name_for_insert = (message.user_name or person_id) if message.user_name else None
+        if not hasattr(metadata_store, "increment_person_interaction"):
+            # 旧 store (或 mock) 不支持新方法 → 保留旧 read-modify-write 路径
+            existing = await metadata_store.get_person_profile(instance.agent_id, person_id) or {}
+            from isac.utils.helpers import unix_now
+            await metadata_store.upsert_person_profile(
+                instance.agent_id,
+                {
+                    "person_id": person_id,
+                    "name": message.user_name or existing.get("name") or message.user_id,
+                    "profile_text": existing.get("profile_text", "") or "",
+                    "traits": existing.get("traits", []) or [],
+                    "relationship_depth": min(
+                        1.0, float(existing.get("relationship_depth", 0.0) or 0.0) + RELATIONSHIP_DEPTH_STEP
+                    ),
+                    "interaction_count": int(existing.get("interaction_count", 0) or 0) + 1,
+                    "first_seen": existing.get("first_seen"),
+                    "last_seen": unix_now(),
+                },
+            )
+            return
+        await metadata_store.increment_person_interaction(
             instance.agent_id,
-            {
-                "person_id": person_id,
-                "name": message.user_name or existing.get("name") or message.user_id,
-                "profile_text": existing.get("profile_text", "") or "",
-                "traits": existing.get("traits", []) or [],
-                "relationship_depth": min(
-                    1.0, float(existing.get("relationship_depth", 0.0) or 0.0) + RELATIONSHIP_DEPTH_STEP
-                ),
-                "interaction_count": int(existing.get("interaction_count", 0) or 0) + 1,
-                "first_seen": existing.get("first_seen") or now,
-                "last_seen": now,
-            },
+            person_id,
+            name=name_for_insert,
+            relationship_depth_step=RELATIONSHIP_DEPTH_STEP,
         )
 
     # ── 路由信息 (注入 MessageRouter 的 agents_provider) ────

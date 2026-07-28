@@ -331,6 +331,71 @@ async def test_person_profile_upsert_and_read(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_increment_person_interaction_is_atomic_and_no_read_modify_write(tmp_path) -> None:
+    """R12: increment_person_interaction 用 INSERT ... ON CONFLICT DO UPDATE SET
+    interaction_count = interaction_count + 1, 消除 read-modify-write 竞态。
+
+    并发 5 次 increment 后 interaction_count 必须为 5 (read-modify-write
+    模式下会因读到旧值而丢失增量)。
+    """
+    import asyncio
+
+    store = MetadataStore(str(tmp_path / "memory.db"))
+    await store.init_schema()
+
+    async def _inc() -> None:
+        await store.increment_person_interaction(
+            "agent_a", "user_1",
+            name="小明", relationship_depth_step=0.01,
+        )
+
+    # 并发 5 次 (read-modify-write 模式下会因竞态丢失部分计数)
+    await asyncio.gather(*[_inc() for _ in range(5)])
+
+    profile = await store.get_person_profile("agent_a", "user_1")
+    assert profile is not None
+    assert profile["interaction_count"] == 5  # 原子累加, 不丢增量
+    assert profile["name"] == "小明"
+    # relationship_depth += 0.01 * 5 = 0.05 (允许浮点误差)
+    assert abs(profile["relationship_depth"] - 0.05) < 1e-9
+
+
+@pytest.mark.asyncio
+async def test_increment_person_interaction_caps_relationship_depth_at_1_0(tmp_path) -> None:
+    """R12: relationship_depth 用 MIN(1.0, ...) 夹住上限。"""
+    store = MetadataStore(str(tmp_path / "memory.db"))
+    await store.init_schema()
+    # 第一次: depth = 0.01, 第二次大步长 +0.8 → 0.81, 第三次 +0.5 → MIN(1.0, 1.31) = 1.0
+    await store.increment_person_interaction("a1", "u1", relationship_depth_step=0.01)
+    await store.increment_person_interaction("a1", "u1", relationship_depth_step=0.8)
+    await store.increment_person_interaction("a1", "u1", relationship_depth_step=0.5)
+    profile = await store.get_person_profile("a1", "u1")
+    assert profile is not None
+    assert profile["relationship_depth"] == 1.0
+    assert profile["interaction_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_increment_person_interaction_first_seen_preserved_on_conflict(tmp_path) -> None:
+    """R12: ON CONFLICT 不修改 first_seen (只在 INSERT 路径生效)。"""
+    store = MetadataStore(str(tmp_path / "memory.db"))
+    await store.init_schema()
+    await store.increment_person_interaction("a1", "u1", now=1000)
+    first = await store.get_person_profile("a1", "u1")
+    assert first is not None
+    assert first["first_seen"] == 1000
+    assert first["last_seen"] == 1000
+
+    # 第二次, now 不同; first_seen 应保留, last_seen 更新
+    await store.increment_person_interaction("a1", "u1", now=2000)
+    second = await store.get_person_profile("a1", "u1")
+    assert second is not None
+    assert second["first_seen"] == 1000  # 保留
+    assert second["last_seen"] == 2000   # 更新
+    assert second["interaction_count"] == 2
+
+
+@pytest.mark.asyncio
 async def test_jargon_upsert_and_list(tmp_path) -> None:
     store = MetadataStore(str(tmp_path / "memory.db"))
     await store.init_schema()
