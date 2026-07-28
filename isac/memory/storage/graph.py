@@ -11,6 +11,7 @@ SQLite 嵌入式方案)。
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -25,32 +26,41 @@ class GraphStore:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._db: Any = None
+        # C1: init_schema TOCTOU 竞态消除 (同 VectorStore 模式)
+        self._lock = asyncio.Lock()
 
     async def init_schema(self) -> None:
         """打开持久连接 + 创建 graph_edges 表。"""
         if self._db is not None:
             return
-        import aiosqlite
+        async with self._lock:
+            if self._db is not None:
+                return
+            import aiosqlite
 
-        db = await aiosqlite.connect(self.db_path)
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS graph_edges (
-                agent_id   TEXT NOT NULL,
-                subject    TEXT NOT NULL,
-                relation   TEXT NOT NULL,
-                object     TEXT NOT NULL,
-                weight     REAL DEFAULT 1.0,
-                created_at INTEGER NOT NULL,
-                PRIMARY KEY (agent_id, subject, relation, object)
+            db = await aiosqlite.connect(self.db_path)
+            # R6: WAL + busy_timeout (持久连接, 一次设置该连接全程生效)。
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA busy_timeout=5000")
+            await db.execute("PRAGMA foreign_keys=ON")
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS graph_edges (
+                    agent_id   TEXT NOT NULL,
+                    subject    TEXT NOT NULL,
+                    relation   TEXT NOT NULL,
+                    object     TEXT NOT NULL,
+                    weight     REAL DEFAULT 1.0,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY (agent_id, subject, relation, object)
+                )
+                """
             )
-            """
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_graph_edges_agent_subject ON graph_edges(agent_id, subject)"
-        )
-        await db.commit()
-        self._db = db
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_graph_edges_agent_subject ON graph_edges(agent_id, subject)"
+            )
+            await db.commit()
+            self._db = db
         logger.info("GraphStore schema 已初始化", path=self.db_path)
 
     async def close(self) -> None:
@@ -72,12 +82,14 @@ class GraphStore:
             weight: 关系强度 (默认 1.0)
         """
         await self.init_schema()
-        await self._db.execute(
-            "INSERT OR REPLACE INTO graph_edges (agent_id, subject, relation, object, weight, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (agent_id, subject, relation, object_, weight, int(time.time())),
-        )
-        await self._db.commit()
+        async with self._lock:
+            assert self._db is not None
+            await self._db.execute(
+                "INSERT OR REPLACE INTO graph_edges (agent_id, subject, relation, object, weight, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (agent_id, subject, relation, object_, weight, int(time.time())),
+            )
+            await self._db.commit()
 
     async def neighbors(
         self, agent_id: str, node: str, relation: str | None = None
@@ -108,5 +120,7 @@ class GraphStore:
     async def delete_by_namespace(self, agent_id: str) -> None:
         """删除某 agent_id 命名空间下的所有边。"""
         await self.init_schema()
-        await self._db.execute("DELETE FROM graph_edges WHERE agent_id = ?", (agent_id,))
-        await self._db.commit()
+        async with self._lock:
+            assert self._db is not None
+            await self._db.execute("DELETE FROM graph_edges WHERE agent_id = ?", (agent_id,))
+            await self._db.commit()

@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from isac.artifacts.store import ArtifactStore
 from isac.main import register_multimodal_providers
 from isac.provider.catalog import ModelCatalog
@@ -124,3 +126,48 @@ def test_register_default_cost_latency_tiers() -> None:
     d = catalog.find_by_operation("image_gen")[0]
     assert d.cost_tier == "standard"  # 默认
     assert d.latency_tier == "standard"  # 默认
+
+
+# ── S6 (O5) 视频生成注册挂点 ─────────────────────────────────
+
+
+def test_register_video_gen_provider() -> None:
+    """配置 kind=video_gen 时注册进 catalog + provider_manager (operations/modalities 正确)。"""
+    from isac.provider.video_gen.openai_compat import OpenAICompatVideoGenProvider
+
+    pm, catalog, store = _build_services()
+    mm_list = [
+        {
+            "kind": "video_gen", "provider": "openai", "api_key": "sk-test",
+            "base_url": "https://api.example.com/v1", "model": "sora-1",
+        }
+    ]
+    register_multimodal_providers(pm, catalog, store, mm_list)
+    descriptors = catalog.find_by_operation("video_gen")
+    assert len(descriptors) == 1
+    d = descriptors[0]
+    assert d.model_id == "sora-1"
+    assert d.modalities_in == {"text"}
+    assert d.modalities_out == {"video"}
+    provider = pm.multimodal_provider("openai", "sora-1")
+    assert isinstance(provider, OpenAICompatVideoGenProvider)
+    # base_url 落到 api_base (构造参数顺序与 image_gen 不同, 用关键字接线)
+    assert provider.api_base == "https://api.example.com/v1"
+    assert provider.api_key == "sk-test"
+
+
+def test_video_gen_not_registered_by_default() -> None:
+    """默认配置无 video_gen 项 → 不注册 (零行为变化)。"""
+    pm, catalog, store = _build_services()
+    register_multimodal_providers(pm, catalog, store, [])
+    assert catalog.find_by_operation("video_gen") == []
+
+
+@pytest.mark.asyncio
+async def test_video_gen_generate_still_raises_until_endpoint_confirmed() -> None:
+    """端点二次确认闸门: generate 仍抛 NotImplementedError (注册不触发调用)。"""
+    from isac.provider.video_gen.openai_compat import OpenAICompatVideoGenProvider
+
+    provider = OpenAICompatVideoGenProvider(api_base="u", api_key="k", model="sora-1")
+    with pytest.raises(NotImplementedError):
+        await provider.generate("一只猫")

@@ -53,7 +53,7 @@ _GROUP_MESSAGE_PATH = "/v2/groups/{group_openid}/messages"
 # token 缓存提前刷新窗口 (秒); QQ 默认 expires_in=7200, 提前 60s 避免临界过期
 _TOKEN_REFRESH_LEAD_SECONDS = 60.0
 # Webhook 默认监听 host/port/path (官方限制端口 80/443/8080/8443, 默认 8443)
-_DEFAULT_WEBHOOK_HOST = "0.0.0.0"
+_DEFAULT_WEBHOOK_HOST = "127.0.0.1"  # O11: 与飞书适配器默认 127.0.0.1 一致, 避免 0.0.0.0 误暴露
 _DEFAULT_WEBHOOK_PORT = 8443
 _DEFAULT_WEBHOOK_PATH = "/qq_official/callback"
 # Ed25519 seed 长度
@@ -97,17 +97,14 @@ class QQOfficialAdapter(PlatformAdapter):
             return
         try:
             import uvicorn
-            from fastapi import FastAPI, Request
+            from fastapi import FastAPI
         except ImportError as exc:  # pragma: no cover - 依赖已在 pyproject.toml
             raise ImportError(
                 "QQ 官方适配器需要 fastapi + uvicorn (已在项目依赖中)。若缺失请运行 uv sync --all-extras"
             ) from exc
         app = FastAPI()
 
-        async def _callback(request: Request) -> dict:
-            return await self._handle_callback(request)
-
-        app.add_api_route(self._webhook_path, _callback, methods=["POST"])
+        app.add_api_route(self._webhook_path, self._handle_callback, methods=["POST"])
         config = uvicorn.Config(
             app, host=self._webhook_host, port=self._webhook_port, log_level="warning",
         )
@@ -197,6 +194,18 @@ class QQOfficialAdapter(PlatformAdapter):
         sig_hex = str(headers.get("X-Signature-Ed25519", "") or "")
         timestamp = str(headers.get("X-Signature-Timestamp", "") or "")
         if not sig_hex or not timestamp:
+            return False
+        # R2: 校验 timestamp 新鲜度, 拒绝重放攻击 (>5 分钟偏离视为重放)。
+        try:
+            ts_int = int(timestamp)
+        except ValueError:
+            logger.warning("QQ 官方 webhook timestamp 非整数, 拒绝")
+            return False
+        if abs(time.time() - ts_int) > 300:
+            logger.warning(
+                "QQ 官方 webhook timestamp 偏离本地时间 >300s, 疑似重放, 拒绝",
+                offset_seconds=int(time.time() - ts_int),
+            )
             return False
         try:
             import binascii
@@ -334,7 +343,12 @@ class QQOfficialAdapter(PlatformAdapter):
             return False
         if resp is None:
             return False
-        code = int(resp.get("code", 0) or 0)
+        # NOTE: 用 `code_raw is None` 判定而非 `or` —— 0 在 Python 是 falsy,
+        # `None or 0 == 0` 会把 code=None (QQ 网关异常返回) 误判为成功。
+        # 与 FeishuAdapter.send() 和同文件 _handle_callback op 判定保持
+        # 一致的 fail-closed 语义 (缺失/None → -1 → 视为失败)。
+        code_raw = resp.get("code")
+        code = -1 if code_raw is None else int(code_raw)
         if code != 0:
             logger.warning("QQ 官方 send 返回非 0 code", code=code, msg=resp.get("message", ""))
             return False

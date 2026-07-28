@@ -17,6 +17,56 @@ if TYPE_CHECKING:
     from isac.runtime.manager import AgentManager
 
 
+def _warn_if_no_auth(api_token: str, parsed_tokens: Any) -> bool:
+    """R4: 控制面已启用但无认证时 CRITICAL 警告 (不阻止启动, 保 dev 模式兼容)。
+
+    create_control_app 被调用即意味着 control.enabled=true, 若 api_token 与
+    tokens[] 均空, 所有 admin 端点 (config edit / plugin load / memory admin /
+    agent create) 全部无认证暴露。生产部署应配 token 或加网络层防护。
+
+    返回 True 表示触发了 CRITICAL 警告, False 表示有认证 (early return)。
+    """
+    if api_token or parsed_tokens:
+        return False
+    from isac.utils.logger import get_logger as _get_logger
+    _get_logger(__name__).critical(
+        "control plane enabled but api_token and tokens[] both empty; "
+        "all admin endpoints are unauthenticated (config edit / plugin load / "
+        "memory admin / agent create etc.). Configure control.api_token or "
+        "control.tokens[] in production."
+    )
+    return True
+
+
+def _register_global_exception_handler(app: Any) -> None:
+    """R14: 全局 exception handler 兜底未捕获异常。
+
+    服务端 exc_info=True 记录完整堆栈, 客户端只返回通用 "internal error"
+    不泄露 Python 类型/字段路径/磁盘 IO 信息。HTTPException 由 FastAPI 默认
+    处理 (保留 status code 和 detail, 各路由已把 detail.message 改通用消息)。
+    """
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+
+    from isac.utils.logger import get_logger as _get_logger
+
+    _global_logger = _get_logger(__name__)
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        _global_logger.error(
+            "Control API 未捕获异常",
+            path=str(request.url.path),
+            method=request.method,
+            error=str(exc),
+            exc_info=True,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": {"code": "INTERNAL_ERROR", "message": "Internal server error"}},
+        )
+
+
 def create_control_app(
     agent_manager: AgentManager,
     router: MessageRouter,
@@ -35,6 +85,7 @@ def create_control_app(
     sparse_resolver: Any = None,
     workflow_engine: Any = None,
     identity_resolver: Any = None,
+    vector_resolver: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -80,6 +131,8 @@ def create_control_app(
     # Fix-12: control.tokens[] 未配置时 scope_dependency 为 None, 各路由端点的
     # scope 校验整体跳过, 行为与引入本模型之前完全一致 (只有扁平 api_token 认证)。
     parsed_tokens = parse_token_scopes(config)
+    # R4: 控制面已启用但 api_token 与 tokens[] 均空时输出 CRITICAL 警告 (不阻止启动)。
+    _warn_if_no_auth(api_token, parsed_tokens)
     # Fix-17: 认证根本没启用 (开发模式, 没配 api_token 也没配 tokens[]) 时会话
     # Cookie 机制没有意义 (没有 Token 可换); 否则默认启用, 可通过
     # session_auth_enabled=False 显式关闭 (如纯 API 网关场景不需要 WebUI)。
@@ -102,7 +155,23 @@ def create_control_app(
     links_path = config.get("links_path", "data/links.jsonc")
     metrics = metrics or get_default_metrics()
 
-    app = FastAPI(title="ISAC Admin API", version="0.1.0", docs_url="/docs")
+    # R15: 生产环境关闭 /docs Swagger UI 和 /openapi.json, 防止误暴露完整
+    # admin 端点列表 + 参数形状。可通过 control.docs_enabled=true 显式开启
+    # (开发/调试场景); 默认关闭 (安全默认)。
+    docs_enabled = bool(config.get("docs_enabled", False))
+    app = FastAPI(
+        title="ISAC Admin API",
+        version="0.1.0",
+        docs_url="/docs" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
+        redoc_url=None if not docs_enabled else "/redoc",
+    )
+
+    # R14: 全局 exception handler 兜底未捕获异常, 服务端 exc_info=True 记录
+    # 完整堆栈, 客户端只返回通用 "internal error" 不泄露 Python 类型/字段
+    # 路径/磁盘 IO 信息。HTTPException 由 FastAPI 默认处理 (保留 status code
+    # 和 detail, 各路由已把 detail.message 改通用消息)。
+    _register_global_exception_handler(app)
     if session_secret is not None:
         # Fix-17: CSRF 双提交校验只对"靠会话 Cookie 认证"的写请求生效, 纯 Bearer
         # Header 认证的 API 客户端不受影响 (见 CSRFProtectionMiddleware 文档字符串)。
@@ -126,7 +195,7 @@ def create_control_app(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
         scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
-        sparse_resolver, workflow_engine, identity_resolver,
+        sparse_resolver, workflow_engine, identity_resolver, vector_resolver,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -249,6 +318,7 @@ def _mount_optional_routers(
     sparse_resolver: Any = None,
     workflow_engine: Any = None,
     identity_resolver: Any = None,
+    vector_resolver: Any = None,
 ) -> None:
     """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events / workflows / identity)。"""
     if usage_store is not None:
@@ -314,6 +384,7 @@ def _mount_optional_routers(
         metadata_store, auth_dependency=auth_dependency,
         scope_dependency=scope_dependency, audit_log=audit_log,
         sparse_resolver=sparse_resolver,
+        vector_resolver=vector_resolver,
     )
     if memory_admin_router is not None:
         app.include_router(memory_admin_router, prefix="/api/v1")

@@ -43,6 +43,16 @@
     //   "cost_tier": "low",
     //   "latency_tier": "standard"
     // },
+    // S6 视频生成注册挂点 (default-off)。⚠ generate 仍抛 NotImplementedError:
+    // 真实端点 (Sora/Runway/Kling 等) 开工前需二次确认; 配置后仅注册进 ModelCatalog,
+    // 不触发调用, 仅 Agent 实际请求视频生成时才暴露"未实现"。
+    // {
+    //   "kind": "video_gen",
+    //   "provider": "openai",
+    //   "api_key": "sk-your-key",
+    //   "base_url": "https://api.example.com/v1",
+    //   "model": "sora-1"
+    // },
     // {
     //   "kind": "stt",
     //   "provider": "openai",
@@ -118,7 +128,20 @@
       //   bge-m3 / jina-embeddings-v3 = 1024
       "dimension": 1536
     },
-    "reranker": {}
+    "reranker": {},
+
+    // S3 图谱召回 (P3, 默认关闭)。enabled=true 后从 query 实体经 GraphStore.neighbors
+    // 扩展关联记忆并入 RRF 融合 (骨架阶段恒空, 需实体抽取 + 写边落地后才有产出)。
+    "graph_recall": {
+      "enabled": false
+    },
+
+    // S2 后台记忆整合 (默认关闭)。enabled=true 后按 interval_seconds 周期去重/剪枝/
+    // 画像归纳 (画像归纳需 llm 已配置; 软删走 N2 治理列, 不硬删)。
+    "consolidation": {
+      "enabled": false,
+      "interval_seconds": 3600
+    }
   },
 
   // P1 拟人化会话运行时 (默认关闭 = 每条消息即时处理, 零行为变化)
@@ -134,8 +157,22 @@
     "max_interrupts_per_turn": 1,
     "proactive": {
       "min_interval_seconds": 600,
-      "poll_interval_seconds": 1.0
+      "poll_interval_seconds": 1.0,
+      // 主动任务生产者 (S1, 默认全关 = 队列恒空, 不主动打扰)。idle_reengage_seconds>0
+      // 时会话静默超阈值主动关心一次; 其余生产者启用后按记忆产出主动任务 (骨架阶段恒空)。
+      "idle_reengage_seconds": 0,
+      "date_reminder_enabled": false,
+      "topic_followup_enabled": false,
+      "memory_association_enabled": false
     }
+  },
+
+  // S4 跨平台身份归一 (P4, 默认关闭 = 走 UserMapper 原路径, 零行为变化)。
+  // enabled=true 后入站消息经 IdentityResolver 归一到统一 person_id, 记忆按归一身份聚合;
+  // heuristic_enabled=true 时按昵称启发式匹配 (低置信, 默认关防误合并)。
+  "identity": {
+    "enabled": false,
+    "heuristic_enabled": false
   },
 
   // 多租户隔离 (O1, 默认关闭 = 单租户零行为变化)
@@ -162,7 +199,13 @@
     "host": "127.0.0.1",
     "port": 8091,
     "agents_dir": "data/agents",
-    "api_token": ""
+    "api_token": "",
+    // S5 Workflow 控制面 (O3/P5, 默认关闭)。enabled=true 后挂载 /api/v1/workflows
+    // (list/get/start) 并按 base_dir 持久化工作流实例。
+    "workflow": {
+      "enabled": false,
+      "base_dir": "data/workflows"
+    }
   },
 
   // Channel 适配器 (Q0 起 4 个平台均在 main() 真实注册, enabled=true 即生效)
@@ -211,6 +254,19 @@
       "webhook_host": "0.0.0.0",
       "webhook_port": 8443,                    // 官方限制端口 80/443/8080/8443
       "webhook_path": "/qq_official/callback"
+    },
+    // 微信 (S7 骨架, 未激活): 走公众号或企业微信官方路径 (个人微信违规不做)。
+    // 骨架阶段 start/stop no-op、send 返回 False, 需 O4 实现节点填充后才可用。
+    "wechat": {
+      "enabled": false,
+      "mode": "wecom",                 // "wecom" 企业微信 | "mp" 公众号
+      "corp_id": "",                   // wecom: 企业 ID
+      "agent_id": "",                  // wecom: 应用 AgentId
+      "secret": "",                    // wecom: 应用 Secret / mp: AppSecret
+      "app_id": "",                    // mp: 公众号 AppID
+      "token": "",                     // 回调 URL 校验 Token
+      "encoding_aes_key": "",          // 消息加解密 (可空=明文模式)
+      "api_base": "https://qyapi.weixin.qq.com"
     },
     // WebChat: 零外部依赖的内置 HTTP 聊天通道, 开箱即可体验:
     //   发消息: curl -X POST http://127.0.0.1:8090/webchat/send \

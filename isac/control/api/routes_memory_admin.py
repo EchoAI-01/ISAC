@@ -46,11 +46,16 @@ def build_router(
     scope_dependency: Any = None,
     audit_log: AuditLog | None = None,
     sparse_resolver: Callable[[str], Any] | None = None,
+    vector_resolver: Callable[[str], Any] | None = None,
 ) -> Any:
     """构造 Memory 治理路由。无 metadata_store 时返回 None (不挂载)。
 
     sparse_resolver (CR3-L3): namespace → SparseBM25Index 的解析函数, 由 main.py
     注入 (build_services 的 sparse_indexes.get); 未注入时治理操作跳过 BM25 同步。
+
+    vector_resolver (R8): namespace → VectorStore | None 的解析函数, 由 main.py
+    注入 (build_services 的 vector_resolver); 未注入时治理操作跳过稠密向量同步,
+    软删除后稠密向量行残留污染召回 (无修复直到下次重启)。
     """
     if metadata_store is None:
         return None
@@ -58,7 +63,11 @@ def build_router(
 
     from isac.memory.model import MemoryGovernor
 
-    governor = MemoryGovernor(metadata_store, sparse_resolver=sparse_resolver)
+    governor = MemoryGovernor(
+        metadata_store,
+        sparse_resolver=sparse_resolver,
+        vector_resolver=vector_resolver,
+    )
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["memory-admin"], dependencies=deps)
     # CR2-Fix-10: scope_dependency 为 None (未配置 control.tokens[]) 时

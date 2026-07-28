@@ -84,6 +84,60 @@ async def test_agent_loop_passes_services_and_appends_tool_result() -> None:
     assert messages[-2]["tool_calls"][0]["function"]["name"] == "service_echo"
 
 
+class NoneContentFinalReplyProvider:
+    """模拟 LLM API 在最终回复里返回 content=None (异常但合规)。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def chat(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs) -> LLMResponse:
+        self.calls += 1
+        if self.calls == 1:
+            return LLMResponse(
+                content=None,
+                tool_calls=[ToolCall(id="tool_1", name="service_echo", arguments={})],
+                usage=TokenUsage(total_tokens=1),
+            )
+        # 最终回复 content=None (某些模型在 stop_by_budget 或纯 reasoning 场景会这样)
+        return LLMResponse(content=None, usage=TokenUsage(total_tokens=1))
+
+    def chat_stream(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs):
+        raise NotImplementedError
+
+    def get_capabilities(self):
+        from isac.core.types import ModelCapabilities
+        return ModelCapabilities(supports_tools=True, supports_streaming=False)
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_normalizes_none_content_to_empty_string() -> None:
+    """R17: 最终回复 content=None 时 AgentResult.content 应归一化为 "".
+
+    原 ``AgentResult(content=response.content)`` 会让 None 传入下游
+    f-string/channel.send 抛 TypeError。改为 ``response.content or ""``。
+    """
+    provider = NoneContentFinalReplyProvider()
+    prompt_builder = SystemPromptBuilder()
+    registry = ToolRegistry()
+    registry.register(ServiceEchoTool())
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=prompt_builder,
+        hooks=AgentHooks(),
+        tools=registry,
+        services={"memory": "memory-service"},
+    )
+    messages: list[dict] = [{"role": "user", "content": "查记忆"}]
+
+    result = await loop.run(messages, make_agent_context())
+
+    # R17: content 应为 "" 而非 None (AgentResult.content 契约为 str)
+    assert result.content == ""
+    assert result.content is not None
+    # 下游 f-string 拼接不应抛 TypeError
+    _ = f"reply: {result.content}"
+
+
 class MultiRoundToolCallingProvider:
     """连续两轮都触发工具调用, 第三轮才产出最终回复。"""
 
@@ -339,3 +393,152 @@ async def test_agent_loop_streaming_executes_assembled_tool_call() -> None:
 
     assert result.content == "done"
     assert provider.stream_calls == 2  # 工具轮 + 最终轮都走流式
+
+
+class _FailingStreamProvider:
+    """流式 Provider: 推一个 chunk 后中途抛异常 (模拟流式响应中途失败)。"""
+
+    def __init__(self) -> None:
+        self.stream_calls = 0
+
+    async def chat(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs) -> LLMResponse:
+        return LLMResponse(content="fallback", usage=TokenUsage())
+
+    async def chat_stream(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs):
+        self.stream_calls += 1
+        yield LLMChunk(delta_content="half-")
+        raise RuntimeError("stream failed mid-way")
+
+    def get_model_name(self) -> str:
+        return "test"
+
+    def get_capabilities(self):  # noqa: ANN201
+        return None
+
+
+@pytest.mark.asyncio
+async def test_streaming_on_error_called_when_chunks_already_pushed() -> None:
+    """C3: 流式响应中途失败且已推送 chunk 时调用 context.on_error(exc)。
+
+    fallback 到 chat_with_retry 仅在 chunks=[] 时触发, 已推送过 chunk
+    后无法干净重试; on_error 让调用方知道"已推送部分后失败", 可选择向
+    用户追加错误标记或回滚已推送 chunks。
+    """
+    provider = _FailingStreamProvider()
+    collected: list[LLMChunk] = []
+    errors: list[Exception] = []
+
+    async def on_chunk(chunk: LLMChunk) -> None:
+        collected.append(chunk)
+
+    async def on_error(exc: Exception) -> None:
+        errors.append(exc)
+
+    ctx = AgentContext(
+        session=object(), user_profile=None, current_message=object(),
+        streaming=True, on_chunk=on_chunk, on_error=on_error,
+    )
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=ToolRegistry(),
+    )
+    # 流式失败后应 raise (loop.run 让异常冒泡)
+    with pytest.raises(RuntimeError, match="stream failed mid-way"):
+        await loop.run([{"role": "user", "content": "hi"}], ctx)
+    # 已推送过一个 chunk
+    assert len(collected) == 1
+    assert collected[0].delta_content == "half-"
+    # C3: on_error 被调用, 拿到原异常
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "stream failed mid-way" in str(errors[0])
+
+
+class _LargeOutputTool(Tool):
+    """返回超大内容的工具, 验证 C4 截断。"""
+
+    BIG_CONTENT = "x" * 20000  # 远超 _MAX_TOOL_RESULT_CHARS=8000
+
+    @property
+    def name(self) -> str:
+        return "big_output"
+
+    @property
+    def description(self) -> str:
+        return "返回大段内容用于测试 C4 截断"
+
+    @property
+    def parameters(self) -> dict:
+        return {"type": "object", "properties": {}}
+
+    async def execute(self, context: ToolContext) -> ToolResult:
+        return ToolResult(content=self.BIG_CONTENT)
+
+
+@pytest.mark.asyncio
+async def test_tool_result_truncated_when_exceeds_max_chars() -> None:
+    """C4: 工具结果超 8000 字符时截断 + 标注 truncation。"""
+    # 用真实 ToolCallingProvider 但把 service_echo 换成 _LargeOutputTool
+    registry = ToolRegistry()
+    registry.register(_LargeOutputTool())
+
+    class _BigToolProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def chat(self, system, messages, tools=None, **kwargs) -> LLMResponse:
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(id="t1", name="big_output", arguments={})],
+                    usage=TokenUsage(total_tokens=1),
+                )
+            return LLMResponse(content="done", usage=TokenUsage(total_tokens=1))
+
+        def chat_stream(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def get_capabilities(self):
+            from isac.core.types import ModelCapabilities
+            return ModelCapabilities(supports_tools=True, supports_streaming=False)
+
+    provider = _BigToolProvider()
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=registry,
+    )
+    messages: list[dict] = [{"role": "user", "content": "hi"}]
+    result = await loop.run(messages, make_agent_context())
+    assert result.content == "done"
+
+    # 验证 tool 消息已被截断 (messages 顺序: user, assistant+tool_calls, tool, assistant final)
+    tool_msg = next(m for m in messages if m.get("role") == "tool")
+    content = tool_msg["content"]
+    # 截断后应含 truncation 标注
+    assert "[truncated" in content
+    # 内容长度应远小于原 20000 字符 (8000 + truncation 文本)
+    assert len(content) < 9000
+    # 不含原始完整内容 (20k 字符的 "x" 串不应在截断后还在)
+    assert "x" * 9000 not in content
+
+
+def test_should_compress_returns_true_when_budget_near_overflow() -> None:
+    """C4: should_compress 在 budget.remaining_tokens <= 20% 时返回 True。"""
+    from isac.core.types import AgentContext
+
+    # max_tokens=8000, used_tokens=0 → remaining=8000 → 20% threshold=1600
+    ctx = AgentContext(session=object(), user_profile=None, current_message=object())
+    assert ctx.should_compress() is False  # remaining=8000 > 1600
+
+    # used_tokens=6500 → remaining=1500 < 1600 → 触发
+    ctx.budget.used_tokens = 6500
+    assert ctx.should_compress() is True
+
+    # used_tokens=6300 → remaining=1700 > 1600 → 不触发
+    ctx.budget.used_tokens = 6300
+    assert ctx.should_compress() is False

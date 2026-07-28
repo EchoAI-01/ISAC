@@ -50,6 +50,10 @@ class WebChatAdapter(PlatformAdapter):
         self.config = config
         self._bind_host = str(config.get("bind_host", "127.0.0.1"))
         self._bind_port = int(config.get("bind_port", 8090))
+        # R3: 可选 shared token 认证。未配置时默认只允许 loopback (127.0.0.1)
+        # 部署, 文档标注 dev-only; 配置 token 后所有 /webchat/* 请求需带
+        # Authorization: Bearer <token>。
+        self._auth_token = str(config.get("auth_token", "") or "")
         self._max_age = int(config.get("max_message_age_seconds", 300))
         self._max_body_bytes = int(config.get("max_body_bytes", DEFAULT_MAX_BODY_BYTES))
         self._read_timeout_seconds = float(
@@ -191,8 +195,8 @@ class WebChatAdapter(PlatformAdapter):
                     parsed = await self._read_request(reader)
                 if parsed is None:
                     return
-                method, path, body = parsed
-                response_body, status = await self._route(method, path, body)
+                method, path, body, auth_header = parsed
+                response_body, status = await self._route(method, path, body, auth_header)
                 await self._write_response(writer, status, response_body)
             except TimeoutError:
                 await self._write_response(writer, 408, b'{"error":"request timeout"}')
@@ -204,8 +208,12 @@ class WebChatAdapter(PlatformAdapter):
                 writer.close()
                 await writer.wait_closed()
 
-    async def _read_request(self, reader: asyncio.StreamReader) -> tuple[str, str, bytes] | None:
-        """读取请求行 + headers + body。请求行不合法返回 None (静默关闭, 与原实现一致)。"""
+    async def _read_request(self, reader: asyncio.StreamReader) -> tuple[str, str, bytes, str] | None:
+        """读取请求行 + headers + body, 返回 (method, path, body, auth_header)。
+
+        请求行不合法返回 None (静默关闭, 与原实现一致)。
+        R3: 同时解析 Authorization 头供 _route 校验。
+        """
         request_line = await reader.readline()
         if not request_line:
             return None
@@ -215,20 +223,24 @@ class WebChatAdapter(PlatformAdapter):
         method, path, _ = parts[0], parts[1], parts[2]
         # 读 headers 直到空行
         content_length = 0
+        auth_header = ""
         while True:
             header_line = await reader.readline()
             if header_line in (b"\r\n", b"\n", b""):
                 break
-            header_str = header_line.decode("utf-8", errors="replace").lower()
-            if header_str.startswith("content-length:"):
+            header_str = header_line.decode("utf-8", errors="replace")
+            lower = header_str.lower()
+            if lower.startswith("content-length:"):
                 content_length = int(header_str.split(":", 1)[1].strip())
+            elif lower.startswith("authorization:"):
+                auth_header = header_str.split(":", 1)[1].strip()
         if content_length > self._max_body_bytes:
             # 在读取 body 前立即拒绝, 不为超大 body 等待/分配内存
             raise _RequestTooLarge(content_length)
         body = b""
         if content_length > 0:
             body = await reader.readexactly(content_length)
-        return method, path, body
+        return method, path, body, auth_header
 
     async def _write_response(self, writer: asyncio.StreamWriter, status: int, body: bytes) -> None:
         """统一写 HTTP 响应 (从原 _handle_connection 内联逻辑抽取, 供正常/超时/超限分支复用)。"""
@@ -241,10 +253,26 @@ class WebChatAdapter(PlatformAdapter):
         writer.write(response)
         await writer.drain()
 
-    async def _route(self, method: str, path: str, body: bytes) -> tuple[bytes, int]:
-        """根据 path 路由到对应处理函数。"""
+    async def _route(
+        self, method: str, path: str, body: bytes, auth_header: str = ""
+    ) -> tuple[bytes, int]:
+        """根据 path 路由到对应处理函数。
+
+        R3: 配置了 auth_token 时, 所有 /webchat/* 请求需带
+        Authorization: Bearer <token> 校验通过才放行; 未配置 token 时
+        假设只部署在 loopback (127.0.0.1), 任何能访问到端口的本地进程
+        都可发消息 (dev-only, 文档已标注)。
+        """
         import json
         from urllib.parse import parse_qs, urlparse
+
+        # R3: token 校验
+        if self._auth_token:
+            import hmac
+
+            expected = f"Bearer {self._auth_token}"
+            if not hmac.compare_digest(auth_header, expected):
+                return b'{"error":"unauthorized"}', 401
 
         parsed = urlparse(path)
         if method == "POST" and parsed.path == "/webchat/send":

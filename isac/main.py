@@ -726,6 +726,13 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         # routes_memory / routes_memory_admin / routes_sessions 在生产从未挂载。
         "metadata_store": metadata_store,
         "sparse_indexes": sparse_indexes,
+        # R7/R8: vector_resolver 让治理 delete/correct/restore 同步稠密向量行
+        # (防止软删除后向量残留污染召回); graph_store 让 _purge_memory 清理
+        # 该 namespace 的全部 edges (重建同名 Agent 不被旧 edges 污染)。
+        "vector_resolver": _vector_store_for,
+        "graph_store": graph_store,
+        # C1: shutdown 时遍历 vector_stores 关闭持久连接
+        "vector_stores": vector_stores,
         # CR3-L2: 租户上下文 (默认单租户 passthrough)
         "tenant_guard": tenant_guard,
         "tenant_context": tenant_context,
@@ -901,6 +908,30 @@ async def _noop_start() -> None:
     return None
 
 
+async def _close_storage_stores(services: dict[str, Any]) -> None:
+    """C1: shutdown 时关闭 VectorStore/GraphStore 持久连接, 防 WAL/SHM 残留 + FD 泄漏。
+
+    此前 storage lifecycle 的 stop 是 _noop_start, 持久连接在进程退出前不显式 close,
+    嵌入启用时长期运行会让 vectors-<ns>.db 的 WAL/SHM 文件残留 + aiosqlite FD 泄漏。
+    """
+    vs_dict = services.get("vector_stores") or {}
+    for ns, store in vs_dict.items():
+        close = getattr(store, "close", None)
+        if callable(close):
+            try:
+                await close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("VectorStore close 失败, 已忽略", namespace=ns, error=str(exc))
+    gs = services.get("graph_store")
+    if gs is not None:
+        close = getattr(gs, "close", None)
+        if callable(close):
+            try:
+                await close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("GraphStore close 失败, 已忽略", error=str(exc))
+
+
 async def main() -> None:
     """应用主入口。
 
@@ -1074,7 +1105,11 @@ async def main() -> None:
     # 再注册到 runtime 的 LIFO 关闭链 (storage 关闭时无显式动作, aiosqlite 每次连接即关)。
     storage_start = services["storage_start"]
     await storage_start()
-    runtime.register_lifecycle("storage", _noop_start, _noop_start)
+
+    # C1: shutdown 时关闭 VectorStore/GraphStore 持久连接, 防 WAL/SHM 残留 + FD 泄漏。
+    # 此前 storage lifecycle 的 stop 是 _noop_start, 持久连接在进程退出前不显式 close,
+    # 嵌入启用时长期运行会让 vectors-<ns>.db 的 WAL/SHM 文件残留 + aiosqlite FD 泄漏。
+    runtime.register_lifecycle("storage", _noop_start, lambda: _close_storage_stores(services))
 
     # J2: 制品存储生命周期 (启动 schema 初始化 + 周期 TTL 扫描; 关闭时 sweep 兜底)。
     # ArtifactStore 在 build_services 中无条件构造, 这里无条件注册: 即使无多模态
@@ -1212,6 +1247,7 @@ async def _register_control_plane(
             sparse_resolver=sparse_indexes.get,
             workflow_engine=workflow_engine,
             identity_resolver=(services or {}).get("identity_resolver"),
+            vector_resolver=(services or {}).get("vector_resolver"),
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))

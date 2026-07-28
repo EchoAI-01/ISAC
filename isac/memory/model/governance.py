@@ -51,6 +51,12 @@ class MemoryGovernor:
     倒排索引里抬高 total_docs/平均长度, 污染存活项的 IDF 与长度归一。未注入时
     跳过同步 (下次重启 warm_up 已按 deleted=0 过滤, 见 metadata.py)。
 
+    R8: vector_resolver 可选注入 (namespace → VectorStore | None), 让 delete/
+    correct/restore 同步稠密向量行 —— 此前软删除只置 deleted=1, 稠密向量行
+    残留在 vectors-<ns>.db, 占用 KNN 槽位 + 召回被治理的条目 (search 不
+    按 deleted 过滤)。未注入时跳过同步 (主链路 pipeline.search 不依赖
+    deleted 标记, 但治理后向量残留仍污染召回)。
+
     CR3-L5: 各治理操作接受 operator 标识 (控制面 token 指纹/调用方名) 并连同
     agent_id 一起落 memory_audit, 让审计能回答"谁做的"而不只是"发生过"。
     """
@@ -60,9 +66,11 @@ class MemoryGovernor:
         metadata_store: MetadataStore | None = None,
         *,
         sparse_resolver: Callable[[str], SparseBM25Index | None] | None = None,
+        vector_resolver: Callable[[str], Any] | None = None,
     ) -> None:
         self._store = metadata_store
         self._sparse_resolver = sparse_resolver
+        self._vector_resolver = vector_resolver
 
     def _db_path(self) -> str | None:
         if self._store is None:
@@ -87,6 +95,23 @@ class MemoryGovernor:
                 sparse.add(item_id, content)
         except Exception as exc:  # noqa: BLE001
             logger.warning("BM25 索引同步失败, 已忽略", item_id=item_id, error=str(exc))
+
+    async def _sync_vector_delete(self, agent_id: str, item_id: str) -> None:
+        """R8: 同步稠密向量行删除。
+
+        VectorStore.delete(memory_id) 从 vectors-<ns>.db 移除稠密向量。
+        resolver 未注入或该 namespace 无 VectorStore 时静默跳过;
+        同步失败只记日志, 不影响治理操作本身的结果。
+        """
+        if self._vector_resolver is None:
+            return
+        try:
+            vector = self._vector_resolver(agent_id)
+            if vector is None:
+                return
+            await vector.delete(item_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("稠密向量同步失败, 已忽略", item_id=item_id, error=str(exc))
 
     async def _item_exists(self, db_path: str, item_id: str, agent_id: str) -> bool:
         """检查 item 是否存在且属于指定 agent_id (幂等判定 + 跨 Agent 越权拦截)。
@@ -219,6 +244,10 @@ class MemoryGovernor:
         # (restore 时才会连内容一起 add 回来)。
         if not is_deleted:
             self._sync_sparse(agent_id, item_id, new_content)
+            # R8: 纠正内容后旧向量与新内容不匹配, 直接删除避免旧向量被召回
+            # (governor 不知道 embedding, 无法重新 upsert; pipeline 下次
+            # store_episode 时会自动 upsert 新向量)
+            await self._sync_vector_delete(agent_id, item_id)
         await self._write_audit(
             db_path, item_id, "correct", agent_id=agent_id, operator=operator, detail=f"revision_id={revision_id}"
         )
@@ -248,6 +277,7 @@ class MemoryGovernor:
             await db.commit()
         logger.info("记忆条目已软删除", item_id=item_id, agent_id=agent_id)
         self._sync_sparse(agent_id, item_id, None)
+        await self._sync_vector_delete(agent_id, item_id)
         await self._write_audit(db_path, item_id, "delete", agent_id=agent_id, operator=operator)
         return True
 
@@ -273,6 +303,9 @@ class MemoryGovernor:
         restored_content = str(row[0]) if row and row[0] else ""
         if restored_content:
             self._sync_sparse(agent_id, item_id, restored_content)
+            # R8: restore 后旧向量已不匹配新内容, delete 旧向量避免被召回;
+            # 下次 store_episode 会重新 upsert 新向量
+            await self._sync_vector_delete(agent_id, item_id)
         await self._write_audit(db_path, item_id, "restore", agent_id=agent_id, operator=operator)
         return True
 

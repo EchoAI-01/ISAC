@@ -2,7 +2,12 @@
 
 [框架已搭建 / scaffolding] 实现 VideoGenerationProvider 契约的落点, 仿 image_gen 结构;
 真实 HTTP 调用留待 O5 实现节点。视频生成 API (Sora/Runway/Kling 等) 多为受限预览,
-**端点开工前需向用户二次确认**, 故 generate 暂抛 NotImplementedError, 不接入 ModelRouter。
+**端点开工前需向用户二次确认**, 故 generate 暂抛 NotImplementedError。
+
+S6: 已接入 main._build_multimodal_provider 的 kind="video_gen" 注册挂点 —— 配置
+multimodal_providers[] 增加 {kind:"video_gen", ...} 即可注册进 ModelCatalog/ModelRouter
+(operations={"video_gen"}, modalities text→video)。默认配置无该项 → 不注册 → 零行为变化;
+注册本身不触发 generate, 仅当 Agent 真正请求视频生成时才暴露"未实现" (端点确定后填充)。
 """
 
 from __future__ import annotations
