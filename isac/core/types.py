@@ -198,6 +198,10 @@ class AgentContext(RuntimeContext):
     available_prompt_tokens: int = 8000
     streaming: bool = False
     on_chunk: Callable[[LLMChunk], Awaitable[None]] | None = None
+    # C3: 流式响应中途失败后已推送过 chunk, fallback 只在 chunks=[] 时触发;
+    # on_error 让调用方知道"已推送部分后失败", 可以选择向用户追加错误标记
+    # 或回滚已推送的 chunks (取决于具体场景)。
+    on_error: Callable[[Exception], Awaitable[None]] | None = None
     # 共享服务字典 (runtime/assembly 注入): gating/agent_manager/session_mgr 等
     # 让 Command 实现能访问 Agent 子系统 (CODE_REVIEW_REPORT.md #10)。
     services: dict[str, Any] = field(default_factory=dict)

@@ -351,6 +351,13 @@ class ISACAgentLoop:
                     messages=messages,
                     tools=tools_def,
                 )
+            # C3: 已推送过 chunk 但中途失败, 无法干净重试; 通知调用方 (追加
+            # 错误标记或回滚已推送 chunks), 再 raise 让上层兜底处理。
+            if chunks and context.on_error is not None:
+                try:
+                    await context.on_error(exc)
+                except Exception as cb_exc:  # noqa: BLE001
+                    logger.warning("on_error 回调异常, 已忽略", error=str(cb_exc))
             raise
         response = self._merge_chunks(chunks)
         self._record_stream_attempt(context, response, start, "success")

@@ -393,3 +393,64 @@ async def test_agent_loop_streaming_executes_assembled_tool_call() -> None:
 
     assert result.content == "done"
     assert provider.stream_calls == 2  # 工具轮 + 最终轮都走流式
+
+
+class _FailingStreamProvider:
+    """流式 Provider: 推一个 chunk 后中途抛异常 (模拟流式响应中途失败)。"""
+
+    def __init__(self) -> None:
+        self.stream_calls = 0
+
+    async def chat(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs) -> LLMResponse:
+        return LLMResponse(content="fallback", usage=TokenUsage())
+
+    async def chat_stream(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs):
+        self.stream_calls += 1
+        yield LLMChunk(delta_content="half-")
+        raise RuntimeError("stream failed mid-way")
+
+    def get_model_name(self) -> str:
+        return "test"
+
+    def get_capabilities(self):  # noqa: ANN201
+        return None
+
+
+@pytest.mark.asyncio
+async def test_streaming_on_error_called_when_chunks_already_pushed() -> None:
+    """C3: 流式响应中途失败且已推送 chunk 时调用 context.on_error(exc)。
+
+    fallback 到 chat_with_retry 仅在 chunks=[] 时触发, 已推送过 chunk
+    后无法干净重试; on_error 让调用方知道"已推送部分后失败", 可选择向
+    用户追加错误标记或回滚已推送 chunks。
+    """
+    provider = _FailingStreamProvider()
+    collected: list[LLMChunk] = []
+    errors: list[Exception] = []
+
+    async def on_chunk(chunk: LLMChunk) -> None:
+        collected.append(chunk)
+
+    async def on_error(exc: Exception) -> None:
+        errors.append(exc)
+
+    ctx = AgentContext(
+        session=object(), user_profile=None, current_message=object(),
+        streaming=True, on_chunk=on_chunk, on_error=on_error,
+    )
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=ToolRegistry(),
+    )
+    # 流式失败后应 raise (loop.run 让异常冒泡)
+    with pytest.raises(RuntimeError, match="stream failed mid-way"):
+        await loop.run([{"role": "user", "content": "hi"}], ctx)
+    # 已推送过一个 chunk
+    assert len(collected) == 1
+    assert collected[0].delta_content == "half-"
+    # C3: on_error 被调用, 拿到原异常
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "stream failed mid-way" in str(errors[0])
