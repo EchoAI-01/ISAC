@@ -726,6 +726,9 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         # routes_memory / routes_memory_admin / routes_sessions 在生产从未挂载。
         "metadata_store": metadata_store,
         "sparse_indexes": sparse_indexes,
+        # R8: vector_resolver 让治理 delete/correct/restore 同步稠密向量行
+        # (防止软删除后向量残留污染召回)。
+        "vector_resolver": _vector_store_for,
         # CR3-L2: 租户上下文 (默认单租户 passthrough)
         "tenant_guard": tenant_guard,
         "tenant_context": tenant_context,
@@ -1212,6 +1215,7 @@ async def _register_control_plane(
             sparse_resolver=sparse_indexes.get,
             workflow_engine=workflow_engine,
             identity_resolver=(services or {}).get("identity_resolver"),
+            vector_resolver=(services or {}).get("vector_resolver"),
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))

@@ -85,6 +85,7 @@ def create_control_app(
     sparse_resolver: Any = None,
     workflow_engine: Any = None,
     identity_resolver: Any = None,
+    vector_resolver: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -194,7 +195,7 @@ def create_control_app(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
         scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
-        sparse_resolver, workflow_engine, identity_resolver,
+        sparse_resolver, workflow_engine, identity_resolver, vector_resolver,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -317,6 +318,7 @@ def _mount_optional_routers(
     sparse_resolver: Any = None,
     workflow_engine: Any = None,
     identity_resolver: Any = None,
+    vector_resolver: Any = None,
 ) -> None:
     """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events / workflows / identity)。"""
     if usage_store is not None:
@@ -382,6 +384,7 @@ def _mount_optional_routers(
         metadata_store, auth_dependency=auth_dependency,
         scope_dependency=scope_dependency, audit_log=audit_log,
         sparse_resolver=sparse_resolver,
+        vector_resolver=vector_resolver,
     )
     if memory_admin_router is not None:
         app.include_router(memory_admin_router, prefix="/api/v1")
