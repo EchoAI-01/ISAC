@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import time
 from typing import Any
@@ -221,8 +222,9 @@ class FeishuAdapter(PlatformAdapter):
             logger.warning("飞书 webhook 未配置 verification_token, 拒绝事件")
             raise ValueError("verification_token not configured")
         token = str((payload.get("header") or {}).get("token", "") or payload.get("token", "") or "")
-        if token != self._verification_token:
-            logger.warning("飞书事件 verification_token 不符, 丢弃", expected=self._verification_token[:4])
+        if not hmac.compare_digest(token, self._verification_token):
+            token_fingerprint = hashlib.sha256(token.encode()).hexdigest()[:8]
+            logger.warning("飞书事件 verification_token 不符, 丢弃", token_fingerprint=token_fingerprint)
             raise ValueError("verification_token mismatch")
 
     def _build_isac_message(self, payload: dict) -> ISACMessage | None:
