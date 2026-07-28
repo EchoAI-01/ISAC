@@ -10,6 +10,7 @@ heuristic_enabled=True 时按 nickname 启发式匹配 (confidence<1.0); bind �
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -342,7 +343,12 @@ class IdentityResolver:
             db.commit()
 
     def list_conflicts(self) -> list[dict[str, Any]]:
-        """读取未裁决的冲突记录 (同步, 供人工裁决界面)."""
+        """读取未裁决的冲突记录 (同步, 供人工裁决界面)。
+
+        Fix-29: 保持同步签名不变 (供既有同步调用方/测试直接调用), 但
+        control/api/routes_identity.py 的 HTTP 路由现在经 asyncio.to_thread
+        调用这个方法, 不再在事件循环里直接跑同步 sqlite3 磁盘 IO。
+        """
         import sqlite3
 
         self._ensure_schema_sync()
@@ -370,11 +376,23 @@ class IdentityResolver:
 
         不存在的 conflict_id 返回 False; 存在但已 resolved 仍幂等返回 True。
         人工选择的 person_id 与自动 winner 不同时, 更新该行的 person_id 字段。
-        """
-        import sqlite3
 
+        Fix-29: 之前声明 async def 但内部全程用同步 sqlite3, 零 await, 实际是
+        阻塞整个事件循环的"伪 async"——控制面这个端点被调用时, 所有平台的消息
+        处理都会停滞。实际的同步 DB 操作现在放进 _resolve_conflict_sync,
+        经 asyncio.to_thread 在线程池执行, 真正不阻塞事件循环。
+        """
         if not conflict_id or not person_id:
             return False
+        resolved = await asyncio.to_thread(self._resolve_conflict_sync, conflict_id, person_id)
+        if resolved:
+            logger.info("身份冲突已裁决", conflict_id=conflict_id, person_id=person_id)
+        return resolved
+
+    def _resolve_conflict_sync(self, conflict_id: str, person_id: str) -> bool:
+        """Fix-29: resolve_conflict 的同步实现, 供 asyncio.to_thread 调用。"""
+        import sqlite3
+
         self._ensure_schema_sync()
         with sqlite3.connect(self._db_path) as db:
             cursor = db.execute(
@@ -388,8 +406,4 @@ class IdentityResolver:
                 (person_id, conflict_id),
             )
             db.commit()
-        logger.info(
-            "身份冲突已裁决",
-            conflict_id=conflict_id, person_id=person_id,
-        )
         return True
