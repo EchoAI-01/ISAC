@@ -20,6 +20,14 @@ from isac.agent.injectors.tools_available import ToolsAvailableInjector
 from isac.agent.loop import ISACAgentLoop
 from isac.agent.prompt_builder import SystemPromptBuilder
 from isac.agent.tools.base import ToolPermission
+from isac.agent.tools.media import (
+    GenerateImageTool,
+    GenerateVideoTool,
+    SynthesizeSpeechTool,
+    TranscribeAudioTool,
+    UnderstandVideoTool,
+    VisionUnderstandTool,
+)
 from isac.agent.tools.registry import ToolRegistry
 from isac.agent.tools.social.ask_agent import AskAgentTool
 from isac.agent.tools.social.fetch_history import FetchHistoryTool
@@ -295,6 +303,18 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(SubagentStatusTool())
     tools.register(SubagentLogTool())
     tools.register(CancelSubagentTool())
+    # Q3 激活: 6 个多模态语义工具接入生产 ToolRegistry。此前这些 Tool 类从未
+    # 在 assembly 注册过, 即使配置了多模态 Provider 也调不到 (LLM schema 里
+    # 根本看不到)。默认权限 deny (ToolPermission.DEFAULT_POLICY), 需 Agent 在
+    # tools_policy 里显式开启对应能力 (如 {"generate_image": "allow"}) 才会
+    # 出现在 LLM schema; model_router/artifact_store/media_normalizer 经 shared
+    # services 自动流到 ToolContext.services (main.py 装配的键)。
+    tools.register(GenerateImageTool())
+    tools.register(GenerateVideoTool())
+    tools.register(TranscribeAudioTool())
+    tools.register(SynthesizeSpeechTool())
+    tools.register(VisionUnderstandTool())
+    tools.register(UnderstandVideoTool())
     prompt_builder.register(ToolsAvailableInjector(tools))
 
     # E4 命令注册表: commands_allow 矩阵在 try_execute 时生效
