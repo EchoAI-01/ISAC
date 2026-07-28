@@ -13,8 +13,9 @@ from typing import Any
 
 import pytest
 
-from isac.channel.model import MessageSegment
+from isac.channel.model import ISACMessage, MessageSegment
 from isac.channel.registry import ChannelRegistry
+from isac.core.constants import INTERAGENT_PLATFORM
 from isac.core.types import LLMResponse
 from isac.gateway.event_bus import EventBus
 from isac.gateway.lock import SessionLockManager
@@ -140,3 +141,89 @@ async def test_drain_waits_for_inflight_messages() -> None:
 
     await drain()
     assert len(channel.replies) == 1  # drain 等到在途消息处理完, 不丢消息
+
+
+# ── R2-1: 跨 Agent (bus) 投递必须复用会话锁 ──────────────────────
+
+
+async def _build_manager(provider: FakeLLMProvider, agent_ids: list[str]) -> AgentManager:
+    """构造带真实 session_lock 的 AgentManager + 若干运行中 Agent (共享同一 provider)。"""
+    metrics = get_default_metrics()
+    provider_manager = ProviderManager({}, metrics=metrics)
+    provider_manager.register(provider)
+    services: dict[str, Any] = {
+        "global_config": {},
+        "provider_manager": provider_manager,
+        "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+        "metrics": metrics,
+        "session_lock": SessionLockManager(),
+    }
+    agent_manager = AgentManager(services)
+    for aid in agent_ids:
+        await agent_manager.create(AgentConfig(agent_id=aid, display_name=aid.upper()))
+        await agent_manager.start(aid)
+    return agent_manager
+
+
+def _interagent_msg(from_agent: str) -> ISACMessage:
+    """构造一条互联平台消息 (门控豁免 → 必进 Loop, 便于测并发峰值)。"""
+    return ISACMessage(
+        msg_id="",
+        platform=INTERAGENT_PLATFORM,
+        timestamp=0,
+        user_id=from_agent,
+        user_name="",
+        group_id=None,
+        content="来自互联的消息",
+    )
+
+
+@pytest.mark.asyncio
+async def test_raw_handle_message_same_session_overlaps_without_lock() -> None:
+    """R2-1 前提: 直调 handle_message (旧 _deliver_to_agent 路径) 不串行 —— 同一
+    互联会话的并发投递会重叠 (并发峰值 2), 这正是 R2-1 要修的绕锁缺陷。"""
+    provider = SlowFakeProvider(delay=0.1)
+    manager = await _build_manager(provider, ["a"])
+    msg = _interagent_msg("b")
+    session = await SessionManager({}).get_or_create(msg, agent_id="a")
+
+    await asyncio.gather(
+        manager.handle_message("a", msg, session, None),
+        manager.handle_message("a", msg, session, None),
+    )
+    await manager.drain_background_tasks()
+    assert provider.max_concurrency == 2  # 无锁: 重叠
+
+
+@pytest.mark.asyncio
+async def test_interagent_delivery_same_session_serialized() -> None:
+    """R2-1: 同一 (目标 Agent, 互联会话) 的并发投递经 handle_message_serialized 串行。"""
+    provider = SlowFakeProvider(delay=0.1)
+    manager = await _build_manager(provider, ["a"])
+    msg = _interagent_msg("b")
+    session = await SessionManager({}).get_or_create(msg, agent_id="a")
+
+    await asyncio.gather(
+        manager.handle_message_serialized("a", msg, session, None),
+        manager.handle_message_serialized("a", msg, session, None),
+    )
+    await manager.drain_background_tasks()
+    assert provider.max_concurrency == 1  # 会话锁保证同会话不并行
+
+
+@pytest.mark.asyncio
+async def test_interagent_delivery_different_targets_stay_parallel() -> None:
+    """R2-1: 不同目标 Agent 的并发投递仍可并行 (不同实例/会话状态, 锁键含 agent_id)。"""
+    provider = SlowFakeProvider(delay=0.15)
+    manager = await _build_manager(provider, ["a", "c"])
+    msg = _interagent_msg("b")
+    session_mgr = SessionManager({})
+    sess_a = await session_mgr.get_or_create(msg, agent_id="a")
+    sess_c = await session_mgr.get_or_create(msg, agent_id="c")
+
+    await asyncio.gather(
+        manager.handle_message_serialized("a", msg, sess_a, None),
+        manager.handle_message_serialized("c", msg, sess_c, None),
+    )
+    await manager.drain_background_tasks()
+    assert provider.max_concurrency == 2  # 不同目标不互相阻塞

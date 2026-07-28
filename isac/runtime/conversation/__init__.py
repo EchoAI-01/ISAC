@@ -20,6 +20,7 @@ from isac.runtime.conversation.models import (
     WaitState,
 )
 from isac.runtime.conversation.proactive import ProactiveTaskQueue
+from isac.runtime.conversation.producer import IdleReengageProducer
 from isac.runtime.conversation.recovery import ConversationSnapshot, ConversationStateStore
 from isac.runtime.conversation.registry import ConversationRuntimeRegistry
 from isac.runtime.conversation.runtime import ConversationRuntime
@@ -32,6 +33,7 @@ __all__ = [
     "ConversationState",
     "ConversationStateStore",
     "ForcedTurnState",
+    "IdleReengageProducer",
     "InterruptState",
     "ProactiveScheduler",
     "ProactiveTask",

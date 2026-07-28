@@ -150,6 +150,35 @@ class TestAuditLogging:
         actions = [entry["action"] for entry in audit_resp.json()]
         assert "freeze_memory_item" in actions
 
+    def test_unified_audit_records_operator_fingerprint_not_generic(
+        self, metadata_store: MetadataStore, tmp_path: Path
+    ) -> None:
+        """L5: 统一审计日志的 actor 应是操作者的 token 指纹 (真实归因), 而非固定
+        占位值 "authenticated" —— 让 GET /api/v1/audit 能回答"谁冻结的记忆"。
+
+        memory_audit 内部表在 CR3 已落真实 operator; 但项目统一审计 (data/audit.ndjson,
+        可经 GET /api/v1/audit 查询) 仍丢弃已解析出的 operator、硬写 "authenticated"。
+        本测试证明该缺口并守护修复。
+        """
+        import asyncio
+
+        from isac.control.auth import token_fingerprint
+
+        asyncio.run(_seed_episode(metadata_store, agent_id="agent-a", item_id="ep1"))
+        audit_path = tmp_path / "audit.ndjson"
+        client = TestClient(
+            _make_app(metadata_store, {"api_token": "secret-token", "audit_log_path": str(audit_path)})
+        )
+        headers = {"Authorization": "Bearer secret-token"}
+        resp = client.post("/api/v1/memory/agent-a/items/ep1/freeze", headers=headers)
+        assert resp.status_code == 200
+        audit_resp = client.get("/api/v1/audit", headers=headers)
+        assert audit_resp.status_code == 200
+        freeze_entries = [e for e in audit_resp.json() if e["action"] == "freeze_memory_item"]
+        assert freeze_entries, "统一审计日志里应有 freeze_memory_item 记录"
+        assert freeze_entries[0]["actor"] == token_fingerprint("secret-token")
+        assert freeze_entries[0]["actor"] != "authenticated"
+
 
 class TestAgentIdCrossTenantValidation:
     """CR2-Fix-11: 治理操作按 URL 里的 agent_id 校验, 不能用别的 agent_id 段操作

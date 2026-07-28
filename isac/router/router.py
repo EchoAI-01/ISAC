@@ -110,10 +110,28 @@ class MessageRouter:
             return None
         return agent_id
 
+    def _gc_expired_handoffs(self) -> None:
+        """R2-4: 清理所有已过期的会话移交。
+
+        get_handoff 只惰性清理被查询的那个 key; 若某会话 handoff 后再无消息触发
+        route(), 其过期条目会永久驻留内存。对齐 SessionManager._gc_expired 的做法,
+        在 route() 入口无条件扫描 (handoffs 通常极少, 空字典时直接返回零开销)。
+        """
+        if not self._handoffs:
+            return
+        now = time.monotonic()
+        expired = [key for key, (_agent, expires_at) in self._handoffs.items() if now >= expires_at]
+        for key in expired:
+            del self._handoffs[key]
+        if expired:
+            logger.debug("清理过期会话移交", count=len(expired))
+
     # ── 路由 ────────────────────────────────────────────────
 
     async def route(self, message: ISACMessage) -> RoutingDecision | None:
         """决定消息归属。返回 None 表示 DROP。"""
+        # R2-4: 先清理所有过期移交 (含非活跃会话的残留), 再走常规路由
+        self._gc_expired_handoffs()
         # P2: 会话移交覆盖 (最高优先级; handoff 后该会话由接手 Agent 处理)
         handoff_agent = self.get_handoff(message.platform, message.group_id, message.user_id)
         if handoff_agent:
