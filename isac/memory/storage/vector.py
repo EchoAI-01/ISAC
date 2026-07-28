@@ -7,7 +7,9 @@ vectors 通过 memory_id 关联 MetadataStore; 按 agent_id 过滤在查询层�
 (VectorStore 本身不隔离 agent_id, 由调用方 SQL JOIN episodes 实现)。
 
 生命周期: init_schema 打开持久连接 (复用, 支持 :memory: 内存库);
-close 关闭连接。未 close 时进程退出连接自动释放。
+close 关闭连接, purge 关闭连接并删除 DB 文件 (namespace 级清理用)。未 close
+时进程退出连接自动释放。close/purge/search 与 upsert/delete 共享同一把锁
+(Fix-26), 保证任一操作不会在另一操作的事务/查询中途把连接关掉。
 """
 
 from __future__ import annotations
@@ -64,10 +66,42 @@ class VectorStore:
         logger.info("VectorStore schema 已初始化", path=self.db_path, dim=self.dimension)
 
     async def close(self) -> None:
-        """关闭持久连接。"""
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
+        """关闭持久连接。
+
+        Fix-26: 与 upsert/delete/search 共享 ``_init_lock``——此前 close() 不
+        持锁, 可以在另一协程持锁执行 DELETE→INSERT→commit 的事务中途把底层
+        aiosqlite 连接关掉 (``Cannot operate on a closed database``), 被
+        调用方 broad except 静默吞掉表现为一条记忆写入丢失。两条生产路径可
+        触发: AgentManager.destroy(keep_memory=False) 清理时若该 Agent 有
+        在途写入; 优雅关闭 drain_inflight() 超时后仍对所有 store 调 close()。
+        现在 close() 等锁释放后才真正关闭, 与其它操作天然互斥, 不会中途打断。
+        """
+        async with self._init_lock:
+            if self._db is not None:
+                await self._db.close()
+                self._db = None
+
+    async def purge(self) -> None:
+        """关闭连接 + 删除底层 DB 文件 (:memory: 除外)。
+
+        Fix-26: 供 namespace 级清理复用 (原 R7 落地时这段"关闭+删文件"逻辑写在
+        ``runtime/manager.py``, 用 ``getattr`` 探测 close/db_path 是否存在——
+        这是 VectorStore 自身的实现细节 (选择用单文件 SQLite 存储), 泄露到了
+        调用方。现在下沉为方法, 调用方不需要知道"向量库是单文件 SQLite"这个
+        细节, 也不需要再对 close()/db_path 做存在性猜测。
+        """
+        import os
+
+        def _remove_if_exists(path: str) -> None:
+            if os.path.exists(path):
+                os.remove(path)
+
+        async with self._init_lock:
+            if self._db is not None:
+                await self._db.close()
+                self._db = None
+            if self.db_path and self.db_path != ":memory:":
+                await asyncio.to_thread(_remove_if_exists, self.db_path)
 
     async def upsert(self, memory_id: str, embedding: list[float]) -> None:
         """写入/更新向量 (同 memory_id 覆盖; vec0 不支持 INSERT OR REPLACE, 先 DELETE 再 INSERT)。
@@ -107,13 +141,18 @@ class VectorStore:
             raise ValueError(
                 f"query 维度 {len(query_embedding)} 与 store.dimension {self.dimension} 不匹配"
             )
-        cursor = await self._db.execute(
-            "SELECT memory_id, distance FROM vectors "
-            "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
-            (self._encode_embedding(query_embedding), top_k),
-        )
-        rows = await cursor.fetchall()
-        await cursor.close()
+        # Fix-26: 读路径纳入锁保护, 避免 close()/purge() 在查询执行中途把连接
+        # 关掉 (读比写更常发生, 是竞态实际最容易被触发的路径)。
+        async with self._init_lock:
+            if self._db is None:
+                return []
+            cursor = await self._db.execute(
+                "SELECT memory_id, distance FROM vectors "
+                "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+                (self._encode_embedding(query_embedding), top_k),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
         return [(str(row[0]), float(row[1])) for row in rows]
 
     async def delete(self, memory_id: str) -> None:

@@ -80,6 +80,49 @@ def test_registry_enforces_fifo_cap() -> None:
     assert len(reg) == 2
 
 
+@pytest.mark.asyncio
+async def test_registry_fifo_cap_skips_waiting_session() -> None:
+    """Fix-32: 淘汰应跳过正处于 WAITING 的会话, 即便它插入顺序最旧;
+    改淘汰次旧但非 WAITING 者, 避免把一个进行中的会话腰斩 (message_cache/
+    interrupt_state 等状态被静默清空)。"""
+    reg = ConversationRuntimeRegistry(max_runtimes=3)
+    s1 = reg.get("a", "s1")
+    await s1.enter_wait(
+        WaitState(tool_call_id="c1", started_at=1.0, requested_seconds=5.0, reason="等回复")
+    )
+    s2 = reg.get("a", "s2")
+    s3 = reg.get("a", "s3")
+    assert len(reg) == 3
+
+    reg.get("a", "s4")  # 触发淘汰: s1(WAITING) 应被跳过, 改淘汰次旧的 s2
+
+    assert len(reg) == 3
+    assert reg.get("a", "s1") is s1  # WAITING 会话未被淘汰, 仍是原实例
+    assert reg.get("a", "s3") is s3  # 未涉及的会话不受影响
+    assert reg.get("a", "s2") is not s2  # s2 被淘汰, 再次 get 是全新实例
+
+    s1.resolve_wait(WaitEndReason.TIMEOUT)  # 清理: 取消超时定时器, 避免测试遗留悬挂任务
+
+
+@pytest.mark.asyncio
+async def test_registry_fifo_cap_falls_back_to_oldest_when_all_waiting() -> None:
+    """全部会话都在 WAITING 时软上限保护优先于等待保护: 仍必须淘汰一个 (退回
+    淘汰最旧者), 否则软上限形同虚设、无界增长的风险重新出现。"""
+    reg = ConversationRuntimeRegistry(max_runtimes=2)
+    s1 = reg.get("a", "s1")
+    await s1.enter_wait(WaitState(tool_call_id="c1", started_at=1.0, requested_seconds=5.0, reason="r1"))
+    s2 = reg.get("a", "s2")
+    await s2.enter_wait(WaitState(tool_call_id="c2", started_at=1.0, requested_seconds=5.0, reason="r2"))
+
+    reg.get("a", "s3")  # s1/s2 都在 WAITING, 仍必须淘汰一个 (最旧的 s1)
+
+    assert len(reg) == 2
+    assert reg.get("a", "s2") is s2  # 次旧的 s2 保留 (WAITING 但非最旧)
+    assert reg.get("a", "s1") is not s1  # 最旧的 s1 仍被淘汰 (软上限优先)
+
+    s2.resolve_wait(WaitEndReason.TIMEOUT)  # 清理: 取消超时定时器
+
+
 def test_registry_discard() -> None:
     reg = ConversationRuntimeRegistry()
     reg.get("a1", "s1")

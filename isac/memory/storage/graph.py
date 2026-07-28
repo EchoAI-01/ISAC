@@ -64,10 +64,16 @@ class GraphStore:
         logger.info("GraphStore schema 已初始化", path=self.db_path)
 
     async def close(self) -> None:
-        """关闭持久连接。"""
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
+        """关闭持久连接。
+
+        Fix-26: 与 add_edge/delete_by_namespace/neighbors 共享同一把锁 (同
+        VectorStore 的问题与修复, 见 vector.py close() 的注释)——之前 close()
+        不持锁, 可能在另一协程持锁写入/查询中途把连接关掉。
+        """
+        async with self._lock:
+            if self._db is not None:
+                await self._db.close()
+                self._db = None
 
     async def add_edge(
         self, agent_id: str, subject: str, relation: str, object_: str, weight: float = 1.0
@@ -102,19 +108,23 @@ class GraphStore:
             relation: 可选, 过滤特定关系 (None 表示所有关系)
         """
         await self.init_schema()
-        if relation is None:
-            cursor = await self._db.execute(
-                "SELECT object, weight FROM graph_edges WHERE agent_id = ? AND subject = ? ORDER BY weight DESC",
-                (agent_id, node),
-            )
-        else:
-            cursor = await self._db.execute(
-                "SELECT object, weight FROM graph_edges WHERE agent_id = ? AND subject = ? AND relation = ? "
-                "ORDER BY weight DESC",
-                (agent_id, node, relation),
-            )
-        rows = await cursor.fetchall()
-        await cursor.close()
+        # Fix-26: 读路径纳入锁保护, 避免 close() 在查询执行中途把连接关掉。
+        async with self._lock:
+            if self._db is None:
+                return []
+            if relation is None:
+                cursor = await self._db.execute(
+                    "SELECT object, weight FROM graph_edges WHERE agent_id = ? AND subject = ? ORDER BY weight DESC",
+                    (agent_id, node),
+                )
+            else:
+                cursor = await self._db.execute(
+                    "SELECT object, weight FROM graph_edges WHERE agent_id = ? AND subject = ? AND relation = ? "
+                    "ORDER BY weight DESC",
+                    (agent_id, node, relation),
+                )
+            rows = await cursor.fetchall()
+            await cursor.close()
         return [(str(row[0]), float(row[1])) for row in rows]
 
     async def delete_by_namespace(self, agent_id: str) -> None:

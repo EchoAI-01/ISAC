@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
+
 import pytest
 
 from isac.agent.loop import AgentResult
@@ -225,6 +228,124 @@ async def test_load_persisted_agents_missing_dir_returns_empty(tmp_path) -> None
 
     report = await load_persisted_agents(manager, str(tmp_path / "nonexistent"))
     assert report == {}
+
+
+# ── Fix-26: destroy(keep_memory=False) 真实清理 vector/graph (R7 此前零测试覆盖) ──
+
+
+async def _make_memory_backed_manager(tmp_path):
+    """真实 MetadataStore + 按 namespace 惰性创建的 VectorStore + 共享 GraphStore,
+    services 里同时注入 vector_resolver/graph_store (与 main.py build_services 的
+    生产接线一致), 才能真正走到 _purge_vector_and_graph 里的两条清理路径
+    (此前全仓无任何测试这样接线过, keep_memory=False 从未被真实测试触发)。"""
+    from isac.memory.embedder import EmbeddingManager
+    from isac.memory.pipeline import MemoryRetrievalPipeline
+    from isac.memory.storage.graph import GraphStore
+    from isac.memory.storage.metadata import MetadataStore
+    from isac.memory.storage.sparse import SparseBM25Index
+    from isac.memory.storage.vector import VectorStore
+
+    metadata_store = MetadataStore(str(tmp_path / "metadata.db"))
+    await metadata_store.init_schema()
+    graph_store = GraphStore(str(tmp_path / "graph.db"))
+    vector_stores: dict[str, VectorStore] = {}
+    sparse_indexes: dict[str, SparseBM25Index] = {}
+
+    def _vector_store_for(namespace: str) -> VectorStore:
+        store = vector_stores.get(namespace)
+        if store is None:
+            store = VectorStore(str(tmp_path / f"vectors-{namespace}.db"), dimension=4)
+            vector_stores[namespace] = store
+        return store
+
+    def memory_factory(namespace: str) -> MemoryRetrievalPipeline:
+        return MemoryRetrievalPipeline(
+            namespace=namespace,
+            metadata=metadata_store,
+            vector=_vector_store_for(namespace),
+            sparse=sparse_indexes.setdefault(namespace, SparseBM25Index()),
+            graph=graph_store,
+            embedder=EmbeddingManager({}),  # 降级纯稀疏, 不会真的触发 embedding API
+            reranker=None,
+        )
+
+    manager = AgentManager(
+        {
+            "provider_manager": ProviderManager({}),
+            "memory_factory": memory_factory,
+            "global_config": {},
+            "vector_resolver": _vector_store_for,
+            "graph_store": graph_store,
+        }
+    )
+    manager._services["provider_manager"].register(StubProvider())  # noqa: SLF001
+    await manager.create(AgentConfig(agent_id=AGENT_ID))
+    await manager.start(AGENT_ID)
+    return manager, metadata_store, vector_stores, graph_store
+
+
+@pytest.mark.asyncio
+async def test_destroy_keep_memory_false_purges_vector_file_and_graph_edges(tmp_path) -> None:
+    """Fix-26 (R7 补测): destroy(keep_memory=False) 应真正删除该 namespace 的
+    vector DB 文件、清空 graph edges、清空 metadata episodes——之前这条路径
+    (_purge_vector_and_graph) 在 1442 个单测里零覆盖。"""
+    manager, metadata_store, vector_stores, graph_store = await _make_memory_backed_manager(tmp_path)
+    instance = await manager.get(AGENT_ID)
+    namespace = instance.memory.namespace
+
+    # 直接写一条 episode + 一条向量 + 一条 graph edge, 模拟"已经聊过一段时间"
+    await metadata_store.store_episode(
+        namespace, {"session_id": "s1", "user_id": "u1", "group_id": "", "content": "hello"}
+    )
+    vector = vector_stores[namespace]
+    await vector.upsert("fake-memory-id", [1.0, 0.0, 0.0, 0.0])
+    await graph_store.add_edge(namespace, "user:u1", "member_of", "group:g1")
+    db_path = vector.db_path
+    assert await asyncio.to_thread(Path(db_path).exists)
+
+    await manager.destroy(AGENT_ID, keep_memory=False)
+
+    assert not await asyncio.to_thread(Path(db_path).exists)  # vector DB 文件已删除
+    assert await graph_store.neighbors(namespace, "user:u1") == []  # graph edges 已清空
+    assert await metadata_store.iter_episodes_by_namespace(namespace) == []  # episodes 已清空
+
+
+@pytest.mark.asyncio
+async def test_destroy_keep_memory_true_does_not_purge(tmp_path) -> None:
+    """对照: keep_memory=True (默认) 时不应触碰 vector/graph/metadata 数据。"""
+    manager, metadata_store, vector_stores, graph_store = await _make_memory_backed_manager(tmp_path)
+    instance = await manager.get(AGENT_ID)
+    namespace = instance.memory.namespace
+    vector = vector_stores[namespace]
+    await vector.upsert("fake-memory-id", [1.0, 0.0, 0.0, 0.0])
+    db_path = vector.db_path
+
+    await manager.destroy(AGENT_ID, keep_memory=True)
+
+    assert await asyncio.to_thread(Path(db_path).exists)  # 未被清理
+
+
+@pytest.mark.asyncio
+async def test_destroy_keep_memory_false_waits_for_in_flight_memory_write(tmp_path) -> None:
+    """Fix-26: destroy(keep_memory=False) 清理前必须等该 Agent 在途的记忆写入
+    任务结束, 不能让 purge 与仍在跑的 store_episode 交错。用 _schedule_memory_write
+    模拟"回复刚产出, 后台写入还没完成"再立即 destroy, 断言 destroy() 返回时
+    该任务一定已经 done (证明确实等过, 不是碰巧先完成)。"""
+    from isac.channel.model import ISACMessage
+    from isac.gateway.models import Session
+
+    manager, metadata_store, vector_stores, graph_store = await _make_memory_backed_manager(tmp_path)
+    instance = await manager.get(AGENT_ID)
+    session = Session(session_id="s1", user_id="u1", platform="webchat")
+    message = ISACMessage(
+        msg_id="m1", platform="webchat", timestamp=0, user_id="u1", user_name="u1", content="你好",
+    )
+    manager._schedule_memory_write(instance, message, session, None, "回复内容")  # noqa: SLF001
+    scheduled_task = next(iter(manager._memory_tasks))  # noqa: SLF001
+
+    await manager.destroy(AGENT_ID, keep_memory=False)
+
+    assert scheduled_task.done()  # destroy() 必须等它完成才能返回
 
 
 @pytest.mark.asyncio

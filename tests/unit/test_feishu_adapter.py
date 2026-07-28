@@ -131,6 +131,55 @@ async def test_url_verification_encrypted_mode_decrypts_challenge() -> None:
     assert resp == {"challenge": challenge}
 
 
+@pytest.mark.asyncio
+async def test_plaintext_body_rejected_when_encrypt_key_configured() -> None:
+    """Fix-23 回归: 配置了 encrypt_key 后, 不含 "encrypt" 字段的明文伪造请求必须
+    被拒绝, 不能既不知道 encrypt_key 也不知道 verification_token 就让伪造消息
+    绕过验证直达 on_message。"""
+    adapter = _make_adapter(encrypt_key="my-encrypt-key", verification_token="tok-123")
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    forged_plaintext = {
+        "schema": "2.0",
+        "header": {"event_type": "im.message.receive_v1"},
+        "event": {
+            "sender": {"sender_id": {"open_id": "attacker"}},
+            "message": {
+                "message_id": "om_forged",
+                "chat_id": "oc_forged",
+                "message_type": "text",
+                "content": json.dumps({"text": "forged, attacker knows neither secret"}),
+            },
+        },
+    }
+
+    class _Req:
+        async def json(self) -> Any:
+            return forged_plaintext
+
+    resp = await adapter._handle_event(_Req())
+    assert resp == {}
+    assert received == []  # 必须没有任何伪造消息进入主链路
+
+
+@pytest.mark.asyncio
+async def test_plaintext_url_verification_rejected_when_encrypt_key_configured() -> None:
+    """Fix-23 回归: 加密模式下明文 url_verification 挑战同样必须被拒绝 (不回
+    challenge), 而不是被当作"未加密所以走明文校验"处理。"""
+    adapter = _make_adapter(encrypt_key="my-encrypt-key", verification_token="tok-123")
+
+    class _Req:
+        async def json(self) -> Any:
+            return {"challenge": "cj-plaintext", "token": "tok-123", "type": "url_verification"}
+
+    resp = await adapter._handle_event(_Req())
+    assert resp == {}  # 不回 challenge
+
+
 # ── 事件规范化 ──────────────────────────────────────────────────
 
 

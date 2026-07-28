@@ -51,6 +51,15 @@ class PluginManager:
         # H2: name -> PluginIsolationHost (manifest isolated=true 的插件, 跑在子进程)
         self._iso_hosts: dict[str, PluginIsolationHost] = {}
         self._plugin_context_factory = plugin_context_factory
+        # Fix-31: 是否隔离的决策权补上部署方一侧。之前只认插件自己 manifest.jsonc
+        # 里的 isolated 字段——真正需要被限制的"不完全信任的插件", 其作者/供应链
+        # 恰恰不会主动声明 isolated: true, 部署方没有任何强制覆盖开关; 且只有
+        # ISAC 原生格式支持这个字段, AstrBot/MaiBot 兼容层插件 (无 manifest.jsonc)
+        # 永远不可能被隔离。isolated_plugins 支持按目录名列出强制隔离的插件,
+        # 或用 "*" 表示默认加载路径下全部插件都不信任 manifest 自己的声明。
+        isolated_cfg = config.get("isolated_plugins", []) if isinstance(config, dict) else []
+        self._force_isolate_all = isolated_cfg == "*"
+        self._force_isolated_names: set[str] = set(isolated_cfg) if isinstance(isolated_cfg, list) else set()
 
     async def load_all(self, plugin_dir: str | Path) -> dict[str, Any]:
         """加载目录下全部插件 (自动识别 AstrBot / MaiBot / ISAC 原生格式)。
@@ -64,7 +73,7 @@ class PluginManager:
             logger.info("插件目录不存在, 跳过加载", plugin_dir=str(plugin_dir))
             return {}
         entries = [entry for entry in sorted(plugin_dir.iterdir()) if entry.is_dir()]
-        in_process = [entry for entry in entries if not self._is_isolated_native(entry)]
+        in_process = [entry for entry in entries if not self._should_isolate(entry)]
         if in_process:
             # H2: 隔离插件已改走子进程; 宿主进程内加载路径仍无沙箱, 只对非隔离插件告警。
             logger.warning(
@@ -81,7 +90,7 @@ class PluginManager:
     async def _load_entry(self, entry: Path, report: dict[str, str]) -> None:
         """加载单个插件目录 (isolated=true → 子进程, 否则宿主进程内)。错误隔离。"""
         try:
-            if self._is_isolated_native(entry):
+            if self._should_isolate(entry):
                 await self._load_isolated(entry, report)
                 return
             loaded = await self._loader.load(entry)
@@ -104,11 +113,37 @@ class PluginManager:
             return False
         return bool(manifest.get("isolated", False))
 
+    def _should_isolate(self, entry: Path) -> bool:
+        """是否应该把该插件目录经 PluginIsolationHost 在子进程加载。
+
+        Fix-31: 决策权拆成两路径, 任一命中即隔离 ——
+        1. 部署方强制指定 (isolated_plugins 配置, 按目录名或 "*"), 对 AstrBot/
+           MaiBot 兼容层插件同样生效 (它们没有 manifest.jsonc, 之前完全没有
+           被隔离的可能)。
+        2. 插件自己的 manifest.jsonc 声明 isolated: true (仅原生格式支持, 保留
+           原有行为, 一个"愿意被隔离"的插件依然可以这样声明)。
+        """
+        if self._force_isolate_all or entry.name in self._force_isolated_names:
+            return True
+        return self._is_isolated_native(entry)
+
     async def _load_isolated(self, entry: Path, report: dict[str, str]) -> None:
-        """H2: 经 PluginIsolationHost 在子进程加载插件 (顶层代码不进宿主进程)。"""
+        """H2: 经 PluginIsolationHost 在子进程加载插件 (顶层代码不进宿主进程)。
+
+        Fix-31: 隔离机制目前只支持 ISAC 原生格式 (需要 manifest.jsonc 提供 name/
+        entry_point 等元信息)。部署方可以强制要求隔离 AstrBot/MaiBot 兼容层插件,
+        但该格式没有 manifest.jsonc, 当前机制无法真正隔离它——此时必须显式失败
+        (而不是静默退回宿主进程内加载, 那样等于没做隔离却让部署方以为生效了)。
+        """
+        manifest_path = entry / "manifest.jsonc"
+        if not manifest_path.exists():
+            raise ValueError(
+                f"{entry.name} 被要求隔离加载, 但不是 ISAC 原生插件格式 (无 manifest.jsonc) —— "
+                "当前隔离机制只支持原生格式, 无法安全隔离该插件, 拒绝以不受保护方式加载"
+            )
         from isac.plugin.isolation.host import PluginIsolationHost
 
-        manifest = _loads((entry / "manifest.jsonc").read_text(encoding="utf-8"))
+        manifest = _loads(manifest_path.read_text(encoding="utf-8"))
         name = str(manifest.get("name") or entry.name)
         host = PluginIsolationHost(plugin_id=name)
         await host.spawn()

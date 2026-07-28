@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections import deque
 from typing import Any
 
 import httpx
@@ -58,6 +59,9 @@ _DEFAULT_WEBHOOK_PORT = 8443
 _DEFAULT_WEBHOOK_PATH = "/qq_official/callback"
 # Ed25519 seed 长度
 _ED25519_SEED_SIZE = 32
+# Fix-24: op=13 验证握手签名 oracle 限流默认值 (见 _handle_validation 说明)。
+_DEFAULT_VALIDATION_RATE_LIMIT = 5
+_DEFAULT_VALIDATION_RATE_WINDOW_SECONDS = 600.0
 
 
 class QQOfficialAdapter(PlatformAdapter):
@@ -83,6 +87,15 @@ class QQOfficialAdapter(PlatformAdapter):
         # 注入式 httpx transport (供测试 mock HTTP; 生产为 None 走真实网络)
         self._http_transport: Any | None = None
         self.on_message = None  # type: ignore[assignment]  # 由 ChannelRegistry 注入
+        # Fix-24: op=13 验证握手限流状态 (滑动窗口, 见 _handle_validation)。
+        self._validation_rate_limit = int(
+            config.get("validation_rate_limit", _DEFAULT_VALIDATION_RATE_LIMIT) or _DEFAULT_VALIDATION_RATE_LIMIT
+        )
+        self._validation_rate_window_seconds = float(
+            config.get("validation_rate_window_seconds", _DEFAULT_VALIDATION_RATE_WINDOW_SECONDS)
+            or _DEFAULT_VALIDATION_RATE_WINDOW_SECONDS
+        )
+        self._validation_timestamps: deque[float] = deque()
 
     @property
     def platform_name(self) -> str:
@@ -166,11 +179,30 @@ class QQOfficialAdapter(PlatformAdapter):
         return await self._dispatch_event(payload)
 
     def _handle_validation(self, data: dict) -> dict:
-        """回调地址验证握手: 用私钥对 (event_ts + plain_token) 签名, 回响应。"""
+        """回调地址验证握手: 用私钥对 (event_ts + plain_token) 签名, 回响应。
+
+        Fix-24: 官方协议要求响应 ``Ed25519_sign(event_ts + plain_token)``, 与
+        op=0 常规事件验签的消息格式 ``Ed25519_sign(timestamp + raw_body)`` 共享
+        同一份私钥且字段拼接方式相同 —— 这个格式由官方协议规定, ISAC 不能单方面
+        改签名内容 (会导致真实的官方验证握手失败)。但攻击者可以拿任意想伪造的
+        事件 JSON 当 ``plain_token``、当前时间当 ``event_ts`` 请求这个"握手",
+        拿到的签名对 op=0 验签而言就是一份合法签名 (把同一段 JSON 原样当 raw_body
+        重放即可绕过验签)。协议格式改不了, 改用限流收紧这个签名 oracle 的开放度:
+        默认滑动窗口 10 分钟最多 5 次, 超过静默拒绝 (不签名, 不告知攻击者具体
+        限流细节)。真实的官方验证握手通常只在控制台保存回调地址时触发, 正常运维
+        频率远低于此默认值; 需要更高频率可通过 config 的
+        ``validation_rate_limit``/``validation_rate_window_seconds`` 调整。
+        """
         plain_token = str(data.get("plain_token", "") or "")
         event_ts = str(data.get("event_ts", "") or "")
         if not plain_token or not event_ts:
             logger.warning("QQ 官方验证握手缺 plain_token/event_ts", data=data)
+            return {}
+        if not self._allow_validation_attempt():
+            logger.warning(
+                "QQ 官方验证握手请求过于频繁, 拒绝签名 (疑似签名 oracle 滥用)",
+                limit=self._validation_rate_limit, window_seconds=self._validation_rate_window_seconds,
+            )
             return {}
         try:
             signature = self._sign(f"{event_ts}{plain_token}")
@@ -178,6 +210,17 @@ class QQOfficialAdapter(PlatformAdapter):
             logger.warning("QQ 官方验证握手签名失败", error=str(exc))
             return {}
         return {"plain_token": plain_token, "signature": signature}
+
+    def _allow_validation_attempt(self) -> bool:
+        """滑动窗口限流: 记录本次调用时间, 清理窗口外的旧记录, 判断是否超限。"""
+        now = time.monotonic()
+        window_start = now - self._validation_rate_window_seconds
+        while self._validation_timestamps and self._validation_timestamps[0] < window_start:
+            self._validation_timestamps.popleft()
+        if len(self._validation_timestamps) >= self._validation_rate_limit:
+            return False
+        self._validation_timestamps.append(now)
+        return True
 
     def _verify_signature(self, request: Any, raw_body: bytes) -> bool:
         """常规事件验签: msg = X-Signature-Timestamp + raw_body, 公钥验签。
