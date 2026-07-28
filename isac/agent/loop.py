@@ -160,11 +160,15 @@ class ISACAgentLoop:
                 )
                 for tool_call in response.tool_calls:
                     result = await self._execute_tool(tool_call, context)
+                    # C4: 工具结果原文追加到消息历史, 无长度上限时多轮迭代后
+                    # prompt 膨胀溢出 context window (read_file 64KB / bash
+                    # stderr 无上限)。截断到 8000 字符并标注 truncation。
+                    content = self._truncate_tool_result(result.content)
                     messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tool_call.id,
-                            "content": result.content,
+                            "content": content,
                         }
                     )
             else:
@@ -390,6 +394,24 @@ class ISACAgentLoop:
             str(context.services.get("agent_id", "")),
             context.session.session_id,
             str(context.services.get("task_id", "")),
+        )
+
+    _MAX_TOOL_RESULT_CHARS = 8000
+
+    def _truncate_tool_result(self, content: str) -> str:
+        """C4: 工具结果截断到 _MAX_TOOL_RESULT_CHARS (8000 字符), 防止 prompt 膨胀。
+
+        read_file 64KB / bash stderr 无上限的原文追加会让多轮迭代后 prompt
+        溢出 context window (反复 400 错误)。截断 + 标注 truncation 让
+        LLM 知道内容被裁, 必要时可重新调用工具获取剩余部分。
+        """
+        if not content or len(content) <= self._MAX_TOOL_RESULT_CHARS:
+            return content
+        truncated = content[:self._MAX_TOOL_RESULT_CHARS]
+        return (
+            truncated
+            + f"\n\n[truncated: 工具结果超过 "
+            f"{self._MAX_TOOL_RESULT_CHARS} 字符, 已截断。如需剩余部分请重新调用工具]"
         )
 
     def _merge_chunks(self, chunks: list[LLMChunk]) -> LLMResponse:

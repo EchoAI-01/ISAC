@@ -454,3 +454,91 @@ async def test_streaming_on_error_called_when_chunks_already_pushed() -> None:
     assert len(errors) == 1
     assert isinstance(errors[0], RuntimeError)
     assert "stream failed mid-way" in str(errors[0])
+
+
+class _LargeOutputTool(Tool):
+    """返回超大内容的工具, 验证 C4 截断。"""
+
+    BIG_CONTENT = "x" * 20000  # 远超 _MAX_TOOL_RESULT_CHARS=8000
+
+    @property
+    def name(self) -> str:
+        return "big_output"
+
+    @property
+    def description(self) -> str:
+        return "返回大段内容用于测试 C4 截断"
+
+    @property
+    def parameters(self) -> dict:
+        return {"type": "object", "properties": {}}
+
+    async def execute(self, context: ToolContext) -> ToolResult:
+        return ToolResult(content=self.BIG_CONTENT)
+
+
+@pytest.mark.asyncio
+async def test_tool_result_truncated_when_exceeds_max_chars() -> None:
+    """C4: 工具结果超 8000 字符时截断 + 标注 truncation。"""
+    # 用真实 ToolCallingProvider 但把 service_echo 换成 _LargeOutputTool
+    registry = ToolRegistry()
+    registry.register(_LargeOutputTool())
+
+    class _BigToolProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def chat(self, system, messages, tools=None, **kwargs) -> LLMResponse:
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(id="t1", name="big_output", arguments={})],
+                    usage=TokenUsage(total_tokens=1),
+                )
+            return LLMResponse(content="done", usage=TokenUsage(total_tokens=1))
+
+        def chat_stream(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def get_capabilities(self):
+            from isac.core.types import ModelCapabilities
+            return ModelCapabilities(supports_tools=True, supports_streaming=False)
+
+    provider = _BigToolProvider()
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=registry,
+    )
+    messages: list[dict] = [{"role": "user", "content": "hi"}]
+    result = await loop.run(messages, make_agent_context())
+    assert result.content == "done"
+
+    # 验证 tool 消息已被截断 (messages 顺序: user, assistant+tool_calls, tool, assistant final)
+    tool_msg = next(m for m in messages if m.get("role") == "tool")
+    content = tool_msg["content"]
+    # 截断后应含 truncation 标注
+    assert "[truncated" in content
+    # 内容长度应远小于原 20000 字符 (8000 + truncation 文本)
+    assert len(content) < 9000
+    # 不含原始完整内容 (20k 字符的 "x" 串不应在截断后还在)
+    assert "x" * 9000 not in content
+
+
+def test_should_compress_returns_true_when_budget_near_overflow() -> None:
+    """C4: should_compress 在 budget.remaining_tokens <= 20% 时返回 True。"""
+    from isac.core.types import AgentContext
+
+    # max_tokens=8000, used_tokens=0 → remaining=8000 → 20% threshold=1600
+    ctx = AgentContext(session=object(), user_profile=None, current_message=object())
+    assert ctx.should_compress() is False  # remaining=8000 > 1600
+
+    # used_tokens=6500 → remaining=1500 < 1600 → 触发
+    ctx.budget.used_tokens = 6500
+    assert ctx.should_compress() is True
+
+    # used_tokens=6300 → remaining=1700 > 1600 → 不触发
+    ctx.budget.used_tokens = 6300
+    assert ctx.should_compress() is False
