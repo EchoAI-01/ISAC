@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from isac.utils.config_schema import validate_config
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -84,7 +85,8 @@ def load_config(path: str | Path) -> dict[str, Any]:
             _set_nested(config, config_key, convert(os.environ[env_key]))
 
     migrator = ConfigMigrator()
-    return migrator.migrate(config)
+    # schema 校验: 非法端口/类型硬失败, control 启用但无认证时 CRITICAL 告警 (不阻断)。
+    return validate_config(migrator.migrate(config))
 
 
 class ConfigMigrator:
