@@ -67,6 +67,10 @@ class TestWebUIStatic:
         assert "apiCall" in response.text
         assert "Bearer" in response.text
 
+    def test_python_package_files_are_not_served_as_static_assets(self, webui_client) -> None:
+        response = webui_client.get("/ui/__init__.py")
+        assert response.status_code == 404
+
     def test_index_contains_all_sections(self, webui_client) -> None:
         response = webui_client.get("/ui/")
         # J3-5: v1 四 section 保留向后兼容
