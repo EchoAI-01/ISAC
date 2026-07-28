@@ -9,9 +9,12 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from isac.agent.hooks import AgentHooks
+from isac.agent.injectors.attention_drift import AttentionDriftInjector
 from isac.agent.injectors.base_identity import BaseIdentityInjector
+from isac.agent.injectors.expression_style import ExpressionStyleInjector
 from isac.agent.injectors.interrupt import InterruptInjector
 from isac.agent.injectors.model_capabilities import ModelCapabilitiesInjector
+from isac.agent.injectors.mood import MoodInjector
 from isac.agent.injectors.recovery import RecoveryInjector
 from isac.agent.injectors.tools_available import ToolsAvailableInjector
 from isac.agent.loop import ISACAgentLoop
@@ -365,6 +368,13 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     persona = PersonaManager(global_config.get("persona", {}), config.persona)
     # 注册 BehaviorLearner FINAL_RESPONSE hook, 从回复中学习用户行为模式。
     persona.register_hooks(hooks)
+    # Q2 激活: 人格系统的三个注入器 (mood / expression_style / attention_drift)
+    # 此前是空桩且未注册; 现在 PersonaManager 就绪后接入 prompt_builder, 让 LLM
+    # 回复带出情绪色彩 + 表达风格 + 注意力漂移人格特征。无 mood_engine (如未
+    # 启用 conversation) 时 MoodInjector 返回空串, 零行为变化。
+    prompt_builder.register(MoodInjector(mood_engine=persona.mood_engine))
+    prompt_builder.register(ExpressionStyleInjector(persona_manager=persona))
+    prompt_builder.register(AttentionDriftInjector(level=persona.get_drift_level()))
 
     logger.info("Agent 组装完成", agent_id=config.agent_id, namespace=config.effective_memory_namespace)
     return AgentInstance(
