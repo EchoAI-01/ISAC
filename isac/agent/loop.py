@@ -170,7 +170,9 @@ class ISACAgentLoop:
             else:
                 await self.hooks.fire(AgentHookPoint.FINAL_RESPONSE, response, context)
                 await self._emit_progress_if_task_started(context, reported_task_progress, "completed")
-                return AgentResult(content=response.content)
+                # R17: response.content 在纯 tool_call 响应里为 None, 归一化为 "" 防止
+                # 下游 f-string/channel.send 抛 TypeError。AgentResult.content 契约为 str。
+                return AgentResult(content=response.content or "")
 
             # COMPRESS: 上下文过大时
             if context.should_compress():
