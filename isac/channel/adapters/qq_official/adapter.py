@@ -283,6 +283,7 @@ class QQOfficialAdapter(PlatformAdapter):
             group_id=group_id or None,
             content=content,
             reply_to=msg_id or None,  # 被动回复需要 msg_id
+            metadata={"qq_official_source": event_type},
         )
 
     async def send(self, message: ISACMessage) -> bool:
@@ -313,7 +314,11 @@ class QQOfficialAdapter(PlatformAdapter):
         # 去掉 None 值 (QQ API 不接受 None 字段)
         body = {k: v for k, v in body.items() if v is not None and v != ""}
         try:
-            if message.group_id:
+            source = str((message.metadata or {}).get("qq_official_source", "") or "")
+            if source == "AT_MESSAGE_CREATE":
+                # 频道端点: POST /channels/{channel_id}/messages (channel_id 在 group_id)
+                url = f"{self._api_base}{_CHANNEL_MESSAGE_PATH.format(channel_id=target)}"
+            elif message.group_id:
                 # 群消息端点 (group_openid)
                 url = f"{self._api_base}{_GROUP_MESSAGE_PATH.format(group_openid=target)}"
             else:
