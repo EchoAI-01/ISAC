@@ -53,7 +53,7 @@ _GROUP_MESSAGE_PATH = "/v2/groups/{group_openid}/messages"
 # token 缓存提前刷新窗口 (秒); QQ 默认 expires_in=7200, 提前 60s 避免临界过期
 _TOKEN_REFRESH_LEAD_SECONDS = 60.0
 # Webhook 默认监听 host/port/path (官方限制端口 80/443/8080/8443, 默认 8443)
-_DEFAULT_WEBHOOK_HOST = "0.0.0.0"
+_DEFAULT_WEBHOOK_HOST = "127.0.0.1"  # O11: 与飞书适配器默认 127.0.0.1 一致, 避免 0.0.0.0 误暴露
 _DEFAULT_WEBHOOK_PORT = 8443
 _DEFAULT_WEBHOOK_PATH = "/qq_official/callback"
 # Ed25519 seed 长度
