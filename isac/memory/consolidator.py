@@ -144,6 +144,7 @@ class MemoryConsolidator:
                 "frozen": int(meta.get("frozen", 0) or 0),
                 "protected": int(meta.get("protected", 0) or 0),
                 "user_id": str(meta.get("user_id", "") or ""),
+                "group_id": str(meta.get("group_id", "") or ""),
             })
         return out
 
@@ -158,7 +159,7 @@ class MemoryConsolidator:
             return []
         placeholders = ",".join(["?"] * len(ids))
         query = (
-            f"SELECT id, created_at, importance, frozen, protected, user_id "
+            f"SELECT id, created_at, importance, frozen, protected, user_id, group_id "
             f"FROM episodes WHERE id IN ({placeholders})"
         )
         async with aiosqlite.connect(db_path) as db:
@@ -173,6 +174,7 @@ class MemoryConsolidator:
                 "frozen": int(r["frozen"] or 0),
                 "protected": int(r["protected"] or 0),
                 "user_id": str(r["user_id"] or ""),
+                "group_id": str(r["group_id"] or ""),
             }
             for r in rows
         ]
@@ -192,15 +194,21 @@ class MemoryConsolidator:
         sorted_eps = sorted(
             episodes, key=lambda e: (e.get("created_at", 0), e.get("id", "")), reverse=True
         )
-        seen: list[tuple[str, dict[str, Any]]] = []  # [(normalized_key, episode)]
+        seen_by_scope: dict[tuple[str, str], list[tuple[str, dict[str, Any]]]] = {}
         merged = 0
         for ep in sorted_eps:
             content = str(ep.get("content", "") or "")
             if not content:
                 continue
             norm = _normalize_content(content)
-            # 找桶内已有的高相似项 (而非精确匹配, 容许表述微差)
-            dup_with = _find_similar_in_bucket(norm, content, seen)
+            group_id = str(ep.get("group_id", "") or "")
+            user_id = str(ep.get("user_id", "") or "")
+            scope = ("group", group_id) if group_id else ("user", user_id)
+            seen = seen_by_scope.setdefault(scope, [])
+            # 找同一访问边界内已有的高相似项 (而非精确匹配, 容许表述微差)
+            dup_with = _find_similar_in_bucket(
+                norm, content, seen, similarity=self._dedup_similarity
+            )
             if dup_with is None:
                 seen.append((norm, ep))
                 continue
@@ -209,7 +217,7 @@ class MemoryConsolidator:
             if not older_id:
                 continue
             ok = await governor.delete(
-                older_id, self._agent_id, operator="consolidator"
+                older_id, self._namespace, operator="consolidator"
             )
             if ok:
                 merged += 1
@@ -238,7 +246,7 @@ class MemoryConsolidator:
             if not older_id:
                 continue
             ok = await governor.delete(
-                older_id, self._agent_id, operator="consolidator"
+                older_id, self._namespace, operator="consolidator"
             )
             if ok:
                 pruned += 1
@@ -306,8 +314,9 @@ class MemoryConsolidator:
             "\n\n请直接输出新的画像文本 (无需解释, 不要 markdown 标记):"
         )
         try:
-            new_text = await self._llm.chat(
-                [{"role": "user", "content": prompt}],
+            response = await self._llm.chat(
+                system="",
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=300,
             )
@@ -317,7 +326,7 @@ class MemoryConsolidator:
                 agent_id=self._agent_id, person_id=person_id, error=str(exc),
             )
             return False
-        new_text = _clean_llm_output(new_text)
+        new_text = _clean_llm_output(response.content)
         if not new_text or new_text == old_text:
             return False  # 空响应或与既有相同, 不写回
         merged_profile = dict(existing)
@@ -369,7 +378,11 @@ def _normalize_content(text: str) -> str:
 
 
 def _find_similar_in_bucket(
-    norm: str, content: str, seen: list[tuple[str, dict[str, Any]]]
+    norm: str,
+    content: str,
+    seen: list[tuple[str, dict[str, Any]]],
+    *,
+    similarity: float = DEFAULT_DEDUP_SIMILARITY,
 ) -> dict[str, Any] | None:
     """在已见桶中找与 content 相似度 ≥ dedup_similarity 的项, 返回该项的 episode 或 None。
 
@@ -382,7 +395,7 @@ def _find_similar_in_bucket(
     # 桶内非精确匹配项再做相似度比对 (SequenceMatcher 是 O(n*m), 桶小可接受)
     for seen_norm, seen_ep in seen:
         ratio = difflib.SequenceMatcher(None, norm, seen_norm).ratio()
-        if ratio >= 0.92:
+        if ratio >= similarity:
             return seen_ep
     _ = content  # 占位 (norm 已是规范化的 content)
     return None
