@@ -742,7 +742,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 - [x] **S6 O5 视频 Provider 注册挂点**
   - 见 §四 O5"当前"。`kind="video_gen"` 接入 `_build_multimodal_provider`,default-off,`generate` 仍抛 `NotImplementedError`(端点二次确认闸门)。
 - [x] **S7 O4 飞书/微信/QQ 官方三平台适配器骨架**
-  - 见 §四 O4"当前"。三平台骨架 + enabled-gated 注册分支,QQ 官方(`qq_official`)与 OneBot(`qq`)并存不撞键。
+  - 见 §四 O4"当前"。三平台骨架 + enabled-gated 注册分支,QQ 官方(`qq_official`)与 OneBot(`qq`)并存不撞键。**2026-07-28 飞书激活**: FeishuAdapter 真实实现 Webhook 入站 (URL 校验 challenge + 明文/加密两种模式, 加密模式 AES-256-CBC 解密 key=SHA256(encrypt_key)/IV=base64decode(encrypt)[:16]/PKCS7 unpad, 字节序核对自 open.feishu.cn 官方文档; im.message.receive_v1 事件规范化 chat_id→group_id / open_id→user_id / message_id→msg_id / content JSON 二次解析取 text) + 出站 (tenant_access_token 换取+缓存提前 60s 刷新, POST /im/v1/messages 按 receive_id_type=chat_id|open_id 分群聊/私聊)。不引入 lark-oapi SDK, 用 httpx+uvicorn+cryptography 既有依赖。新增 `test_feishu_adapter.py` (14 例) 覆盖 URL 校验/解密/规范化/on_message 异常隔离/send token 缓存/群聊/私聊/失败降级。微信与 QQ 官方保持骨架不动 (用户本轮决定只做飞书 + QQ 官方)。
 
 ---
 

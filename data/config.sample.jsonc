@@ -183,6 +183,21 @@
       "enabled": false,
       "bot_token": ""
     },
+    // 飞书 (Lark): Webhook 回调模式 (S7)。在飞书开发者后台事件订阅里把
+    // Request URL 填成 http://<你的外网地址>:<port>/feishu/events 即可。
+    // 配置 encrypt_key 时事件会加密 (AES-256-CBC, SHA256(encrypt_key) 作 key);
+    // 不配 encrypt_key 时走明文模式, 建议至少配 verification_token 校验来源。
+    "feishu": {
+      "enabled": false,
+      "app_id": "",
+      "app_secret": "",
+      "verification_token": "",  // 明文模式校验 token; 加密模式可空
+      "encrypt_key": "",         // 加密模式才需; 强烈建议配置
+      "api_base": "https://open.feishu.cn",
+      "webhook_host": "127.0.0.1",
+      "webhook_port": 9099,
+      "webhook_path": "/feishu/events"
+    },
     // WebChat: 零外部依赖的内置 HTTP 聊天通道, 开箱即可体验:
     //   发消息: curl -X POST http://127.0.0.1:8090/webchat/send \
     //           -d '{"session_id":"s1","user_id":"me","content":"你好"}'
