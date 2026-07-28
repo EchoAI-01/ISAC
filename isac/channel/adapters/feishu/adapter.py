@@ -38,6 +38,7 @@ import time
 from typing import Any
 
 import httpx
+from fastapi import Request
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage
@@ -126,7 +127,7 @@ class FeishuAdapter(PlatformAdapter):
                 self._serve_task.cancel()
             self._serve_task = None
 
-    async def _handle_event(self, request: Any) -> dict:
+    async def _handle_event(self, request: Request) -> dict:
         """Webhook 入站主入口: 校验/解密 → 规范化 → on_message → 200 ``{}``。
 
         任何异常都吞掉并返回 200 ``{}`` (避免飞书重试; 失败的入站消息丢失在
@@ -149,8 +150,10 @@ class FeishuAdapter(PlatformAdapter):
                 if not self._encrypt_key:
                     self._verify_token(payload)
                 return {"challenge": payload.get("challenge", "")}
-            # 常规事件
-            self._verify_token(payload)
+            # 常规事件: 加密模式由 encrypt_key 证明身份, 跳过 token 校验;
+            # 明文模式必须配置 verification_token (否则拒绝, 见 _verify_token)。
+            if not self._encrypt_key:
+                self._verify_token(payload)
             if event_type != "im.message.receive_v1":
                 logger.debug("飞书 webhook 忽略非消息事件", event_type=event_type)
                 return {}
@@ -207,9 +210,16 @@ class FeishuAdapter(PlatformAdapter):
             return None
 
     def _verify_token(self, payload: dict) -> None:
-        """明文模式: 校验 header.token == verification_token (未配置 token 时跳过)。"""
+        """明文模式: 校验 header.token == verification_token。
+
+        未配置 verification_token 时拒绝事件 (而非跳过校验): 飞书 webhook
+        对外可达, 跳过校验会让任意身份伪造 im.message.receive_v1 事件触发
+        on_message; 显式拒绝 + 返回空 dict 不回 challenge, 防止 fail-open
+        注入。加密模式由 encrypt_key 证明身份, 不走此路径。
+        """
         if not self._verification_token:
-            return  # 未配置校验 token, 跳过 (生产应配置)
+            logger.warning("飞书 webhook 未配置 verification_token, 拒绝事件")
+            raise ValueError("verification_token not configured")
         token = str((payload.get("header") or {}).get("token", "") or payload.get("token", "") or "")
         if token != self._verification_token:
             logger.warning("飞书事件 verification_token 不符, 丢弃", expected=self._verification_token[:4])
