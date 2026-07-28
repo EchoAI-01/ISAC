@@ -54,7 +54,7 @@ def build_router(
     """
     if metadata_store is None:
         return None
-    from fastapi import APIRouter, Depends
+    from fastapi import APIRouter, Depends, Query
 
     from isac.memory.model import MemoryGovernor
 
@@ -115,7 +115,11 @@ def build_router(
         return {"ok": ok, "detail": "restored" if ok else "item not found"}
 
     @router.get("/memory/{agent_id}/items", dependencies=read_deps)
-    async def list_items(agent_id: str, limit: int = 500, offset: int = 0) -> dict:
+    async def list_items(
+        agent_id: str,
+        limit: int = Query(default=500, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ) -> dict:
         items = await governor.export(agent_id, limit=limit, offset=offset)
         return {
             "ok": True,
