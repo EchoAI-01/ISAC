@@ -123,3 +123,21 @@ class TestAddLinkEndpointRejectsMalformedAgentIds:
         )
         assert response.status_code == 200
         assert len(bus.list_links()) == 1
+
+    def test_list_links_returns_copy_external_mutation_safe(self) -> None:
+        """O16: list_links 返回副本, 外部 mutate 不影响 bus 内部状态。
+
+        经核实代码已经是 ``return list(self._links)`` (返回浅拷贝),
+        报告 O16 是 false positive。本测验证现状正确, 防止后续误改回
+        返回内部引用。
+        """
+        from isac.runtime.bus import InterAgentBus, InterAgentLink
+
+        bus = InterAgentBus()
+        bus.add_link(InterAgentLink(from_agent="a", to_agent="b"))
+
+        links = bus.list_links()
+        # 外部 mutate 返回的列表
+        links.clear()
+        # bus 内部状态不受影响
+        assert len(bus.list_links()) == 1
