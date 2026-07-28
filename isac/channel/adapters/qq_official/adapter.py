@@ -195,6 +195,18 @@ class QQOfficialAdapter(PlatformAdapter):
         timestamp = str(headers.get("X-Signature-Timestamp", "") or "")
         if not sig_hex or not timestamp:
             return False
+        # R2: 校验 timestamp 新鲜度, 拒绝重放攻击 (>5 分钟偏离视为重放)。
+        try:
+            ts_int = int(timestamp)
+        except ValueError:
+            logger.warning("QQ 官方 webhook timestamp 非整数, 拒绝")
+            return False
+        if abs(time.time() - ts_int) > 300:
+            logger.warning(
+                "QQ 官方 webhook timestamp 偏离本地时间 >300s, 疑似重放, 拒绝",
+                offset_seconds=int(time.time() - ts_int),
+            )
+            return False
         try:
             import binascii
 
