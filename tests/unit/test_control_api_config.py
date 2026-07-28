@@ -77,6 +77,55 @@ def test_empty_api_token_warns_critically() -> None:
     assert _warn_if_no_auth(api_token="", parsed_tokens=None) is True
 
 
+def test_docs_disabled_by_default() -> None:
+    """R15: 默认关闭 /docs 和 /openapi.json, 防止误暴露 admin 端点列表 + 参数形状。
+
+    生产部署时 /docs 和 /openapi.json 应返回 404; 可通过 control.docs_enabled=true
+    显式开启 (开发/调试场景)。
+    """
+    from fastapi.testclient import TestClient
+
+    from isac.control.api.server import create_control_app
+
+    class _StubAM:
+        async def list(self): return []
+        async def get(self, _): return None
+
+    # 默认: docs_enabled 未配置 → 关闭
+    app = create_control_app(
+        _StubAM(), object(), object(), object(),
+        {"api_token": "tok-abc"},
+        metrics=get_default_metrics(),
+    )
+    client = TestClient(app)
+    resp = client.get("/docs")
+    assert resp.status_code == 404
+    resp = client.get("/openapi.json")
+    assert resp.status_code == 404
+
+
+def test_docs_enabled_explicitly() -> None:
+    """R15: docs_enabled=true 时 /docs 与 /openapi.json 可访问 (开发模式)。"""
+    from fastapi.testclient import TestClient
+
+    from isac.control.api.server import create_control_app
+
+    class _StubAM:
+        async def list(self): return []
+        async def get(self, _): return None
+
+    app = create_control_app(
+        _StubAM(), object(), object(), object(),
+        {"api_token": "tok-abc", "docs_enabled": True},
+        metrics=get_default_metrics(),
+    )
+    client = TestClient(app)
+    resp = client.get("/docs")
+    assert resp.status_code == 200
+    resp = client.get("/openapi.json")
+    assert resp.status_code == 200
+
+
 def test_validate_invalid_agent_id() -> None:
     app = _make_app()
     client = TestClient(app)

@@ -125,7 +125,17 @@ def create_control_app(
     links_path = config.get("links_path", "data/links.jsonc")
     metrics = metrics or get_default_metrics()
 
-    app = FastAPI(title="ISAC Admin API", version="0.1.0", docs_url="/docs")
+    # R15: 生产环境关闭 /docs Swagger UI 和 /openapi.json, 防止误暴露完整
+    # admin 端点列表 + 参数形状。可通过 control.docs_enabled=true 显式开启
+    # (开发/调试场景); 默认关闭 (安全默认)。
+    docs_enabled = bool(config.get("docs_enabled", False))
+    app = FastAPI(
+        title="ISAC Admin API",
+        version="0.1.0",
+        docs_url="/docs" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
+        redoc_url=None if not docs_enabled else "/redoc",
+    )
     if session_secret is not None:
         # Fix-17: CSRF 双提交校验只对"靠会话 Cookie 认证"的写请求生效, 纯 Bearer
         # Header 认证的 API 客户端不受影响 (见 CSRFProtectionMiddleware 文档字符串)。
