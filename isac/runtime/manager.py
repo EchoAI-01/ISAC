@@ -161,8 +161,11 @@ class AgentManager:
 
         经 instance.memory (pipeline) 取已含租户前缀的 namespace 与 MetadataStore,
         硬删 episodes/person_profiles/jargon_entries 并清空 BM25 内存索引。
-        shared 命名空间被多 Agent 共享, 一律拒绝清理。向量分库文件保留: 孤儿向量
-        经 get_episodes_by_ids 的 ACL 过滤不会泄露, 文件按 namespace 隔离。
+        shared 命名空间被多 Agent 共享, 一律拒绝清理。
+
+        R7: 同步清理 vectors-<ns>.db 文件 + graph edges, 防止重建同名 Agent
+        时孤儿向量污染召回 (此前 metadata.delete_namespace 已删 episodes,
+        但稠密向量行残留, KNN 仍可召回旧内容)。
         """
         pipeline = instance.memory
         namespace = str(getattr(pipeline, "namespace", "") or "")
@@ -177,9 +180,55 @@ class AgentManager:
             sparse = getattr(pipeline, "sparse", None)
             if sparse is not None:
                 sparse.clear()
+            # R7: 清理 vector DB 文件 + graph edges
+            await AgentManager._purge_vector_and_graph(instance, namespace)
             logger.info("Agent 记忆已清理", namespace=namespace, episodes_removed=removed)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Agent 记忆清理失败, 已忽略", namespace=namespace, error=str(exc))
+
+    @staticmethod
+    async def _purge_vector_and_graph(instance: AgentInstance, namespace: str) -> None:
+        """R7: 清理 vectors-<ns>.db 文件 + graph_store 该 namespace 的全部 edges。
+
+        1. 经 services 取 vector_resolver (namespace → VectorStore | None),
+           关闭持久连接 + 删除 DB 文件; 无 resolver 时跳过。
+        2. graph_store 若有 delete_by_namespace 方法, 调用清理 edges;
+           无该方法时跳过 (向后兼容)。
+
+        失败只记 warning, 不影响 metadata 已成功的清理。
+        """
+        import os
+        services = getattr(instance, "services", None) or {}
+        # vector DB 文件清理
+        vector_resolver = services.get("vector_resolver")
+        if callable(vector_resolver):
+            try:
+                vector = vector_resolver(namespace)
+                if vector is not None:
+                    # 先关闭持久连接 (VectorStore 持有 self._db)
+                    close = getattr(vector, "close", None)
+                    if callable(close):
+                        await close()
+                    # 删除 DB 文件 (path 通常在 vector.db_path)
+                    db_path = getattr(vector, "db_path", None)
+                    if db_path:
+
+                        def _remove_file(p: str = db_path) -> None:
+                            if os.path.exists(p):
+                                os.remove(p)
+
+                        await asyncio.to_thread(_remove_file)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("vector 文件清理失败, 已忽略", namespace=namespace, error=str(exc))
+        # graph edges 清理
+        graph_store = services.get("graph_store")
+        if graph_store is not None:
+            delete_edges = getattr(graph_store, "delete_by_namespace", None)
+            if callable(delete_edges):
+                try:
+                    await delete_edges(namespace)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("graph edges 清理失败, 已忽略", namespace=namespace, error=str(exc))
 
     def acquire_config_lock(self, agent_id: str) -> asyncio.Lock:
         """按 agent_id 取配置锁 (Fix-2, 不存在则创建)。

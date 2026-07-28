@@ -726,9 +726,11 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         # routes_memory / routes_memory_admin / routes_sessions 在生产从未挂载。
         "metadata_store": metadata_store,
         "sparse_indexes": sparse_indexes,
-        # R8: vector_resolver 让治理 delete/correct/restore 同步稠密向量行
-        # (防止软删除后向量残留污染召回)。
+        # R7/R8: vector_resolver 让治理 delete/correct/restore 同步稠密向量行
+        # (防止软删除后向量残留污染召回); graph_store 让 _purge_memory 清理
+        # 该 namespace 的全部 edges (重建同名 Agent 不被旧 edges 污染)。
         "vector_resolver": _vector_store_for,
+        "graph_store": graph_store,
         # CR3-L2: 租户上下文 (默认单租户 passthrough)
         "tenant_guard": tenant_guard,
         "tenant_context": tenant_context,
