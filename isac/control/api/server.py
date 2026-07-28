@@ -38,6 +38,35 @@ def _warn_if_no_auth(api_token: str, parsed_tokens: Any) -> bool:
     return True
 
 
+def _register_global_exception_handler(app: Any) -> None:
+    """R14: 全局 exception handler 兜底未捕获异常。
+
+    服务端 exc_info=True 记录完整堆栈, 客户端只返回通用 "internal error"
+    不泄露 Python 类型/字段路径/磁盘 IO 信息。HTTPException 由 FastAPI 默认
+    处理 (保留 status code 和 detail, 各路由已把 detail.message 改通用消息)。
+    """
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+
+    from isac.utils.logger import get_logger as _get_logger
+
+    _global_logger = _get_logger(__name__)
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        _global_logger.error(
+            "Control API 未捕获异常",
+            path=str(request.url.path),
+            method=request.method,
+            error=str(exc),
+            exc_info=True,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": {"code": "INTERNAL_ERROR", "message": "Internal server error"}},
+        )
+
+
 def create_control_app(
     agent_manager: AgentManager,
     router: MessageRouter,
@@ -136,6 +165,12 @@ def create_control_app(
         openapi_url="/openapi.json" if docs_enabled else None,
         redoc_url=None if not docs_enabled else "/redoc",
     )
+
+    # R14: 全局 exception handler 兜底未捕获异常, 服务端 exc_info=True 记录
+    # 完整堆栈, 客户端只返回通用 "internal error" 不泄露 Python 类型/字段
+    # 路径/磁盘 IO 信息。HTTPException 由 FastAPI 默认处理 (保留 status code
+    # 和 detail, 各路由已把 detail.message 改通用消息)。
+    _register_global_exception_handler(app)
     if session_secret is not None:
         # Fix-17: CSRF 双提交校验只对"靠会话 Cookie 认证"的写请求生效, 纯 Bearer
         # Header 认证的 API 客户端不受影响 (见 CSRFProtectionMiddleware 文档字符串)。
