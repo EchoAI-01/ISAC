@@ -170,15 +170,28 @@ class FeishuAdapter(PlatformAdapter):
         return {}
 
     def _decode_payload(self, body: Any) -> dict | None:
-        """加密模式: 从 ``{"encrypt": ...}`` 解密得 inner JSON; 明文模式: 原样返回。"""
+        """加密模式 (``encrypt_key`` 已配置): 从 ``{"encrypt": ...}`` 解密得 inner
+        JSON; 明文模式 (未配置 ``encrypt_key``): 原样返回。
+
+        Fix-23: 已配置 ``encrypt_key`` 时, 请求体必须含 ``"encrypt"`` 字段, 否则
+        直接拒绝 —— 不能"看请求体形状"决定信任级别。此前的逻辑是"不含 encrypt
+        字段就走明文模式", 而 ``_handle_event`` 又用"配了 encrypt_key 就跳过
+        token 校验"(假设加密本身已证明身份); 两者叠加意味着已配置 encrypt_key 时,
+        攻击者只需不带 "encrypt" 字段发送明文伪造事件, 既不必知道 encrypt_key
+        也不必知道 verification_token, 就能让伪造消息完全绕过验证直达 on_message。
+        """
         if not isinstance(body, dict):
             return None
-        if "encrypt" not in body:
-            return body  # 明文模式
-        if not self._encrypt_key:
+        has_encrypt_field = "encrypt" in body
+        if self._encrypt_key:
+            if not has_encrypt_field:
+                logger.warning("飞书 webhook 已配置 encrypt_key 但收到明文请求体, 拒绝")
+                return None
+            return self._decrypt(body["encrypt"])
+        if has_encrypt_field:
             logger.warning("飞书 webhook 收到加密事件但未配置 encrypt_key, 丢弃")
             return None
-        return self._decrypt(body["encrypt"])
+        return body  # 明文模式
 
     def _decrypt(self, encrypt_b64: str) -> dict | None:
         """AES-256-CBC 解密 (字节序核对自飞书官方文档)。
