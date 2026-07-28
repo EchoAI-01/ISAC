@@ -189,23 +189,20 @@ class ProviderManager:
             except RateLimitError as exc:
                 last_error = exc
                 logger.warning("LLM 限流，退避重试", attempt=attempt + 1)
-                if attempt < 2:
-                    await asyncio.sleep(2**attempt)
+                await self._retry_backoff(attempt)
             except LLMError as exc:
                 last_error = exc
                 logger.warning("LLM 调用失败", attempt=attempt + 1, error=str(exc))
                 if not exc.retriable:
                     break
-                if attempt < 2:
-                    await asyncio.sleep(2**attempt)
+                await self._retry_backoff(attempt)
             except Exception as exc:  # noqa: BLE001
                 # Provider 具体实现可能抛出非 LLMError 异常 (网络库异常/JSON 解析失败等)。
                 # 规范化为可重试错误继续走既有 重试/回退/降级 流程, 而不是让异常直接
                 # 冒泡打断整条消息处理链路 (调用方 main.py 没有兜底 try/except)。
                 last_error = exc
                 logger.warning("LLM 调用出现非预期异常，按可重试处理", attempt=attempt + 1, error=str(exc))
-                if attempt < 2:
-                    await asyncio.sleep(2**attempt)
+                await self._retry_backoff(attempt)
 
         if self._fallback is not None:
             logger.warning("回退到备选模型", model=self._fallback.get_model_name())
@@ -223,6 +220,13 @@ class ProviderManager:
 
         logger.error("LLM 全部失败，降级回复", error=str(last_error))
         return LLMResponse(content=DEGRADED_REPLY)
+
+    @staticmethod
+    async def _retry_backoff(attempt: int) -> None:
+        """最后一次重试后不再 sleep (没下一次尝试, 多等只会拖慢 fallback/降级)。"""
+        if attempt >= 2:
+            return
+        await asyncio.sleep(2**attempt)
 
     async def _call_and_record(
         self,
