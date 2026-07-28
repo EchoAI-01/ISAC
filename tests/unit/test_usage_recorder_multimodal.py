@@ -175,6 +175,32 @@ def test_pricing_estimate_cost_for_image_event() -> None:
     assert e.pricing_version == "v1"
 
 
+def test_pricing_estimate_cost_precise_for_fractional_units() -> None:
+    """Fix-27 回归: input_units/output_units 是 float 字段, 之前直接
+    Decimal(event.input_units) 会保留二进制浮点的原始误差 (Decimal(0.1) 不是
+    精确的 0.1), 与本模块文档"Decimal 避免浮点误差"的意图相悖——真实音视频
+    时长基本不会是整数秒, 修复前 estimated_cost 会带一长串二进制浮点垃圾尾数。"""
+    snap = PriceSnapshot(
+        provider="openai", model="whisper-1", modality="audio",
+        pricing_version="v1",
+        input_price_per_unit="0.000002",
+        unit_name="second",
+    )
+    pricing = PricingCatalog([snap], version="v1")
+    rec = _make_recorder(pricing=pricing)
+    rec.record_stt(
+        model="whisper-1", provider="openai",
+        duration_seconds=0.1,
+        latency_ms=300,
+        agent_id="a1", session_id="s1", trace_id="t1", request_id="r1",
+    )
+    e = _buffer(rec)[0]
+    assert e.estimated_cost is not None
+    assert Decimal(e.estimated_cost) == Decimal("2E-7")
+    # 修复前的典型浮点误差尾数特征串, 确认结果不是"凑巧数值相等但字符串仍带垃圾"
+    assert "111022302463" not in e.estimated_cost
+
+
 def test_pricing_estimate_cost_for_audio_stt_event() -> None:
     snap = PriceSnapshot(
         provider="openai", model="whisper-1", modality="audio",
