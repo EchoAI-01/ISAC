@@ -678,26 +678,26 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
     - 动作审计: broker 4 类动作 (含拒绝) 结构化日志埋点 (trace 贯穿, 可与发起方消息串联)。
     - 集成测试 `tests/integration/test_p2_mesh_activation.py` (7): observer 旁听入记忆不回复 / candidate 评分切换 / 无角色零行为变化 / notify 真实投递 / notify 无权限拒绝 / handoff 归属转移 (后续消息路由接手方) / memory_query scope 裁剪同步返回。
 
-- [ ] **P3 记忆检索深化激活**(依赖 N1 + VectorStore/GraphStore/Embedding/Reranker)
+- [~] **P3 记忆检索深化激活**(依赖 N1 + VectorStore/GraphStore/Embedding/Reranker)
   - **目标**：`pipeline.search()` 接入向量 KNN(VectorStore)+ 图谱邻居(GraphStore)召回,与现有 FTS/BM25/Reranker 融合;`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确其落地边界(N1)。(注:检索期软删除 `deleted` 过滤已由 CR2-Fix-12 生效,向量召回+RRF 融合已由 CR3-H3 生效,均不在本节点剩余范围。)**(2026-07-26 差距复核扩充)** 本节点剩余范围收窄为:①图谱召回接入(`GraphStore` 边写入 + `neighbors` 结果并入 RRF,目前全仓无 `add_edge`/`neighbors` 调用点,图始终为空);②`Reranker` provider 注入 —— `main.py` 构造 `Reranker(memory_config.get("reranker", {}))` 时从未传入 provider,`is_available()` 恒 `False`,rerank 步骤永不执行,补齐仿 CR3-H3 embedding 的写法(按 `memory.reranker.{api_key,model,protocol}` 构造 `OpenAICompatRerankerProvider` 注入);③`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确落地边界。
   - **验收**：配置 embedding 时向量召回已生效(CR3-H3);配置 reranker 时 rerank 步骤真实执行;图谱召回生效;被治理条目不被检索命中;`MemoryItem` 成为检索/注入统一载体;集成测试。
   - **产出**：pipeline 图谱召回接线、Reranker provider 注入、MemoryItem 接入、集成测试。
   - **依赖**：N1、N2、J2(embed/rerank Provider)。
-  - **当前**：图谱召回**骨架 + 默认关闭接线**已就位 (骨架轮 S3, 2026-07-27):`MemoryRetrievalPipeline` 加 `enable_graph_recall` 开关 + `_graph_search` 骨架(默认关闭恒返回 [],`search`/`_merge_results` 已接入第四路 RRF),`main.memory_factory` 按 `memory.graph_recall.enabled` 注入。剩余激活: 实体抽取 + `graph.neighbors` 真实召回 + 邻居→memory_id 映射、Reranker provider 注入、MemoryItem 接入检索链。附 `tests/unit/test_graph_recall_scaffolding.py` (4)。激活后 N1 升级为 `[x]`。
+  - **当前**：**2026-07-28 S3 激活**:`store_episode` 成功后 + `enable_graph_recall=True` 时写 user/group → episode `mentioned_in` 边 (写边失败不影响 episode 已成功存储); `_graph_search` 实现: 种子锚定调用方 user_id/group_id (满足 ACL 铁律), `graph.neighbors` 取邻居剥 `episode:` 前缀还原 memory_id, 按 weight 降序去重截断; `_build_memory_stack` 注入 `OpenAICompatRerankerProvider` (够 `api_key+model` 时, 仿 CR3-H3 embedding 注入写法), `Reranker.is_available()` 不再恒 False; pipeline 模块 docstring 明确 MemoryItem 落地边界 (检索热路径继续用 MemoryHit, 治理路径用 MemoryItemAdapter)。新增 `test_graph_recall_s3.py` (12 例)。**剩余范围**: 通用实体关系图 (人物-人物/人物-话题等语义关系抽取, 本轮只交付 mentioned_in 提及图)、P3 集成测试。
 
-- [ ] **P4 身份归一激活**(依赖 N3 + N1 + P3)
+- [~] **P4 身份归一激活**(依赖 N3 + N1 + P3)
   - **目标**：gateway 入站主链路接入 `IdentityResolver.resolve`,把跨平台同一用户归一到统一 identity;记忆按归一身份聚合。
   - **验收**：不同 IM 的同一用户归一为同一 person、记忆按归一身份聚合、低置信冲突写入 `identity_conflicts` 供人工裁决;集成测试。
   - **产出**：gateway 接线、记忆聚合按归一身份、集成测试。
   - **依赖**：N3、N1、P3。
-  - **当前**：主链路接线**锚点**已就位 (骨架轮 S4, 2026-07-27):`main.process_message` 经 `_resolve_identity` 在 `identity.enabled` 时用 `IdentityResolver.resolve` 归一 `person_id` 覆盖 `profile.user_id`(记忆按归一身份聚合);`_build_identity_resolver` 默认关闭(无 `identity.enabled` → None → 走 user_mapper 原路径,零行为变化)。剩余激活: person_identities 生产写入路径 + 冲突裁决控制面 + 集成测试。附 `tests/unit/test_identity_resolver_wiring.py` (6)。激活后 N3 升级为 `[x]`。
+  - **当前**：**2026-07-28 S4 激活**:`IdentityResolver` 新增 `resolve_conflict` (人工裁决 conflict + 更新 person_id); 新建 `routes_identity.py` (bind / list conflicts / resolve conflict 三个 REST 入口, scope=identity:read/write, 无 resolver 注入时返回 None 不挂载); `server.create_control_app`/`_mount_optional_routers` 接收 `identity_resolver`; `main` 把 `services["identity_resolver"]` 注入并经 `_register_control_plane` 透传 (helper `_mount_identity_workflow_routers` 抽出避免 C901 超)。新增 `test_routes_identity.py` (7 例)。**剩余范围**: P4 集成测试 (两平台同一自然人 bind → 记忆聚合验证)。
 
-- [ ] **P5 企业化激活**(依赖 O1/O2/O3)
+- [~] **P5 企业化激活**(依赖 O1/O2/O3)
   - **目标**：`TenantIsolationGuard` 接入 memory store/control/用量计量 + MetadataStore 增 `tenant_id` 列 + `routes_tenants` 控制面(O1);`PluginIsolationHost` 接入 loader 作为可选隔离模式(O2);`WorkflowEngine` 暴露 control 路由/工具入口 + 生产注入 action handler(O3)。
   - **验收**：跨租户不可见且控制面按租户鉴权、插件进程隔离可选启用且崩溃可恢复、Workflow 可声明式执行且可观测;集成测试。
   - **产出**：租户接线 + tenant_id 列 + routes_tenants、loader 隔离模式、workflow 控制面入口、集成测试。
   - **依赖**：O1、O2、O3、G(控制面)。
-  - **当前**：Workflow 控制面**入口骨架**已就位 (骨架轮 S5, 2026-07-27):新增 `control/api/routes_workflows.py`(list/get/start,`workflow_engine=None` 时 build_router 返回 None 不挂载,仿 routes_memory_admin),`server.create_control_app`/`_mount_optional_routers` 按注入的 `workflow_engine` 挂载,`main` 按 `control.workflow.enabled` 默认关闭构造。剩余激活: O1 租户接线 + tenant_id 列 + routes_tenants、O2 loader 隔离模式、O3 action handler 生产注入 + Agent 工具入口。附 `tests/unit/test_routes_workflows_scaffolding.py` (6)。激活后 O1/O2/O3 升级为 `[x]`。
+  - **当前**：**2026-07-28 S5 激活 (O3 部分)**: 新建 `isac/runtime/workflow/actions.py` (生产 action_handler: `tool:<name>` 前缀经 agent_manager.get 取 ToolRegistry.execute + 最小 AgentContext 构造; 未知前缀记 warning noop 不触发重试; `agent:` 前缀 noop 留 P5 决策) + `isac/runtime/workflow/loader.py` (声明式加载: `load_workflows_from_dir` 扫描 `*.json` 解析为 Workflow + register, 单文件失败跳过不阻塞其余); `main._build_workflow_engine` helper 注入 handler/evaluator 并按 `definitions_dir` 加载; 新增 `test_workflow_s5.py` (13 例)。**剩余范围**: O1 routes_tenants 控制面、O2 loader 隔离可选模式、O3 Agent 工具入口 (P5 决策项, 有意未做)、P5 集成测试。
 
 ---
 

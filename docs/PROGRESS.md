@@ -21,9 +21,9 @@
 | K | 稳定化与可用版本闭环 | 100% | K1-K8 全部完成 (K8-2 Playwright CI + release_checklist 已落地) |
 | L | 拟人化运行时落地 | 100% | **P1 已接线 (2026-07-27)**: debounce 合并/wait 三路唤醒/thinking 期打断+旧回复抑制/主动任务强制话轮/会话快照恢复 全部接入生产主链路 (conversation.enabled 开关, 默认关闭零行为变化); L1-L5 升级为 [x] |
 | M | 路由与 Agent Mesh 深化 | 100% | **P2 已接线 (2026-07-27)**: observer 旁听/candidate 仲裁/notify·handoff·memory_query 全部接入生产 (Link 细粒度 permissions + handoff 归属转移 + memory_query 同步返回+scope 裁剪); M1/M2 升级为 [x] |
-| N | 记忆深化 | 部分接线 | N2 治理已完整接入生产(含检索期软删除过滤,CR2-Fix-12);N1 MemoryItem/Adapter、N3 IdentityResolver 核心+单测完成;**骨架轮 S3/S4 已补图谱召回骨架 + 身份归一默认关闭接线锚点** → 见 P3/P4 |
-| O | 企业化与平台扩展 | 实现待接线 | O1/O2/O3 核心+单测完成但 **零调用点**(未接 store/loader/control)→ 见 P5(**S5 已补 Workflow 控制面入口骨架**);O4 平台适配器/O5 Video Provider 未开始(`[ ]`,**S6/S7 已补注册挂点 + 三平台骨架**) |
-| P | 主链路接线与激活 | P0/P1/P2 完成 | **P0 并发化 + P1 拟人化 + P2 Mesh 已完成 (2026-07-27)**;P3 检索深化(图谱+Reranker)→P4 身份归一→P5 企业化 **骨架 + 默认关闭接线锚点已就位 (骨架轮 S3-S5, 2026-07-27)**,待真实激活。定义见 DEVELOPMENT_PLAN §四 P |
+| N | 记忆深化 | 部分接线 | N2 治理已完整接入生产(含检索期软删除过滤,CR2-Fix-12);N1 MemoryItem/Adapter 边界文档化(S3, 热路径继续用 MemoryHit);N3 IdentityResolver 核心+单测完成;**S3 激活 (2026-07-28)**:图谱召回 mentioned_in 边 + _graph_search 真实召回 + Reranker provider 注入 → 见 P3;**S4 激活 (2026-07-28)**:身份归一控制面 routes_identity (bind/conflicts/resolve) + main/server 注入 → 见 P4;**S2 激活 (2026-07-28)**:MemoryConsolidator run_once 真实去重/剪枝/画像归纳 |
+| O | 企业化与平台扩展 | 部分接线 | O1/O2/O3 核心+单测完成;**S5 激活 (2026-07-28)**:Workflow action_handler (tool: 路由 ToolRegistry.execute) + 声明式加载 + condition_evaluator (剩 Agent 工具入口留 P5 决策);**S7 激活 (2026-07-28)**:飞书 (AES-256-CBC 解密字节序核对自 open.feishu.cn 官方文档) + QQ 官方 (Ed25519 验签字节序核对自 bot.q.qq.com 官方文档) 适配器真实收发;微信保持骨架 (用户决定本轮不做);O5 视频 Provider 端点暂缓选型 (S6, 用户决定) |
+| P | 主链路接线与激活 | P0/P1/P2 完成 + P3/P4/P5 子范围激活 | **P0 并发化 + P1 拟人化 + P2 Mesh 已完成 (2026-07-27)**;**2026-07-28 S3/S4/S5 激活**:P3 图谱召回+Reranker / P4 身份归一控制面 / P5 Workflow action_handler+声明式加载 子范围激活;剩 P3 通用实体关系图、P5 O1/O2 routes_tenants/loader 隔离模式 + Agent 工具入口。定义见 DEVELOPMENT_PLAN §四 P |
 | Q | MVP 收尾(新增) | Q0/Q1 完成 | 2026-07-26 差距复核发现、未被 P0-P5 覆盖但 MVP 必需的缺口。**Q0 开箱可触达已完成 (2026-07-27)**: 四平台注册+裸部署默认路由+样例死键修正+WebChat 端到端可聊;**Q1 记忆写入回路与身份稳定化已完成 (2026-07-27)**: 回复后 episodic 写入+画像/关系回路+UserMapper SQLite 持久化, "越聊越熟"闭环打通 (聊→重启→检索命中);其余 Q2 人格差异化、Q3 插件/MCP 生态接线、Q4 多模态工具注册、Q5 WebUI/控制面收尾、Q6 SubAgent 补漏 未开始。定义见 DEVELOPMENT_PLAN §四 Q |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
@@ -79,24 +79,34 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 |------|------|---------|
 | L2-L5 拟人化 | **已接线 (P1, 2026-07-27)**: debounce 合并/主动调度启停/打断闭环/恢复加载全部进生产主链路 | P1 ✅ |
 | M1-M2 Mesh | **已接线 (P2, 2026-07-27)**: observer/candidate 路由 + broker 注入 + 4 A2A 工具真实可用 (Link permissions/handoff 归属转移/memory_query 同步返回) | P2 ✅ |
-| N1 MemoryItem | 契约 + Adapter 实现;`pipeline.search()` 从不调用(悬空适配层) | P3 |
-| N3 身份归一 | IdentityResolver 实现;**骨架轮 S4 已补 gateway 默认关闭接线锚点**(`main._resolve_identity`,`identity.enabled` 启用);剩生产写入 + 聚合验证 | P4 |
+| N1 MemoryItem | 契约 + Adapter 实现;S3 落地边界文档化 —— 治理路径 (N2 export) 用 MemoryItem, 检索热路径 (`search()`/`_merge_results()`) 继续用轻量 MemoryHit (避免为尚无消费者的抽象层增加每请求开销) | 已明确边界 |
+| N3 身份归一 | IdentityResolver 实现;**S4 激活 (2026-07-28)**: 控制面 routes_identity (bind/conflicts/resolve) + main/server 注入 + IdentityResolver.resolve_conflict;剩集成测试 + 真实凭据联调 | P4 (剩集成测试) |
 | O1 多租户 | **已接线 (CR3-L2)**: `tenancy.enabled` 配置开启后 MetadataStore 读写带租户谓词/打标 + 记忆命名空间加前缀;默认关闭零行为变化 | 已完成 (跨租户测试见 test_tenant_isolation) |
 | O2 插件隔离 | PluginIsolationHost 已支持子进程真实加载插件 (`load_plugin`, CR3-H2) + `on_load` 生命周期已接线;**默认加载路径仍在宿主进程内执行 (无隔离, 有护栏警告)**, 接管待做 | P5 |
-| O3 Workflow | 引擎已修多入口+fan-in 汇合语义 (CR3-M7);**骨架轮 S5 已补控制面 REST 入口** `routes_workflows`(default-off,`control.workflow.enabled`);剩 action handler 生产注入 + 工具入口 | P5 |
-| 向量召回 | **已接线 (CR3-H3)**: `pipeline.search()` 稠密召回 + RRF 融合 + ACL 一致过滤;`memory.embedding` 配 api_key+model 即生效 (main 注入 EmbeddingProvider)。**图谱召回骨架轮 S3 已补 `_graph_search` + 第四路 RRF**(default-off `enable_graph_recall`),剩真实实体抽取/邻居映射 | P3 (图谱) |
+| O3 Workflow | **S5 激活 (2026-07-28)**: action_handler (tool: 前缀 → ToolRegistry.execute) + 声明式加载 (`load_workflows_from_dir`) + condition_evaluator;控制面 routes_workflows 已挂载;剩 Agent 工具入口 (P5 决策项, 有意未做) | P5 (剩 Agent 工具入口) |
+| 向量召回 | **已接线 (CR3-H3)**: `pipeline.search()` 稠密召回 + RRF 融合 + ACL 一致过滤;`memory.embedding` 配 api_key+model 即生效 (main 注入 EmbeddingProvider)。**S3 激活 (2026-07-28)**: 图谱召回 mentioned_in 边写入 + _graph_search 真实召回 (种子锚定 user_id/group_id 满足 ACL) + 第四路 RRF;Reranker provider 注入 (够 api_key+model 时 is_available=True, 仿 CR3-H3 embedding 注入写法) | P3 (通用实体关系图留后续增强) |
 | 流式工具调用 | 按 index 累积分片 + stream_options.include_usage + 首 chunk 前失败回退 chat_with_retry (CR3-H4);主链路未启用 streaming | P0 |
+
+*已激活 (2026-07-28 S1-S5+S7)*:
+
+- **S1 主动任务生产者** — DateReminder/TopicFollowup/MemoryAssociation 三者 `__call__` 改 async + 填真实产出逻辑 (记忆日期实体/未闭合话题/记忆联想检索); `_build_task_producer` 注入 memory。16 例单测。
+- **S2 MemoryConsolidator** — run_once 三步真实整合 (去重合并: 相似度≥0.92 软删旧者经 governor; 重要性+时间衰减剪枝; 画像归纳: llm 注入时调 chat 生成 profile_text); 各步异常隔离。10 例单测。
+- **S3 图谱召回 + Reranker + MemoryItem 边界** — 见上表"向量召回"行。
+- **S4 身份归一控制面** — 见上表"N3 身份归一"行。
+- **S5 Workflow 控制面激活** — 见上表"O3 Workflow"行。
+- **S7 飞书适配器** — Webhook 入站 (URL 校验 + 明文/加密两种模式, AES-256-CBC 解密 key=SHA256(encrypt_key)/IV=base64decode(encrypt)[:16]/PKCS7 unpad; im.message.receive_v1 事件规范化) + 出站 (tenant_access_token 缓存 + POST /im/v1/messages 按 receive_id_type 分群聊/私聊)。字节序核对自 open.feishu.cn 官方文档。14 例单测。
+- **S7 QQ 官方适配器** — Ed25519 验签字节序核对自 bot.q.qq.com 官方文档 (seed=secret 重复双倍到 32 字节); op=13 验证握手签名 event_ts+plain_token; op=0 dispatch 事件验签 X-Signature-Ed25519 + X-Signature-Timestamp, msg=timestamp+raw_body; AT_MESSAGE_CREATE/GROUP_AT_MESSAGE_CREATE/C2C_MESSAGE_CREATE 三类事件规范化 + 出站 (access_token 缓存 + 群/私聊双端点 + 被动回复 msg_id)。19 例单测。
 
 *未开始 (`[ ]`)*:
 
-- **O4 平台适配器** — 微信 / Slack / 飞书 ≥1 真实实现(**骨架轮 S7 已补飞书·微信·QQ 官方三平台骨架 + `main` enabled-gated 注册分支**,default-off;剩真实连接/收发)。
-- **O5 Video Provider** — 真实端点(**骨架轮 S6 已接 `kind="video_gen"` 注册挂点**,`generate` 仍抛 `NotImplementedError`,端点开工前需二次确认)。
-- **MemoryConsolidator** — 记忆整合后台任务(episodic → 画像/中期记忆归并与衰减;**骨架轮 S2 已补骨架 + 后台生命周期挂点**,`run_once` 为 no-op,`memory.consolidation.enabled` default-off;剩真实去重/合并/剪枝)。
+- **S6 视频 Provider** — `generate` 仍抛 `NotImplementedError`; 用户决定暂缓端点选型 (Sora/Runway/Kling/自托管), 待确定后仿 image_gen 实现 (POST 生成 → 轮询/等待 → 结果写 ArtifactStore → 返回 ArtifactRef)。
+- **微信适配器** — 用户决定本轮不做, 保持骨架 (start/stop no-op、send 返回 False)。
+- **S5 Agent 工具入口** — 让 Agent 主动触发 workflow; HANDOFF 明确为 P5 决策项, 有意未做 (避免半接线死代码)。
 - **I 节点复核** — WebUI 浏览器测试 CI 已随 K8 接入,复核 I 是否可由 85% 升 100%。
 
 *已补齐*: N2 检索期软删除过滤已生效(CR2-Fix-12),N2 记忆治理已完整接入生产。
 
-*订正(2026-07-26)*: 此前"Reranker 已接入检索 pipeline"表述不准确。真实后端 `OpenAICompatRerankerProvider`(Cohere/Jina 双协议,`isac/provider/rerank/openai_compat.py`)确已实现,但生产 `main.py` 构造 `Reranker(memory_config.get("reranker", {}))` 时**未传入 provider**,`is_available()` 恒 `False`,`pipeline.search()` 的 rerank 步骤永不执行。补齐(仿 CR3-H3 embedding 注入写法)见 P3。
+*订正(2026-07-26, 已于 2026-07-28 S3 修复)*: 此前"Reranker 已接入检索 pipeline"表述不准确。真实后端 `OpenAICompatRerankerProvider`(Cohere/Jina 双协议,`isac/provider/rerank/openai_compat.py`)确已实现,但生产 `main.py` 构造 `Reranker(memory_config.get("reranker", {}))` 时**未传入 provider**,`is_available()` 恒 `False`,`pipeline.search()` 的 rerank 步骤永不执行。**S3 (2026-07-28) 已修复**: `_build_memory_stack` 仿 CR3-H3 embedding 注入写法, 够 `reranker.api_key+model` 时构造 `OpenAICompatRerankerProvider` 传入 `Reranker(cfg, provider=...)`, `is_available()` 不再恒 False。
 
 **CR3 修复轮 (2026-07-26, 对应 Review/ISAC_待修复项清单.md 的 14 项)**: H2 插件隔离护栏+`on_load` 接线+隔离宿主真实加载 / H3 向量召回接入 pipeline(RRF+ACL)+生产 EmbeddingProvider 注入 / H4 流式工具调用按 index 累积+include_usage+失败回退 / M2 bus notify 真实投递 / M5 Gating-Focus LRU cap 1000 / M6 调度器冷却不再饿死其他会话 / M7 Workflow 多入口+fan-in 入度语义 / L1 自动化创建 Agent 强制受限沙箱 / L2 租户隔离进数据面(默认关闭) / L3 软删同步 BM25+预热过滤 / L4 SSRF 请求期固定 IP / L5 治理审计 operator+agent_id 归因 / L6 非 ASCII Token 401+/metrics 可选认证 / L8 write_file 线程池+journal 原子 seq+MCP sse 显式拒绝。附带: 控制面 sessions/memory/events 路由完成生产挂载(此前 services 键缺失恒 None), `resource` 模块 Windows 平台守卫。
 
