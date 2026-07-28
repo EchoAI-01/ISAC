@@ -203,3 +203,153 @@ class TestMCPError:
         assert err.code == -32601
         assert err.message == "not found"
         assert str(err) == "not found"
+
+
+class TestScopeModel:
+    """C2: parsed_tokens 启用时按工具→scope 映射校验, 防止被限制为
+    usage:read 的 token 通过 MCP 调 agent_create/link_create/route_set_default
+    等写操作 (权限提升)。"""
+
+    def _make_server_with_tokens(
+        self, tmp_path, tokens: list[dict]
+    ) -> ISACMCPServer:
+        from isac.control.auth import TokenScope
+        services = {
+            "global_config": {},
+            "provider_manager": _StubProviderManager(),
+            "memory_factory": lambda namespace: _StubMemory(namespace),
+        }
+        agent_manager = AgentManager(services)
+        bus = InterAgentBus()
+        router = MessageRouter(RoutingRules(), agents_provider=agent_manager.routing_infos)
+        parsed = [
+            TokenScope(token=t["token"], scopes=frozenset(t["scopes"]))
+            for t in tokens
+        ]
+        return ISACMCPServer(
+            services=services,
+            api_token="",  # parsed_tokens 启用时 api_token 不再用于认证
+            agent_manager=agent_manager,
+            router=router,
+            bus=bus,
+            parsed_tokens=parsed,
+        )
+
+    @pytest.mark.asyncio
+    async def test_usage_read_token_cannot_call_agent_create(self, tmp_path) -> None:
+        """usage:read scope 调 agent_create (需要 agent:write) → 403 SCOPE_FORBIDDEN。"""
+        server = self._make_server_with_tokens(
+            tmp_path,
+            tokens=[{"token": "limited", "scopes": ["usage:read"]}],
+        )
+        response = await server._handle_request(
+            {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {
+                    "meta": {"authorization": "Bearer limited"},
+                    "name": "agent_create",
+                    "arguments": {"agent_id": "x", "display_name": "X"},
+                },
+            }
+        )
+        assert "error" in response
+        assert response["error"]["code"] == -32003  # SCOPE_FORBIDDEN
+
+    @pytest.mark.asyncio
+    async def test_agent_write_token_can_call_agent_create(self, tmp_path) -> None:
+        """agent:write scope 调 agent_create → 通过。"""
+        server = self._make_server_with_tokens(
+            tmp_path,
+            tokens=[{"token": "writer", "scopes": ["agent:write"]}],
+        )
+        response = await server._handle_request(
+            {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {
+                    "meta": {"authorization": "Bearer writer"},
+                    "name": "agent_create",
+                    "arguments": {"agent_id": "scope_agent", "display_name": "Scoped"},
+                },
+            }
+        )
+        assert "result" in response
+        import json
+        result = json.loads(response["result"]["content"][0]["text"])
+        assert result["agent_id"] == "scope_agent"
+
+    @pytest.mark.asyncio
+    async def test_wildcard_scope_passes_all_tools(self, tmp_path) -> None:
+        """scopes 含 "*" 通配符时所有工具都可调用。"""
+        server = self._make_server_with_tokens(
+            tmp_path,
+            tokens=[{"token": "admin", "scopes": ["*"]}],
+        )
+        response = await server._handle_request(
+            {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {
+                    "meta": {"authorization": "Bearer admin"},
+                    "name": "link_create",
+                    "arguments": {"from_agent": "a", "to_agent": "b"},
+                },
+            }
+        )
+        assert "result" in response
+
+    @pytest.mark.asyncio
+    async def test_unknown_token_rejected(self, tmp_path) -> None:
+        """parsed_tokens 启用时, 不在 tokens[] 里的 token → 401。"""
+        server = self._make_server_with_tokens(
+            tmp_path,
+            tokens=[{"token": "known", "scopes": ["agent:write"]}],
+        )
+        response = await server._handle_request(
+            {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {
+                    "meta": {"authorization": "Bearer unknown-token"},
+                    "name": "agent_create",
+                    "arguments": {},
+                },
+            }
+        )
+        assert response["error"]["code"] == -32001
+
+    @pytest.mark.asyncio
+    async def test_usage_read_token_cannot_call_link_create(self, tmp_path) -> None:
+        """link_create 需要 link:write, usage:read 不够 → 403。"""
+        server = self._make_server_with_tokens(
+            tmp_path,
+            tokens=[{"token": "limited", "scopes": ["usage:read"]}],
+        )
+        response = await server._handle_request(
+            {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {
+                    "meta": {"authorization": "Bearer limited"},
+                    "name": "link_create",
+                    "arguments": {"from_agent": "a", "to_agent": "b"},
+                },
+            }
+        )
+        assert response["error"]["code"] == -32003
+
+    @pytest.mark.asyncio
+    async def test_routing_write_scope_for_route_set_default(self, tmp_path) -> None:
+        """route_set_default 需要 routing:write。"""
+        server = self._make_server_with_tokens(
+            tmp_path,
+            tokens=[{"token": "router", "scopes": ["routing:write"]}],
+        )
+        response = await server._handle_request(
+            {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {
+                    "meta": {"authorization": "Bearer router"},
+                    "name": "route_set_default",
+                    "arguments": {"platform": "qq", "agent_id": "a1"},
+                },
+            }
+        )
+        assert "result" in response
+

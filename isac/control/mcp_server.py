@@ -45,6 +45,25 @@ MCP_TOOL_SPECS: list[dict[str, Any]] = [
 ]
 
 
+# C2: 工具→scope 映射表。MCP stdio 桥接只校验扁平 api_token, 完全忽略
+# tokens[] scope 模型, 让被限制为 usage:read 的 token 可通过 MCP 调
+# agent_create/link_create/route_set_default 等写操作。映射表与 HTTP
+# 端点的 scope_dependency 一一对应 (routes_agents.py 等), 保留一致性。
+TOOL_SCOPE_MAP: dict[str, str] = {
+    "agent_create": "agent:write",
+    "agent_update_config": "agent:write",
+    "agent_start": "agent:write",
+    "agent_stop": "agent:write",
+    "channel_bind_agent": "agent:write",
+    "channel_unbind_agent": "agent:write",
+    "route_set_default": "routing:write",
+    "link_create": "link:write",
+    "link_delete": "link:write",
+    "plugin_set_enabled": "plugin:write",
+    "message_send": "agent:write",
+}
+
+
 class ISACMCPServer:
     """ISAC MCP 服务端 (stdio + JSON-RPC 2.0)。
 
@@ -62,6 +81,7 @@ class ISACMCPServer:
         router: MessageRouter | None = None,
         bus: InterAgentBus | None = None,
         plugin_manager: PluginManager | None = None,
+        parsed_tokens: list[Any] | None = None,
     ):
         self.services = services
         self.api_token = api_token
@@ -69,6 +89,9 @@ class ISACMCPServer:
         self._router = router or services.get("router")
         self._bus = bus or services.get("bus")
         self._plugin_manager = plugin_manager or services.get("plugin_manager")
+        # C2: parsed_tokens 为 None (未配置 tokens[]) 时回退到扁平 api_token,
+        # 与 HTTP 端点行为一致 (向后兼容默认行为不变); 非 None 时按 scope 校验。
+        self._parsed_tokens = parsed_tokens
         self._initialized = False
 
     async def serve_stdio(
@@ -128,13 +151,22 @@ class ISACMCPServer:
 
         # protocol-level 方法 (initialize / tools/list / shutdown) 不需要 token
         # tools/call 需要 token 认证
-        if method == "tools/call" and self.api_token:
+        if method == "tools/call" and (self.api_token or self._parsed_tokens):
             auth_header = params.get("meta", {}).get("authorization", "") if isinstance(params, dict) else ""
-            from isac.control.auth import extract_bearer, verify_token
+            from isac.control.auth import extract_bearer
 
             token = extract_bearer(auth_header)
-            if not verify_token(token, self.api_token):
-                return self._error_response(request_id, -32001, "Unauthorized: invalid or missing token")
+            # C2: parsed_tokens 配置时优先走 scope 校验; 否则回退扁平 api_token
+            if self._parsed_tokens:
+                matched_scope = self._find_token_scope(token)
+                if matched_scope is None:
+                    return self._error_response(request_id, -32001, "Unauthorized: invalid or missing token")
+                # scope 校验下放到 _call_tool, 因 scope 与具体工具绑定
+            elif self.api_token:
+                from isac.control.auth import verify_token
+
+                if not verify_token(token, self.api_token):
+                    return self._error_response(request_id, -32001, "Unauthorized: invalid or missing token")
 
         try:
             result = await self._dispatch(method, params)
@@ -145,7 +177,36 @@ class ISACMCPServer:
             return self._error_response(request_id, exc.code, exc.message)
         except Exception as exc:  # noqa: BLE001 防御
             logger.error("MCP 请求处理异常", method=method, error=str(exc), exc_info=True)
-            return self._error_response(request_id, -32603, f"Internal error: {exc}")
+            return self._error_response(request_id, -32603, "Internal server error")
+
+    def _find_token_scope(self, token: str | None) -> frozenset[str] | None:
+        """C2: 在 parsed_tokens 中查找匹配的 TokenScope, 返回其 scopes 或 None。
+
+        时序安全: 用短路比较避免非常量时间, 但 token 校验本身不是敏感比较
+        (token 已通过 Bearer Header 提供); 真正的敏感数据 (api_token) 在
+        tokens[] 模型里已替换为 scoped tokens, 单个 token 暴露影响有限。
+        """
+        import hmac
+
+        if not token or self._parsed_tokens is None:
+            return None
+        for ts in self._parsed_tokens:
+            if hmac.compare_digest(token, ts.token):
+                return ts.scopes
+        return None
+
+    def _check_tool_scope(self, tool_name: str, scopes: frozenset[str] | None) -> bool:
+        """C2: 校验 scopes 是否包含 tool_name 对应的 scope。
+
+        scopes=None 表示未启用 scope 模型 (parsed_tokens 为 None), 跳过校验。
+        scopes 包含 "*" 表示全权限通配。
+        """
+        if scopes is None:
+            return True  # 未启用 scope 模型, 由 token 认证兜底
+        required = TOOL_SCOPE_MAP.get(tool_name)
+        if required is None:
+            return False  # 未知工具, 拒绝
+        return required in scopes or "*" in scopes
 
     async def _dispatch(self, method: str, params: dict | list) -> Any:
         """MCP 方法分发。"""
@@ -177,6 +238,18 @@ class ISACMCPServer:
         """调用 MCP 工具, 委托到 AgentManager/Router/Bus。"""
         name = params.get("name", "")
         args = params.get("arguments", {}) or {}
+        # C2: parsed_tokens 启用时按 tool→scope 映射校验
+        if self._parsed_tokens is not None:
+            auth_header = params.get("meta", {}).get("authorization", "")
+            from isac.control.auth import extract_bearer
+
+            token = extract_bearer(auth_header)
+            scopes = self._find_token_scope(token)
+            if scopes is None:
+                raise MCPError(-32001, "Unauthorized: invalid or missing token")
+            if not self._check_tool_scope(name, scopes):
+                required = TOOL_SCOPE_MAP.get(name, "unknown")
+                raise MCPError(-32003, f"Forbidden: missing scope {required}")
         if name == "agent_create" and self._agent_manager is not None:
             # CR3-L1: MCP 自动化创建同样走受限默认配置 (bash/task deny +
             # plugins_deny=["*"]), 调用方 arguments 里的能力字段被丢弃并告警。
