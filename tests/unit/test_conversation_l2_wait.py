@@ -251,3 +251,31 @@ async def test_wait_tool_hard_timeout_when_future_never_resolves() -> None:
     result = await asyncio.wait_for(tool.execute(ctx), timeout=5.0)
     assert "超时" in result.content or "timeout" in result.content.lower()
     assert "hard cap" in result.content or "hard" in result.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_wait_tool_hard_timeout_cleans_up_real_runtime_state() -> None:
+    """Fix-33: 硬超时兜底触发时 (模拟内部软超时定时器因故未能触发, R18 场景注释
+    所指"协程被取消/lock 释放"等异常), 必须清理 runtime 的 pending_wait/state/
+    _timeout_tasks, 不能让该会话永久停在 WAITING —— 用真实 ConversationRuntime
+    (而非上面 test_wait_tool_hard_timeout_when_future_never_resolves 用的最小
+    stub) 验证硬超时返回后状态被正确复位, 且伪造的悬挂定时器任务被取消清理。"""
+
+    async def _hang_forever(wait: WaitState) -> None:
+        await asyncio.sleep(100)  # 模拟内部软超时定时器因故未能触发
+
+    tool = WaitTool()
+    session = _make_session()
+    agent_context = _make_agent_context(session)
+    registry = ConversationRuntimeRegistry()
+    runtime = registry.get("a1", "s1")  # 预先取出同一实例, 抢在 WaitTool 调用前打补丁
+    runtime._wait_timeout = _hang_forever  # type: ignore[method-assign]
+    services = {"conversation_registry": registry, "conversation_enabled": True, "agent_id": "a1"}
+    ctx = ToolContext(args={"seconds": 1}, agent_context=agent_context, services=services)
+
+    result = await asyncio.wait_for(tool.execute(ctx), timeout=5.0)  # hard cap = 2s
+
+    assert "超时" in result.content or "timeout" in result.content.lower()
+    assert runtime.state.value == "idle"  # Fix-33 前: 会永久停在 waiting
+    assert runtime.pending_wait is None
+    assert len(runtime._timeout_tasks) == 0  # 伪造的悬挂定时器任务应已被取消清理
