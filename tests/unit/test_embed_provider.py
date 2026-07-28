@@ -119,6 +119,21 @@ async def test_embed_4xx_raises_non_retriable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_embed_timeout_uses_timeout_error_mapping() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("simulated timeout")
+
+    provider = _make_embed_provider(handler)
+    from isac.core.exceptions import LLMError
+
+    with pytest.raises(LLMError) as exc:
+        await provider.embed(["hello"])
+    assert exc.value.retriable is True
+    assert "超时" in str(exc.value)
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
 async def test_embed_json_parse_failure_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"not json")
