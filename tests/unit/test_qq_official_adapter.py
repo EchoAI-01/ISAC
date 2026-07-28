@@ -400,6 +400,46 @@ async def test_send_returns_false_on_api_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_returns_false_when_code_is_none() -> None:
+    """X1: code 显式为 None 时 fail-closed, 不误判为成功 (None or 0 == 0)。"""
+    adapter = _make_adapter()
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if "getAppAccessToken" in str(request.url):
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 7200})
+        # QQ 网关异常透传可能返回 code=None
+        return httpx.Response(200, json={"code": None, "message": "internal error"})
+
+    adapter.set_http_transport(httpx.MockTransport(_handler))
+    msg = ISACMessage(
+        msg_id="m1", platform="qq_official", timestamp=0, user_id="u1",
+        user_name="u1", content="hi",
+    )
+    ok = await adapter.send(msg)
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_send_returns_false_when_code_missing() -> None:
+    """X1: code 字段缺失时 fail-closed (与 FeishuAdapter.send 一致)。"""
+    adapter = _make_adapter()
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if "getAppAccessToken" in str(request.url):
+            return httpx.Response(200, json={"access_token": "tok", "expires_in": 7200})
+        # 响应体不含 code 字段
+        return httpx.Response(200, json={"data": {"id": "m"}})
+
+    adapter.set_http_transport(httpx.MockTransport(_handler))
+    msg = ISACMessage(
+        msg_id="m1", platform="qq_official", timestamp=0, user_id="u1",
+        user_name="u1", content="hi",
+    )
+    ok = await adapter.send(msg)
+    assert ok is False
+
+
+@pytest.mark.asyncio
 async def test_send_without_credentials_returns_false() -> None:
     """未配置 app_id/secret → 直接 False。"""
     adapter = _make_adapter(app_id="", secret="")

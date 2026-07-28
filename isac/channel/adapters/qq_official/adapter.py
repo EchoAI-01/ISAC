@@ -97,17 +97,14 @@ class QQOfficialAdapter(PlatformAdapter):
             return
         try:
             import uvicorn
-            from fastapi import FastAPI, Request
+            from fastapi import FastAPI
         except ImportError as exc:  # pragma: no cover - 依赖已在 pyproject.toml
             raise ImportError(
                 "QQ 官方适配器需要 fastapi + uvicorn (已在项目依赖中)。若缺失请运行 uv sync --all-extras"
             ) from exc
         app = FastAPI()
 
-        async def _callback(request: Request) -> dict:
-            return await self._handle_callback(request)
-
-        app.add_api_route(self._webhook_path, _callback, methods=["POST"])
+        app.add_api_route(self._webhook_path, self._handle_callback, methods=["POST"])
         config = uvicorn.Config(
             app, host=self._webhook_host, port=self._webhook_port, log_level="warning",
         )
@@ -334,7 +331,12 @@ class QQOfficialAdapter(PlatformAdapter):
             return False
         if resp is None:
             return False
-        code = int(resp.get("code", 0) or 0)
+        # NOTE: 用 `code_raw is None` 判定而非 `or` —— 0 在 Python 是 falsy,
+        # `None or 0 == 0` 会把 code=None (QQ 网关异常返回) 误判为成功。
+        # 与 FeishuAdapter.send() 和同文件 _handle_callback op 判定保持
+        # 一致的 fail-closed 语义 (缺失/None → -1 → 视为失败)。
+        code_raw = resp.get("code")
+        code = -1 if code_raw is None else int(code_raw)
         if code != 0:
             logger.warning("QQ 官方 send 返回非 0 code", code=code, msg=resp.get("message", ""))
             return False
