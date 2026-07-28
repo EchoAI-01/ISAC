@@ -64,6 +64,10 @@ class WorkflowEngine:
     def get(self, workflow_id: str) -> Workflow | None:
         return self._workflows.get(workflow_id)
 
+    def list_workflows(self) -> list[Workflow]:
+        """已登记的全部工作流 (供控制面路由列举, S5)。"""
+        return list(self._workflows.values())
+
     async def start(self, workflow_id: str) -> WorkflowStatus:
         """启动一个已登记的工作流 (按 transitions 调度 stages)."""
         wf = self._workflows.get(workflow_id)
