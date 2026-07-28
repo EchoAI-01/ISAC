@@ -55,10 +55,34 @@ def _ensure_dir_sync(path: Path) -> None:
 
 
 def _write_file_atomic_sync(file_path: Path, data: bytes) -> None:
-    """同步原子写 (tmp + replace); 调用方用 asyncio.to_thread 包装。"""
-    tmp_path = file_path.with_name(f".{file_path.name}.tmp")
-    tmp_path.write_bytes(data)
-    tmp_path.replace(file_path)
+    """同步原子写 (tmp + replace); 调用方用 asyncio.to_thread 包装。
+
+    tmp 文件名每次唯一 (含 pid + 随机后缀), 防止并发 put 相同内容时一方抢先
+    rename 走另一方的 tmp 抛 FileNotFoundError (虽结果文件已成功, 但调用方
+    会误判失败)。file 已存在则跳过 (同内容幂等)。
+    """
+    if file_path.exists():
+        return
+    import os
+    import uuid
+
+    tmp_path = file_path.with_name(
+        f".{file_path.stem}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    )
+    try:
+        tmp_path.write_bytes(data)
+        tmp_path.replace(file_path)
+    except FileNotFoundError:
+        # tmp 被并发 put 抢先 rename 走, 或最终路径已被其他协程创建; 检查目标
+        # 是否已存在, 已存在则视为成功 (同内容幂等), 否则真失败再抛。
+        if file_path.exists():
+            return
+        raise
+    finally:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _read_file_sync(file_path: Path) -> bytes | None:
