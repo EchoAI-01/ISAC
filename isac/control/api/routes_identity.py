@@ -78,12 +78,18 @@ def build_router(
         )
         ok = await identity_resolver.bind(body.person_id, identity)
         operator = _resolve_operator(request)
+        status_code = 200 if ok else 400
         await _audit(
-            audit_log, "POST", "/api/v1/identity/bind",
-            "bind_identity", body.person_id, actor=operator,
+            audit_log,
+            "POST",
+            "/api/v1/identity/bind",
+            "bind_identity",
+            body.person_id,
+            actor=operator,
+            status_code=status_code,
         )
         if not ok:
-            raise HTTPException(status_code=400, detail="identity bind failed")
+            raise HTTPException(status_code=status_code, detail="identity bind failed")
         return {"person_id": body.person_id, "platform": body.platform, "bound": True}
 
     @router.get("/identity/conflicts", dependencies=read_deps)
@@ -98,12 +104,18 @@ def build_router(
     ) -> dict:
         ok = await identity_resolver.resolve_conflict(conflict_id, body.person_id)
         operator = _resolve_operator(request)
+        status_code = 200 if ok else 404
         await _audit(
-            audit_log, "POST", f"/api/v1/identity/conflicts/{conflict_id}/resolve",
-            "resolve_identity_conflict", conflict_id, actor=operator,
+            audit_log,
+            "POST",
+            f"/api/v1/identity/conflicts/{conflict_id}/resolve",
+            "resolve_identity_conflict",
+            conflict_id,
+            actor=operator,
+            status_code=status_code,
         )
         if not ok:
-            raise HTTPException(status_code=404, detail="conflict not found")
+            raise HTTPException(status_code=status_code, detail="conflict not found")
         return {"conflict_id": conflict_id, "resolved": True, "person_id": body.person_id}
 
     return router
@@ -117,10 +129,16 @@ async def _audit(
     target: str,
     *,
     actor: str = "authenticated",
+    status_code: int = 200,
 ) -> None:
     """记录审计 (audit_log 为 None 时跳过, 与其他控制面路由一致)。"""
     if audit_log is None:
         return
     await audit_log.record(
-        actor=actor, method=method, path=path, action=action, target=target, status_code=200
+        actor=actor,
+        method=method,
+        path=path,
+        action=action,
+        target=target,
+        status_code=status_code,
     )
