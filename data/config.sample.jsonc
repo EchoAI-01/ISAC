@@ -251,7 +251,7 @@
       "secret": "",
       "sandbox": false,                       // 沙箱环境走 sandbox.api.sgroup.qq.com
       "api_base": "https://api.sgroup.qq.com",
-      "webhook_host": "0.0.0.0",
+      "webhook_host": "127.0.0.1",              // O11: 默认回环, 生产建议反代终止 TLS 后转发到此
       "webhook_port": 8443,                    // 官方限制端口 80/443/8080/8443
       "webhook_path": "/qq_official/callback"
     },
