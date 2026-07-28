@@ -101,3 +101,20 @@ async def test_search_top_k_limit(store: VectorStore) -> None:
     assert len(results) == 3
     # m2 (距离 0) 应排第一
     assert results[0][0] == "m2"
+
+
+@pytest.mark.asyncio
+async def test_init_schema_enables_wal_and_busy_timeout(tmp_path: Path) -> None:
+    """R6: init_schema 后连接应启用 WAL 模式 + busy_timeout, 防止并发写 SQLITE_BUSY。"""
+    s = VectorStore(str(tmp_path / "v.db"), dimension=4)
+    await s.init_schema()
+    assert s._db is not None
+    # journal_mode 是数据库级别持久化属性
+    cursor = await s._db.execute("PRAGMA journal_mode")
+    row = await cursor.fetchone()
+    assert row is not None and row[0].lower() == "wal"
+    # busy_timeout 是 connection 级别, 当前连接应已设为 5000
+    cursor = await s._db.execute("PRAGMA busy_timeout")
+    row = await cursor.fetchone()
+    assert row is not None and int(row[0]) == 5000
+    await s.close()

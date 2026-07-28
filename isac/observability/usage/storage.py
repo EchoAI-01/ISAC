@@ -129,6 +129,10 @@ class UsageStore:
 
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(self.db_path)
+        # R6: WAL + busy_timeout (持久连接, 一次设置该连接全程生效)。
+        await self._db.execute("PRAGMA journal_mode=WAL")
+        await self._db.execute("PRAGMA busy_timeout=5000")
+        await self._db.execute("PRAGMA foreign_keys=ON")
         self._db.row_factory = aiosqlite.Row
         await self._db.executescript(SCHEMA_SQL)
         for column in _DETAIL_TOKEN_COLUMNS:
