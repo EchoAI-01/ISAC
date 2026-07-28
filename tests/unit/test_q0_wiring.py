@@ -135,7 +135,7 @@ async def test_task_gate_accepts_task_runner_fallback() -> None:
     from isac.agent.tools.utility.task import TaskTool
     from isac.core.types import ToolResult
 
-    async def runner(task: str, *, budget: int, parent_context) -> ToolResult:
+    async def runner(task: str, *, budget: int, parent_context, depth: int = 0, max_depth: int = 3) -> ToolResult:
         return ToolResult(content=f"done: {task}")
 
     registry = ToolRegistry(ToolPermission())
