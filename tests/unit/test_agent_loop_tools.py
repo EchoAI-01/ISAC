@@ -84,6 +84,60 @@ async def test_agent_loop_passes_services_and_appends_tool_result() -> None:
     assert messages[-2]["tool_calls"][0]["function"]["name"] == "service_echo"
 
 
+class NoneContentFinalReplyProvider:
+    """模拟 LLM API 在最终回复里返回 content=None (异常但合规)。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def chat(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs) -> LLMResponse:
+        self.calls += 1
+        if self.calls == 1:
+            return LLMResponse(
+                content=None,
+                tool_calls=[ToolCall(id="tool_1", name="service_echo", arguments={})],
+                usage=TokenUsage(total_tokens=1),
+            )
+        # 最终回复 content=None (某些模型在 stop_by_budget 或纯 reasoning 场景会这样)
+        return LLMResponse(content=None, usage=TokenUsage(total_tokens=1))
+
+    def chat_stream(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs):
+        raise NotImplementedError
+
+    def get_capabilities(self):
+        from isac.core.types import ModelCapabilities
+        return ModelCapabilities(supports_tools=True, supports_streaming=False)
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_normalizes_none_content_to_empty_string() -> None:
+    """R17: 最终回复 content=None 时 AgentResult.content 应归一化为 "".
+
+    原 ``AgentResult(content=response.content)`` 会让 None 传入下游
+    f-string/channel.send 抛 TypeError。改为 ``response.content or ""``。
+    """
+    provider = NoneContentFinalReplyProvider()
+    prompt_builder = SystemPromptBuilder()
+    registry = ToolRegistry()
+    registry.register(ServiceEchoTool())
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=prompt_builder,
+        hooks=AgentHooks(),
+        tools=registry,
+        services={"memory": "memory-service"},
+    )
+    messages: list[dict] = [{"role": "user", "content": "查记忆"}]
+
+    result = await loop.run(messages, make_agent_context())
+
+    # R17: content 应为 "" 而非 None (AgentResult.content 契约为 str)
+    assert result.content == ""
+    assert result.content is not None
+    # 下游 f-string 拼接不应抛 TypeError
+    _ = f"reply: {result.content}"
+
+
 class MultiRoundToolCallingProvider:
     """连续两轮都触发工具调用, 第三轮才产出最终回复。"""
 
