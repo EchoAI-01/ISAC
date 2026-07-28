@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, ValidationInfo, field_validator
 
 from isac.utils.logger import get_logger
 
@@ -26,6 +26,19 @@ logger = get_logger(__name__)
 
 class ConfigValidationError(ValueError):
     """配置校验失败 (非法端口/类型等)。启动期抛出, 消息指明失败字段。"""
+
+
+# Fix-30: control.* 字段显式 JSON null 等价于"未配置"。此前这些字段类型不接受
+# None (如 tokens: list[Any]), 手工维护/工具生成的 JSONC 里写 "tokens": null
+# 会被 pydantic 拒绝并在启动期抛 ConfigValidationError 崩溃——而历史行为 (加
+# schema 校验之前) 对这些字段一律按 falsy/未配置处理, 完全无害。
+_CONTROL_FIELD_DEFAULTS: dict[str, Any] = {
+    "enabled": False,
+    "host": "127.0.0.1",
+    "port": 8765,
+    "api_token": "",
+    "tokens": [],
+}
 
 
 class ControlConfig(BaseModel):
@@ -39,6 +52,15 @@ class ControlConfig(BaseModel):
     api_token: str = ""
     tokens: list[Any] = Field(default_factory=list)
 
+    @field_validator("enabled", "host", "port", "api_token", "tokens", mode="before")
+    @classmethod
+    def _none_means_unset(cls, v: Any, info: ValidationInfo) -> Any:
+        """显式 null 等价于该字段未配置, 落回默认值; 其余非法值 (类型错/越界)
+        原样传给标准校验, 仍按预期抛 ConfigValidationError, 不受本 fix 影响。"""
+        if v is None:
+            return _CONTROL_FIELD_DEFAULTS[str(info.field_name)]
+        return v
+
 
 class ISACConfig(BaseModel):
     """顶层配置的受校验字段。extra="allow" 让未建模的节 (llm/memory/channels/...) 原样放行。"""
@@ -48,6 +70,15 @@ class ISACConfig(BaseModel):
     debug: bool = False
     log_level: str = "info"
     control: ControlConfig = Field(default_factory=ControlConfig)
+
+    @field_validator("control", mode="before")
+    @classmethod
+    def _none_control_means_unset(cls, v: Any) -> Any:
+        """顶层 "control": null 同样等价于未配置该节 (退化成全默认 ControlConfig),
+        而不是把 None 当 ControlConfig 实例校验失败崩溃。"""
+        if v is None:
+            return {}
+        return v
 
 
 def validate_config(config: dict[str, Any]) -> dict[str, Any]:
