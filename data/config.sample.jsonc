@@ -198,6 +198,20 @@
       "webhook_port": 9099,
       "webhook_path": "/feishu/events"
     },
+    // QQ 官方机器人 (Webhook 回调, S7): 与 OneBot 的 "qq" 并存不撞键, 二选一启用。
+    // 在 QQ 开放平台 (bot.q.qq.com) 后台把回调地址填成
+    // http://<你的外网地址>:<port>/qq_official/callback (端口限 80/443/8080/8443)。
+    // secret 是机器人密钥 (用于 Ed25519 签名); 未配置则拒绝所有事件。
+    "qq_official": {
+      "enabled": false,
+      "app_id": "",
+      "secret": "",
+      "sandbox": false,                       // 沙箱环境走 sandbox.api.sgroup.qq.com
+      "api_base": "https://api.sgroup.qq.com",
+      "webhook_host": "0.0.0.0",
+      "webhook_port": 8443,                    // 官方限制端口 80/443/8080/8443
+      "webhook_path": "/qq_official/callback"
+    },
     // WebChat: 零外部依赖的内置 HTTP 聊天通道, 开箱即可体验:
     //   发消息: curl -X POST http://127.0.0.1:8090/webchat/send \
     //           -d '{"session_id":"s1","user_id":"me","content":"你好"}'
