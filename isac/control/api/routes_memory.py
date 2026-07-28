@@ -24,7 +24,7 @@ def build_router(
     """构造 Memory Control API 路由。无 metadata_store 时返回 None (不挂载)。"""
     if metadata_store is None:
         return None
-    from fastapi import APIRouter, Depends
+    from fastapi import APIRouter, Depends, Query
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["memory"], dependencies=deps)
@@ -36,7 +36,7 @@ def build_router(
     read_deps = [Depends(scope_dependency("memory:read"))] if scope_dependency else []
 
     @router.get("/memory/{agent_id}/episodes", dependencies=read_deps)
-    async def list_episodes(agent_id: str, limit: int = 100) -> dict:
+    async def list_episodes(agent_id: str, limit: int = Query(default=100, ge=1, le=500)) -> dict:
         episodes = await _query_episodes_by_agent(metadata_store, agent_id, limit)
         return {"episodes": episodes}
 
