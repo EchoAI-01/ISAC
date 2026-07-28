@@ -117,6 +117,25 @@ def test_resolve_unknown_conflict_returns_404(resolver: IdentityResolver) -> Non
     assert resp.status_code == 404
 
 
+def test_resolve_unknown_conflict_audits_404(resolver: IdentityResolver) -> None:
+    from isac.control.audit import AuditLog
+
+    audit = AuditLog()
+    app = FastAPI()
+    router = routes_identity.build_router(resolver, audit_log=audit)
+    assert router is not None
+    app.include_router(router, prefix="/api/v1")
+
+    response = TestClient(app).post(
+        "/api/v1/identity/conflicts/nope-id/resolve", json={"person_id": "p_x"}
+    )
+
+    assert response.status_code == 404
+    entries = audit.query(action="resolve_identity_conflict")
+    assert len(entries) == 1
+    assert entries[0]["status_code"] == 404
+
+
 def test_resolve_conflict_method_directly(resolver: IdentityResolver) -> None:
     """直接调用 resolver.resolve_conflict: 存在 → True + resolved=1; 不存在 → False。"""
     from isac.gateway.identity.models import PersonIdentity
