@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import httpx
+
 from isac.core.exceptions import LLMError
 from isac.provider.base import EmbeddingProvider
 from isac.provider.llm.openai_compat import OpenAICompatProvider
@@ -72,7 +74,7 @@ class OpenAICompatEmbeddingProvider(EmbeddingProvider):
         client = self._get_client()
         try:
             response = await client.post("/embeddings", json=payload)
-        except TimeoutError as exc:
+        except httpx.TimeoutException as exc:
             raise LLMError(f"Embedding 请求超时: {exc}", retriable=True) from exc
         except Exception as exc:
             raise OpenAICompatProvider._wrap_network_error(exc) from exc

@@ -124,6 +124,23 @@ async def test_transcribe_5xx_raises_retriable(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_transcribe_timeout_uses_timeout_error_mapping(tmp_path: Path) -> None:
+    audio_path = tmp_path / "voice.mp3"
+    audio_path.write_bytes(b"ID3fake")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("simulated timeout")
+
+    provider = _make_stt_provider(handler)
+    media = MediaInput(kind="audio", uri=str(audio_path), mime_type="audio/mpeg")
+    with pytest.raises(LLMError) as exc:
+        await provider.transcribe(media)
+    assert exc.value.retriable is True
+    assert "超时" in str(exc.value)
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
 async def test_transcribe_4xx_raises_non_retriable(tmp_path: Path) -> None:
     audio_path = tmp_path / "voice.mp3"
     audio_path.write_bytes(b"ID3fake")
@@ -221,6 +238,21 @@ async def test_synthesize_5xx_raises_retriable(tmp_path: Path) -> None:
     with pytest.raises(LLMError) as exc:
         await provider.synthesize(text="hello")
     assert exc.value.retriable is True
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_synthesize_timeout_uses_timeout_error_mapping(tmp_path: Path) -> None:
+    store = ArtifactStore(str(tmp_path / "artifacts"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("simulated timeout")
+
+    provider = _make_tts_provider(handler, artifact_store=store)
+    with pytest.raises(LLMError) as exc:
+        await provider.synthesize("hello")
+    assert exc.value.retriable is True
+    assert "超时" in str(exc.value)
     await provider.aclose()
 
 
