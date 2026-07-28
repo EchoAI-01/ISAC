@@ -292,6 +292,11 @@ class MetadataStore:
         ordered_ids = [memory_id for memory_id in memory_ids if memory_id]
         if not ordered_ids:
             return []
+        # R9: SQLite 默认 SQLITE_MAX_VARIABLE_NUMBER=999, IN 子句占用的占位符
+        # 数量若超限会报错。cap 到 500 (留余量给 agent_id/group_id/user_id 参数)
+        # 避免极端 recall_limit * 3 场景溢出。下游 RRF 已 cap, 不影响召回完整性。
+        if len(ordered_ids) > 500:
+            ordered_ids = ordered_ids[:500]
         placeholders = ",".join("?" for _ in ordered_ids)
         conditions = ["agent_id = ?", f"id IN ({placeholders})", "deleted = 0"]
         params: list[Any] = [agent_id, *ordered_ids]

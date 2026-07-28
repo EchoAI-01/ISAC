@@ -269,6 +269,43 @@ async def test_get_episodes_by_ids_excludes_soft_deleted_episodes(tmp_path) -> N
 
 
 @pytest.mark.asyncio
+async def test_get_episodes_by_ids_caps_candidate_ids_to_500(tmp_path) -> None:
+    """R9: candidate_ids 超 500 时截断, 防 SQLite SQLITE_MAX_VARIABLE_NUMBER (默认 999) 溢出。
+
+    构造 600 个 candidate_ids (前 500 个真实存在, 后 100 个不存在), 验证
+    只查询前 500 个, 不抛 SQL 错误。
+    """
+    db_path = str(tmp_path / "memory.db")
+    store = MetadataStore(db_path)
+    await store.init_schema()
+    # 只存 mem_1, mem_2 两条; 其余 ID 不存在
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_1", "session_id": "s1", "user_id": "u1", "content": "x"},
+    )
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_2", "session_id": "s1", "user_id": "u1", "content": "y"},
+    )
+
+    candidate_ids = [f"mem_{i}" for i in range(600)]  # 600 个 ID
+    # mem_1 和 mem_2 在前 500 内 → 应能命中
+    candidate_ids[0] = "mem_1"
+    candidate_ids[1] = "mem_2"
+
+    results = await store.get_episodes_by_ids("agent_a", candidate_ids)
+    # mem_1 + mem_2 命中, 其他 598 个不存在 → 2 个结果
+    assert {item["id"] for item in results} == {"mem_1", "mem_2"}
+
+    # mem_1 放到 600 位置 (前 500 之外) → 不应命中 (被 cap 截断)
+    candidate_ids[599] = "mem_1"
+    candidate_ids[0] = "no-match"
+    results = await store.get_episodes_by_ids("agent_a", candidate_ids)
+    # mem_1 已被 cap 截断, 不出现在前 500 内 → 不命中
+    assert "mem_1" not in {item["id"] for item in results}
+
+
+@pytest.mark.asyncio
 async def test_person_profile_upsert_and_read(tmp_path) -> None:
     store = MetadataStore(str(tmp_path / "memory.db"))
     await store.init_schema()
