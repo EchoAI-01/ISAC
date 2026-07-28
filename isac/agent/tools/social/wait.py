@@ -7,6 +7,7 @@ L2: conversation.enabled=True 时向本会话 ConversationRuntime 注册 WaitSta
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 
@@ -55,8 +56,21 @@ class WaitTool(Tool):
             reason="wait_tool",
         )
         await runtime.enter_wait(wait)
-        resolved = await runtime.await_wait(tool_call_id)
-        end_reason = resolved.end_reason or WaitEndReason.MESSAGE
+        # R18: hard timeout 防止 await_wait 永久挂起。协程被取消 (shutdown/lock 释放/
+        # subagent 超时) 时 future 永不 resolve; wrap asyncio.wait_for 兜底。
+        try:
+            resolved = await asyncio.wait_for(
+                runtime.await_wait(tool_call_id),
+                timeout=seconds + 1,
+            )
+        except TimeoutError:
+            return ToolResult(
+                content=(
+                    f"等待超时 (hard cap {seconds + 1}s)，"
+                    f"唤醒原因：等待超时。session_id={session_id}"
+                )
+            )
+        end_reason = resolved.end_reason or WaitEndReason.TIMEOUT
         return ToolResult(
             content=(
                 f"已等待 {resolved.actual_seconds:.1f} 秒，"
