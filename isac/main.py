@@ -399,8 +399,8 @@ def _register_channel_adapters(channel_registry: ChannelRegistry, global_config:
         from isac.channel.adapters.webchat.adapter import WebChatAdapter
 
         channel_registry.register(WebChatAdapter(webchat_config))
-    # O4 骨架适配器 (feishu/wechat/qq_official): start/stop no-op、send 返回 False,
-    # 连接与收发待 O4 实现节点填充。仅在显式 enabled 时注册, 默认不接入 → 零行为变化。
+    # O4 适配器: 飞书/企业微信已激活真实 Webhook + 出站消息; 公众号 (wechat mode="mp") 仍骨架。
+    # 仅在显式 enabled 时注册, 默认不接入 → 零行为变化。
     feishu_config = channels_config.get("feishu")
     if feishu_config and feishu_config.get("enabled"):
         from isac.channel.adapters.feishu.adapter import FeishuAdapter
