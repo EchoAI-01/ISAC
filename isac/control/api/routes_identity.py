@@ -12,6 +12,7 @@ Bearer Token 认证 + identity:read / identity:write scope; 写操作落项目�
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
@@ -94,7 +95,10 @@ def build_router(
 
     @router.get("/identity/conflicts", dependencies=read_deps)
     async def list_conflicts() -> list[dict]:
-        return identity_resolver.list_conflicts()
+        # Fix-29: IdentityResolver.list_conflicts() 是同步 sqlite3 磁盘 IO, 直接
+        # 调用会阻塞整个事件循环 (期间所有平台消息处理停滞); 经 to_thread 让它在
+        # 线程池执行。
+        return await asyncio.to_thread(identity_resolver.list_conflicts)
 
     @router.post(
         "/identity/conflicts/{conflict_id}/resolve", dependencies=write_deps
