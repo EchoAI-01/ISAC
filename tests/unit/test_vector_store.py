@@ -104,6 +104,82 @@ async def test_search_top_k_limit(store: VectorStore) -> None:
 
 
 @pytest.mark.asyncio
+async def test_close_shares_lock_with_upsert_cannot_interrupt_transaction(store: VectorStore) -> None:
+    """Fix-26 回归: close() 之前不持锁, 可能在 upsert 的 DELETE→INSERT→commit
+    事务执行中途把连接关掉 (触发 "Cannot operate on a closed database", 被
+    调用方 broad except 吞掉表现为一条记忆写入静默丢失)。现在 close() 必须
+    等同一把 _init_lock 释放才能真正执行——用"锁被占用期间 close() 不能真的
+    把 _db 置空"直接验证互斥性, 而不是依赖不确定的调度时序去偶然触发旧 bug。"""
+    import asyncio
+
+    async with store._init_lock:
+        close_task = asyncio.create_task(store.close())
+        await asyncio.sleep(0.01)  # 给 close_task 机会尝试获取锁 (应被阻塞住)
+        assert not close_task.done()
+        assert store._db is not None  # 锁被占用期间, close() 不能真的执行
+    await close_task
+    assert store._db is None
+
+
+@pytest.mark.asyncio
+async def test_search_shares_lock_cannot_run_while_lock_held_elsewhere(store: VectorStore) -> None:
+    """Fix-26: search() (读路径) 之前完全不接入锁, close() 可以在查询执行中途
+    把连接关掉。现在 search() 必须等锁释放才能真正执行查询——用"锁被占用期间
+    search() 还在等待"直接验证互斥性。"""
+    import asyncio
+
+    await store.upsert("m1", [1.0, 0.0, 0.0, 0.0])
+    async with store._init_lock:
+        search_task = asyncio.create_task(store.search([1.0, 0.0, 0.0, 0.0], top_k=5))
+        await asyncio.sleep(0.01)
+        assert not search_task.done()  # 锁被占用期间, search() 必须还在等锁
+    results = await search_task
+    assert results and results[0][0] == "m1"
+
+
+@pytest.mark.asyncio
+async def test_close_is_idempotent(store: VectorStore) -> None:
+    """close() 可重复调用, 第二次是安全的 no-op。"""
+    await store.close()
+    assert store._db is None
+    await store.close()  # 不应抛异常
+    assert store._db is None
+
+
+@pytest.mark.asyncio
+async def test_purge_closes_connection_and_removes_db_file(tmp_path: Path) -> None:
+    """Fix-26: purge() 下沉了原来在 runtime/manager.py 手工做的"关闭连接+删
+    文件"逻辑 (R7), 供 namespace 级清理直接复用, 调用方不需要再用 getattr
+    猜测 close()/db_path 是否存在。"""
+    db_path = tmp_path / "vectors.db"
+    s = VectorStore(str(db_path), dimension=4)
+    await s.init_schema()
+    await s.upsert("m1", [1.0, 0.0, 0.0, 0.0])
+    assert db_path.exists()
+
+    await s.purge()
+    assert s._db is None
+    assert not db_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_purge_on_memory_db_skips_file_removal() -> None:
+    """:memory: 数据库没有真实文件, purge() 不应尝试删除任何路径而报错。"""
+    s = VectorStore(":memory:", dimension=4)
+    await s.init_schema()
+    await s.purge()  # 不应抛异常
+    assert s._db is None
+
+
+@pytest.mark.asyncio
+async def test_purge_before_init_schema_is_safe(tmp_path: Path) -> None:
+    """从未 init_schema 就 purge() (namespace 存在但从未真正写入过) 应安全跳过。"""
+    s = VectorStore(str(tmp_path / "never-initialized.db"), dimension=4)
+    await s.purge()  # 不应抛异常 (没有连接可关, 没有文件可删)
+    assert s._db is None
+
+
+@pytest.mark.asyncio
 async def test_init_schema_enables_wal_and_busy_timeout(tmp_path: Path) -> None:
     """R6: init_schema 后连接应启用 WAL 模式 + busy_timeout, 防止并发写 SQLITE_BUSY。"""
     s = VectorStore(str(tmp_path / "v.db"), dimension=4)
