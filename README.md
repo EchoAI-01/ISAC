@@ -1,23 +1,40 @@
 # ISAC — Intelligent Social AI Companion
 
-下一代多 Agent AI 社交陪伴 Bot 框架。
+> 下一代多 Agent AI 社交陪伴 Bot 框架 — 把「AI 社交陪伴」拆成可组合、可替换、可按配置定制的独立子系统。
 
-把 **LLM 的拟人表达**、**会话级拟人化运行时**、**记忆检索**、**回复门控**、**多 Agent 协作**与 **IM 平台适配**
-拆解为可组合的独立子系统，通过 ConversationRuntime 与 System Prompt 组装器协同，让 Bot 行为可按配置定制而无需
-改代码。
+`v1.0.0-rc.1` · Python 3.12+ · 1387 单元/集成测试通过 · ruff / mypy 全绿 · MIT License
 
 ---
 
-## 一句话定位
+## ISAC 是什么
 
-> ISAC 不是另一个"接 LLM 回复消息"的 Bot 脚手架。
-> 它把「AI 社交陪伴」拆成 **门控决策**（要不要回）、**记忆检索**（该记得什么）、
-> **人格注入**（用什么风格回）与 **多 Agent 路由**（哪个 Agent 回）四层流水线，
-> 每层都可独立替换或扩展。
+ISAC 是一个用 Python 编写的**多 Agent AI 社交陪伴 Bot 框架**。它不只是"收到消息 → 调 LLM → 回一句"的脚手架，而是把一个像人一样聊天的 Bot 所需的能力，拆成四层独立的流水线：
+
+- **门控决策** — 要不要回？（避免每条消息都消耗 token）
+- **记忆检索** — 该记得什么？（越聊越熟）
+- **人格注入** — 用什么风格回？（情绪、表达习惯、注意力漂移）
+- **多 Agent 路由** — 哪个 Agent 回？（一个账号背后可以有多个性格各异的 Agent）
+
+每一层都能独立替换或扩展，Bot 的行为通过**配置文件**定制，多数场景无需改代码。
+
+**适合谁**：想搭建拟人化陪伴 Bot、多角色群聊 Bot，或需要一个可插拔、可观测、带控制面的 Agent 运行时的开发者。
 
 ---
 
-## 核心概念
+## 核心特性
+
+- **门控先于 Agent** — 调用 LLM 前先评定回复必要性，无需回复的消息不进入昂贵的推理链路。
+- **拟人化运行时** — 消息合并（debounce）、等待、主动发起话题、思考期打断、上下文恢复，让节奏更像真人。
+- **记忆系统** — FTS5+BM25 稀疏检索 / 向量稠密召回 / 图谱召回三路融合，配合记忆治理与"越聊越熟"的写入回路。
+- **多 Agent 单进程** — 多个 Agent 共享 Provider 连接池与嵌入模型，单进程运行，资源占用低。
+- **Agent 协作显式化** — Agent 默认互不相通，需显式授权（ACL）才能互相委托任务。
+- **多平台适配** — OneBot v11（QQ）已就绪，飞书 / QQ 官方机器人可配置启用，Telegram / Discord / WebChat 等预留接口。
+- **控制面/数据面分离** — Admin REST API、MCP Server、WebUI v2 独立于消息处理链路，控制面异常不影响发消息。
+- **生产化基线** — 结构化日志、指标监控、用量计量、SSRF 防护、Docker 部署、CI 门禁一应俱全。
+
+---
+
+## 架构总览
 
 ```
 用户发消息 → Channel Adapter → Gateway(事件总线/会话/并发锁)
@@ -35,7 +52,7 @@
                             Channel Adapter.send() → 用户收到回复
 ```
 
-## 关键设计决策
+### 关键设计决策
 
 | 设计 | 说明 |
 |------|------|
@@ -44,50 +61,10 @@
 | **多 Agent 单进程** | 多个 Agent 实例在单进程内运行，共享 Provider 连接池与嵌入模型，降低资源消耗 |
 | **Agent 互联显式化** | InterAgentBus + ACL 链路，Agent 默认不互通，需显式授权才能 `ask_agent()` |
 | **控制面/数据面分离** | 消息处理链路（数据面）与 Admin API / MCP Server（控制面）解耦；控制面崩溃不影响发消息 |
-| **拟人表达靠 Prompt，拟人行为靠 Runtime** | 注意力漂移、表达风格、情绪、记忆等通过 System Prompt 注入；回复节奏、等待、主动、打断等由 ConversationRuntime 管理 |
-| **兼容存量插件** | 计划桥接 AstrBot Star 与 MaiBot 插件系统，同时提供 ISAC Native SDK 承载独有能力 |
+| **拟人表达靠 Prompt，拟人行为靠 Runtime** | 表达风格/情绪/记忆通过 System Prompt 注入；回复节奏/等待/主动/打断由 ConversationRuntime 管理 |
+| **兼容存量插件** | 桥接 AstrBot Star 与 MaiBot 插件系统，同时提供 ISAC Native SDK 承载独有能力 |
 
----
-
-## 项目状态
-
-**Release Candidate v1.0.0-rc.1** — 定位为 **"主链路 MVP + 待激活子系统"**：单/多 Agent 基础回复链路、门控、命令、路由、控制面、监控、安全基线已在生产路径运行；部分子系统核心逻辑与单测已完成，但**默认关闭或尚未接入生产消息主链路**（下表用三态标注，与 `AGENTS.md §剩余工作` / `docs/PROGRESS.md` 口径一致）。
-
-A-K + L/M/N/O 各节点完成度（核心逻辑 + 单测口径；主链路接线状态见状态表）:
-
-- A-I 文档冻结 / 基础骨架 / 连接路由 / 单 Agent 核心 / 多 Agent 运行时 / 插件生态 / 控制面 / 平台扩展 / 生产化交付 — 100%
-- J 模型能力、计量与管理面 (J1 用量计量 + J2 多模态 Provider + J3 WebUI v2 + J4 SubAgent Runtime) — 100%
-- K 稳定化 (K1-K8 CI/Docker/Playwright) — 100%
-- L 拟人化运行时 / M 路由与 Agent Mesh / N 记忆深化 / O 企业化 — 核心逻辑 + 单测已交付；主链路接线按 P 节点推进（部分已在 CR3 修复轮接线，见下表）
-
-状态图例：**✅ 已接线** = 生产主链路真实运行 ·**⚙ 配置启用** = 已接线，默认关闭需配置开启 · **🔨 待接线** = 实现+单测完成，生产路径无调用点
-
-| 模块 | 状态 |
-|------|------|
-| 核心契约 (types/events/exceptions) | ✅ 已接线 |
-| 配置与日志系统 + 原子写 (含目录 fsync) | ✅ 已接线 |
-| 消息路由 (Router + Rules) | ✅ 已接线；MeshRouter observer/candidate 🔨 待接线 (P2) |
-| Gateway (EventBus/Session/User/Lock/IdentityResolver) | ✅ 已接线 + TTL + 跨平台归一 |
-| 门控系统 (Gating/Focus/IdleBackoff + LRU 会话回收) | ✅ 已接线 + AgentConfig.gating 覆盖 |
-| 拟人化运行时 (ConversationRuntime/debounce/wait/interrupt/recovery) | ⚙ `conversation.enabled` 默认关闭；wait/interrupt 循环级联动 🔨 待接线 (P1) |
-| 主动任务 (ProactiveScheduler, 冷却按会话隔离) | 🔨 待接线 (P1; 生产中未实例化) |
-| System Prompt 组装器 + 注入器 (含 Interrupt/Recovery) | ✅ 已接线 |
-| Agent Loop (LLM 循环 + Hooks + 重试/回退 + 工具调用) | ✅ 已接线；流式(streaming) 分片合并已修复但主链路未启用流式 |
-| OneBot v11 适配器 (QQ) | ✅ 已接线 (反向 WebSocket) |
-| 工具系统 (ToolRegistry/ToolPermission + 4 A2A 工具 restricted) | ✅ 已接线 + 内置命令；A2A 工具依赖的 mesh_action_broker 🔨 待接线 (P2) |
-| 记忆系统 — FTS5+BM25 稀疏检索 + 治理 + 审计归因 | ⚙ `memory.enabled` 默认关闭 |
-| 记忆系统 — 稠密(向量)召回 + RRF 融合 | ⚙ 配置 `memory.embedding` (api_key+model) 后启用 (CR3-H3 已接线) |
-| 人格系统 (Persona/Mood/Drift) | ✅ 已接线 (BehaviorLearner) |
-| 插件生态 (AstrBot/MaiBot/Native + on_load 生命周期) | ✅ 加载与 on_load 已接线；⚠ 默认加载路径**无进程隔离**（仅可信插件, 见 plugins/README.md）|
-| 插件进程级隔离 (PluginIsolationHost 子进程真实加载) | ⚙ 机制可用 (load_plugin)；默认加载路径接管 🔨 待接线 |
-| 控制面 (Admin API/MCP/Webhooks + Memory 治理 + Sessions/Events 路由) | ✅ 已接线 + 审计 + 持久化恢复 + 自动化创建受限沙箱 |
-| 多租户隔离 (TenantIsolationGuard + 数据面租户谓词/命名空间前缀) | ⚙ `tenancy.enabled` 默认关闭 (CR3-L2 已接线) |
-| Workflow 编排 (多入口 + fan-in 汇合 + 条件/重试 + 持久化) | 🔨 待接线 (生产中未实例化) |
-| 监控告警 (Metrics/Alerting) | ✅ 已接线 |
-| WebUI v2 (SPA 十域 + 配置编辑事务 + SSE) | ✅ 已接线 + Playwright |
-| Docker 部署 + CI 门禁 (Playwright + release_checklist) | ✅ K8 完成 |
-| 真实 LLM Provider (OpenAICompatProvider httpx + SSE + Tool Call) | ✅ 已接线 |
-| 安全基线 (K7 + CR3: SSRF 请求期固定 / 非 ASCII Token 401 / restricted 创建) | ✅ 已接线 |
+架构细节、组件职责与 ADR 决策记录见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
 
 ---
 
@@ -117,8 +94,7 @@ echo '{"config_version": "1.0.0", "debug": false}' > data/config.jsonc
 uv run python -m isac
 ```
 
-启动后会创建名为 `default` 的默认 Agent 并开始运行。此时无 Channel 连接，
-应用处于就绪等待状态。
+启动后会创建名为 `default` 的默认 Agent 并进入就绪等待状态。此时无 Channel 连接，可用于验证进程与配置。
 
 ### 接入真实 LLM
 
@@ -159,6 +135,135 @@ uv run python -m isac
 
 3. 在 NapCat 中配置反向 WebSocket 连接到 `ws://127.0.0.1:8080`
 
+> 更多平台（飞书 / QQ 官方 / WebChat）与记忆、门控、人格的完整配置项，见 [docs/SPECIFICATION.md](./docs/SPECIFICATION.md) 配置规范。
+
+---
+
+## 功能与状态
+
+ISAC 定位为 **"主链路 MVP + 待激活子系统"**：单/多 Agent 基础回复链路、门控、命令、路由、控制面、监控、安全基线已在生产路径稳定运行；拟人化运行时、Agent Mesh、记忆治理、身份归一、Workflow、飞书/QQ 官方适配器等子系统的核心逻辑与单测已完成，多数**默认关闭、需按配置开启**。
+
+状态图例：**✅ 已接线**（生产主链路真实运行）· **⚙ 配置启用**（已接线，默认关闭）· **🔨 骨架**（实现待完善或生产路径无调用点）
+
+| 模块 | 状态 |
+|------|------|
+| 核心契约 / 配置与日志 / 原子写 | ✅ 已接线 |
+| 消息路由（Router + Rules + MeshRouter） | ✅ 已接线 |
+| Gateway（事件总线 / 会话 / 用户映射 / 身份归一 / 并发锁） | ✅ 已接线 |
+| 门控系统（Gating / Focus / IdleBackoff） | ✅ 已接线 |
+| System Prompt 组装器 + 注入器 | ✅ 已接线 |
+| Agent Loop（LLM 循环 + Hooks + 重试/回退 + 工具调用） | ✅ 已接线（主链路默认非流式） |
+| 人格系统（Persona / Mood / Drift / BehaviorLearner） | ✅ 已接线 |
+| OneBot v11 适配器（QQ，反向 WebSocket） | ✅ 已接线 |
+| 记忆系统 — FTS5+BM25 稀疏检索 + 治理 + 审计归因 | ⚙ `memory.enabled` |
+| 记忆系统 — 稠密（向量）召回 + RRF 融合 | ⚙ `memory.embedding` |
+| 记忆系统 — 图谱召回（mentioned_in 提及图 + Reranker） | ⚙ `memory.graph_recall.enabled` |
+| 拟人化运行时（debounce / wait / interrupt / recovery） | ⚙ `conversation.enabled` |
+| 主动任务（ProactiveScheduler + 生产者） | ⚙ `conversation.proactive.*` |
+| 记忆整合后台任务（MemoryConsolidator） | ⚙ `memory.consolidation.enabled` |
+| 飞书 / QQ 官方适配器（Webhook + AES/Ed25519 验签） | ⚙ `channels.feishu` / `channels.qq_official` |
+| 身份归一控制面（bind / conflicts / resolve） | ⚙ `identity.enabled` |
+| 多租户隔离（TenantIsolationGuard） | ⚙ `tenancy.enabled` |
+| Workflow 编排（多入口 + fan-in + 条件/重试 + action_handler） | ⚙ `control.workflow.enabled` |
+| 工具系统（ToolRegistry / ToolPermission + A2A 工具） | ✅ 已接线 |
+| 控制面（Admin API / MCP / Webhooks + 审计 + 持久化恢复） | ✅ 已接线 |
+| WebUI v2（SPA 十域 + 配置编辑事务 + SSE） | ✅ 已接线 |
+| 监控告警（Metrics / Alerting）+ 模型用量计量 | ✅ 已接线 |
+| 真实 LLM Provider（OpenAICompatProvider） | ✅ 已接线 |
+| 安全基线（SSRF + CGNAT 拦截 / Token 认证 / restricted 创建） | ✅ 已接线 |
+| 微信适配器（公众号 / 企业微信） | 🔨 骨架 |
+| 插件进程级隔离（默认加载路径接管） | 🔨 骨架 |
+
+> 各节点唯一进度事实源见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
+
+---
+
+## 开发计划 (Roadmap)
+
+ISAC 采用**节点制**推进（A/B/C… 里程碑 + P 主链路接线 + Q MVP 收尾）。当前进展：
+
+### ✅ 已完成
+
+- **A–I 基础体系** — 文档冻结、基础骨架、连接与路由、单/多 Agent 核心运行时、插件生态、控制面与自动化、平台与工具扩展、生产化交付。
+- **J 模型能力、计量与管理面** — 用量计量、多模态 Provider、WebUI v2、SubAgent Runtime。
+- **K 稳定化** — 应用生命周期、真实 Provider、存储生命周期、配置持久化恢复、端到端集成测试、安全基线、CI/Docker/Playwright 发布准入。
+- **P0–P2 主链路接线** — 消息处理并发化、拟人化运行时激活、Agent Mesh 激活。
+- **Q0–Q1 MVP 收尾** — 开箱可触达（裸部署默认路由 + WebChat 端到端可聊）、记忆写入回路与身份稳定化（"聊 → 重启 → 检索命中"闭环打通）。
+
+### ⚙ 已实现，默认关闭待打磨
+
+- **P3 记忆检索深化** — 图谱召回（mentioned_in 提及图）+ Reranker 已激活；通用实体关系图待完善。
+- **P4 身份归一** — 控制面 bind/conflicts/resolve 已激活；跨平台身份聚合持续打磨。
+- **P5 Workflow** — action_handler + 声明式加载 + 条件求值已激活；租户隔离模式与 Agent 工具入口待接线。
+- **平台适配器** — 飞书（AES-256-CBC）、QQ 官方（Ed25519）真实收发已实现，默认关闭。
+
+### 🔨 规划中
+
+- **O4 平台扩展** — 微信（公众号/企业微信）真实连接与收发。
+- **O5 多模态** — 视频 Provider 真实端点（选型中）。
+- **流式主链路** — 流式分片合并已修复，主链路启用流式待评估。
+- **插件进程隔离** — `PluginIsolationHost` 机制可用，默认加载路径接管待接线。
+
+> MVP 发布以 **P0–P2 + Q0–Q1** 完成为最低准入线。完整 SOW / 依赖关系见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md)。
+
+---
+
+## 目录结构
+
+```
+isac/
+├── core/            # 核心契约：类型、事件、异常、常量、注入器 ABC
+├── utils/           # 基础设施：配置加载、日志、安全 (SSRF)
+├── provider/        # LLM/嵌入/重排序/多模态 (image_gen/stt_tts/video_gen) 提供商抽象
+├── memory/          # 记忆系统：检索流水线、存储引擎、注入器、治理、图谱召回、整合
+├── persona/         # 人格系统：配置管理、情绪、行为学习
+├── agent/           # Agent 核心：循环、Hooks、Prompt 组装、注入器、工具、SubAgent
+├── gating/          # 门控系统：回复必要性评分、IdleBackoff、FocusMode
+├── router/          # 消息路由：绑定匹配、触发词、默认 Agent、MeshRouter
+├── gateway/         # 消息网关：事件总线、会话管理、用户映射、身份归一、并发锁
+├── channel/         # 平台适配器 (OneBot / 飞书 / QQ 官方 / 微信骨架 / 预留 Telegram·Discord)
+├── commands/        # 用户命令系统 (/mute, /focus, /agents)
+├── plugin/          # 插件生态：AstrBot/MaiBot 兼容层、原生 SDK、进程级隔离宿主
+├── runtime/         # 运行时：AgentManager、实例组装、拟人化运行时、租户隔离、Agent 互联总线
+├── control/         # 控制面：Admin REST API、MCP Server、Webhooks、WebUI v2、Workflow 编排
+├── observability/   # 监控告警：Metrics/Alerting + 模型用量计量 (usage)
+├── artifacts/       # 多模态制品存储：本地 FS + SQLite 元数据 + 原子写
+├── locales/         # 多语言 (zh_CN / en_US)
+└── main.py          # 应用入口：组装所有组件 + 依赖注入
+```
+
+---
+
+## 技术栈
+
+| 层级 | 选型 |
+|------|------|
+| 语言 | Python 3.12+ (async/await) |
+| 包管理 | uv |
+| LLM 协议 | OpenAI 兼容 API (自定义 base_url) |
+| 记忆存储 | sqlite-vec (向量) + SQLite FTS5 (全文) |
+| 嵌入模型 | fastembed (本地) / OpenAI Embedding API |
+| 重排序 | bge-reranker / Cohere Rerank / Jina Rerank |
+| 多模态 | OpenAI 兼容 image_gen / stt_tts / video_gen Provider (按 ModelDescriptor 路由) |
+| QQ 适配 | aiocqhttp (OneBot v11, 反向 WebSocket) |
+| 日志 | structlog (结构化, stdlib 降级) |
+| 控制面 | FastAPI + uvicorn |
+| 测试 | pytest + pytest-asyncio + pytest-cov |
+
+---
+
+## 参与开发
+
+```bash
+uv sync --all-extras --dev   # 安装依赖
+uv run ruff check .          # Lint (line-length 120)
+uv run mypy isac/            # 类型检查
+uv run pytest                # 运行测试 (asyncio_mode=auto)
+uv run python -m isac        # 启动
+```
+
+编码规范、模块开发流程、导入规则与测试编写见 [docs/DEVELOP.md](./docs/DEVELOP.md)。
+
 ---
 
 ## 文档导航
@@ -179,59 +284,6 @@ uv run python -m isac
 | [CONTROL_PLANE_SPEC.md](./docs/CONTROL_PLANE_SPEC.md) | 控制面规范 — REST API、MCP Server、Webhook、认证、审计 |
 | [CODE_REVIEW_REPORT.md](./docs/CODE_REVIEW_REPORT.md) | 已修复缺陷追溯档案 — 源码 `#N` 引用锚点 |
 | [AGENTS.md](./AGENTS.md) | Agent 协作指南 — 给接手开发的 Agent 看的一页纸上下文 |
-
----
-
-## 技术栈
-
-| 层级 | 选型 |
-|------|------|
-| 语言 | Python 3.12+ (async/await) |
-| 包管理 | uv |
-| LLM 协议 | OpenAI 兼容 API (自定义 base_url) |
-| 记忆存储 | sqlite-vec (向量) + SQLite FTS5 (全文) |
-| 嵌入模型 | fastembed (本地) / OpenAI Embedding API |
-| 重排序 | bge-reranker / Cohere Rerank / Jina Rerank |
-| QQ 适配 | aiocqhttp (OneBot v11, 反向 WebSocket) |
-| 日志 | structlog (结构化, stdlib 降级) |
-| 控制面 | FastAPI + uvicorn |
-| 测试 | pytest + pytest-asyncio + pytest-cov |
-
----
-
-## 目录结构
-
-```
-isac/
-├── core/           # 核心契约：类型、事件、异常、常量、注入器 ABC
-├── utils/           # 基础设施：配置加载、日志、安全
-├── provider/        # LLM/嵌入/重排序 提供商抽象
-├── memory/          # 记忆系统：检索流水线、存储引擎、注入器
-├── persona/         # 人格系统：配置管理、情绪、行为学习
-├── agent/           # Agent 核心：循环、Hooks、Prompt 组装、注入器、工具
-├── gating/          # 门控系统：回复必要性评分、IdleBackoff、FocusMode
-├── router/          # 消息路由：绑定匹配、触发词、默认 Agent
-├── gateway/         # 消息网关：事件总线、会话管理、用户映射、并发锁
-├── channel/         # 平台适配器 (OneBot / 预留 Telegram / Discord 等)
-├── commands/        # 用户命令系统 (/mute, /focus, /agents)
-├── plugin/          # 插件生态：AstrBot/MaiBot 兼容层、原生 SDK
-├── runtime/         # 运行时：AgentManager、实例组装、配置、Agent 互联总线
-├── control/         # 控制面：Admin REST API、MCP Server、Webhooks
-├── locales/         # 多语言 (zh_CN / en_US)
-└── main.py          # 应用入口：组装所有组件 + 依赖注入
-```
-
----
-
-## 开发
-
-```bash
-uv sync --all-extras --dev   # 安装依赖
-uv run ruff check .          # Lint (line-length 120)
-uv run mypy isac/            # 类型检查
-uv run pytest                # 运行测试 (asyncio_mode=auto)
-uv run python -m isac        # 启动
-```
 
 ---
 
