@@ -205,6 +205,16 @@
     "workflow": {
       "enabled": false,
       "base_dir": "data/workflows"
+    },
+    // Fix-31: 部署方强制隔离插件 (经子进程加载), 覆盖插件自己 manifest.jsonc 的
+    // isolated 声明——不完全信任的插件作者/供应链不会主动声明 isolated: true,
+    // 这里给部署方一侧的强制开关。填插件目录名列表, 或 "*" 表示该加载路径下
+    // 全部插件都强制隔离。默认 [] (不覆盖, 只信任插件自己的 manifest 声明)。
+    // 仅 ISAC 原生插件格式支持隔离; 对 AstrBot/MaiBot 兼容层插件 (无
+    // manifest.jsonc) 强制隔离会导致加载失败 (清晰报错, 不会静默退回不受保护的
+    // 宿主进程内加载)。
+    "plugins": {
+      "isolated_plugins": []
     }
   },
 

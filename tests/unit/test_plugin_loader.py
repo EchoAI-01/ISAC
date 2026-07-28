@@ -235,3 +235,109 @@ class TestPluginManagerIsolation:
         assert manager.is_isolated("iso_hello") is True
         assert await manager.unload("iso_hello") is True
         assert manager.is_isolated("iso_hello") is False
+
+
+class TestPluginManagerDeployerForcedIsolation:
+    """Fix-31: 部署方经 isolated_plugins 配置强制隔离, 不依赖插件自己的 manifest 声明。"""
+
+    @staticmethod
+    def _make_plain_native_plugin(root: Path, name: str) -> None:
+        """未声明 isolated 字段的普通原生插件 (manifest 里没有 isolated: true)。"""
+        plugin_dir = root / name
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "manifest.jsonc").write_text(
+            json.dumps({"name": name, "version": "1.0.0", "entry": "plugin.py"}),
+            encoding="utf-8",
+        )
+        (plugin_dir / "plugin.py").write_text(
+            "from isac.plugin.native.plugin import ISACPlugin\n"
+            "class PlainPlugin(ISACPlugin):\n"
+            "    def ping(self):\n"
+            "        return 'pong'\n",
+            encoding="utf-8",
+        )
+
+    @pytest.mark.asyncio
+    async def test_deployer_forced_isolation_by_name_overrides_manifest(self, tmp_path: Path) -> None:
+        """插件 manifest 没有 isolated: true, 但部署方按目录名强制隔离 —— 仍应隔离加载。"""
+        root = tmp_path / "plugins"
+        root.mkdir()
+        self._make_plain_native_plugin(root, "untrusted_plugin")
+        manager = PluginManager({"isolated_plugins": ["untrusted_plugin"]})
+        try:
+            report = await manager.load_all(root)
+            assert report["untrusted_plugin"] == "loaded (isolated)"
+            assert manager.is_isolated("untrusted_plugin") is True
+        finally:
+            await manager.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_deployer_forced_isolation_does_not_affect_unlisted_plugin(
+        self, tmp_path: Path
+    ) -> None:
+        """isolated_plugins 只对列出的目录名生效, 未列出的插件维持原有 (宿主进程内) 行为。"""
+        root = tmp_path / "plugins"
+        root.mkdir()
+        self._make_plain_native_plugin(root, "untrusted_plugin")
+        self._make_plain_native_plugin(root, "trusted_plugin")
+        manager = PluginManager({"isolated_plugins": ["untrusted_plugin"]})
+        try:
+            await manager.load_all(root)
+            assert manager.is_isolated("untrusted_plugin") is True
+            assert manager.is_isolated("trusted_plugin") is False
+            assert manager.get("trusted_plugin") is not None
+        finally:
+            await manager.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_wildcard_isolated_plugins_forces_all(self, tmp_path: Path) -> None:
+        """isolated_plugins: "*" 强制隔离该加载路径下全部插件, 无需逐个列出目录名。"""
+        root = tmp_path / "plugins"
+        root.mkdir()
+        self._make_plain_native_plugin(root, "plugin_a")
+        self._make_plain_native_plugin(root, "plugin_b")
+        manager = PluginManager({"isolated_plugins": "*"})
+        try:
+            await manager.load_all(root)
+            assert manager.is_isolated("plugin_a") is True
+            assert manager.is_isolated("plugin_b") is True
+        finally:
+            await manager.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_absent_isolated_plugins_config_defaults_to_no_forced_isolation(
+        self, tmp_path: Path
+    ) -> None:
+        """未配置 isolated_plugins (如 PluginManager({})) 时零行为变化: 仍只按 manifest 决定。"""
+        root = tmp_path / "plugins"
+        root.mkdir()
+        self._make_plain_native_plugin(root, "plain")
+        manager = PluginManager({})
+        await manager.load_all(root)
+        assert manager.is_isolated("plain") is False
+        assert manager.get("plain") is not None
+
+    @pytest.mark.asyncio
+    async def test_forced_isolation_on_non_native_plugin_fails_clearly_instead_of_unprotected_load(
+        self, tmp_path: Path
+    ) -> None:
+        """AstrBot/MaiBot 兼容层插件没有 manifest.jsonc, 隔离机制目前无法真正隔离它——
+        部署方强制隔离时必须显式失败 (清晰错误信息), 不能静默退回不受保护的宿主进程内加载。"""
+        root = tmp_path / "plugins"
+        root.mkdir()
+        astrbot_dir = root / "astrbot_untrusted"
+        astrbot_dir.mkdir()
+        (astrbot_dir / "metadata.yaml").write_text("name: astrbot_untrusted\n", encoding="utf-8")
+        (astrbot_dir / "plugin.py").write_text(
+            "from isac.plugin.compatibility.astrbot.star import Star\n"
+            "class UntrustedStar(Star):\n"
+            "    pass\n",
+            encoding="utf-8",
+        )
+        manager = PluginManager({"isolated_plugins": ["astrbot_untrusted"]})
+        report = await manager.load_all(root)
+        assert report["astrbot_untrusted"].startswith("failed:")
+        assert "manifest.jsonc" in report["astrbot_untrusted"]
+        # 失败即拒绝, 绝不能悄悄退回宿主进程内加载 (那样就等于隔离形同虚设)。
+        assert manager.get("astrbot_untrusted") is None
+        assert manager.is_isolated("astrbot_untrusted") is False
