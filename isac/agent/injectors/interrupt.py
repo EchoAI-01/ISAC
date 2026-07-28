@@ -63,7 +63,7 @@ def _strip_injection_prefix(text: str) -> str:
 
 def _sanitize_reason(reason: str) -> str:
     """清理打断原因: 剔除换行/控制字符 (防伪装成新指令), 截断到合理长度,
-    剥离 prompt injection 前缀。
+    剥离 prompt injection 前缀, 转义标签分隔符。
 
     str.isprintable() 对空格返回 True, 对 \\n/\\r/\\t 等控制字符返回 False,
     足够同时保留正常文本可读性与过滤危险字符。
@@ -72,8 +72,12 @@ def _sanitize_reason(reason: str) -> str:
     # R16: 剥离 injection 前缀 (在截断前做, 避免前缀占满 100 字符)
     stripped = _strip_injection_prefix(stripped)
     if len(stripped) > _MAX_REASON_LENGTH:
-        return stripped[:_MAX_REASON_LENGTH] + "…"
-    return stripped
+        stripped = stripped[:_MAX_REASON_LENGTH] + "…"
+    # Fix-25: R16 的 <user_excerpt> 标签包裹之前未转义 <>, 用户消息若含字面
+    # "</user_excerpt>" 会提前闭合标签, 让紧跟其后的文本以"标签外文本"的身份
+    # 逃出数据边界。isprintable() 不会过滤 <>/ (它们都是可打印字符), 必须
+    # 单独转义, 使标签分隔符不可能从用户数据中被构造出来。
+    return stripped.replace("<", "&lt;").replace(">", "&gt;")
 
 
 class InterruptInjector(PromptInjector):

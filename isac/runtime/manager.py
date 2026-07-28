@@ -63,9 +63,11 @@ class AgentManager:
         # agent_id 数量受限于实际创建过的 Agent 数 (不像 session 那样量级无界),
         # 不需要 SessionLockManager 那种引用计数回收, destroy() 时清理即可。
         self._config_locks: dict[str, asyncio.Lock] = {}
-        # Q1: 记忆写入后台任务的强引用集合 (create_task 结果不持引用会被 GC 取消;
+        # Q1: 记忆写入后台任务的强引用 (create_task 结果不持引用会被 GC 取消;
         # done 回调自清理, 集合大小受在途写入数约束, 不会无界增长)。
-        self._memory_tasks: set[asyncio.Task[None]] = set()
+        # Fix-26: 值从"仅强引用"扩为 task → agent_id, 供 destroy(keep_memory=False)
+        # 只等待该 agent 自己的在途任务, 不必等待其它 Agent 无关的写入。
+        self._memory_tasks: dict[asyncio.Task[None], str] = {}
 
     # ── 生命周期 (控制面暴露) ──────────────────────────────
 
@@ -135,8 +137,29 @@ class AgentManager:
         # Q0: 失效独立 Provider 缓存 (否则重建同名 Agent 仍拿到旧 llm 配置的 Provider)
         await self._invalidate_agent_provider(agent_id)
         if not keep_memory:
+            # Fix-26: 清理前等该 Agent 在途的记忆写入/旁听任务结束, 避免
+            # metadata.delete_namespace/vector.purge 与仍在跑的 store_episode
+            # 交错, 出现"删完之后又被写回一条"的残留, 或清理已删除数据抛出
+            # 已被上游 broad except 吞掉的异常。
+            await self._drain_agent_memory_tasks(agent_id)
             await self._purge_memory(instance)
         logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
+
+    async def _drain_agent_memory_tasks(self, agent_id: str, timeout_seconds: float = 10.0) -> None:
+        """Fix-26: 等待指定 agent_id 在途的记忆写入/旁听任务完成。
+
+        仅供 destroy(keep_memory=False) 清理前调用; keep_memory=True 时在途
+        写入完成后各自正常落盘, 不影响已被移出 self._agents 的行为, 不需要等待。
+        """
+        pending = [task for task, owner in self._memory_tasks.items() if owner == agent_id and not task.done()]
+        if not pending:
+            return
+        logger.info("清理记忆前等待该 Agent 在途写入完成", agent_id=agent_id, count=len(pending))
+        _done, still_pending = await asyncio.wait(pending, timeout=timeout_seconds)
+        if still_pending:
+            logger.warning(
+                "该 Agent 在途记忆写入未在超时内完成, 仍继续清理", agent_id=agent_id, count=len(still_pending)
+            )
 
     async def _invalidate_agent_provider(self, agent_id: str) -> None:
         """Q0: 让 ProviderManager 丢弃该 Agent 的独立 Provider 缓存并释放连接池。
@@ -191,44 +214,31 @@ class AgentManager:
         """R7: 清理 vectors-<ns>.db 文件 + graph_store 该 namespace 的全部 edges。
 
         1. 经 services 取 vector_resolver (namespace → VectorStore | None),
-           关闭持久连接 + 删除 DB 文件; 无 resolver 时跳过。
-        2. graph_store 若有 delete_by_namespace 方法, 调用清理 edges;
-           无该方法时跳过 (向后兼容)。
+           调 VectorStore.purge() 关闭连接+删文件; 无 resolver 时跳过。
+        2. graph_store 非 None 时调 delete_by_namespace() 清理 edges。
 
+        Fix-26: 之前这里用 getattr/callable 探测 close()/db_path/
+        delete_by_namespace 是否存在, 手工拼文件名删文件——这些都是 VectorStore/
+        GraphStore 自身的实现细节 (选择用单文件 SQLite 存储), 不该泄露到调用方
+        猜测; 也是 ruff C901 复杂度告警的来源。现在下沉为 VectorStore.purge()/
+        GraphStore.delete_by_namespace() 两个稳定契约方法, 这里只是两次直调。
         失败只记 warning, 不影响 metadata 已成功的清理。
         """
-        import os
         services = getattr(instance, "services", None) or {}
-        # vector DB 文件清理
         vector_resolver = services.get("vector_resolver")
         if callable(vector_resolver):
-            try:
-                vector = vector_resolver(namespace)
-                if vector is not None:
-                    # 先关闭持久连接 (VectorStore 持有 self._db)
-                    close = getattr(vector, "close", None)
-                    if callable(close):
-                        await close()
-                    # 删除 DB 文件 (path 通常在 vector.db_path)
-                    db_path = getattr(vector, "db_path", None)
-                    if db_path:
-
-                        def _remove_file(p: str = db_path) -> None:
-                            if os.path.exists(p):
-                                os.remove(p)
-
-                        await asyncio.to_thread(_remove_file)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("vector 文件清理失败, 已忽略", namespace=namespace, error=str(exc))
-        # graph edges 清理
+            vector = vector_resolver(namespace)
+            if vector is not None:
+                try:
+                    await vector.purge()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("vector 文件清理失败, 已忽略", namespace=namespace, error=str(exc))
         graph_store = services.get("graph_store")
         if graph_store is not None:
-            delete_edges = getattr(graph_store, "delete_by_namespace", None)
-            if callable(delete_edges):
-                try:
-                    await delete_edges(namespace)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("graph edges 清理失败, 已忽略", namespace=namespace, error=str(exc))
+            try:
+                await graph_store.delete_by_namespace(namespace)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("graph edges 清理失败, 已忽略", namespace=namespace, error=str(exc))
 
     def acquire_config_lock(self, agent_id: str) -> asyncio.Lock:
         """按 agent_id 取配置锁 (Fix-2, 不存在则创建)。
@@ -806,8 +816,8 @@ class AgentManager:
             self._write_memory(instance, message, session, user_profile, reply, user_content),
             name=f"memory-write-{session.session_id}",
         )
-        self._memory_tasks.add(task)
-        task.add_done_callback(self._memory_tasks.discard)
+        self._memory_tasks[task] = instance.agent_id
+        task.add_done_callback(lambda t: self._memory_tasks.pop(t, None))
 
     async def _write_memory(
         self,
@@ -1015,8 +1025,8 @@ class AgentManager:
             self.observe_message(agent_id, message, session, user_profile),
             name=f"observe-{agent_id}-{session.session_id}",
         )
-        self._memory_tasks.add(task)
-        task.add_done_callback(self._memory_tasks.discard)
+        self._memory_tasks[task] = agent_id
+        task.add_done_callback(lambda t: self._memory_tasks.pop(t, None))
 
     # ── 内部 ────────────────────────────────────────────────
 

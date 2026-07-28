@@ -78,9 +78,13 @@ class PricingCatalog:
         if event.modality != "text":
             input_price = Decimal(snapshot.input_price_per_unit)
             output_price = Decimal(snapshot.output_price_per_unit)
+            # Fix-27: input_units/output_units 是 float 字段 (图片张数/音频秒数等),
+            # 直接 Decimal(float) 会保留二进制浮点的原始误差 (如 Decimal(0.1) 不是
+            # 精确的 0.1), 与本模块文档"Decimal 避免浮点误差"的意图相悖。经
+            # str() 先转成十进制文本表示再构造 Decimal, 才是精确值。
             total = (
-                Decimal(event.input_units) * input_price
-                + Decimal(event.output_units) * output_price
+                Decimal(str(event.input_units)) * input_price
+                + Decimal(str(event.output_units)) * output_price
             )
             return str(total)
         # text modality: 走分档 token 公式 (含 cache/audio 明细)

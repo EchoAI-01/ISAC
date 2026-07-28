@@ -269,6 +269,79 @@ class TestScopeFiltering:
             assert len(chunks) == 1
             assert '"n": 1' in chunks[0]
 
+    def test_dict_payload_without_event_type_field_denied_for_scoped_caller(self) -> None:
+        """Fix-22 回归: ON_START 的真实 payload 形态是 {"config": {...含密钥...}},
+        没有 event_type 字段, append() 只能归为 "unknown"。之前 "unknown" 被
+        当作"无需 scope 收窄"直接放行, usage:read-only 的调用方能拿到全部密钥。
+        现在必须被拒绝, 只有 "*" scope 才能看到。"""
+        import asyncio
+
+        from isac.core.events import EventType
+
+        event_bus = EventBus()
+        app = _make_app(event_bus, tokens=[{"token": "usage-only", "scopes": ["usage:read"]}])
+        asyncio.run(
+            event_bus.fire_async(EventType.ON_START, {"config": {"control": {"api_token": "SUPER-SECRET"}}})
+        )
+
+        client = TestClient(app)
+        with client.stream(
+            "GET",
+            "/api/v1/events/stream?heartbeat_seconds=0.05&max_chunks=1",
+            headers={"Authorization": "Bearer usage-only"},
+        ) as resp:
+            assert resp.status_code == 200
+            chunks = list(resp.iter_text())
+            assert "SUPER-SECRET" not in chunks[0]
+
+    def test_non_dict_payload_denied_for_scoped_caller(self) -> None:
+        """Fix-22 回归: POST_MESSAGE 的真实 payload 形态是完整 ISACMessage 对象
+        (非 dict), append() 的 isinstance(payload, dict) 检查直接失败归为
+        "unknown"。之前会被当作"无需 scope 收窄"直接广播用户聊天原文。"""
+        import asyncio
+        from dataclasses import dataclass
+
+        from isac.core.events import EventType
+
+        @dataclass
+        class _FakeMessage:
+            content: str
+
+        event_bus = EventBus()
+        app = _make_app(event_bus, tokens=[{"token": "usage-only", "scopes": ["usage:read"]}])
+        asyncio.run(event_bus.fire_async(EventType.POST_MESSAGE, _FakeMessage(content="my private secret")))
+
+        client = TestClient(app)
+        with client.stream(
+            "GET",
+            "/api/v1/events/stream?heartbeat_seconds=0.05&max_chunks=1",
+            headers={"Authorization": "Bearer usage-only"},
+        ) as resp:
+            assert resp.status_code == 200
+            chunks = list(resp.iter_text())
+            assert "my private secret" not in chunks[0]
+
+    def test_unknown_event_type_still_visible_to_wildcard_scope(self) -> None:
+        """"*" scope (真正的全权限管理员 Token) 不受 Fix-22 影响, 仍能看到未分类
+        的原始事件 (用于调试/观测), 只有窄 scope 的调用方才被拒绝。"""
+        import asyncio
+
+        from isac.core.events import EventType
+
+        event_bus = EventBus()
+        app = _make_app(event_bus, tokens=[{"token": "admin", "scopes": ["*"]}])
+        asyncio.run(event_bus.fire_async(EventType.ON_START, {"config": {"marker": "ADMIN-CAN-SEE-THIS"}}))
+
+        client = TestClient(app)
+        with client.stream(
+            "GET",
+            "/api/v1/events/stream?heartbeat_seconds=0.05&max_chunks=1",
+            headers={"Authorization": "Bearer admin"},
+        ) as resp:
+            assert resp.status_code == 200
+            chunks = list(resp.iter_text())
+            assert "ADMIN-CAN-SEE-THIS" in chunks[0]
+
     def test_create_control_app_wires_tokens_into_events_route(self) -> None:
         """回归防护: Fix-12 曾出现 server.py 解析出 scope 模型却没有真正传给
         路由 (auth_dependency 仍用扁平 api_token) 的接线遗漏; 这里直接走

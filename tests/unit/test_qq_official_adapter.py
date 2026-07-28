@@ -88,6 +88,42 @@ def test_validation_handshake_missing_fields_returns_empty() -> None:
     assert resp.json() == {}
 
 
+def test_validation_handshake_rate_limited_after_threshold() -> None:
+    """Fix-24 回归: op=13 的响应是一个签名 oracle (对攻击者提供的任意
+    plain_token+event_ts 签名, 可被重放为任意 op=0 事件的合法签名), 协议格式
+    不能改, 用滑动窗口限流收紧可获取的签名数量。超过 validation_rate_limit
+    次/窗口后静默拒绝签名, 不抛异常。"""
+    adapter = QQOfficialAdapter({
+        "enabled": True, "app_id": "x", "secret": "DG5g3B4j9X2KOErG", "webhook_port": 0,
+        "validation_rate_limit": 3, "validation_rate_window_seconds": 600,
+    })
+    client = _client(adapter)
+    for i in range(3):
+        body = {"op": 13, "d": {"plain_token": f"token-{i}", "event_ts": "1725442341"}}
+        resp = client.post("/callback", json=body)
+        assert resp.json().get("signature")  # 窗口内前 3 次正常签名
+
+    overflow_body = {"op": 13, "d": {"plain_token": "attacker-forged-event", "event_ts": "1725442341"}}
+    resp = client.post("/callback", json=overflow_body)
+    assert resp.json() == {}  # 第 4 次超过窗口限额, 拒绝签名
+
+
+def test_validation_handshake_rate_limit_is_per_adapter_instance() -> None:
+    """限流状态按适配器实例隔离, 不会跨实例/跨测试污染。"""
+    adapter = QQOfficialAdapter({
+        "enabled": True, "app_id": "x", "secret": "y", "webhook_port": 0,
+        "validation_rate_limit": 1, "validation_rate_window_seconds": 600,
+    })
+    assert adapter._allow_validation_attempt() is True
+    assert adapter._allow_validation_attempt() is False
+    # 新实例是独立的限流状态
+    another = QQOfficialAdapter({
+        "enabled": True, "app_id": "x", "secret": "y", "webhook_port": 0,
+        "validation_rate_limit": 1, "validation_rate_window_seconds": 600,
+    })
+    assert another._allow_validation_attempt() is True
+
+
 # ── 常规事件验签 (op=0) ───────────────────────────────────────────
 
 

@@ -93,3 +93,43 @@ async def test_delete_by_namespace(store: GraphStore) -> None:
     await store.delete_by_namespace("a1")
     assert await store.neighbors("a1", "u1") == []
     assert await store.neighbors("a2", "u1") == [("u3", 1.0)]
+
+
+@pytest.mark.asyncio
+async def test_close_shares_lock_cannot_interrupt_write(store: GraphStore) -> None:
+    """Fix-26 回归: close() 之前不持锁, 可能在 add_edge/delete_by_namespace 的
+    写入事务执行中途把连接关掉。现在必须等同一把 _lock 释放才能真正执行——用
+    "锁被占用期间 close() 还在等待"直接验证互斥性。"""
+    import asyncio
+
+    async with store._lock:
+        close_task = asyncio.create_task(store.close())
+        await asyncio.sleep(0.01)
+        assert not close_task.done()
+        assert store._db is not None
+    await close_task
+    assert store._db is None
+
+
+@pytest.mark.asyncio
+async def test_neighbors_shares_lock_cannot_run_while_lock_held_elsewhere(store: GraphStore) -> None:
+    """Fix-26: neighbors() (读路径) 之前完全不接入锁, close() 可以在查询执行
+    中途把连接关掉。现在 neighbors() 必须等锁释放才能真正执行查询。"""
+    import asyncio
+
+    await store.add_edge("a1", "u1", "friend", "u2")
+    async with store._lock:
+        query_task = asyncio.create_task(store.neighbors("a1", "u1"))
+        await asyncio.sleep(0.01)
+        assert not query_task.done()  # 锁被占用期间, neighbors() 必须还在等锁
+    neighbors = await query_task
+    assert neighbors == [("u2", 1.0)]
+
+
+@pytest.mark.asyncio
+async def test_close_is_idempotent(store: GraphStore) -> None:
+    """close() 可重复调用, 第二次是安全的 no-op。"""
+    await store.close()
+    assert store._db is None
+    await store.close()  # 不应抛异常
+    assert store._db is None

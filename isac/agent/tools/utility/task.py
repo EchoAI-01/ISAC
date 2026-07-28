@@ -72,7 +72,9 @@ class TaskTool(Tool):
                 is_error=True,
             )
         try:
-            result = await runner(task_text, budget=budget, parent_context=context.agent_context)
+            result = await runner(
+                task_text, budget=budget, parent_context=context.agent_context, depth=depth, max_depth=max_depth
+            )
         except Exception as exc:
             return ToolResult(content=f"子任务执行失败: {exc}", is_error=True)
         content = str(getattr(result, "content", "") or "")

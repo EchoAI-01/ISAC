@@ -25,6 +25,16 @@ Fix-14: SSE 连接数上限。之前 _EventStreamState 对新连接无限制接�
 恶意客户端可以开任意多个长连接耗尽服务端连接池/内存 (未认领的 DoS 面); 现在
 超过 max_connections (默认 100, 可通过 build_router(max_connections=...) 配置)
 时新连接直接返回 429, 不进入 generator。
+
+Fix-22: Fix-13 的 fail-open 缺口。``append()`` 无法从 payload 判断真实事件类型
+时落到 "unknown" 兜底值, 而 ``_event_visible`` 之前对 "unknown" 和"已识别但
+spec 未定义 scope"的事件类型一视同仁地直接放行。生产环境唯二真实触发的事件——
+``POST_MESSAGE`` (payload 是完整 ISACMessage, 含用户聊天原文) 和 ``ON_START``
+(payload 是 ``{"config": global_config}``, 含全部 Provider/webhook 密钥)——都不带
+``event_type`` 字段, 恰好都落在 "unknown" 这个兜底值上, 导致任何持有合法 scoped
+token (即使只有 usage:read 之类的窄 scope) 的调用方都能拿到全平台聊天原文和全部
+密钥。现在 "unknown" 单独处理: 只有 "*" 通配符 scope 才能看到无法分类的事件,
+真正"已识别但按 spec 无需 scope 收窄"的类型 (如 channel.status_changed) 行为不变。
 """
 
 from __future__ import annotations
@@ -120,10 +130,15 @@ def _resolve_caller_scopes(tokens: list[TokenScope] | None, authorization: str |
 
 
 def _event_visible(event_type: str, caller_scopes: frozenset[str] | None) -> bool:
-    """caller_scopes 为 None (未配置 tokens[]) 时不过滤; 事件类型没有预定义所需
-    scope 时也不过滤; 否则要求 caller 持有该 scope 或通配符 "*"。"""
+    """caller_scopes 为 None (未配置 tokens[]) 时不过滤; "unknown" (Fix-22: 无法
+    从 payload 判断真实类型, 生产环境的 POST_MESSAGE/ON_START 均落在此) 只对
+    通配符 "*" scope 放行, 避免真实敏感 payload 被误当作"无需收窄"直接广播;
+    已正确识别但 spec 未定义所需 scope 的类型才视为不需要收窄, 直接放行;
+    其余要求 caller 持有该 scope 或通配符 "*"。"""
     if caller_scopes is None:
         return True
+    if event_type == "unknown":
+        return "*" in caller_scopes
     required = _EVENT_TYPE_SCOPES.get(event_type)
     if required is None:
         return True

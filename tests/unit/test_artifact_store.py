@@ -27,6 +27,19 @@ def store(tmp_path: Path) -> ArtifactStore:
 
 
 @pytest.mark.asyncio
+async def test_ensure_schema_enables_wal(store: ArtifactStore) -> None:
+    """Fix-28: metadata/vector/graph/usage 四处存储都设了 WAL, ArtifactStore 之前
+    是唯一遗漏的一个, 制品并发写入量大时更容易互相阻塞甚至 database is locked。"""
+    import aiosqlite
+
+    await store.put(b"trigger schema init", kind="test")
+    async with aiosqlite.connect(store._db_path) as db:  # noqa: SLF001
+        cursor = await db.execute("PRAGMA journal_mode")
+        row = await cursor.fetchone()
+        assert row is not None and row[0].lower() == "wal"
+
+
+@pytest.mark.asyncio
 async def test_concurrent_put_same_content_does_not_raise(tmp_path: Path) -> None:
     """并发 put 字节级相同内容: 历史上用固定 tmp 文件名, 一方抢 rename 走另一方的
     tmp 后另一方的 replace 抛 FileNotFoundError; 现在每次唯一 tmp + 幂等兜底。

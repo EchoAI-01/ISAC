@@ -70,6 +70,17 @@ class WaitTool(Tool):
                     f"唤醒原因：等待超时。session_id={session_id}"
                 )
             )
+        finally:
+            # Fix-33: 硬超时兜底触发 (或本协程被外部取消) 时, 正常的三条唤醒路径
+            # (message/timeout/proactive) 都没机会跑完 resolve_wait, runtime.state
+            # 会永久停在 WAITING、pending_wait 也不会被清空。这里补做同样的清理;
+            # 正常路径下 resolve_wait 早已清空 pending_wait, 这个 finally 是 no-op
+            # (只在 pending_wait 仍是我们自己创建的这个 wait 时才清理, 避免误清理
+            # 期间可能已合法开始的下一个 wait)。getattr 兜底: registry.get() 返回值
+            # 只按 enter_wait/await_wait 的最小协议 duck-type, 不强制要求
+            # pending_wait/resolve_wait (测试里允许传入更精简的 stub)。
+            if getattr(runtime, "pending_wait", None) is wait:
+                runtime.resolve_wait(WaitEndReason.TIMEOUT)
         end_reason = resolved.end_reason or WaitEndReason.TIMEOUT
         return ToolResult(
             content=(

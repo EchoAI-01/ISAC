@@ -252,3 +252,54 @@ def test_arbitrate_conflict_low_confidence_writes_conflict_record() -> None:
         except OSError:
             pass
         _ = Path  # 避免 ruff unused import
+
+
+# ── resolve_conflict: Fix-29 事件循环不阻塞 ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolve_conflict_does_not_block_event_loop() -> None:
+    """Fix-29 回归: resolve_conflict 之前声明 async def 但内部全程同步 sqlite3
+    磁盘 IO、零 await, 实际会阻塞整个事件循环 (调用期间所有平台消息处理停滞)。
+    现在真正的同步工作经 asyncio.to_thread 放线程池执行——用一段人为放慢的
+    同步实现验证: 事件循环上另一个协程能在 resolve_conflict 执行期间持续
+    推进, 而不是被冻结到它返回为止。"""
+    import asyncio
+    import tempfile
+    import time as _time
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        r = IdentityResolver(None, db_path=tmp.name)
+        candidates = [PersonIdentity(person_id="p1", confidence=0.4)]
+        r.arbitrate_conflict(candidates)  # 写一条低置信冲突记录
+        conflict_id = r.list_conflicts()[0]["conflict_id"]
+
+        real_sync = r._resolve_conflict_sync
+
+        def _slow_sync(conflict_id: str, person_id: str) -> bool:
+            _time.sleep(0.2)  # 模拟较慢的磁盘 IO
+            return real_sync(conflict_id, person_id)
+
+        r._resolve_conflict_sync = _slow_sync  # type: ignore[method-assign]
+
+        progress: list[int] = []
+
+        async def _tick() -> None:
+            for i in range(5):
+                await asyncio.sleep(0.02)
+                progress.append(i)
+
+        resolved, _ = await asyncio.gather(r.resolve_conflict(conflict_id, "p_manual"), _tick())
+        assert resolved is True
+        # 0.2s 的阻塞操作期间, 20ms 一次的 tick 应该已经推进了多次 ——
+        # 若 resolve_conflict 仍在事件循环上同步跑, progress 会在它返回前恒为空
+        assert len(progress) >= 3
+    finally:
+        import os
+
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
