@@ -8,10 +8,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from isac.utils.logger import get_logger
+
 if TYPE_CHECKING:
     from isac.control.audit import AuditLog
     from isac.router.router import MessageRouter
     from isac.runtime.bus import InterAgentBus
+
+logger = get_logger(__name__)
 
 
 def build_router(
@@ -78,7 +82,12 @@ def build_router(
         except (ValueError, TypeError) as exc:
             # Fix-16: from_agent/to_agent 格式非法 (含 XSS payload) 在构造期就被
             # InterAgentLink.__post_init__ 拒绝; 转 400 而不是让 500 泄露内部异常。
-            raise HTTPException(status_code=400, detail={"code": "INVALID_CONFIG", "message": str(exc)}) from exc
+            # R14: 服务端记录完整异常, 客户端只返回通用错误码 (不泄露内部信息)。
+            logger.warning("Link 配置校验失败", error=str(exc), exc_info=True)
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_CONFIG", "message": "Link config validation failed"},
+            ) from exc
         # add_link 内部已触发 _trigger_persist; 但 routes_routing 持有独立的
         # _persist_links 路径, 用它把磁盘写入错误回传 500 (in-memory 状态已变更,
         # 调用方需要知道不一致) (CODE_REVIEW_REPORT.md #20)。
@@ -111,9 +120,11 @@ def _persist_links_or_raise(bus: InterAgentBus, path: Path) -> None:
     try:
         _persist_links(bus, path)
     except Exception as exc:
+        # R14: 服务端记录完整异常 (含磁盘 IO 错误细节), 客户端只返回通用错误码。
+        logger.error("Link 持久化失败", error=str(exc), exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"code": "LINK_PERSIST_FAILED", "message": str(exc)},
+            detail={"code": "LINK_PERSIST_FAILED", "message": "Failed to persist links"},
         ) from exc
 
 

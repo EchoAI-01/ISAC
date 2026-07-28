@@ -141,6 +141,43 @@ def test_validate_invalid_agent_id() -> None:
     assert "agent_id" in data["errors"][0]
 
 
+def test_unhandled_exception_returns_generic_message_not_exc_info() -> None:
+    """R14: 未捕获异常的全局 handler 返回通用 "Internal server error",
+    不泄露 Python 类型/字段路径/磁盘 IO 信息。
+
+    通过注入一个会抛 Exception 的 stub agent_manager, 触发全局 handler,
+    验证响应 body 含 INTERNAL_ERROR code 与通用 message, 不含 str(exc)
+    内容 (如自定义 Python 异常类型名 / 文件路径)。
+    """
+    from isac.control.api.server import create_control_app
+
+    class _RaisingAM:
+        async def list(self):
+            raise RuntimeError("secret internal detail: /data/agents/x/config.jsonc permission denied")
+
+        async def get(self, _):
+            raise RuntimeError("secret detail path /foo/bar")
+
+    app = create_control_app(
+        _RaisingAM(), object(), object(), object(),
+        {"api_token": "tok-abc"},
+        metrics=get_default_metrics(),
+    )
+    # 触发 GET /api/v1/agents (会调 list(), 抛 RuntimeError)
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get("/api/v1/agents", headers={"Authorization": "Bearer tok-abc"})
+    assert resp.status_code == 500
+    body = resp.json()
+    assert body["detail"]["code"] == "INTERNAL_ERROR"
+    msg = body["detail"]["message"]
+    assert msg == "Internal server error"
+    # 关键: 不含原始异常的 Python 类型名 + 文件路径
+    assert "RuntimeError" not in msg
+    assert "permission denied" not in msg
+    assert "/data/agents" not in msg
+
+
+
 def test_validate_missing_agent_id() -> None:
     app = _make_app()
     client = TestClient(app)
