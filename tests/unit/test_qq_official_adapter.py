@@ -316,6 +316,30 @@ async def test_send_group_message_uses_group_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_channel_message_uses_channel_endpoint() -> None:
+    """AT_MESSAGE_CREATE 来源 → POST /channels/{channel_id}/messages (非群端点)。"""
+    adapter = _make_adapter()
+    captured: list[httpx.Request] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        if "getAppAccessToken" in str(request.url):
+            return httpx.Response(200, json={"access_token": "tok-qo", "expires_in": 7200})
+        return httpx.Response(200, json={"code": 0, "data": {"id": "new-msg"}})
+
+    adapter.set_http_transport(httpx.MockTransport(_handler))
+    msg = ISACMessage(
+        msg_id="m1", platform="qq_official", timestamp=0, user_id="u1",
+        user_name="u1", group_id="ch-1", content="hi", reply_to="m1",
+        metadata={"qq_official_source": "AT_MESSAGE_CREATE"},
+    )
+    ok = await adapter.send(msg)
+    assert ok is True
+    send_req = captured[1]
+    assert "/channels/ch-1/messages" in str(send_req.url)
+
+
+@pytest.mark.asyncio
 async def test_send_p2p_message_uses_user_endpoint() -> None:
     """group_id 为空 → POST /v2/users/{openid}/messages (无 msg_id 主动推送)。"""
     adapter = _make_adapter()
