@@ -39,6 +39,10 @@ class VectorStore:
         await db.enable_load_extension(True)
         await db.load_extension(sqlite_vec.loadable_path())
         await db.enable_load_extension(False)
+        # R6: WAL + busy_timeout (持久连接, 一次设置该连接全程生效)。
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("PRAGMA foreign_keys=ON")
         await db.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS vectors USING vec0("
             f"memory_id TEXT PRIMARY KEY, embedding float[{self.dimension}])"

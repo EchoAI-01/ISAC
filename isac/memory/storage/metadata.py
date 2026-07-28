@@ -158,6 +158,13 @@ class MetadataStore:
         """初始化 Schema。"""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as db:
+            # R6: WAL 模式让并发写不互斥 (一写多读), busy_timeout=5000ms 在
+            # 偶发锁等待时让 SQLite 等待而非立即抛 SQLITE_BUSY。WAL 是数据库
+            # 级别持久化属性, 一次设置后续连接继承; busy_timeout 是 connection
+            # 级别, 每次 connect 都需要重设 (此处只设初始化连接)。
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA busy_timeout=5000")
+            await db.execute("PRAGMA foreign_keys=ON")
             await db.executescript(SCHEMA_SQL)
             await self._ensure_column(db, "episodes", "group_id", "TEXT")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_episodes_group ON episodes(group_id)")

@@ -33,6 +33,10 @@ class GraphStore:
         import aiosqlite
 
         db = await aiosqlite.connect(self.db_path)
+        # R6: WAL + busy_timeout (持久连接, 一次设置该连接全程生效)。
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute("PRAGMA foreign_keys=ON")
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS graph_edges (
