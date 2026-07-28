@@ -94,29 +94,57 @@ def generate_csrf_token() -> str:
 
 
 def sign_session_cookie(token: str, secret: bytes) -> str:
-    """把已校验过的 token 打包成签名的会话 Cookie 值: base64url(token).hmac_hex。"""
-    payload = base64.urlsafe_b64encode(token.encode("utf-8")).decode("ascii").rstrip("=")
-    signature = hmac.new(secret, payload.encode("ascii"), hashlib.sha256).hexdigest()
-    return f"{payload}.{signature}"
+    """把已校验过的 token 用 AES-GCM 加密打包成会话 Cookie 值。
+
+    R5: 原实现 ``base64url(token).hmac_hex`` 中 token 仅 base64 编码
+    (可逆), 窃 Cookie 即可拿到原始 token 获得长期访问。改为 AES-GCM
+    加密: nonce (12B) + ciphertext + tag (16B) 全部 base64url 编码,
+    窃 Cookie 也无法还原 token (除非也拿到 secret)。
+
+    secret 仍是进程级随机 32 字节 (generate_session_secret), 进程重启
+    后旧 Cookie 全部失效 (强制重新登录, 与原行为一致)。
+    """
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    # AESGCM 要求 16/24/32 字节 key; secret 来自 generate_session_secret
+    # 已是 32 字节, 直接用 (若调用方传入短 key 则用 SHA-256 派生)
+    key = secret if len(secret) == 32 else hashlib.sha256(secret).digest()
+    nonce = _secrets.token_bytes(12)  # GCM 推荐 12 字节 nonce
+    aesgcm = AESGCM(key)
+    ciphertext = aesgcm.encrypt(nonce, token.encode("utf-8"), associated_data=None)
+    # 拼接 nonce + ciphertext (含 tag), base64url 编码为 Cookie 安全格式
+    blob = nonce + ciphertext
+    return base64.urlsafe_b64encode(blob).decode("ascii").rstrip("=")
 
 
 def verify_session_cookie(cookie_value: str | None, secret: bytes) -> str | None:
-    """校验会话 Cookie 签名并解出打包的 token; 签名不匹配/格式错误返回 None。
+    """校验并解密会话 Cookie, 解出打包的 token; 解密失败/格式错误返回 None。
 
-    只证明该 Cookie 是本进程 /auth/session 签发的, 调用方 (make_auth_dependency
-    等) 仍必须对解出的 token 重新跑一遍 verify_token/_find_matching_token —— 签
-    名合法但 Token 已被管理员轮换/吊销的情况必须在那一步被拒绝。
+    R5: AES-GCM 解密 + tag 校验 (隐式 HMAC, 无需单独 hmac.compare_digest)。
+    解密成功证明 Cookie 是本进程 /auth/session 签发的, 且未被篡改; 调用方
+    仍必须对解出的 token 重新跑一遍 verify_token/_find_matching_token。
     """
-    if not cookie_value or "." not in cookie_value:
-        return None
-    payload, _, signature = cookie_value.rpartition(".")
-    expected_signature = hmac.new(secret, payload.encode("ascii"), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(signature, expected_signature):
+    if not cookie_value:
         return None
     try:
-        padded = payload + "=" * (-len(payload) % 4)
-        return base64.urlsafe_b64decode(padded).decode("utf-8")
+        padded = cookie_value + "=" * (-len(cookie_value) % 4)
+        blob = base64.urlsafe_b64decode(padded)
     except (ValueError, UnicodeDecodeError):
+        return None
+    # 至少 12B nonce + 16B tag = 28B 才可能是合法 AES-GCM 输出
+    if len(blob) < 28:
+        return None
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    key = secret if len(secret) == 32 else hashlib.sha256(secret).digest()
+    nonce = blob[:12]
+    ciphertext = blob[12:]
+    aesgcm = AESGCM(key)
+    try:
+        plaintext = aesgcm.decrypt(nonce, ciphertext, associated_data=None)
+        return plaintext.decode("utf-8")
+    except (InvalidTag, ValueError, UnicodeDecodeError):
         return None
 
 

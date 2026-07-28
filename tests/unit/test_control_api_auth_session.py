@@ -130,6 +130,58 @@ class TestCookieAuthentication:
         response = client.get("/api/v1/agents")
         assert response.status_code == 401
 
+    def test_session_cookie_does_not_leak_raw_token(self) -> None:
+        """R5: session cookie AES-GCM 加密, 不含原始 token 字面值。
+
+        原实现 base64url(token).hmac_hex 中 token 仅 base64 编码, 窃 cookie
+        即可解出原始 token。改为 AES-GCM 后 cookie 值是 nonce+ciphertext+tag,
+        不含原始 token 字符串。
+        """
+        import base64 as _b64
+
+        from isac.control.auth import generate_session_secret, sign_session_cookie
+
+        secret = generate_session_secret()
+        token = "secret-token-123"
+        cookie = sign_session_cookie(token, secret)
+        # Cookie 不应含原始 token 字面值
+        assert token not in cookie
+        # Cookie 是 base64url 编码的 (nonce + ciphertext + tag), 可解码但
+        # 解码后是二进制 blob 不含 token 字面值
+        padded = cookie + "=" * (-len(cookie) % 4)
+        blob = _b64.urlsafe_b64decode(padded)
+        assert token.encode("utf-8") not in blob
+        # blob 至少 12B nonce + 16B tag + ciphertext = 28B+
+        assert len(blob) >= 28
+
+    def test_session_cookie_roundtrip_decrypts_to_original_token(self) -> None:
+        """R5: sign + verify 往返正确解出原 token。"""
+        from isac.control.auth import (
+            generate_session_secret,
+            sign_session_cookie,
+            verify_session_cookie,
+        )
+
+        secret = generate_session_secret()
+        token = "my-secret-bearer-token"
+        cookie = sign_session_cookie(token, secret)
+        # 往返校验应解出原 token
+        assert verify_session_cookie(cookie, secret) == token
+
+    def test_session_cookie_with_wrong_secret_rejected(self) -> None:
+        """R5: 用错误 secret 验证返回 None (AES-GCM tag 校验失败)。"""
+        from isac.control.auth import (
+            generate_session_secret,
+            sign_session_cookie,
+            verify_session_cookie,
+        )
+
+        secret1 = generate_session_secret()
+        secret2 = generate_session_secret()
+        cookie = sign_session_cookie("token", secret1)
+        # 用另一个 secret 验证 → 解密失败返回 None
+        assert verify_session_cookie(cookie, secret2) is None
+
 
 class TestCSRFProtection:
     def _login(self, client: TestClient) -> str:
