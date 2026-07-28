@@ -389,3 +389,41 @@ class TestWebChatRequestBounds:
             writer.close()
         finally:
             await adapter.stop()
+
+    @pytest.mark.asyncio
+    async def test_route_rejects_request_without_auth_when_token_configured(self) -> None:
+        """R3: 配置 auth_token 时, 无 Authorization 头的请求返回 401。"""
+        adapter = WebChatAdapter({"auth_token": "webchat-secret"})
+        body, status = await adapter._route("GET", "/webchat/poll?session_id=s1", b"", "")
+        assert status == 401
+        assert b"unauthorized" in body
+
+    @pytest.mark.asyncio
+    async def test_route_rejects_request_with_wrong_token(self) -> None:
+        """R3: token 不匹配返回 401。"""
+        adapter = WebChatAdapter({"auth_token": "webchat-secret"})
+        body, status = await adapter._route(
+            "GET", "/webchat/poll?session_id=s1", b"",
+            "Bearer wrong-token",
+        )
+        assert status == 401
+
+    @pytest.mark.asyncio
+    async def test_route_accepts_request_with_correct_token(self) -> None:
+        """R3: token 匹配时放行 (200 + 正常业务响应)。"""
+        adapter = WebChatAdapter({"auth_token": "webchat-secret"})
+        body, status = await adapter._route(
+            "GET", "/webchat/poll?session_id=s1", b"",
+            "Bearer webchat-secret",
+        )
+        assert status == 200
+        assert b"replies" in body
+
+    @pytest.mark.asyncio
+    async def test_route_passes_when_no_token_configured(self) -> None:
+        """R3: 未配置 auth_token 时, dev-only 模式, 任何请求都放行 (向后兼容)。"""
+        adapter = WebChatAdapter({})  # 无 auth_token
+        body, status = await adapter._route(
+            "GET", "/webchat/poll?session_id=s1", b"", "",
+        )
+        assert status == 200
