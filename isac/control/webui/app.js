@@ -280,6 +280,43 @@ async function refreshAll() {
     await Promise.all([refreshAgents(), refreshRules(), refreshLinks(), refreshAudit(), refreshDashboard()]);
 }
 
+// Q5: SSE 事件流实时消费 —— 服务端 GET /events/stream 持续推送新事件,
+// 前端接收后按 event 类型刷新对应面板, 不再依赖定时轮询。仅会话 Cookie
+// 模式启动 (EventSource 不支持自定义 Header, 无法带 Bearer Token; legacy
+// Bearer 模式降级到定时 refreshAll)。
+let sseSource = null;
+function startEventStream() {
+    if (sseSource) sseSource.close();
+    if (usingLegacyBearerAuth) return; // Bearer 模式不支持 EventSource 认证
+    try {
+        sseSource = new EventSource("/api/v1/events/stream");
+        sseSource.onmessage = (ev) => {
+            try {
+                const data = JSON.parse(ev.data || "{}");
+            } catch (_) { return; }
+            // 按事件类型触发对应面板刷新; 服务端已过滤 scope, 收到即代表有权看
+            const event = (data.event || data.type || "").toString();
+            if (event.includes("agent") || event.includes("runtime")) {
+                refreshAgents();
+                refreshDashboard();
+            } else if (event.includes("subagent") || event.includes("task")) {
+                refreshExtensions();
+            } else if (event.includes("audit") || event.includes("auth")) {
+                refreshAudit();
+            } else if (event.includes("usage") || event.includes("provider")) {
+                refreshDashboard();
+                refreshProviders();
+            }
+        };
+        sseSource.onerror = () => {
+            // EventSource 会自动重连; 失败时仅记录不弹错误 (避免日志风暴)
+            console.warn("SSE 连接异常, 浏览器将自动重连");
+        };
+    } catch (e) {
+        console.warn("EventSource 初始化失败, 跳过 SSE", e);
+    }
+}
+
 // J3-5: SPA 导航 (10 域, 当前页 active)
 function navigate(page) {
     document.querySelectorAll(".page").forEach(el => el.classList.remove("active"));
@@ -440,23 +477,37 @@ async function refreshUsage() {
 
 // J3-6: Extensions (插件 + SubAgent)
 async function refreshExtensions() {
-    // 插件列表 (无专门 API, 暂用 /agents 占位; 实际插件 API 待 J3 后续)
+    // Q5: 插件列表走真实 GET /plugins/loaded 端点 (此前是占位假数据)。
+    const loaded = await apiCall("GET", "/plugins/loaded").catch(() => ({ plugins: [] }));
+    if (loaded === null) return;
     clearTableBody("plugins-table");
-    addRow("plugins-table", ["(插件 API 待实现)", "", ""]);
-    // SubAgent 任务
+    (loaded?.plugins || []).forEach(p => {
+        addRow("plugins-table", [
+            p.name || "",
+            p.isolated ? "isolated (子进程)" : "in-process",
+            "",
+        ]);
+    });
+    if ((loaded?.plugins || []).length === 0) {
+        addRow("plugins-table", ["(无已加载插件)", "", ""]);
+    }
+    // SubAgent 任务 (Q5: usage/evidence 现在保留到 run 上, 控制面可读)
     const runs = await apiCall("GET", "/agents/_/subagent-runs").catch(() => []);
     if (runs === null) return;
     clearTableBody("subagent-runs-table");
     (runs || []).forEach(r => {
+        const tokens = r.tokens_used != null ? String(r.tokens_used) : "";
         addRow("subagent-runs-table", [
             r.task_id?.slice(0, 12), r.status,
             r.started_at ? new Date(r.started_at * 1000).toLocaleString() : "",
             r.finished_at ? new Date(r.finished_at * 1000).toLocaleString() : "",
             (r.result_summary || "").slice(0, 60),
+            tokens,
+            (r.evidence_refs || []).length ? `${r.evidence_refs.length} refs` : "",
         ]);
     });
     if ((runs || []).length === 0) {
-        addRow("subagent-runs-table", ["(无 SubAgent 任务)", "", "", "", ""]);
+        addRow("subagent-runs-table", ["(无 SubAgent 任务)", "", "", "", "", "", ""]);
     }
 }
 
@@ -470,6 +521,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (getCsrfTokenFromCookie()) {
         usingLegacyBearerAuth = false;
         refreshAll();
+        startEventStream(); // Q5: SSE 实时事件流 (仅会话 Cookie 模式可用)
         return;
     }
     const saved = sessionStorage.getItem("isac_token");

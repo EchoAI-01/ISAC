@@ -1,6 +1,8 @@
-"""插件启用矩阵端点 (SPECIFICATION.md 4.4)。
+"""插件启用矩阵端点 (SPECIFICATION.md 4.4) + 已加载插件列表 (Q5 激活)。
 
 Bearer Token 认证 + 矩阵持久化到 AgentConfig + 审计日志。
+Q5: GET /plugins/loaded 列出 PluginManager.list_loaded() 的全部已加载插件,
+替代 WebUI 此前的占位假数据。
 """
 
 from __future__ import annotations
@@ -63,5 +65,41 @@ def build_router(
                 status_code=200,
             )
         return {"status": "updated"}
+
+    return router
+
+
+def build_loaded_plugins_router(
+    plugin_manager: PluginManager,
+    auth_dependency: Any = None,
+    scope_dependency: Any = None,
+) -> Any:
+    """Q5: 已加载插件列表路由 GET /plugins/loaded。
+
+    WebUI 插件页此前用占位假数据 ("(插件 API 待实现)"), 现经此端点读取
+    PluginManager.list_loaded() 的真实已加载插件名列表。
+    """
+    from fastapi import APIRouter, Depends
+
+    router = APIRouter(
+        prefix="/plugins",
+        tags=["plugins"],
+        dependencies=[Depends(auth_dependency)] if auth_dependency else [],
+    )
+    read_deps = [Depends(scope_dependency("plugin:read"))] if scope_dependency else []
+
+    @router.get("/loaded", dependencies=read_deps)
+    async def list_loaded() -> dict:
+        # list_loaded 同时含宿主进程内 + 隔离子进程的插件名
+        loaded = plugin_manager.list_loaded()
+        # 附带每个插件是否以隔离方式加载 (供 WebUI 区分)
+        items = [
+            {
+                "name": name,
+                "isolated": plugin_manager.is_isolated(name),
+            }
+            for name in loaded
+        ]
+        return {"plugins": items, "total": len(items)}
 
     return router

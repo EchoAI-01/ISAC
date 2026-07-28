@@ -298,6 +298,15 @@ def _mount_core_routers(
         ),
         prefix="/api/v1",
     )
+    # Q5: 已加载插件列表端点 (供 WebUI 插件页读取真实数据, 替代占位假数据)。
+    app.include_router(
+        routes_plugins.build_loaded_plugins_router(
+            plugin_manager,
+            auth_dependency=auth_dependency,
+            scope_dependency=scope_dependency,
+        ),
+        prefix="/api/v1",
+    )
 
 
 def _mount_optional_routers(
