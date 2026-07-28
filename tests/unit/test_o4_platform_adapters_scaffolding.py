@@ -30,7 +30,8 @@ class TestFeishuAdapterSkeleton:
 
     @pytest.mark.asyncio
     async def test_start_stop_noop(self) -> None:
-        adapter = FeishuAdapter({})
+        # X9: webhook_port=0 让 OS 分配空闲端口, 避免并行测试时撞 9099 默认端口
+        adapter = FeishuAdapter({"webhook_port": 0})
         await adapter.start()
         await adapter.stop()  # 不抛异常即可
 
@@ -60,7 +61,8 @@ class TestQQOfficialAdapterSkeleton:
 
     @pytest.mark.asyncio
     async def test_start_stop_noop(self) -> None:
-        adapter = QQOfficialAdapter({})
+        # X9: webhook_port=0 让 OS 分配空闲端口, 避免并行测试时撞 8443 默认端口
+        adapter = QQOfficialAdapter({"webhook_port": 0})
         await adapter.start()
         await adapter.stop()
 
