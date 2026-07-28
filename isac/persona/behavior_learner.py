@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from isac.agent.hooks import AgentHooks
 from isac.core.events import AgentHookPoint
 from isac.core.types import AgentContext, LLMResponse
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from isac.agent.hooks import AgentHooks
     from isac.gateway.models import UserProfile
 
 logger = get_logger(__name__)
