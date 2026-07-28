@@ -33,6 +33,12 @@ def _make_adapter(secret: str = "DG5g3B4j9X2KOErG", app_id: str = "11111111") ->
     })
 
 
+def test_default_webhook_host_is_loopback() -> None:
+    """O11: 默认 webhook host 为 127.0.0.1, 与飞书适配器一致, 避免 0.0.0.0 误暴露。"""
+    adapter = QQOfficialAdapter({"enabled": True, "app_id": "x", "secret": "y", "webhook_port": 0})
+    assert adapter._webhook_host == "127.0.0.1"
+
+
 def _make_app(adapter: QQOfficialAdapter) -> FastAPI:
     """构造一个直接调用 _handle_callback 的 FastAPI app (与 start() 里挂载的路由一致)。"""
     app = FastAPI()
