@@ -99,6 +99,10 @@ class AgentManager:
         scheduler = instance.services.get("proactive_scheduler")
         if scheduler is not None:
             await scheduler.start(self._on_proactive_wake)
+        # S2: 后台记忆整合循环 (默认未构造 → None → 不启动, 零行为变化)。
+        consolidator = instance.services.get("memory_consolidator")
+        if consolidator is not None:
+            await consolidator.start()
         self._inc_metric("isac_agent_starts_total")
         self._update_active_gauge()
         logger.info("Agent 已启动", agent_id=agent_id)
@@ -109,6 +113,9 @@ class AgentManager:
         scheduler = instance.services.get("proactive_scheduler")
         if scheduler is not None:
             await scheduler.stop()
+        consolidator = instance.services.get("memory_consolidator")
+        if consolidator is not None:
+            await consolidator.stop()
         self._inc_metric("isac_agent_stops_total")
         self._update_active_gauge()
         logger.info("Agent 已停止", agent_id=agent_id)
@@ -121,6 +128,9 @@ class AgentManager:
         scheduler = instance.services.get("proactive_scheduler")
         if scheduler is not None:
             await scheduler.stop()
+        consolidator = instance.services.get("memory_consolidator")
+        if consolidator is not None:
+            await consolidator.stop()
         self._update_active_gauge()
         # Q0: 失效独立 Provider 缓存 (否则重建同名 Agent 仍拿到旧 llm 配置的 Provider)
         await self._invalidate_agent_provider(agent_id)
@@ -205,6 +215,9 @@ class AgentManager:
         old_scheduler = old_instance.services.get("proactive_scheduler")
         if old_scheduler is not None:
             await old_scheduler.stop()
+        old_consolidator = old_instance.services.get("memory_consolidator")
+        if old_consolidator is not None:
+            await old_consolidator.stop()
         # Q0: 失效独立 Provider 缓存, PATCH 修改 llm 后 for_agent 才会按新配置重建
         await self._invalidate_agent_provider(agent_id)
         instance = await assemble_agent(config, self._services)
@@ -214,6 +227,9 @@ class AgentManager:
             new_scheduler = instance.services.get("proactive_scheduler")
             if new_scheduler is not None:
                 await new_scheduler.start(self._on_proactive_wake)
+            new_consolidator = instance.services.get("memory_consolidator")
+            if new_consolidator is not None:
+                await new_consolidator.start()
         logger.info("Agent 配置已重载", agent_id=agent_id)
 
     # ── 消息处理入口 (由 MessageRouter 经依赖注入调用) ─────
