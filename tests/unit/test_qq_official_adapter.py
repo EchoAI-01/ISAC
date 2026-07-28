@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import binascii
 import json
+import time
 from typing import Any
 
 import httpx
@@ -102,7 +103,7 @@ def test_dispatch_event_with_valid_signature_normalizes_and_calls_on_message() -
     }
     body = {"op": 0, "t": "AT_MESSAGE_CREATE", "d": data, "s": 1, "id": "evt-1"}
     body_str = json.dumps(body, ensure_ascii=False)
-    timestamp = "1725442341"
+    timestamp = str(int(time.time()))
     sig = _sign_with_secret(secret, f"{timestamp}{body_str}")
     resp = _client(adapter).post(
         "/callback",
@@ -141,7 +142,7 @@ def test_dispatch_event_invalid_signature_rejected() -> None:
         content=body_str,
         headers={
             "X-Signature-Ed25519": "00" * 64,  # 伪造签名
-            "X-Signature-Timestamp": "1725442341",
+            "X-Signature-Timestamp": str(int(time.time())),
             "Content-Type": "application/json",
         },
     )
@@ -178,11 +179,75 @@ def test_dispatch_event_without_secret_rejected() -> None:
         content=body_str,
         headers={
             "X-Signature-Ed25519": "00" * 64,
-            "X-Signature-Timestamp": "1725442341",
+            "X-Signature-Timestamp": str(int(time.time())),
             "Content-Type": "application/json",
         },
     )
     assert resp.json() == {"opcode": 12, "error": "signature mismatch"}
+
+
+def test_dispatch_event_rejects_replay_with_stale_timestamp() -> None:
+    """R2: X-Signature-Timestamp 偏离本地时间 >300s 拒绝重放攻击。
+
+    即使签名合法 (用 secret 正确派生 + 验签通过), 偏离 >5 分钟也拒绝,
+    防止攻击者重放历史捕获的请求体。
+    """
+    secret = "DG5g3B4j9X2KOErG"
+    adapter = _make_adapter(secret=secret)
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    data = {"id": "msg-1", "content": "hi", "author": {"member_openid": "u1"}, "channel_id": "c1"}
+    body = {"op": 0, "t": "AT_MESSAGE_CREATE", "d": data, "s": 1, "id": "evt-1"}
+    body_str = json.dumps(body, ensure_ascii=False)
+    # 构造合法签名但 timestamp 偏离 >300s (1 小时前)
+    stale_ts = str(int(time.time()) - 3600)
+    sig = _sign_with_secret(secret, f"{stale_ts}{body_str}")
+    resp = _client(adapter).post(
+        "/callback",
+        content=body_str,
+        headers={
+            "X-Signature-Ed25519": sig,
+            "X-Signature-Timestamp": stale_ts,
+            "Content-Type": "application/json",
+        },
+    )
+    # R2: 偏离 >300s 视为重放, 返回 opcode 12 signature mismatch (不调 on_message)
+    assert resp.status_code == 200
+    assert resp.json().get("error") == "signature mismatch"
+    assert received == []
+
+
+def test_dispatch_event_accepts_timestamp_within_60s_window() -> None:
+    """R2: ±60s 内的 timestamp 接受 (时钟漂移容差)。"""
+    secret = "DG5g3B4j9X2KOErG"
+    adapter = _make_adapter(secret=secret)
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    data = {"id": "msg-1", "content": "hi", "author": {"member_openid": "u1"}, "channel_id": "c1"}
+    body = {"op": 0, "t": "AT_MESSAGE_CREATE", "d": data, "s": 1, "id": "evt-1"}
+    body_str = json.dumps(body, ensure_ascii=False)
+    # 60s 内的 timestamp (未来 30s) 应接受
+    near_ts = str(int(time.time()) + 30)
+    sig = _sign_with_secret(secret, f"{near_ts}{body_str}")
+    resp = _client(adapter).post(
+        "/callback",
+        content=body_str,
+        headers={
+            "X-Signature-Ed25519": sig,
+            "X-Signature-Timestamp": near_ts,
+            "Content-Type": "application/json",
+        },
+    )
+    assert resp.status_code == 200
+    assert len(received) == 1
 
 
 def test_group_at_message_event_uses_group_openid() -> None:
@@ -203,7 +268,7 @@ def test_group_at_message_event_uses_group_openid() -> None:
     }
     body = {"op": 0, "t": "GROUP_AT_MESSAGE_CREATE", "d": data}
     body_str = json.dumps(body, ensure_ascii=False)
-    timestamp = "1725442341"
+    timestamp = str(int(time.time()))
     sig = _sign_with_secret(secret, f"{timestamp}{body_str}")
     _client(adapter).post(
         "/callback",
@@ -232,7 +297,7 @@ def test_c2c_message_event_uses_user_openid_no_group() -> None:
     data = {"id": "m1", "content": "私聊", "author": {"user_openid": "u_c2c"}}
     body = {"op": 0, "t": "C2C_MESSAGE_CREATE", "d": data}
     body_str = json.dumps(body, ensure_ascii=False)
-    timestamp = "1725442341"
+    timestamp = str(int(time.time()))
     sig = _sign_with_secret(secret, f"{timestamp}{body_str}")
     _client(adapter).post(
         "/callback",
@@ -260,7 +325,7 @@ def test_non_message_event_ignored_but_acked() -> None:
     adapter.on_message = _on_msg
     body = {"op": 0, "t": "GUILD_CREATE", "d": {"id": "g1"}}
     body_str = json.dumps(body)
-    timestamp = "1725442341"
+    timestamp = str(int(time.time()))
     sig = _sign_with_secret(secret, f"{timestamp}{body_str}")
     resp = _client(adapter).post(
         "/callback",
