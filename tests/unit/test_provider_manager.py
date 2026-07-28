@@ -91,6 +91,26 @@ async def test_non_llm_error_without_fallback_degrades_gracefully() -> None:
 
 
 @pytest.mark.asyncio
+async def test_final_failed_attempt_does_not_sleep_before_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleeps: list[float] = []
+
+    async def _record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", _record_sleep)
+    manager = ProviderManager({})
+    primary = _AlwaysRaisesProvider(ValueError("boom"))
+    manager.register(_StubReplyProvider("fallback-ok"), fallback=True)
+
+    result = await manager.chat_with_retry(primary, system="s", messages=[])
+
+    assert result.content == "fallback-ok"
+    assert sleeps == [1, 2]
+
+
+@pytest.mark.asyncio
 async def test_retries_share_trace_id_but_have_distinct_request_ids() -> None:
     """J1: 每次物理尝试 (含重试与回退) 独立记录、request_id 各不相同, 但共享同一
     trace_id (ARCHITECTURE.md: 最终聚合时用 trace_id 归并); 回退到 fallback 时记录
