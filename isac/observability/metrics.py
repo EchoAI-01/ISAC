@@ -38,16 +38,20 @@ class Counter:
                 self._labels[key] = self._labels.get(key, 0.0) + value
 
     def value(self, **labels: Any) -> float:
-        if not labels:
-            return self._value
-        key = tuple(sorted(labels.items()))
-        return self._labels.get(key, 0.0)
+        with self._lock:
+            if not labels:
+                return self._value
+            key = tuple(sorted(labels.items()))
+            return self._labels.get(key, 0.0)
 
     def to_prometheus(self) -> list[str]:
         lines = [f"# HELP {self.name} {self.description}", f"# TYPE {self.name} counter"]
-        if self._value > 0:
-            lines.append(f"{self.name} {self._value}")
-        for key, val in sorted(self._labels.items()):
+        with self._lock:
+            value = self._value
+            labels_snapshot = sorted(self._labels.items())
+        if value > 0:
+            lines.append(f"{self.name} {value}")
+        for key, val in labels_snapshot:
             label_str = ",".join(f'{k}="{v}"' for k, v in key)
             lines.append(f"{self.name}{{{label_str}}} {val}")
         return lines
@@ -83,19 +87,23 @@ class Gauge:
         self.inc(-value, **labels)
 
     def value(self, **labels: Any) -> float:
-        if not labels:
-            return self._value
-        key = tuple(sorted(labels.items()))
-        return self._labels.get(key, 0.0)
+        with self._lock:
+            if not labels:
+                return self._value
+            key = tuple(sorted(labels.items()))
+            return self._labels.get(key, 0.0)
 
     def to_prometheus(self) -> list[str]:
         lines = [f"# HELP {self.name} {self.description}", f"# TYPE {self.name} gauge"]
-        if self._labels:
-            for key, val in sorted(self._labels.items()):
+        with self._lock:
+            value = self._value
+            labels_snapshot = sorted(self._labels.items())
+        if labels_snapshot:
+            for key, val in labels_snapshot:
                 label_str = ",".join(f'{k}="{v}"' for k, v in key)
                 lines.append(f"{self.name}{{{label_str}}} {val}")
         else:
-            lines.append(f"{self.name} {self._value}")
+            lines.append(f"{self.name} {value}")
         return lines
 
 
@@ -127,13 +135,17 @@ class Histogram:
             f"# HELP {self.name} {self.description}",
             f"# TYPE {self.name} histogram",
         ]
+        with self._lock:
+            counts = list(self._counts)
+            total_count = self._count
+            total_sum = self._sum
         cumulative = 0
         for i, bound in enumerate(self.buckets):
-            cumulative = self._counts[i]
+            cumulative = counts[i]
             lines.append(f'{self.name}_bucket{{le="{bound}"}} {cumulative}')
-        lines.append(f'{self.name}_bucket{{le="+Inf"}} {self._count}')
-        lines.append(f"{self.name}_sum {self._sum}")
-        lines.append(f"{self.name}_count {self._count}")
+        lines.append(f'{self.name}_bucket{{le="+Inf"}} {total_count}')
+        lines.append(f"{self.name}_sum {total_sum}")
+        lines.append(f"{self.name}_count {total_count}")
         return lines
 
 
@@ -166,23 +178,31 @@ class MetricsCollector:
 
     def to_prometheus(self) -> str:
         """导出 Prometheus 文本格式。"""
+        with self._lock:
+            counters = list(self._counters.values())
+            gauges = list(self._gauges.values())
+            histograms = list(self._histograms.values())
         lines: list[str] = []
-        for counter in list(self._counters.values()):
+        for counter in counters:
             lines.extend(counter.to_prometheus())
-        for gauge in list(self._gauges.values()):
+        for gauge in gauges:
             lines.extend(gauge.to_prometheus())
-        for histogram in list(self._histograms.values()):
+        for histogram in histograms:
             lines.extend(histogram.to_prometheus())
         return "\n".join(lines) + "\n" if lines else ""
 
     def snapshot(self) -> dict[str, Any]:
         """返回 JSON 友好的指标快照 (供 API 查询)。"""
+        with self._lock:
+            counters = list(self._counters.items())
+            gauges = list(self._gauges.items())
+            histograms = list(self._histograms.items())
         return {
-            "counters": {name: c.value() for name, c in self._counters.items()},
-            "gauges": {name: g.value() for name, g in self._gauges.items()},
+            "counters": {name: c.value() for name, c in counters},
+            "gauges": {name: g.value() for name, g in gauges},
             "histograms": {
                 name: {"count": h._count, "sum": h._sum}
-                for name, h in self._histograms.items()
+                for name, h in histograms
             },
         }
 
