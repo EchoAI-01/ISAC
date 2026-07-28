@@ -9,7 +9,7 @@ from isac.agent.loop import ISACAgentLoop
 from isac.agent.prompt_builder import SystemPromptBuilder
 from isac.agent.tools.base import Tool, ToolContext
 from isac.agent.tools.registry import ToolRegistry
-from isac.core.types import AgentContext, LLMResponse, TokenUsage, ToolCall, ToolResult
+from isac.core.types import AgentContext, LLMChunk, LLMResponse, TokenUsage, ToolCall, ToolResult
 
 
 class ToolCallingProvider:
@@ -233,3 +233,109 @@ async def test_agent_loop_records_tool_error_metric_on_failure() -> None:
 
     assert metrics.counter("isac_tool_calls_total").value() == 1
     assert metrics.counter("isac_tool_errors_total").value() == 1
+
+
+# ── H4: 流式路径 (loop 侧 _call_llm_streaming / _merge_chunks) ────────
+
+
+class StreamingProvider:
+    """流式 Fake Provider: 按轮次 yield 预设的 LLMChunk 序列。"""
+
+    def __init__(self, scripts: list[list[LLMChunk]]) -> None:
+        self._scripts = scripts
+        self.stream_calls = 0
+
+    async def chat(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs) -> LLMResponse:
+        return LLMResponse(content="should-not-be-used", usage=TokenUsage())
+
+    async def chat_stream(self, system: str, messages: list[dict], tools: list[dict] | None = None, **kwargs):
+        chunks = self._scripts[self.stream_calls]
+        self.stream_calls += 1
+        for chunk in chunks:
+            yield chunk
+
+    def get_model_name(self) -> str:
+        return "test"
+
+    def get_capabilities(self):  # noqa: ANN201
+        return None
+
+
+def _streaming_context(collected: list[LLMChunk]) -> AgentContext:
+    async def on_chunk(chunk: LLMChunk) -> None:
+        collected.append(chunk)
+
+    return AgentContext(
+        session=object(),
+        user_profile=None,
+        current_message=object(),
+        streaming=True,
+        on_chunk=on_chunk,
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_streaming_merges_content_and_forwards_chunks() -> None:
+    """H4: 流式单轮 —— _merge_chunks 合并多个 delta_content, usage 取非末尾的那个
+    (不盲取 chunks[-1]); 每个 chunk 都转发给 on_chunk。"""
+    provider = StreamingProvider(
+        scripts=[
+            [
+                LLMChunk(delta_content="你"),
+                LLMChunk(delta_content="好"),
+                LLMChunk(usage=TokenUsage(total_tokens=7)),  # usage 单独一块, 在内容之后
+                LLMChunk(delta_content="", finish_reason="stop"),  # 末块无 usage
+            ]
+        ]
+    )
+    collected: list[LLMChunk] = []
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=ToolRegistry(),
+        services={},
+    )
+    result = await loop.run([{"role": "user", "content": "hi"}], _streaming_context(collected))
+
+    assert result.content == "你好"
+    assert len(collected) == 4  # 每个 chunk 都转发给 on_chunk
+
+    # usage 合并 (取非末尾非空的那个, 不盲取 chunks[-1]) 是 CR3-H4 的核心修复;
+    # AgentResult 不透出 usage (它进了 budget.consume), 故直接对 _merge_chunks 断言。
+    merged = loop._merge_chunks(  # noqa: SLF001
+        [
+            LLMChunk(delta_content="你"),
+            LLMChunk(delta_content="好"),
+            LLMChunk(usage=TokenUsage(total_tokens=7)),
+            LLMChunk(delta_content="", finish_reason="stop"),  # 末块 usage 为空
+        ]
+    )
+    assert merged.content == "你好"
+    assert merged.usage.total_tokens == 7  # 命中非末尾 chunk 的 usage, 而非末块空 usage
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_streaming_executes_assembled_tool_call() -> None:
+    """H4: 流式工具调用 —— Provider 侧按 index 装配好的 tool_call chunk 经
+    _merge_chunks 收集后被 loop 正常执行, 第二轮 (仍流式) 产出最终回复。"""
+    provider = StreamingProvider(
+        scripts=[
+            [LLMChunk(tool_call=ToolCall(id="t1", name="service_echo", arguments={}), finish_reason="tool_calls")],
+            [LLMChunk(delta_content="done")],
+        ]
+    )
+    registry = ToolRegistry()
+    registry.register(ServiceEchoTool())
+    collected: list[LLMChunk] = []
+    loop = ISACAgentLoop(
+        llm=provider,
+        prompt_builder=SystemPromptBuilder(),
+        hooks=AgentHooks(),
+        tools=registry,
+        services={"memory": "memory-service"},
+    )
+    result = await loop.run([{"role": "user", "content": "查记忆"}], _streaming_context(collected))
+
+    assert result.content == "done"
+    assert provider.stream_calls == 2  # 工具轮 + 最终轮都走流式

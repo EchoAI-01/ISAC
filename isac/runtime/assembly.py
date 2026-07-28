@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from isac.agent.hooks import AgentHooks
@@ -48,6 +49,7 @@ from isac.commands.builtin.mute import MuteCommand, UnmuteCommand
 from isac.commands.registry import CommandRegistry
 from isac.core.policy import EnableMatrix
 from isac.gating.system import GatingSystem
+from isac.memory.consolidator import MemoryConsolidator
 from isac.memory.injector.heuristic import HeuristicMemoryInjector
 from isac.memory.injector.jargon import JargonInjector
 from isac.memory.injector.mid_term import MidTermMemoryInjector
@@ -55,9 +57,15 @@ from isac.memory.injector.person_profile import PersonProfileInjector
 from isac.persona.manager import PersonaManager
 from isac.runtime.config import AgentConfig
 from isac.runtime.conversation import (
+    CompositeTaskProducer,
     ConversationRuntimeRegistry,
     ConversationStateStore,
+    DateReminderProducer,
+    IdleReengageProducer,
+    MemoryAssociationProducer,
     ProactiveScheduler,
+    ProactiveTask,
+    TopicFollowupProducer,
 )
 from isac.runtime.instance import AgentInstance
 from isac.runtime.progress import build_progress_reporter
@@ -66,11 +74,93 @@ from isac.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _build_task_producer(
+    config: AgentConfig,
+    proactive_cfg: dict,
+    registry: ConversationRuntimeRegistry,
+    memory: Any = None,
+) -> Callable[[float], Awaitable[list[ProactiveTask]]] | None:
+    """按配置收集启用的主动任务生产者, 组合成 ProactiveScheduler 期望的单个 callable。
+
+    idle_reengage 默认关闭 (idle_reengage_seconds<=0 不接); 其余生产者默认关闭
+    (*_enabled 默认 False)。S1 激活后, DateReminder/MemoryAssociation 需要 memory
+    实例做检索 (memory=None 时恒返回 [], 零行为变化); TopicFollowup 只依赖
+    message_cache, 不需要 memory 但接受参数以保持装配一致。未启用任何生产者
+    时返回 None (调度器队列恒空, 与旧行为一致)。
+    """
+    idle_reengage_seconds = float(proactive_cfg.get("idle_reengage_seconds", 0) or 0)
+    producers: list[Callable[[float], Awaitable[list[ProactiveTask]]]] = []
+    if idle_reengage_seconds > 0:
+        producers.append(
+            IdleReengageProducer(
+                agent_id=config.agent_id, registry=registry, idle_seconds=idle_reengage_seconds
+            )
+        )
+    if bool(proactive_cfg.get("date_reminder_enabled", False)):
+        producers.append(
+            DateReminderProducer(agent_id=config.agent_id, registry=registry, memory=memory)
+        )
+    if bool(proactive_cfg.get("topic_followup_enabled", False)):
+        followup_idle_seconds = float(proactive_cfg.get("followup_idle_seconds", 1800) or 1800)
+        producers.append(
+            TopicFollowupProducer(
+                agent_id=config.agent_id, registry=registry,
+                memory=memory, followup_idle_seconds=followup_idle_seconds,
+            )
+        )
+    if bool(proactive_cfg.get("memory_association_enabled", False)):
+        min_score = float(proactive_cfg.get("memory_association_min_score", 0.15) or 0.15)
+        producers.append(
+            MemoryAssociationProducer(
+                agent_id=config.agent_id, registry=registry, memory=memory, min_score=min_score,
+            )
+        )
+    if not producers:
+        return None
+    if len(producers) == 1:
+        return producers[0]
+    return CompositeTaskProducer(producers)
+
+
+def _build_memory_consolidator(
+    config: AgentConfig,
+    global_config: dict,
+    memory: Any,
+    llm: Any = None,
+) -> MemoryConsolidator | None:
+    """按 memory.consolidation 配置构造后台整合器; 默认关闭 (enabled!=true → None)。
+
+    S2 激活: run_once 真实三步 (去重/剪枝/画像归纳), 各步隔离异常; llm=None 时
+    画像归纳步骤跳过 (返回 updated_profiles=0, 不报错)。NoOpMemoryPipeline (无
+    metadata) 时不构造 (无可整合数据)。生命周期由 AgentManager 随 Agent start/stop 驱动。
+    """
+    consolidation_cfg = (global_config.get("memory", {}) or {}).get("consolidation", {}) or {}
+    if not bool(consolidation_cfg.get("enabled", False)):
+        return None
+    metadata = getattr(memory, "metadata", None)
+    if metadata is None:
+        return None
+    namespace = str(getattr(memory, "namespace", "") or config.effective_memory_namespace)
+    return MemoryConsolidator(
+        agent_id=config.agent_id,
+        namespace=namespace,
+        metadata=metadata,
+        interval_seconds=float(consolidation_cfg.get("interval_seconds", 3600) or 3600),
+        llm=llm,
+        dedup_similarity=float(consolidation_cfg.get("dedup_similarity", 0.92) or 0.92),
+        prune_after_days=int(consolidation_cfg.get("prune_after_days", 30) or 30),
+        prune_importance_below=float(
+            consolidation_cfg.get("prune_importance_below", 0.2) or 0.2
+        ),
+    )
+
+
 async def _setup_conversation_runtime(
     config: AgentConfig,
     global_config: dict,
     agent_services: dict[str, Any],
     prompt_builder: SystemPromptBuilder,
+    memory: Any = None,
 ) -> None:
     """P1: 拟人化会话子系统装配 (registry/开关/打断恢复注入器/调度器/状态存储)。
 
@@ -103,9 +193,16 @@ async def _setup_conversation_runtime(
     import asyncio as _asyncio
 
     proactive_cfg = conv_merged.get("proactive", {}) or {}
+    # R2-2: 空闲重连生产者 —— 给主动任务队列一个真实的生产侧入口 (此前调度器只是
+    # 消费者, 队列恒空, 主动任务功能不可达)。默认 idle_reengage_seconds=0 时不构造,
+    # 主链路零行为变化; 配置 > 0 时会话静默超阈值即主动关心一次 (按新消息重新武装)。
+    task_producer = _build_task_producer(
+        config, proactive_cfg, agent_services["conversation_registry"], memory=memory
+    )
     agent_services["proactive_scheduler"] = ProactiveScheduler(
         min_interval_seconds=float(proactive_cfg.get("min_interval_seconds", 600) or 0),
         poll_interval_seconds=float(proactive_cfg.get("poll_interval_seconds", 1.0) or 1.0),
+        task_producer=task_producer,
     )
     # MVP-Fix: 快照目录跟随 control.agents_dir 配置 (此前硬编码默认 data/agents,
     # 测试与多实例部署都会写进同一处真实目录)。
@@ -219,6 +316,12 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     prompt_builder.register(MidTermMemoryInjector(memory))
     agent_services = {**services, "memory": memory}
 
+    # 后台记忆整合器 (默认关闭: memory.consolidation.enabled!=true → None → 生命周期不启动)。
+    # 骨架期 run_once 为 no-op, 由 AgentManager 随 Agent start/stop 驱动。
+    consolidator = _build_memory_consolidator(config, global_config, memory, llm=llm)
+    if consolidator is not None:
+        agent_services["memory_consolidator"] = consolidator
+
     # D9 进度报告: 注入工厂 (默认无 sender → 惰性关闭, 主链路热路径零变化)。
     # 消息处理时用它构造 per-session Reporter 并绑定 Channel sender; persona_rendering
     # ="llm" 时复用本 Agent 已解析的 llm Provider 做受超时约束的文案改写。
@@ -248,7 +351,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
 
         agent_services["mesh_action_broker"] = MeshActionBroker(bus=bus)
 
-    await _setup_conversation_runtime(config, global_config, agent_services, prompt_builder)
+    await _setup_conversation_runtime(config, global_config, agent_services, prompt_builder, memory=memory)
 
     loop = ISACAgentLoop(
         llm=llm,

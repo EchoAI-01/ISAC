@@ -3,7 +3,7 @@
 > 本文件是 ISAC 的**技术路线全景图**:按阶段串起已完成能力与待建能力,给出每个"进度 0"能力的目标形态、验收标准与依赖关系。
 > 节点定义与验收细则以 [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) §四为准,进度以 [PROGRESS.md](./PROGRESS.md) 为唯一事实源。本文件只描述**方向与阶段划分**,不重复维护进度。
 >
-> 最近更新: 2026-07-26(新增阶段 6 MVP 收尾 Q0-Q6 + M-MVP 里程碑,源于对照 REQUIREMENTS.md 十二条需求的逐条代码取证)
+> 最近更新: 2026-07-28(S1-S5+S7 飞书+QQ官方激活完成, S6 视频 Provider 暂缓待端点选型)
 
 ## 一、阶段总览
 
@@ -15,9 +15,9 @@ ISAC 的能力分六个阶段推进。阶段 0/1 是"地基";阶段 1-4 各节�
 | **阶段 0** | 可观测性 + 文档体系 | 可观测性增强(横切) + 文档 | ✅ 已落地 |
 | **阶段 1** | 拟人化地基 | L1-L5 | ✅ 已接线 (P1, 2026-07-27):debounce/wait/打断/主动任务/恢复全部进主链路 |
 | **阶段 2** | 协作深化 | M1-M2 (路由 Mesh) | ✅ 已接线 (P2, 2026-07-27):observer/candidate + 4 A2A 工具真实可用 |
-| **阶段 3** | 记忆深化 | N1-N3 (MemoryItem/治理/身份) | 🟡 N2 已接线;N1/N3 待接线、图谱/Reranker 待接(P3/P4) |
-| **阶段 4** | 企业化与平台扩展 | O1-O5 (多租户/隔离/编排/平台/视频) | 🟡 O1 已接线;O2/O3 待接线(P5)、O4/O5 未开始 |
-| **阶段 5** | 主链路接线与激活 | P0-P5 | 🟡 P0/P1/P2 完成 (2026-07-27);P3/P4/P5 未开始 |
+| **阶段 3** | 记忆深化 | N1-N3 (MemoryItem/治理/身份) | 🟡 N2 已接线;**S3 激活图谱召回 (mentioned_in 边 + Reranker provider 注入, 2026-07-28)**、**S4 激活身份归一控制面 (bind/conflicts/resolve + main/server 注入, 2026-07-28)**;N1 MemoryItem 边界文档化 (热路径继续用 MemoryHit) |
+| **阶段 4** | 企业化与平台扩展 | O1-O5 (多租户/隔离/编排/平台/视频) | 🟡 O1 已接线;**S5 激活 Workflow 控制面 (action_handler + 声明式加载, 2026-07-28;剩 Agent 工具入口留 P5 决策)**;**S7 激活飞书 + QQ 官方 (Ed25519/AES 字节序核对自官方文档, 2026-07-28)**;微信保持骨架;O2/O3 剩 Agent 工具入口;O5 视频端点选型暂缓 (S6) |
+| **阶段 5** | 主链路接线与激活 | P0-P5 | 🟡 P0/P1/P2 完成 (2026-07-27);**P3/P4/P5 子范围激活 (S3/S4/S5, 2026-07-28)**:图谱召回/身份归一控制面/Workflow action_handler + 声明式加载;剩 P3 通用实体关系图、P5 O1/O2 routes_tenants/loader 隔离模式、Agent 工具入口 |
 | **阶段 6** | MVP 收尾 | Q0-Q6 | 🟡 Q0/Q1 完成 (2026-07-27);Q2-Q6 未开始 |
 
 图例: ✅ 已完成(交付) · 🟡 核心实现完成待接线 / 进行中 · ⬜ 未开始(仅设计蓝图)
@@ -79,9 +79,9 @@ ISAC 的能力分六个阶段推进。阶段 0/1 是"地基";阶段 1-4 各节�
 |------|---------|---------|------|
 | **O1 多租户/组织隔离** | Agent/记忆/配置/用量按 organization 隔离 | 跨租户不可见;控制面按租户鉴权 | 🟡 核心 + 单测完成,主链路待接线(P 节点) |
 | **O2 插件进程级隔离** | 插件从进程内兼容层升级为进程级隔离 | 资源与故障不影响主进程;插件崩溃可恢复 | 🟡 核心 + 单测完成,主链路待接线(P 节点) |
-| **O3 Workflow 编排** | 声明式多步骤编排 (串/并/条件/重试),步骤可跨 Agent/工具 | 执行可观测、可恢复 | 🟡 核心 + 单测完成,主链路待接线(P 节点) |
-| **O4 平台扩展** | 新增微信/Slack/飞书等 Channel 适配器 | 复用 Channel 抽象;媒体/富文本按平台声明适配 | ⬜ 未开始(仅 TemplateAdapter 模板,未注册) |
-| **O5 Video Provider** | 视频理解/生成 Provider 真实接入 | 经能力目录与 ModelRouter 选择;结果走 ArtifactStore | ⬜ 未开始(`generate` 抛 NotImplementedError) |
+| **O3 Workflow 编排** | 声明式多步骤编排 (串/并/条件/重试),步骤可跨 Agent/工具 | 执行可观测、可恢复 | 🟡 **S5 激活 (2026-07-28)**:action_handler (tool: 路由 ToolRegistry.execute) + 声明式加载 + condition_evaluator;控制面 routes_workflows 已挂载;剩 Agent 工具入口 (P5 决策项) |
+| **O4 平台扩展** | 新增微信/Slack/飞书等 Channel 适配器 | 复用 Channel 抽象;媒体/富文本按平台声明适配 | 🟡 **飞书 + QQ 官方激活 (S7, 2026-07-28)**:飞书 Webhook (AES-256-CBC 解密字节序核对自 open.feishu.cn 官方文档) + 出站 (tenant_access_token 缓存);QQ 官方 Ed25519 验签字节序核对自 bot.q.qq.com 官方文档 + 三类消息事件 (AT/GROUP_AT/C2C) + access_token 缓存;微信保持骨架;不引入 lark-oapi/botpy SDK, 用 httpx+uvicorn+cryptography 既有依赖 |
+| **O5 Video Provider** | 视频理解/生成 Provider 真实接入 | 经能力目录与 ModelRouter 选择;结果走 ArtifactStore | 🟡 注册挂点就位(骨架轮 S6:`kind="video_gen"` default-off;`generate` 仍抛 NotImplementedError,端点暂缓选型待二次确认) |
 
 ### 阶段 6 — MVP 收尾 (Q)
 
@@ -89,8 +89,8 @@ ISAC 的能力分六个阶段推进。阶段 0/1 是"地基";阶段 1-4 各节�
 
 | 能力 | 目标形态 | 验收要点 | 状态 |
 |------|---------|---------|------|
-| **Q0 开箱可触达与配置纠偏** | 拷贝 `config.sample.jsonc` 即可用 WebChat 零外部依赖聊天;Telegram/Discord 配置即生效 | 三平台注册分支;裸部署有默认路由;样例配置无死键;Docker 构建可复现;Windows 优雅关闭 | ⬜ 未开始 |
-| **Q1 记忆写入回路与身份稳定化** | 每轮对话结束写入 episodic 记忆;定期/每 N 轮归纳人物画像与关系深度;Session/UserMapper 持久化 | 聊天→重启→检索命中;画像随互动加深;person_id 跨重启稳定 | ⬜ 未开始(**MVP 最高优先级**,不依赖 P0) |
+| **Q0 开箱可触达与配置纠偏** | 拷贝 `config.sample.jsonc` 即可用 WebChat 零外部依赖聊天;Telegram/Discord 配置即生效 | 三平台注册分支;裸部署有默认路由;样例配置无死键;Docker 构建可复现;Windows 优雅关闭 | ✅ 完成 (2026-07-27) |
+| **Q1 记忆写入回路与身份稳定化** | 每轮对话结束写入 episodic 记忆;定期/每 N 轮归纳人物画像与关系深度;Session/UserMapper 持久化 | 聊天→重启→检索命中;画像随互动加深;person_id 跨重启稳定 | ✅ 完成 (2026-07-27) |
 | **Q2 人格差异化实现** | 不同 Agent 的 persona/情绪/表达风格在回复中肉眼可辨 | persona 文本进 System Prompt;Mood/ExpressionStyle/AttentionDrift 注入器实现+注册+更新回路 | ⬜ 未开始 |
 | **Q3 插件与 MCP 生态数据面接线** | 插件/AstrBot/MaiBot/MCP 注册的工具真实进入 Agent 的 ToolRegistry 并被 LLM 调用 | 共享工具/命令/注入器注册表落地;PluginManager 传入 EnableMatrix;MCP Client 按配置连接 | ⬜ 未开始 |
 | **Q4 多模态工具注册与计量收尾** | 配置好 vision/STT/TTS/生图 Provider 后,Agent 能直接使用对应工具且用量可查 | 6 个媒体工具注册进 ToolRegistry;出入站媒体链路可用;多模态用量计量埋点;价目表加载 | ⬜ 未开始 |
@@ -105,9 +105,9 @@ ISAC 的能力分六个阶段推进。阶段 0/1 是"地基";阶段 1-4 各节�
 | **M-0 可观测** | trace 贯穿 + 分级日志 + 文档体系 | 阶段 0 落地(已达成) |
 | **M-1 会像人一样对话** | wait/debounce/主动/打断闭环可用 | L1-L5 + P0/P1 接线并按完成定义验收 |
 | **M-2 会协作** | 旁听/候选路由 + Agent 间协作动作 | M1-M2 + P2 接线验收 |
-| **M-3 会记住** | 统一记忆 + 治理 + 跨平台身份 | N1-N3 + P3/P4 接线验收 |
-| **M-4 可商业化** | 多租户 + 隔离 + 编排 + 多平台 | O1-O3 + P5 接线 + O4/O5 按业务优先级验收 |
-| **M-MVP 最小可用产品**(新增) | 开箱可聊(WebChat 零依赖,Q0)+ 越聊越熟(记忆写入闭环,Q1)+ 拟人化基线可用(等待/打断/主动,P0/P1)+ 双 Agent 协作(P2) | ✅ **准入线代码达成 (2026-07-27)**:P0-P2 + Q0-Q1 全部完成并集成测试通过 (MVP Review 已启动)。人设可辨(Q2)/插件与 MCP 生态(Q3)/多模态(Q4)/WebUI 无假数据(Q5)/SubAgent 用量真实(Q6)延后到 MVP+1,延后范围已在 AGENTS.md/PROGRESS.md 如实标注 |
+| **M-3 会记住** | 统一记忆 + 治理 + 跨平台身份 | **S3 激活 (2026-07-28)**:图谱召回 mentioned_in 边 + Reranker provider 注入;**S4 激活 (2026-07-28)**:身份归一控制面 routes_identity (bind/conflicts/resolve) + main/server 注入;**S2 激活 (2026-07-28)**:MemoryConsolidator 真实去重/剪枝/画像归纳;剩 P3 通用实体关系图、P4 集成测试 |
+| **M-4 可商业化** | 多租户 + 隔离 + 编排 + 多平台 | **S5 激活 (2026-07-28)**:Workflow action_handler (tool: 路由) + 声明式加载;**S7 激活 (2026-07-28)**:飞书 + QQ 官方平台适配器;剩 O1 routes_tenants / O2 loader 隔离可选模式 / P5 Agent 工具入口;视频 Provider (O5/S6) 端点暂缓选型 |
+| **M-MVP 最小可用产品**(新增) | 开箱可聊(WebChat 零依赖,Q0)+ 越聊越熟(记忆写入闭环,Q1)+ 拟人化基线可用(等待/打断/主动,P0/P1)+ 双 Agent 协作(P2) | ✅ **准入线代码达成 (2026-07-27)**:P0-P2 + Q0-Q1 全部完成并集成测试通过 (MVP Review 已启动)。**2026-07-28 骨架轮 S1-S5+S7 激活**:主动任务生产者/MemoryConsolidator/图谱召回/身份归一控制面/Workflow action_handler/飞书+QQ官方平台 全部填真实业务逻辑;S6 视频 Provider 暂缓。人设可辨(Q2)/插件与 MCP 生态(Q3)/多模态(Q4)/WebUI 无假数据(Q5)/SubAgent 用量真实(Q6)延后到 MVP+1,延后范围已在 AGENTS.md/PROGRESS.md 如实标注 |
 
 ## 五、原则
 

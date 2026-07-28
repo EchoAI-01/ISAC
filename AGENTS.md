@@ -5,7 +5,7 @@
 
 ## 项目状态
 
-**当前定位**: 框架骨架 + 真实 LLM Provider + 持久化恢复(部分) + 安全基线已就绪, 1157 单测全绿; 但 2026-07-26 对照原始需求清单逐条代码取证(10 域并行验证, 见 `docs/DEVELOPMENT_PLAN.md` Q 节点组)发现**尚未达到 MVP**: 开箱只有 OneBot 一条可聊通道、**记忆写入回路缺失(检索永远为空)**、人格/情绪/表达风格注入器多为未注册的空桩、插件与 MCP 生态数据面未接线、多模态工具未注册进 ToolRegistry 等。项目定位应视为"架构完备的骨架 + 大量核心逻辑已实现但未接线的子系统",而非可直接商用。MVP 收尾计划见 `docs/DEVELOPMENT_PLAN.md` Q 节点组与 `docs/ROADMAP.md` MVP 里程碑。
+**当前定位**: 框架骨架 + 真实 LLM Provider + 持久化恢复(部分) + 安全基线已就绪, **1362 单测全绿**; 2026-07-27 骨架轮 (S1-S7) 把 P3/P4/P5 与 O4/O5/MemoryConsolidator/proactive-ext 的**骨架 + 默认关闭接线锚点**搭齐 (default-off、零行为变化); **2026-07-28 S1-S5+S7 激活**: 主动任务生产者真实产出逻辑 + MemoryConsolidator 真实整合 + 图谱召回 mentioned_in 边 + 身份归一控制面 + Workflow action_handler + 飞书(AES-256-CBC 解密字节序核对自官方文档) + QQ 官方(Ed25519 验签字节序核对自官方文档) 适配器全部填真实业务逻辑。S6 视频 Provider 暂缓 (用户决定, 待端点选型确定后仿 image_gen 实现)。MVP 准入线 (P0-P2 + Q0-Q1) 已达成; Q2-Q6 + S6 + 微信适配器 + S5 Agent 工具入口 (P5 决策) 待后续。MVP 收尾计划见 `docs/DEVELOPMENT_PLAN.md` Q 节点组与 `docs/ROADMAP.md` MVP 里程碑。
 
 - 进度事实源: [docs/PROGRESS.md](./docs/PROGRESS.md)
 - 文档导航: [docs/README.md](./docs/README.md)
@@ -55,7 +55,7 @@ A-K 已达可运行完成度 (J1-J4 + K1-K8 交付)。CR3 修复轮 (2026-07-26,
 1. **P 主链路接线与激活**(§四 P 节点):P0 消息并发化 → P1 拟人化 → P2 Mesh(含 Link 细粒度 ACL) → P3 检索深化(图谱+Reranker) → P4 身份归一 → P5 企业化收尾。
 2. **Q MVP 收尾**(§四 Q 节点,新增):补齐 P 节点未覆盖、但 MVP 必需的缺口 —— **Q1 记忆写入回路与身份稳定化**(最高优先级,检索链路全通但生产从未写入,未被任何 P 节点覆盖)、Q0 开箱可触达与配置纠偏、Q2 人格差异化实现、Q3 插件与 MCP 生态数据面接线、Q4 多模态工具注册与计量收尾、Q5 WebUI 与控制面收尾、Q6 SubAgent 用量与安全补漏。Q0/Q1 不依赖 P0,可与 P 节点并行甚至优先推进。
 
-另有 **O4 平台扩展**(需二次确认平台: 飞书/微信/Slack)、**O5 视频生成 Provider**(需二次确认端点: Sora/Runway/Kling)、**MemoryConsolidator**、**I 节点复核** 独立于 P/Q,可并行插入。MVP 准入线(P0-P2 + Q0-Q1 完成)见 [docs/ROADMAP.md](./docs/ROADMAP.md) MVP 里程碑;节点定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §四,进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
+另有 **O4 平台扩展**(飞书 + QQ 官方已激活见 S7)、**O5 视频生成 Provider**(S6 用户决定暂缓, 待端点选型二次确认)、**MemoryConsolidator**(S2 已激活)、**I 节点复核** 独立于 P/Q, 可并行插入。**2026-07-27 骨架轮 (S1-S7)** 把 P3/P4/P5/O4/O5/MemoryConsolidator/proactive-ext 一次性补齐**骨架 + 默认关闭接线锚点**; **2026-07-28 S1-S5+S7 激活** 把骨架填成真实业务逻辑: S1 主动任务生产者真实产出 + memory 注入; S2 MemoryConsolidator run_once 三步真实整合 + llm 注入; S3 图谱召回 mentioned_in 边 + _graph_search 真实召回 + Reranker provider 注入 + MemoryItem 边界文档化; S4 身份归一控制面 routes_identity (bind/conflicts/resolve) + main/server 注入 + IdentityResolver.resolve_conflict; S5 Workflow action_handler (tool: 路由 ToolRegistry.execute) + 声明式加载 + condition_evaluator; S7 飞书 (AES-256-CBC 解密字节序核对自 open.feishu.cn 官方文档) + QQ 官方 (Ed25519 验签字节序核对自 bot.q.qq.com 官方文档) 适配器真实收发。剩 S6 视频 Provider 端点暂缓 (用户决定)、微信适配器 (用户决定本轮不做)、S5 Agent 工具入口 (P5 决策项)、P3 通用实体关系图 (本轮只交付 mentioned_in 提及图)、Q2-Q6 待后续。MVP 准入线(P0-P2 + Q0-Q1 完成)见 [docs/ROADMAP.md](./docs/ROADMAP.md) MVP 里程碑;节点定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §四,进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
 
 ## 目录速查
 
