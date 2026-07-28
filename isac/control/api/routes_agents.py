@@ -8,9 +8,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from isac.utils.logger import get_logger
+
 if TYPE_CHECKING:
     from isac.control.audit import AuditLog
     from isac.runtime.manager import AgentManager
+
+logger = get_logger(__name__)
 
 
 def build_router(
@@ -152,9 +156,12 @@ async def _do_patch_agent(
         try:
             new_config = AgentConfig(**merged)
         except (ValueError, TypeError) as exc:
+            # R14: 服务端记录完整异常信息, 客户端只返回通用错误码 (不泄露
+            # Python 类型/字段路径/磁盘 IO 信息)。
+            logger.warning("Agent 配置校验失败", error=str(exc), exc_info=True)
             raise HTTPException(
                 status_code=400,
-                detail={"code": "INVALID_CONFIG", "message": str(exc)},
+                detail={"code": "INVALID_CONFIG", "message": "Agent config validation failed"},
             ) from exc
         # 持久化 (save_agent_config 会 revision+1)
         config_path = agents_dir_path / agent_id / "config.jsonc"
@@ -190,12 +197,22 @@ async def _do_create_agent(agent_manager: AgentManager, config: dict) -> Any:
     try:
         agent_config = restricted_config_from_payload(config)
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "INVALID_CONFIG", "message": str(exc)}) from exc
+        # R14: 服务端记录完整异常, 客户端只返回通用错误码 (不泄露内部信息)。
+        logger.warning("Agent 创建配置校验失败", error=str(exc), exc_info=True)
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_CONFIG", "message": "Agent config validation failed"},
+        ) from exc
 
     try:
         return await agent_manager.create(agent_config)
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail={"code": "AGENT_EXISTS", "message": str(exc)}) from exc
+        # R14: 服务端记录完整异常, 客户端只返回通用错误码 (不泄露内部信息)。
+        logger.warning("Agent 创建失败 (可能已存在)", error=str(exc), exc_info=True)
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "AGENT_EXISTS", "message": "Agent already exists or creation failed"},
+        ) from exc
 
 
 async def _require_agent(agent_manager: AgentManager, agent_id: str, action: str) -> None:

@@ -160,17 +160,23 @@ class ISACAgentLoop:
                 )
                 for tool_call in response.tool_calls:
                     result = await self._execute_tool(tool_call, context)
+                    # C4: 工具结果原文追加到消息历史, 无长度上限时多轮迭代后
+                    # prompt 膨胀溢出 context window (read_file 64KB / bash
+                    # stderr 无上限)。截断到 8000 字符并标注 truncation。
+                    content = self._truncate_tool_result(result.content)
                     messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tool_call.id,
-                            "content": result.content,
+                            "content": content,
                         }
                     )
             else:
                 await self.hooks.fire(AgentHookPoint.FINAL_RESPONSE, response, context)
                 await self._emit_progress_if_task_started(context, reported_task_progress, "completed")
-                return AgentResult(content=response.content)
+                # R17: response.content 在纯 tool_call 响应里为 None, 归一化为 "" 防止
+                # 下游 f-string/channel.send 抛 TypeError。AgentResult.content 契约为 str。
+                return AgentResult(content=response.content or "")
 
             # COMPRESS: 上下文过大时
             if context.should_compress():
@@ -349,6 +355,13 @@ class ISACAgentLoop:
                     messages=messages,
                     tools=tools_def,
                 )
+            # C3: 已推送过 chunk 但中途失败, 无法干净重试; 通知调用方 (追加
+            # 错误标记或回滚已推送 chunks), 再 raise 让上层兜底处理。
+            if chunks and context.on_error is not None:
+                try:
+                    await context.on_error(exc)
+                except Exception as cb_exc:  # noqa: BLE001
+                    logger.warning("on_error 回调异常, 已忽略", error=str(cb_exc))
             raise
         response = self._merge_chunks(chunks)
         self._record_stream_attempt(context, response, start, "success")
@@ -381,6 +394,24 @@ class ISACAgentLoop:
             str(context.services.get("agent_id", "")),
             context.session.session_id,
             str(context.services.get("task_id", "")),
+        )
+
+    _MAX_TOOL_RESULT_CHARS = 8000
+
+    def _truncate_tool_result(self, content: str) -> str:
+        """C4: 工具结果截断到 _MAX_TOOL_RESULT_CHARS (8000 字符), 防止 prompt 膨胀。
+
+        read_file 64KB / bash stderr 无上限的原文追加会让多轮迭代后 prompt
+        溢出 context window (反复 400 错误)。截断 + 标注 truncation 让
+        LLM 知道内容被裁, 必要时可重新调用工具获取剩余部分。
+        """
+        if not content or len(content) <= self._MAX_TOOL_RESULT_CHARS:
+            return content
+        truncated = content[:self._MAX_TOOL_RESULT_CHARS]
+        return (
+            truncated
+            + f"\n\n[truncated: 工具结果超过 "
+            f"{self._MAX_TOOL_RESULT_CHARS} 字符, 已截断。如需剩余部分请重新调用工具]"
         )
 
     def _merge_chunks(self, chunks: list[LLMChunk]) -> LLMResponse:

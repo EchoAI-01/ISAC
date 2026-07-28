@@ -22,6 +22,10 @@ data/*
 .idea/
 .vscode/
 
+# Claude Code 工作区 (worktrees / 临时会话文件)
+.claude/
+.tmpfiles/
+
 # macOS
 .DS_Store
 

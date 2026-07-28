@@ -198,6 +198,10 @@ class AgentContext(RuntimeContext):
     available_prompt_tokens: int = 8000
     streaming: bool = False
     on_chunk: Callable[[LLMChunk], Awaitable[None]] | None = None
+    # C3: 流式响应中途失败后已推送过 chunk, fallback 只在 chunks=[] 时触发;
+    # on_error 让调用方知道"已推送部分后失败", 可以选择向用户追加错误标记
+    # 或回滚已推送的 chunks (取决于具体场景)。
+    on_error: Callable[[Exception], Awaitable[None]] | None = None
     # 共享服务字典 (runtime/assembly 注入): gating/agent_manager/session_mgr 等
     # 让 Command 实现能访问 Agent 子系统 (CODE_REVIEW_REPORT.md #10)。
     services: dict[str, Any] = field(default_factory=dict)
@@ -209,9 +213,14 @@ class AgentContext(RuntimeContext):
     def should_compress(self) -> bool:
         """上下文是否过大需要压缩（触发 COMPRESS hook）。
 
-        TODO: 按 messages token 估算与 budget 阈值判定。
+        C4: 按 budget.remaining_tokens 间接判断, 接近溢出时触发压缩。
+        粗略估算避免每次迭代都精确 token 化 (依赖 LLM Provider 才能
+        tokenize, 开销大); 真实 prompt size 由 Provider 在 chat() 返回的
+        usage.prompt_tokens 反馈, Budget.consume 已累计 used_tokens。
         """
-        return False
+        # budget 是 field(default_factory=Budget), 永远非 None
+        # 20% 阈值: 剩余预算不足 20% 时触发 (留 20% 给最终回复 + 系统提示)
+        return self.budget.remaining_tokens <= max(1, self.budget.max_tokens // 5)
 
 
 @dataclass

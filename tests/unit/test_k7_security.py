@@ -219,6 +219,44 @@ async def test_session_lock_release_reclaims_when_no_waiters() -> None:
     assert "sess-1" not in mgr._locks
 
 
+@pytest.mark.asyncio
+async def test_session_lock_release_pops_even_when_lock_held() -> None:
+    """R13: _waiters 归零时即使 lock.locked()=True 也 pop, 防止孤儿锁驻留。
+
+    旧实现 "lock.locked()=True 时跳过 pop" 会让永不回访的异常 session 的
+    Lock 永驻 _locks 字典。新实现按 _waiters 计数归零无条件 pop。
+    """
+    from isac.gateway.lock import SessionLockManager
+
+    mgr = SessionLockManager()
+    lock = await mgr.acquire("sess-stale")
+    # 故意不 release lock 本体 (模拟异常路径), 只 release SessionLockManager 引用计数
+    await lock.acquire()
+    assert lock.locked() is True
+    mgr.release("sess-stale")
+    # _waiters 归零即 pop, 即使 lock.locked() 仍为 True
+    assert "sess-stale" not in mgr._locks
+    assert "sess-stale" not in mgr._waiters
+    # 持锁者仍持有 Lock 对象引用, 不会因 dict pop 而 GC
+    assert lock.locked() is True
+    lock.release()  # 清理
+
+
+@pytest.mark.asyncio
+async def test_session_lock_multiple_sessions_no_leak() -> None:
+    """R13: 多 session 反复 acquire/release 不累积 _locks 条目。"""
+    from isac.gateway.lock import SessionLockManager
+
+    mgr = SessionLockManager()
+    for i in range(100):
+        sid = f"sess-{i}"
+        await mgr.acquire(sid)
+        mgr.release(sid)
+    # 每个 session 在 release 后都被 pop, _locks 不应有累积
+    assert len(mgr._locks) == 0
+    assert len(mgr._waiters) == 0
+
+
 # ── WebChat 队列有界 ────────────────────────────────────
 
 

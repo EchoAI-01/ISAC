@@ -158,6 +158,13 @@ class MetadataStore:
         """初始化 Schema。"""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as db:
+            # R6: WAL 模式让并发写不互斥 (一写多读), busy_timeout=5000ms 在
+            # 偶发锁等待时让 SQLite 等待而非立即抛 SQLITE_BUSY。WAL 是数据库
+            # 级别持久化属性, 一次设置后续连接继承; busy_timeout 是 connection
+            # 级别, 每次 connect 都需要重设 (此处只设初始化连接)。
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA busy_timeout=5000")
+            await db.execute("PRAGMA foreign_keys=ON")
             await db.executescript(SCHEMA_SQL)
             await self._ensure_column(db, "episodes", "group_id", "TEXT")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_episodes_group ON episodes(group_id)")
@@ -285,6 +292,11 @@ class MetadataStore:
         ordered_ids = [memory_id for memory_id in memory_ids if memory_id]
         if not ordered_ids:
             return []
+        # R9: SQLite 默认 SQLITE_MAX_VARIABLE_NUMBER=999, IN 子句占用的占位符
+        # 数量若超限会报错。cap 到 500 (留余量给 agent_id/group_id/user_id 参数)
+        # 避免极端 recall_limit * 3 场景溢出。下游 RRF 已 cap, 不影响召回完整性。
+        if len(ordered_ids) > 500:
+            ordered_ids = ordered_ids[:500]
         placeholders = ",".join("?" for _ in ordered_ids)
         conditions = ["agent_id = ?", f"id IN ({placeholders})", "deleted = 0"]
         params: list[Any] = [agent_id, *ordered_ids]
@@ -375,6 +387,57 @@ class MetadataStore:
                     profile.get("last_seen"),
                     profile.get("embedding_hash"),
                 ),
+            )
+            await db.commit()
+
+    async def increment_person_interaction(
+        self,
+        agent_id: str,
+        person_id: str,
+        *,
+        name: str | None = None,
+        relationship_depth_step: float = 0.0,
+        now: int | None = None,
+    ) -> None:
+        """R12: 原子增量更新 interaction_count + relationship_depth, 消除
+        read-modify-write 竞态 (同一人并发消息导致计数丢失)。
+
+        用 INSERT ... ON CONFLICT DO UPDATE SET interaction_count =
+        interaction_count + 1, relationship_depth = MIN(1.0,
+        relationship_depth + ?), last_seen = ?. 新行用默认值初始化。
+
+        name 非空时同步覆盖 name 字段 (供 manager.py 兜底 user_name)。
+        first_seen 仅在 INSERT 路径生效, 已存在行不修改。
+        """
+        from isac.utils.helpers import unix_now as _unix_now
+
+        clean_id = str(person_id or "").strip()
+        if not clean_id:
+            raise ValueError("person_id 不能为空")
+        ts = int(now if now is not None else _unix_now())
+        depth_step = float(relationship_depth_step or 0.0)
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO person_profiles (
+                    agent_id, person_id, name, profile_text, traits, relationship_depth,
+                    interaction_count, first_seen, last_seen, embedding_hash
+                ) VALUES (?, ?, ?, '', '[]', ?, 1, ?, ?, NULL)
+                ON CONFLICT(agent_id, person_id) DO UPDATE SET
+                    interaction_count = interaction_count + 1,
+                    relationship_depth = MIN(1.0, relationship_depth + ?),
+                    last_seen = ?
+                    """ + (", name = ?" if name is not None else ""),
+                (
+                    agent_id,
+                    clean_id,
+                    name if name is not None else clean_id,
+                    depth_step,
+                    ts,
+                    ts,
+                    depth_step,
+                    ts,
+                ) + ((name,) if name is not None else ()),
             )
             await db.commit()
 

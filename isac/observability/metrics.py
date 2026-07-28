@@ -141,6 +141,9 @@ class Histogram:
             total_sum = self._sum
         cumulative = 0
         for i, bound in enumerate(self.buckets):
+            # _counts 在 observe 时已按 le<=bound 累积 (见 observe 内的 for 循环,
+            # value<=bound 的所有 bucket 都 +1), 所以 counts[i] 已是 cumulative。
+            # cumulative 变量仅作语义提示 (与 Prometheus 客户端输出格式对齐)。
             cumulative = counts[i]
             lines.append(f'{self.name}_bucket{{le="{bound}"}} {cumulative}')
         lines.append(f'{self.name}_bucket{{le="+Inf"}} {total_count}')

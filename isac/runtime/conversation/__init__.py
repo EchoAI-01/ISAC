@@ -20,24 +20,34 @@ from isac.runtime.conversation.models import (
     WaitState,
 )
 from isac.runtime.conversation.proactive import ProactiveTaskQueue
-from isac.runtime.conversation.producer import IdleReengageProducer
+from isac.runtime.conversation.producer import (
+    CompositeTaskProducer,
+    DateReminderProducer,
+    IdleReengageProducer,
+    MemoryAssociationProducer,
+    TopicFollowupProducer,
+)
 from isac.runtime.conversation.recovery import ConversationSnapshot, ConversationStateStore
 from isac.runtime.conversation.registry import ConversationRuntimeRegistry
 from isac.runtime.conversation.runtime import ConversationRuntime
 from isac.runtime.conversation.scheduler import ProactiveScheduler
 
 __all__ = [
+    "CompositeTaskProducer",
     "ConversationRuntime",
     "ConversationRuntimeRegistry",
     "ConversationSnapshot",
     "ConversationState",
     "ConversationStateStore",
+    "DateReminderProducer",
     "ForcedTurnState",
     "IdleReengageProducer",
     "InterruptState",
+    "MemoryAssociationProducer",
     "ProactiveScheduler",
     "ProactiveTask",
     "ProactiveTaskQueue",
+    "TopicFollowupProducer",
     "TriggerSource",
     "WaitEndReason",
     "WaitState",

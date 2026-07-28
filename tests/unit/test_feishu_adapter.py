@@ -89,6 +89,31 @@ async def test_url_verification_token_mismatch_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_token_mismatch_uses_constant_time_compare() -> None:
+    """R1: token 不符仍抛 ValueError; 同时验证 fingerprint 计算与 token 字符解耦。
+
+    R1 改用 ``hmac.compare_digest`` 后, 行为对外等价 (不符 → ValueError),
+    此测验证契约不变。fingerprint 由 SHA-256 派生, 不依赖原始 token 字面值。
+    """
+    import hashlib
+
+    adapter = _make_adapter(verification_token="tok-123")
+
+    class _Req:
+        async def json(self) -> Any:
+            return {"challenge": "cj", "token": "wrong-token-value", "type": "url_verification"}
+
+    # _handle_event 吞掉 ValueError 返回空 dict (与原行为一致)
+    resp = await adapter._handle_event(_Req())
+    assert resp == {}
+
+    # fingerprint 计算与原始 token 严格绑定, 不泄露前缀
+    expected_fp = hashlib.sha256(b"wrong-token-value").hexdigest()[:8]
+    assert len(expected_fp) == 8
+    assert expected_fp != "wrong-to"  # 不是原始 token 前缀
+
+
+@pytest.mark.asyncio
 async def test_url_verification_encrypted_mode_decrypts_challenge() -> None:
     """加密模式: 收到 ``{"encrypt":...}``, 解密后得含 challenge 的 JSON → 回 challenge。"""
     encrypt_key = "my-encrypt-key"

@@ -295,3 +295,146 @@ class _AsyncCtx:
 
 def _connect(store: MetadataStore) -> _AsyncCtx:
     return _AsyncCtx(store)
+
+
+# ── R8: 治理同步稠密向量 ──────────────────────────────────────────
+
+
+class _FakeVectorStore:
+    """最小 VectorStore 替身: 记录 delete 调用, 供断言。"""
+
+    def __init__(self) -> None:
+        self.deleted: list[str] = []
+
+    async def delete(self, memory_id: str) -> None:
+        self.deleted.append(memory_id)
+
+
+@pytest.mark.asyncio
+async def test_governor_delete_calls_vector_delete_when_resolver_injected() -> None:
+    """R8: 注入 vector_resolver 后 delete 同步调 VectorStore.delete(memory_id)。"""
+    import asyncio
+    import tempfile
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        store = MetadataStore(tmp.name)
+        await store.init_schema()
+        await store.store_episode(
+            "a1", {"id": "ep1", "session_id": "s1", "user_id": "u1", "content": "原始"}
+        )
+        fake_vector = _FakeVectorStore()
+        # vector_resolver 返回 _FakeVectorStore 实例
+        governor = MemoryGovernor(
+            store, vector_resolver=lambda namespace: fake_vector,
+        )
+        ok = await governor.delete("ep1", "a1")
+        assert ok is True
+        # 应该已调用 vector.delete("ep1")
+        assert fake_vector.deleted == ["ep1"]
+    finally:
+        await asyncio.to_thread(lambda: Path(tmp.name).unlink(missing_ok=True))
+
+
+@pytest.mark.asyncio
+async def test_governor_delete_skips_vector_when_resolver_none() -> None:
+    """R8: 未注入 vector_resolver 时 delete 跳过 vector 同步 (向后兼容, 不抛)。"""
+    import asyncio
+    import tempfile
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        store = MetadataStore(tmp.name)
+        await store.init_schema()
+        await store.store_episode(
+            "a1", {"id": "ep1", "session_id": "s1", "user_id": "u1", "content": "原始"}
+        )
+        governor = MemoryGovernor(store)  # 无 vector_resolver
+        ok = await governor.delete("ep1", "a1")
+        assert ok is True  # 不抛异常即可
+    finally:
+        await asyncio.to_thread(lambda: Path(tmp.name).unlink(missing_ok=True))
+
+
+@pytest.mark.asyncio
+async def test_governor_correct_calls_vector_delete_to_remove_stale_embedding() -> None:
+    """R8: correct 后旧向量与新内容不匹配, 删除避免被召回。"""
+    import asyncio
+    import tempfile
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        store = MetadataStore(tmp.name)
+        await store.init_schema()
+        await store.store_episode(
+            "a1", {"id": "ep1", "session_id": "s1", "user_id": "u1", "content": "原始"}
+        )
+        fake_vector = _FakeVectorStore()
+        governor = MemoryGovernor(
+            store, vector_resolver=lambda namespace: fake_vector,
+        )
+        ok = await governor.correct("ep1", "新内容", "a1")
+        assert ok is True
+        assert fake_vector.deleted == ["ep1"]
+    finally:
+        await asyncio.to_thread(lambda: Path(tmp.name).unlink(missing_ok=True))
+
+
+@pytest.mark.asyncio
+async def test_governor_restore_calls_vector_delete_to_remove_stale_embedding() -> None:
+    """R8: restore 后旧向量与新内容不匹配 (中间被纠正过), 删除避免被召回。"""
+    import asyncio
+    import tempfile
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        store = MetadataStore(tmp.name)
+        await store.init_schema()
+        await store.store_episode(
+            "a1", {"id": "ep1", "session_id": "s1", "user_id": "u1", "content": "原始"}
+        )
+        fake_vector = _FakeVectorStore()
+        governor = MemoryGovernor(
+            store, vector_resolver=lambda namespace: fake_vector,
+        )
+        # 先 delete 再 restore
+        await governor.delete("ep1", "a1")
+        fake_vector.deleted.clear()
+        ok = await governor.restore("ep1", "a1")
+        assert ok is True
+        assert fake_vector.deleted == ["ep1"]
+    finally:
+        await asyncio.to_thread(lambda: Path(tmp.name).unlink(missing_ok=True))
+
+
+@pytest.mark.asyncio
+async def test_governor_vector_sync_failure_does_not_block_governance() -> None:
+    """R8: vector.delete 异常不应阻塞治理操作本身 (失败只记 warning)。"""
+    import asyncio
+    import tempfile
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        store = MetadataStore(tmp.name)
+        await store.init_schema()
+        await store.store_episode(
+            "a1", {"id": "ep1", "session_id": "s1", "user_id": "u1", "content": "原始"}
+        )
+
+        class _FailingVectorStore:
+            async def delete(self, memory_id: str) -> None:
+                raise RuntimeError("vector db locked")
+
+        governor = MemoryGovernor(
+            store, vector_resolver=lambda namespace: _FailingVectorStore(),
+        )
+        ok = await governor.delete("ep1", "a1")
+        # 治理本身成功 (vector 同步失败只记日志)
+        assert ok is True
+    finally:
+        await asyncio.to_thread(lambda: Path(tmp.name).unlink(missing_ok=True))

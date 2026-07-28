@@ -269,6 +269,43 @@ async def test_get_episodes_by_ids_excludes_soft_deleted_episodes(tmp_path) -> N
 
 
 @pytest.mark.asyncio
+async def test_get_episodes_by_ids_caps_candidate_ids_to_500(tmp_path) -> None:
+    """R9: candidate_ids 超 500 时截断, 防 SQLite SQLITE_MAX_VARIABLE_NUMBER (默认 999) 溢出。
+
+    构造 600 个 candidate_ids (前 500 个真实存在, 后 100 个不存在), 验证
+    只查询前 500 个, 不抛 SQL 错误。
+    """
+    db_path = str(tmp_path / "memory.db")
+    store = MetadataStore(db_path)
+    await store.init_schema()
+    # 只存 mem_1, mem_2 两条; 其余 ID 不存在
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_1", "session_id": "s1", "user_id": "u1", "content": "x"},
+    )
+    await store.store_episode(
+        "agent_a",
+        {"id": "mem_2", "session_id": "s1", "user_id": "u1", "content": "y"},
+    )
+
+    candidate_ids = [f"mem_{i}" for i in range(600)]  # 600 个 ID
+    # mem_1 和 mem_2 在前 500 内 → 应能命中
+    candidate_ids[0] = "mem_1"
+    candidate_ids[1] = "mem_2"
+
+    results = await store.get_episodes_by_ids("agent_a", candidate_ids)
+    # mem_1 + mem_2 命中, 其他 598 个不存在 → 2 个结果
+    assert {item["id"] for item in results} == {"mem_1", "mem_2"}
+
+    # mem_1 放到 600 位置 (前 500 之外) → 不应命中 (被 cap 截断)
+    candidate_ids[599] = "mem_1"
+    candidate_ids[0] = "no-match"
+    results = await store.get_episodes_by_ids("agent_a", candidate_ids)
+    # mem_1 已被 cap 截断, 不出现在前 500 内 → 不命中
+    assert "mem_1" not in {item["id"] for item in results}
+
+
+@pytest.mark.asyncio
 async def test_person_profile_upsert_and_read(tmp_path) -> None:
     store = MetadataStore(str(tmp_path / "memory.db"))
     await store.init_schema()
@@ -291,6 +328,71 @@ async def test_person_profile_upsert_and_read(tmp_path) -> None:
     assert profile["name"] == "小明"
     assert profile["traits"] == ["重视架构"]
     assert profile["relationship_depth"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_increment_person_interaction_is_atomic_and_no_read_modify_write(tmp_path) -> None:
+    """R12: increment_person_interaction 用 INSERT ... ON CONFLICT DO UPDATE SET
+    interaction_count = interaction_count + 1, 消除 read-modify-write 竞态。
+
+    并发 5 次 increment 后 interaction_count 必须为 5 (read-modify-write
+    模式下会因读到旧值而丢失增量)。
+    """
+    import asyncio
+
+    store = MetadataStore(str(tmp_path / "memory.db"))
+    await store.init_schema()
+
+    async def _inc() -> None:
+        await store.increment_person_interaction(
+            "agent_a", "user_1",
+            name="小明", relationship_depth_step=0.01,
+        )
+
+    # 并发 5 次 (read-modify-write 模式下会因竞态丢失部分计数)
+    await asyncio.gather(*[_inc() for _ in range(5)])
+
+    profile = await store.get_person_profile("agent_a", "user_1")
+    assert profile is not None
+    assert profile["interaction_count"] == 5  # 原子累加, 不丢增量
+    assert profile["name"] == "小明"
+    # relationship_depth += 0.01 * 5 = 0.05 (允许浮点误差)
+    assert abs(profile["relationship_depth"] - 0.05) < 1e-9
+
+
+@pytest.mark.asyncio
+async def test_increment_person_interaction_caps_relationship_depth_at_1_0(tmp_path) -> None:
+    """R12: relationship_depth 用 MIN(1.0, ...) 夹住上限。"""
+    store = MetadataStore(str(tmp_path / "memory.db"))
+    await store.init_schema()
+    # 第一次: depth = 0.01, 第二次大步长 +0.8 → 0.81, 第三次 +0.5 → MIN(1.0, 1.31) = 1.0
+    await store.increment_person_interaction("a1", "u1", relationship_depth_step=0.01)
+    await store.increment_person_interaction("a1", "u1", relationship_depth_step=0.8)
+    await store.increment_person_interaction("a1", "u1", relationship_depth_step=0.5)
+    profile = await store.get_person_profile("a1", "u1")
+    assert profile is not None
+    assert profile["relationship_depth"] == 1.0
+    assert profile["interaction_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_increment_person_interaction_first_seen_preserved_on_conflict(tmp_path) -> None:
+    """R12: ON CONFLICT 不修改 first_seen (只在 INSERT 路径生效)。"""
+    store = MetadataStore(str(tmp_path / "memory.db"))
+    await store.init_schema()
+    await store.increment_person_interaction("a1", "u1", now=1000)
+    first = await store.get_person_profile("a1", "u1")
+    assert first is not None
+    assert first["first_seen"] == 1000
+    assert first["last_seen"] == 1000
+
+    # 第二次, now 不同; first_seen 应保留, last_seen 更新
+    await store.increment_person_interaction("a1", "u1", now=2000)
+    second = await store.get_person_profile("a1", "u1")
+    assert second is not None
+    assert second["first_seen"] == 1000  # 保留
+    assert second["last_seen"] == 2000   # 更新
+    assert second["interaction_count"] == 2
 
 
 @pytest.mark.asyncio

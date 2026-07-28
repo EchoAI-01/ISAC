@@ -210,3 +210,44 @@ async def test_wait_tool_resolves_on_proactive() -> None:
     runtime.resolve_wait(WaitEndReason.PROACTIVE)
     result = await asyncio.wait_for(task, timeout=1.0)
     assert "主动" in result.content or "proactive" in result.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_wait_tool_hard_timeout_when_future_never_resolves() -> None:
+    """R18: await_wait future 永不 resolve (协程被取消/lock 释放异常) 时,
+    asyncio.wait_for hard timeout 兜底返回, 不永久挂起。
+
+    构造一个 stub runtime, await_wait 返回永不 resolve 的 future。
+    """
+    tool = WaitTool()
+    session = _make_session()
+    agent_context = _make_agent_context(session)
+
+    class _StubRuntime:
+        """模拟 runtime: enter_wait 不做事, await_wait 返回永不 resolve 的 future。"""
+
+        def __init__(self) -> None:
+            self._future: asyncio.Future = asyncio.Future()
+
+        async def enter_wait(self, wait: WaitState) -> None:
+            return None
+
+        async def await_wait(self, tool_call_id: str) -> WaitState:
+            return await self._future  # 永不 resolve
+
+    class _StubRegistry:
+        def get(self, agent_id: str, session_id: str) -> _StubRuntime:
+            return _stub_runtime
+
+    _stub_runtime = _StubRuntime()
+    stub_registry = _StubRegistry()
+    services = {
+        "conversation_registry": stub_registry,
+        "conversation_enabled": True,
+        "agent_id": "a1",
+    }
+    ctx = ToolContext(args={"seconds": 1}, agent_context=agent_context, services=services)
+    # 不应永久挂起; hard cap = seconds + 1 = 2 秒
+    result = await asyncio.wait_for(tool.execute(ctx), timeout=5.0)
+    assert "超时" in result.content or "timeout" in result.content.lower()
+    assert "hard cap" in result.content or "hard" in result.content.lower()

@@ -77,3 +77,31 @@ class TestAsyncHandlers:
 
         run(bus.fire_async(EventType.POST_MESSAGE, "done"))
         assert seen == ["done"]
+
+    def test_async_handler_registering_same_event_during_fire(self):
+        """R10: handler 执行中注册同事件 handler 不触发
+        "RuntimeError: list changed size during iteration"。
+
+        asyncio.gather 内部用源列表迭代, 若 fire_async 直接持有内部列表
+        引用, 注册新 handler 会让 gather 抛 RuntimeError。快照副本后隔离。
+        """
+        bus = EventBus()
+        seen: list[str] = []
+
+        async def first(payload):
+            seen.append("first")
+            # 执行中注册同事件 handler, 触发源列表修改
+            bus.on_async(EventType.POST_MESSAGE, second)
+
+        async def second(payload):
+            seen.append("second")
+
+        bus.on_async(EventType.POST_MESSAGE, first)
+
+        # 不应抛 RuntimeError, first 正常执行, second 不被本轮 gather 覆盖
+        run(bus.fire_async(EventType.POST_MESSAGE, "x"))
+        assert seen == ["first"]
+
+        # 第二次 fire 时 first 与 second 都在快照里, 都会被执行
+        run(bus.fire_async(EventType.POST_MESSAGE, "y"))
+        assert seen == ["first", "first", "second"]

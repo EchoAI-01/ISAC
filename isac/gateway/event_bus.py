@@ -55,7 +55,10 @@ class EventBus:
 
     async def fire_async(self, event: EventType, payload: Any) -> None:
         """并发执行 Async 处理器，异常隔离。"""
-        handlers = self._async.get(event, [])
+        # R10: 快照 handler 列表, 防止 handler 执行中注册同事件 handler 触发
+        # "RuntimeError: list changed size during iteration" (asyncio.gather
+        # 内部生成器会迭代源列表)。
+        handlers = list(self._async.get(event, ()))
         if not handlers:
             return
         results = await asyncio.gather(*(h(payload) for h in handlers), return_exceptions=True)

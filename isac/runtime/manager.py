@@ -99,6 +99,10 @@ class AgentManager:
         scheduler = instance.services.get("proactive_scheduler")
         if scheduler is not None:
             await scheduler.start(self._on_proactive_wake)
+        # S2: 后台记忆整合循环 (默认未构造 → None → 不启动, 零行为变化)。
+        consolidator = instance.services.get("memory_consolidator")
+        if consolidator is not None:
+            await consolidator.start()
         self._inc_metric("isac_agent_starts_total")
         self._update_active_gauge()
         logger.info("Agent 已启动", agent_id=agent_id)
@@ -109,6 +113,9 @@ class AgentManager:
         scheduler = instance.services.get("proactive_scheduler")
         if scheduler is not None:
             await scheduler.stop()
+        consolidator = instance.services.get("memory_consolidator")
+        if consolidator is not None:
+            await consolidator.stop()
         self._inc_metric("isac_agent_stops_total")
         self._update_active_gauge()
         logger.info("Agent 已停止", agent_id=agent_id)
@@ -121,6 +128,9 @@ class AgentManager:
         scheduler = instance.services.get("proactive_scheduler")
         if scheduler is not None:
             await scheduler.stop()
+        consolidator = instance.services.get("memory_consolidator")
+        if consolidator is not None:
+            await consolidator.stop()
         self._update_active_gauge()
         # Q0: 失效独立 Provider 缓存 (否则重建同名 Agent 仍拿到旧 llm 配置的 Provider)
         await self._invalidate_agent_provider(agent_id)
@@ -151,8 +161,11 @@ class AgentManager:
 
         经 instance.memory (pipeline) 取已含租户前缀的 namespace 与 MetadataStore,
         硬删 episodes/person_profiles/jargon_entries 并清空 BM25 内存索引。
-        shared 命名空间被多 Agent 共享, 一律拒绝清理。向量分库文件保留: 孤儿向量
-        经 get_episodes_by_ids 的 ACL 过滤不会泄露, 文件按 namespace 隔离。
+        shared 命名空间被多 Agent 共享, 一律拒绝清理。
+
+        R7: 同步清理 vectors-<ns>.db 文件 + graph edges, 防止重建同名 Agent
+        时孤儿向量污染召回 (此前 metadata.delete_namespace 已删 episodes,
+        但稠密向量行残留, KNN 仍可召回旧内容)。
         """
         pipeline = instance.memory
         namespace = str(getattr(pipeline, "namespace", "") or "")
@@ -167,9 +180,55 @@ class AgentManager:
             sparse = getattr(pipeline, "sparse", None)
             if sparse is not None:
                 sparse.clear()
+            # R7: 清理 vector DB 文件 + graph edges
+            await AgentManager._purge_vector_and_graph(instance, namespace)
             logger.info("Agent 记忆已清理", namespace=namespace, episodes_removed=removed)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Agent 记忆清理失败, 已忽略", namespace=namespace, error=str(exc))
+
+    @staticmethod
+    async def _purge_vector_and_graph(instance: AgentInstance, namespace: str) -> None:
+        """R7: 清理 vectors-<ns>.db 文件 + graph_store 该 namespace 的全部 edges。
+
+        1. 经 services 取 vector_resolver (namespace → VectorStore | None),
+           关闭持久连接 + 删除 DB 文件; 无 resolver 时跳过。
+        2. graph_store 若有 delete_by_namespace 方法, 调用清理 edges;
+           无该方法时跳过 (向后兼容)。
+
+        失败只记 warning, 不影响 metadata 已成功的清理。
+        """
+        import os
+        services = getattr(instance, "services", None) or {}
+        # vector DB 文件清理
+        vector_resolver = services.get("vector_resolver")
+        if callable(vector_resolver):
+            try:
+                vector = vector_resolver(namespace)
+                if vector is not None:
+                    # 先关闭持久连接 (VectorStore 持有 self._db)
+                    close = getattr(vector, "close", None)
+                    if callable(close):
+                        await close()
+                    # 删除 DB 文件 (path 通常在 vector.db_path)
+                    db_path = getattr(vector, "db_path", None)
+                    if db_path:
+
+                        def _remove_file(p: str = db_path) -> None:
+                            if os.path.exists(p):
+                                os.remove(p)
+
+                        await asyncio.to_thread(_remove_file)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("vector 文件清理失败, 已忽略", namespace=namespace, error=str(exc))
+        # graph edges 清理
+        graph_store = services.get("graph_store")
+        if graph_store is not None:
+            delete_edges = getattr(graph_store, "delete_by_namespace", None)
+            if callable(delete_edges):
+                try:
+                    await delete_edges(namespace)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("graph edges 清理失败, 已忽略", namespace=namespace, error=str(exc))
 
     def acquire_config_lock(self, agent_id: str) -> asyncio.Lock:
         """按 agent_id 取配置锁 (Fix-2, 不存在则创建)。
@@ -205,6 +264,9 @@ class AgentManager:
         old_scheduler = old_instance.services.get("proactive_scheduler")
         if old_scheduler is not None:
             await old_scheduler.stop()
+        old_consolidator = old_instance.services.get("memory_consolidator")
+        if old_consolidator is not None:
+            await old_consolidator.stop()
         # Q0: 失效独立 Provider 缓存, PATCH 修改 llm 后 for_agent 才会按新配置重建
         await self._invalidate_agent_provider(agent_id)
         instance = await assemble_agent(config, self._services)
@@ -214,6 +276,9 @@ class AgentManager:
             new_scheduler = instance.services.get("proactive_scheduler")
             if new_scheduler is not None:
                 await new_scheduler.start(self._on_proactive_wake)
+            new_consolidator = instance.services.get("memory_consolidator")
+            if new_consolidator is not None:
+                await new_consolidator.start()
         logger.info("Agent 配置已重载", agent_id=agent_id)
 
     # ── 消息处理入口 (由 MessageRouter 经依赖注入调用) ─────
@@ -820,31 +885,45 @@ class AgentManager:
         无 user_profile 时退化用平台 user_id (与注入器的 session.user_id 兜底一致)。
         agent 键用 instance.agent_id (读侧用 session.agent_id, 二者相同)。
         画像文本的 LLM 归纳留 MemoryConsolidator (MVP 之后), 本回路只做启发式累积。
+
+        R12: 改用 ``increment_person_interaction`` 原子增量更新, 消除
+        read-modify-write 竞态 (同一人并发消息导致 interaction_count 丢失)。
         """
         metadata_store = getattr(instance.memory, "metadata", None)
         if metadata_store is None:
             return  # NoOpMemoryPipeline / memory 未启用
-        from isac.utils.helpers import unix_now
-
         person_id = (getattr(user_profile, "user_id", "") or message.user_id or "").strip()
         if not person_id:
             return
-        existing = await metadata_store.get_person_profile(instance.agent_id, person_id) or {}
-        now = unix_now()
-        await metadata_store.upsert_person_profile(
+        # name 仅在首次出现 (新 person_id) 时用 user_name 兜底; 已存在行由
+        # increment_person_interaction 走 ON CONFLICT DO UPDATE, 不覆盖 name
+        # (避免每次消息把 LLM 归纳的 name 重置为平台 user_name)。
+        name_for_insert = (message.user_name or person_id) if message.user_name else None
+        if not hasattr(metadata_store, "increment_person_interaction"):
+            # 旧 store (或 mock) 不支持新方法 → 保留旧 read-modify-write 路径
+            existing = await metadata_store.get_person_profile(instance.agent_id, person_id) or {}
+            from isac.utils.helpers import unix_now
+            await metadata_store.upsert_person_profile(
+                instance.agent_id,
+                {
+                    "person_id": person_id,
+                    "name": message.user_name or existing.get("name") or message.user_id,
+                    "profile_text": existing.get("profile_text", "") or "",
+                    "traits": existing.get("traits", []) or [],
+                    "relationship_depth": min(
+                        1.0, float(existing.get("relationship_depth", 0.0) or 0.0) + RELATIONSHIP_DEPTH_STEP
+                    ),
+                    "interaction_count": int(existing.get("interaction_count", 0) or 0) + 1,
+                    "first_seen": existing.get("first_seen"),
+                    "last_seen": unix_now(),
+                },
+            )
+            return
+        await metadata_store.increment_person_interaction(
             instance.agent_id,
-            {
-                "person_id": person_id,
-                "name": message.user_name or existing.get("name") or message.user_id,
-                "profile_text": existing.get("profile_text", "") or "",
-                "traits": existing.get("traits", []) or [],
-                "relationship_depth": min(
-                    1.0, float(existing.get("relationship_depth", 0.0) or 0.0) + RELATIONSHIP_DEPTH_STEP
-                ),
-                "interaction_count": int(existing.get("interaction_count", 0) or 0) + 1,
-                "first_seen": existing.get("first_seen") or now,
-                "last_seen": now,
-            },
+            person_id,
+            name=name_for_insert,
+            relationship_depth_step=RELATIONSHIP_DEPTH_STEP,
         )
 
     # ── 路由信息 (注入 MessageRouter 的 agents_provider) ────
