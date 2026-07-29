@@ -167,6 +167,13 @@
     }
   },
 
+  // 全局人格配置 (Q2 激活, SPECIFICATION.md 1.6/1.7)。description 为空时各 Agent
+  // 回落框架默认身份文案; 也可在 data/agents/<id>/config.jsonc 的 persona 段按
+  // Agent 覆盖 (优先于此处全局值)。
+  "persona": {
+    "description": ""
+  },
+
   // S4 跨平台身份归一 (P4, 默认关闭 = 走 UserMapper 原路径, 零行为变化)。
   // enabled=true 后入站消息经 IdentityResolver 归一到统一 person_id, 记忆按归一身份聚合;
   // heuristic_enabled=true 时按昵称启发式匹配 (低置信, 默认关防误合并)。

@@ -1091,6 +1091,9 @@ class CommandRegistry:
 
     // 人格配置
     "persona": {
+        // 人设文本 (Q2 激活): 接入 BaseIdentityInjector, 决定 System Prompt 里的
+        // 身份/性格描述; Agent 级覆盖全局, 均未配置时回落框架默认文案。
+        "description": "",
         "attention_drift": {
             "enabled": true,
             "level": "subtle",              // "subtle" | "active" | "scattered" | "wild"
@@ -1175,7 +1178,7 @@ ISAC_MEMORY_ENABLED → memory.enabled
     "agent_id": "alice",
     "display_name": "爱丽丝",
     "trigger_words": ["爱丽丝", "@alice"],
-    "persona": {"expression_style": {"humor": 0.8}},
+    "persona": {"description": "你是爱丽丝，说话带点小幽默的助理猫娘。", "expression_style": {"humor": 0.8}},
     "gating": {"reply_necessity_threshold": 70},
     "plugins_allow": ["weather", "search"],
     "mcp_servers": ["filesystem"],
