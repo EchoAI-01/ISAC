@@ -436,11 +436,32 @@ class _MpStubAdapter(PlatformAdapter):
         return False
 
 
+_UNSAFE_XML_MARKERS = ("<!doctype", "<!entity")
+
+
+def _has_unsafe_xml_construct(xml_text: str) -> bool:
+    """检测 DOCTYPE/ENTITY 声明。
+
+    XML 实体只能在 DTD (通过 ``<!DOCTYPE`` 声明) 内定义, 官方企业微信回调 XML
+    从不带 DTD; 出现即视为恶意输入 (如递归实体展开 / "billion laughs" 拒绝服务),
+    在喂给 ``ET.fromstring`` 之前直接拒绝。标准库 ``xml.etree.ElementTree`` 默认
+    会展开内部实体, 对此类载荷没有防护 (项目未引入 defusedxml, 故用此前置守卫
+    代替, 效果等价且零新依赖)。
+    """
+    lowered = xml_text.lower()
+    return any(marker in lowered for marker in _UNSAFE_XML_MARKERS)
+
+
 def _extract_encrypt(xml_text: str) -> str:
     """从外层 XML ``<xml><Encrypt><![CDATA[...]]></Encrypt>...</xml>`` 提取 Encrypt 字段。
 
-    用 ElementTree 解析; 失败返回空串。CDATA 会被 ElementTree 自动解包。
+    这一步发生在签名校验**之前** (校验本身需要 Encrypt 字段的原文), 因此这里
+    收到的是完全未鉴权的输入; 用 ElementTree 解析前先过 DOCTYPE/ENTITY 守卫。
+    CDATA 会被 ElementTree 自动解包。失败/被拒绝均返回空串, 不抛异常。
     """
+    if _has_unsafe_xml_construct(xml_text):
+        logger.warning("企业微信外层 XML 含 DOCTYPE/ENTITY 声明, 拒绝 (实体扩展防护)")
+        return ""
     try:
         root = ET.fromstring(xml_text)
     except Exception as exc:  # noqa: BLE001
@@ -456,7 +477,13 @@ def _parse_wecom_xml(xml_text: str) -> ISACMessage | None:
     企业微信内层 XML 字段: ``<ToUserName>`` (企业微信 corpid)、``<FromUserName>`` (用户 userid)、
     ``<CreateTime>`` (秒级时间戳)、``<MsgType>`` (text/image/event...)、``<Content>`` (文本内容)、
     ``<MsgId>``、``<AgentID>``。只处理 text 类型, 其他类型降级为占位文本 (不阻塞主链路)。
+
+    这一步的输入已经过签名校验 + AES 解密, 风险远低于 :func:`_extract_encrypt`; 仍加
+    DOCTYPE/ENTITY 守卫做纵深防御 (防御性一致, 成本几乎为零)。
     """
+    if _has_unsafe_xml_construct(xml_text):
+        logger.warning("企业微信内层 XML 含 DOCTYPE/ENTITY 声明, 拒绝 (实体扩展防护)")
+        return None
     try:
         root = ET.fromstring(xml_text)
     except Exception as exc:  # noqa: BLE001

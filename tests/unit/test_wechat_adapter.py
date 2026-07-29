@@ -261,6 +261,33 @@ async def test_message_callback_missing_encrypt_field_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_message_callback_doctype_payload_rejected_before_signature_check() -> None:
+    """安全回归: 恶意 DOCTYPE/ENTITY 载荷即使签名完全无效, 也必须在解析阶段就被拒绝
+    (而不是被 ET.fromstring 展开), 端到端走完整 _handle_event 入口不抛异常/不挂起。"""
+    adapter = _make_adapter()
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    malicious_outer = (
+        "<!DOCTYPE xml ["
+        "<!ENTITY lol \"lol\">"
+        "<!ENTITY lol2 \"&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;\">"
+        "]>"
+        "<xml><Encrypt>&lol2;</Encrypt></xml>"
+    )
+    req = _make_request("POST", {
+        "msg_signature": "any", "timestamp": "1700000000", "nonce": "n",
+    }, malicious_outer.encode("utf-8"))
+    resp = await adapter._handle_event(req)
+    assert isinstance(resp, PlainTextResponse)
+    assert resp.body == b"success"
+    assert received == []
+
+
+@pytest.mark.asyncio
 async def test_message_callback_non_text_type_degraded_to_placeholder() -> None:
     """非 text 类型 (image/voice/event...) 降级为占位文本, 不阻塞主链路。"""
     adapter = _make_adapter()
@@ -458,6 +485,28 @@ def test_extract_encrypt_returns_empty_when_missing_field() -> None:
     assert _extract_encrypt("<xml><Other>x</Other></xml>") == ""
 
 
+def test_extract_encrypt_rejects_doctype_entity_expansion_payload() -> None:
+    """安全回归: 含 DOCTYPE/递归 ENTITY 声明的 "billion laughs" 载荷必须被直接拒绝
+    (返回空串), 不能进入 ET.fromstring 被展开——该端点在这一步之前签名尚未校验,
+    是完全未鉴权的输入。"""
+    payload = (
+        "<?xml version=\"1.0\"?>"
+        "<!DOCTYPE xml ["
+        "<!ENTITY lol \"lol\">"
+        "<!ENTITY lol2 \"&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;\">"
+        "<!ENTITY lol3 \"&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;\">"
+        "]>"
+        "<xml><Encrypt>&lol3;</Encrypt></xml>"
+    )
+    assert _extract_encrypt(payload) == ""
+
+
+def test_extract_encrypt_rejects_case_insensitive_doctype() -> None:
+    """DOCTYPE 关键字大小写/前导空白变体同样被拒绝 (小写 + 换行)。"""
+    payload = "<xml>\n<!doctype\nxml [<!entity x \"y\">]>\n<Encrypt>z</Encrypt></xml>"
+    assert _extract_encrypt(payload) == ""
+
+
 def test_parse_wecom_xml_extracts_text_message() -> None:
     """_parse_wecom_xml 解析 text 类型消息 → ISACMessage。"""
     xml = (
@@ -498,3 +547,9 @@ def test_parse_wecom_xml_non_text_degrades_to_placeholder() -> None:
     msg = _parse_wecom_xml(xml)
     assert msg is not None
     assert msg.content == "[event]"
+
+
+def test_parse_wecom_xml_rejects_doctype_entity_expansion_payload() -> None:
+    """内层 XML 同样加 DOCTYPE/ENTITY 守卫做纵深防御。"""
+    payload = "<!DOCTYPE xml [<!ENTITY x \"y\">]><xml><FromUserName>u</FromUserName></xml>"
+    assert _parse_wecom_xml(payload) is None
