@@ -15,6 +15,7 @@ import asyncio
 import time
 from typing import TYPE_CHECKING, Any
 
+from isac.core.types import TokenUsage
 from isac.runtime.subagent.models import TERMINAL_STATUSES, SubAgentPolicy, SubAgentRun
 from isac.utils.logger import get_logger
 
@@ -38,6 +39,7 @@ class SubAgentSupervisor:
         parent_policy: SubAgentPolicy | None = None,
         runner_factory: Callable[[SubAgentTask], Awaitable[SubAgentResult]] | None = None,
         cancel_grace_seconds: float = 0.5,
+        max_concurrent: int = 4,
     ) -> None:
         self._journal = journal
         # 父 Agent / 全局默认策略, 与任务策略求交集得到生效权限。
@@ -49,6 +51,13 @@ class SubAgentSupervisor:
         self._runs: dict[str, SubAgentRun] = {}
         # 后台 task 索引 (task_id → asyncio.Task), 用于 cancel 传播
         self._tasks: dict[str, asyncio.Task[Any]] = {}
+        # Q5: 并发上限 (信号量), 防止短时间大量 submit 把父 Agent 的 LLM 调用
+        # 配额耗尽或导致上下文窗口爆掉。默认 4 (合理基线, 可按 LLM 配额调整)。
+        # <=0 表示不限制 (向后兼容默认行为)。
+        self._max_concurrent = max(0, int(max_concurrent))
+        self._concurrency_sem: asyncio.Semaphore | None = (
+            asyncio.Semaphore(self._max_concurrent) if self._max_concurrent > 0 else None
+        )
 
     def set_runner_factory(
         self,
@@ -90,53 +99,69 @@ class SubAgentSupervisor:
         """后台执行子任务: 状态 running → 调 runner → 终态。
 
         任何异常都捕获并置终态, 不让后台 task 异常静默丢失。Journal 接收 status 事件。
+        Q5: 经 max_concurrent 信号量限流, 防止短时间大量 submit 把父 Agent 的
+        LLM 调用配额耗尽或上下文窗口爆掉; max_concurrent<=0 时无限制 (向后兼容)。
         """
         run = self._runs.get(task.task_id)
         if run is None:
             return
-        # 状态 → running + 写 journal
-        await self._transition(run, task.task_id, "running", "status", "running", max_log_bytes=policy.max_log_bytes)
-
-        runner = self._runner_factory(task) if self._runner_factory is not None else None
-        if runner is None:
-            return
+        # 信号量 acquire (若有); 释放放在 finally 确保 cancel/timeout 也释放
+        sem_acquired = False
+        if self._concurrency_sem is not None:
+            await self._concurrency_sem.acquire()
+            sem_acquired = True
         try:
-            # 超时控制: asyncio.wait_for 在 timeout_seconds 后取消 runner
-            result = await asyncio.wait_for(runner, timeout=policy.timeout_seconds)
-            # cancel() 可能已把 run 置为终态；吞掉 CancelledError 的 runner 晚到结果
-            # 不得把 cancelled 覆盖成 succeeded。
-            if run.status in TERMINAL_STATUSES:
+            # 状态 → running + 写 journal
+            await self._transition(
+                run, task.task_id, "running", "status", "running", max_log_bytes=policy.max_log_bytes
+            )
+
+            runner = self._runner_factory(task) if self._runner_factory is not None else None
+            if runner is None:
                 return
-            run.result_summary = result.summary
-            await self._transition(
-                run, task.task_id, "succeeded", "status", f"succeeded: {result.summary}",
-                finished=True, max_log_bytes=policy.max_log_bytes,
-            )
-        except TimeoutError:
-            await self._transition(
-                run, task.task_id, "timed_out", "error",
-                f"timed_out: 任务超时 ({policy.timeout_seconds}s)",
-                finished=True, error_code="TIMEOUT",
-                error_summary=f"任务超时 ({policy.timeout_seconds}s)",
-                max_log_bytes=policy.max_log_bytes,
-            )
-            logger.warning("子任务超时", task_id=task.task_id, timeout=policy.timeout_seconds)
-        except asyncio.CancelledError:
-            # 被 cancel() 主动取消 (run.status 已被 cancel() 置为 cancelled)
-            if self._journal is not None:
-                await self._journal.append(
-                    self._make_event(task.task_id, "status", "cancelled"),
+            try:
+                # 超时控制: asyncio.wait_for 在 timeout_seconds 后取消 runner
+                result = await asyncio.wait_for(runner, timeout=policy.timeout_seconds)
+                # cancel() 可能已把 run 置为终态；吞掉 CancelledError 的 runner 晚到结果
+                # 不得把 cancelled 覆盖成 succeeded。
+                if run.status in TERMINAL_STATUSES:
+                    return
+                run.result_summary = result.summary
+                # Q5: 保留 SubAgentResult.usage 与 evidence_refs 到 run 上 (此前被丢弃,
+                # 控制面拿不到)。_transition 把它们落到 run.usage / run.evidence_refs,
+                # routes_subagent 的 list_subagent_runs / get_status 都能读到。
+                await self._transition(
+                    run, task.task_id, "succeeded", "status", f"succeeded: {result.summary}",
+                    finished=True, max_log_bytes=policy.max_log_bytes,
+                    usage=result.usage, evidence_refs=result.evidence_refs,
+                )
+            except TimeoutError:
+                await self._transition(
+                    run, task.task_id, "timed_out", "error",
+                    f"timed_out: 任务超时 ({policy.timeout_seconds}s)",
+                    finished=True, error_code="TIMEOUT",
+                    error_summary=f"任务超时 ({policy.timeout_seconds}s)",
                     max_log_bytes=policy.max_log_bytes,
                 )
-            raise  # CancelledError 必须向上传播 (asyncio 约定)
-        except Exception as exc:  # noqa: BLE001
-            await self._transition(
-                run, task.task_id, "failed", "error", f"failed: {str(exc)[:500]}",
-                finished=True, error_code=type(exc).__name__, error_summary=str(exc)[:500],
-                max_log_bytes=policy.max_log_bytes,
-            )
-            logger.warning("子任务失败", task_id=task.task_id, error=str(exc))
+                logger.warning("子任务超时", task_id=task.task_id, timeout=policy.timeout_seconds)
+            except asyncio.CancelledError:
+                # 被 cancel() 主动取消 (run.status 已被 cancel() 置为 cancelled)
+                if self._journal is not None:
+                    await self._journal.append(
+                        self._make_event(task.task_id, "status", "cancelled"),
+                        max_log_bytes=policy.max_log_bytes,
+                    )
+                raise  # CancelledError 必须向上传播 (asyncio 约定)
+            except Exception as exc:  # noqa: BLE001
+                await self._transition(
+                    run, task.task_id, "failed", "error", f"failed: {str(exc)[:500]}",
+                    finished=True, error_code=type(exc).__name__, error_summary=str(exc)[:500],
+                    max_log_bytes=policy.max_log_bytes,
+                )
+                logger.warning("子任务失败", task_id=task.task_id, error=str(exc))
         finally:
+            if sem_acquired and self._concurrency_sem is not None:
+                self._concurrency_sem.release()
             self._tasks.pop(task.task_id, None)
 
     async def _transition(
@@ -151,6 +176,8 @@ class SubAgentSupervisor:
         error_code: str = "",
         error_summary: str = "",
         max_log_bytes: int | None = None,
+        usage: TokenUsage | None = None,
+        evidence_refs: list[str] | None = None,
     ) -> None:
         """状态转移 + journal 写入 (upsert_run + append event)。"""
         now = int(time.time())
@@ -162,6 +189,12 @@ class SubAgentSupervisor:
             run.error_code = error_code
         if error_summary:
             run.error_summary = error_summary
+        # Q5: usage 与 evidence_refs 落到 run 上 (此前 SubAgentResult 的这两个字段被丢弃)。
+        if usage is not None:
+            run.usage = usage
+            run.tokens_used = int(getattr(usage, "total_tokens", 0) or 0)
+        if evidence_refs is not None:
+            run.evidence_refs = list(evidence_refs)
         if self._journal is None:
             return
         try:

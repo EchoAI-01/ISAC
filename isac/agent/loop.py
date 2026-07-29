@@ -138,6 +138,9 @@ class ISACAgentLoop:
                 return AgentResult(interrupted=True)
 
             if response.tool_calls:
+                # Q2: 累加本轮工具调用数, 供 FINAL_RESPONSE 阶段的 MoodTracker 等读取
+                # "活跃度"信号——到 FINAL_RESPONSE 触发时 response.tool_calls 恒为空。
+                context.tool_calls_this_turn += len(response.tool_calls)
                 reported_task_progress = await self._emit_task_planned_once(context, reported_task_progress)
                 # LLM API 要求 tool 消息必须紧跟在声明了对应 tool_calls 的 assistant
                 # 消息之后, 否则下一轮请求里 tool_call_id 找不到归属会被 API 拒绝。

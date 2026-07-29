@@ -9,14 +9,25 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from isac.agent.hooks import AgentHooks
+from isac.agent.injectors.attention_drift import AttentionDriftInjector
 from isac.agent.injectors.base_identity import BaseIdentityInjector
+from isac.agent.injectors.expression_style import ExpressionStyleInjector
 from isac.agent.injectors.interrupt import InterruptInjector
 from isac.agent.injectors.model_capabilities import ModelCapabilitiesInjector
+from isac.agent.injectors.mood import MoodInjector
 from isac.agent.injectors.recovery import RecoveryInjector
 from isac.agent.injectors.tools_available import ToolsAvailableInjector
 from isac.agent.loop import ISACAgentLoop
 from isac.agent.prompt_builder import SystemPromptBuilder
 from isac.agent.tools.base import ToolPermission
+from isac.agent.tools.media import (
+    GenerateImageTool,
+    GenerateVideoTool,
+    SynthesizeSpeechTool,
+    TranscribeAudioTool,
+    UnderstandVideoTool,
+    VisionUnderstandTool,
+)
 from isac.agent.tools.registry import ToolRegistry
 from isac.agent.tools.social.ask_agent import AskAgentTool
 from isac.agent.tools.social.fetch_history import FetchHistoryTool
@@ -241,7 +252,11 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     gating = GatingSystem(config=config.gating)
 
     prompt_builder = SystemPromptBuilder()
-    prompt_builder.register(BaseIdentityInjector())
+    # Q2 激活: persona.description (Agent 级覆盖全局) 接入身份注入器, 使不同 Agent
+    # 的人格文本在 System Prompt 中可辨; 未配置时两者皆空, 注入器自身回落默认文案
+    # (零行为变化)。
+    _identity_text = config.persona.get("description") or global_config.get("persona", {}).get("description")
+    prompt_builder.register(BaseIdentityInjector(_identity_text))
     # J2: 多模态能力注入器 (默认无授权媒体能力 → 注入空串, 主链路零变化)。
     # model_capabilities_allow 字段将在 J2 实现节点加入 AgentConfig; 当前经 getattr 兜底。
     _media_caps = [c for c in (getattr(config, "model_capabilities_allow", None) or []) if c != "chat"]
@@ -292,6 +307,18 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(SubagentStatusTool())
     tools.register(SubagentLogTool())
     tools.register(CancelSubagentTool())
+    # Q3 激活: 6 个多模态语义工具接入生产 ToolRegistry。此前这些 Tool 类从未
+    # 在 assembly 注册过, 即使配置了多模态 Provider 也调不到 (LLM schema 里
+    # 根本看不到)。默认权限 deny (ToolPermission.DEFAULT_POLICY), 需 Agent 在
+    # tools_policy 里显式开启对应能力 (如 {"generate_image": "allow"}) 才会
+    # 出现在 LLM schema; model_router/artifact_store/media_normalizer 经 shared
+    # services 自动流到 ToolContext.services (main.py 装配的键)。
+    tools.register(GenerateImageTool())
+    tools.register(GenerateVideoTool())
+    tools.register(TranscribeAudioTool())
+    tools.register(SynthesizeSpeechTool())
+    tools.register(VisionUnderstandTool())
+    tools.register(UnderstandVideoTool())
     prompt_builder.register(ToolsAvailableInjector(tools))
 
     # E4 命令注册表: commands_allow 矩阵在 try_execute 时生效
@@ -365,6 +392,13 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     persona = PersonaManager(global_config.get("persona", {}), config.persona)
     # 注册 BehaviorLearner FINAL_RESPONSE hook, 从回复中学习用户行为模式。
     persona.register_hooks(hooks)
+    # Q2 激活: 人格系统的三个注入器 (mood / expression_style / attention_drift)
+    # 此前是空桩且未注册; 现在 PersonaManager 就绪后接入 prompt_builder, 让 LLM
+    # 回复带出情绪色彩 + 表达风格 + 注意力漂移人格特征。无 mood_engine (如未
+    # 启用 conversation) 时 MoodInjector 返回空串, 零行为变化。
+    prompt_builder.register(MoodInjector(mood_engine=persona.mood_engine))
+    prompt_builder.register(ExpressionStyleInjector(persona_manager=persona))
+    prompt_builder.register(AttentionDriftInjector(level=persona.get_drift_level()))
 
     logger.info("Agent 组装完成", agent_id=config.agent_id, namespace=config.effective_memory_namespace)
     return AgentInstance(

@@ -621,11 +621,11 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **当前**：已完成 (2026-07-26)。`WorkflowEngine.start` 按 transitions 调度 stages: 串行按 `TransitionKind.SEQUENTIAL` 递归执行, 并行用 `asyncio.gather` 同时跑多个 `PARALLEL` 目标, 条件 `CONDITIONAL` 按 `condition_evaluator` 返回决定执行或标 `SKIPPED`, 重试 `RETRY` 在 `_execute_stage` 内按 `max_retries=3` 重试; 状态机 `PENDING→RUNNING→SUCCEEDED/FAILED`; `step` 推进单个 PENDING stage; `resume` 把 RUNNING 标为 FAILED (中断后不续跑, 与 L5 一致); 持久化到 `data/workflows/<id>.json` (原子写)。`set_action_handler`/`set_condition_evaluator` 注入测试/生产回调; 无 handler 时 stage 视为 noop (零行为变化)。12 例单测覆盖串/并/条件/重试/step/resume/持久化/默认。
   - **接线待办 → 见 §四 P5**(骨架轮 S5 已就位控制面入口):`routes_workflows` 暴露 list/get/start REST 入口(default-off,`control.workflow.enabled` 启用);剩 action handler 生产注入 + Agent 工具入口。
 
-- [ ] **O4 平台扩展 (微信 / Slack / 飞书 …)**
+- [~] **O4 平台扩展 (微信 / Slack / 飞书 …)**
   - **验收**：新增 IM 平台适配器,复用 Channel 抽象;媒体/富文本能力按平台声明适配。
   - **产出**：各平台 Channel 适配器、能力声明、投递适配、单测。
   - **依赖**：H (平台扩展)、C4 (Channel 抽象)。
-  - **当前**：框架已搭建 (scaffolding, 2026-07-26 模板 + 2026-07-27 骨架轮 S7 三平台)。除 `template/` 通用模板外,新增 `feishu/`(`FeishuAdapter`)、`wechat/`(`WeChatAdapter`,公众号/企业微信)、`qq_official/`(`QQOfficialAdapter`,QQ 官方机器人,`platform_name="qq_official"` 与 OneBot 的 `qq` 并存不撞键) 三个平台骨架:实现 4 个抽象方法 + `TODO(O4)`,`start`/`stop` no-op、`send` 返回 False;`main._register_channel_adapters` 加 enabled-gated 惰性注册分支(默认不启用 → 不注册 → 零行为变化)。剩余激活: 各平台真实连接/收发 + 富媒体降级。当前 OneBot/Telegram/Discord/WebChat(真实) + feishu/wechat/qq_official(骨架)。附 `tests/unit/test_o4_platform_adapters_scaffolding.py` (12)。
+  - **当前**：框架已搭建 + 三平台激活 (scaffolding 2026-07-26 模板 + 骨架轮 S7 + 2026-07-28/29 激活)。除 `template/` 通用模板外,新增 `feishu/`(`FeishuAdapter`)、`wechat/`(`WeChatAdapter`,公众号 mp / 企业微信 wecom)、`qq_official/`(`QQOfficialAdapter`,`platform_name="qq_official"` 与 OneBot 的 `qq` 并存不撞键)。**2026-07-28 激活**: feishu (AES-256-CBC 解密) + qq_official (Ed25519 验签) 真实 Webhook 收发。**2026-07-29 代码复审校正**: `wechat` **wecom 企业微信模式实为已实现并注册** (`adapter.py:90` start 启 uvicorn webhook + AES 验签, `:267` send 换 `access_token` 真实发送, `main.py:410` enabled-gated 注册), 仅 `mp` 公众号模式仍 no-op 骨架 —— 原"微信保持骨架/本轮不做"表述已滞后。`main._register_channel_adapters` 各平台 enabled-gated 惰性注册(默认不启用 → 零行为变化)。当前真实收发: OneBot/Telegram/Discord/WebChat + feishu + qq_official + wechat(wecom);仅骨架: wechat(mp)。剩余: Slack 适配器 + 各平台富媒体降级完善。附 `tests/unit/test_o4_platform_adapters_scaffolding.py` + `test_feishu_adapter.py` + `test_qq_official_adapter.py`。
 
 - [ ] **O5 Video Provider**
   - **验收**：视频理解/生成 Provider 真实接入 (Sora/Runway/Kling 等),经能力目录与 ModelRouter 选择;结果走 ArtifactStore。
@@ -742,7 +742,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 - [x] **S6 O5 视频 Provider 注册挂点**
   - 见 §四 O5"当前"。`kind="video_gen"` 接入 `_build_multimodal_provider`,default-off,`generate` 仍抛 `NotImplementedError`(端点二次确认闸门)。
 - [x] **S7 O4 飞书/微信/QQ 官方三平台适配器骨架**
-  - 见 §四 O4"当前"。三平台骨架 + enabled-gated 注册分支,QQ 官方(`qq_official`)与 OneBot(`qq`)并存不撞键。**2026-07-28 飞书激活**: 见上节。**2026-07-28 QQ 官方激活**: QQOfficialAdapter 真实实现 Webhook 入站 (Ed25519 验签: seed=secret 重复双倍到 32 字节作 Ed25519 seed, 字节序核对自 bot.q.qq.com 官方文档; op=13 验证握手签名 event_ts+plain_token 回响应; op=0 dispatch 事件验签 X-Signature-Ed25519 + X-Signature-Timestamp, msg=timestamp+raw_body; AT_MESSAGE_CREATE/GROUP_AT_MESSAGE_CREATE/C2C_MESSAGE_CREATE 三类事件规范化 member_openid/user_openid→user_id, channel_id/group_openid→group_id, data.id→msg_id 供被动回复) + 出站 (access_token 换取+缓存提前 60s 刷新; 群消息 POST /v2/groups/{group_openid}/messages, 私聊 POST /v2/users/{openid}/messages, Header Authorization: QQBot <token>, 被动回复带 msg_id)。不引入 botpy SDK, 用 httpx+uvicorn+cryptography 既有依赖。注意 0 在 Python 是 falsy (`0 or -1`=-1) 会误判 op=0, 用 `op_raw is None` 显式判定。新增 `test_qq_official_adapter.py` (19 例) 覆盖验证握手签名/验签/事件规范化/三类消息/send 群聊+私聊+token 缓存+失败降级/_derive_seed 派生算法。微信保持骨架不动 (用户本轮决定不做)。
+  - 见 §四 O4"当前"。三平台骨架 + enabled-gated 注册分支,QQ 官方(`qq_official`)与 OneBot(`qq`)并存不撞键。**2026-07-28 飞书激活**: 见上节。**2026-07-28 QQ 官方激活**: QQOfficialAdapter 真实实现 Webhook 入站 (Ed25519 验签: seed=secret 重复双倍到 32 字节作 Ed25519 seed, 字节序核对自 bot.q.qq.com 官方文档; op=13 验证握手签名 event_ts+plain_token 回响应; op=0 dispatch 事件验签 X-Signature-Ed25519 + X-Signature-Timestamp, msg=timestamp+raw_body; AT_MESSAGE_CREATE/GROUP_AT_MESSAGE_CREATE/C2C_MESSAGE_CREATE 三类事件规范化 member_openid/user_openid→user_id, channel_id/group_openid→group_id, data.id→msg_id 供被动回复) + 出站 (access_token 换取+缓存提前 60s 刷新; 群消息 POST /v2/groups/{group_openid}/messages, 私聊 POST /v2/users/{openid}/messages, Header Authorization: QQBot <token>, 被动回复带 msg_id)。不引入 botpy SDK, 用 httpx+uvicorn+cryptography 既有依赖。注意 0 在 Python 是 falsy (`0 or -1`=-1) 会误判 op=0, 用 `op_raw is None` 显式判定。新增 `test_qq_official_adapter.py` (19 例) 覆盖验证握手签名/验签/事件规范化/三类消息/send 群聊+私聊+token 缓存+失败降级/_derive_seed 派生算法。(注: 微信 wecom 企业微信模式后续已实现并注册, 见 §四 O4"当前"2026-07-29 校正; 仅 mp 公众号仍骨架。)
 
 ---
 
@@ -775,40 +775,40 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
     - **边界**: 行话学习未做 (可选项, 归 MemoryConsolidator); SessionManager 状态仍不持久化 (已在 PROGRESS 如实标注); `config.sample.jsonc` 的 `memory.enabled` 默认改 true (纯 SQLite 零外部依赖, "越聊越熟"开箱生效)。
     - 集成测试 `tests/integration/test_q1_memory_write_loop.py` (4): 聊→重启(新 pipeline 预热)→BM25 命中、画像随互动加深、UserMapper 重启同 master_id、纯内存模式零行为变化。
 
-- [ ] **Q2 人格差异化实现**(依赖 D8 人格系统 + D2 prompt_builder)
+- [x] **Q2 人格差异化实现**(依赖 D8 人格系统 + D2 prompt_builder)
   - **目标**：让 `AgentConfig.persona` 配置的人格文本真正影响 System Prompt,并把 D8 已实现但未注册的情绪/表达风格/注意力漂移能力接入 Prompt 组装与更新回路,使不同 Agent 的人格差异在回复中可辨。
   - **验收**：`persona` 文本接入 `BaseIdentityInjector`(或新增专用注入器);`MoodInjector`/`ExpressionStyleInjector`/`AttentionDriftInjector` 实现真实文案(非空串)并注册进 `prompt_builder`;`MoodEngine.update/decay` 在 `POST_LLM`/`FINAL_RESPONSE` 或周期任务中真实被调用,情绪随对话变化;`PersonaManager.get_expression_style/get_drift_level` 有生产调用点。
   - **产出**：`BaseIdentityInjector` persona 接线、三个注入器实现+注册、情绪更新回路、集成测试(两个不同 persona 配置的 Agent 回复风格可辨)。
   - **依赖**：D8(PersonaManager/MoodEngine 已实现)、D2(prompt_builder)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-07-29 实现落地)**。①`config.persona.description`(Agent 级覆盖全局 `persona.description`, 契约见 `SPECIFICATION.md` 1.6/1.7 + `config.sample.jsonc`)接入 `BaseIdentityInjector`(`assembly.py:254-259`);未配置时回落原默认文案, 零行为变化。②新增 `MoodTracker`(`isac/persona/mood_tracker.py`), 经 `PersonaManager.register_hooks` 与 `BehaviorLearner` 同点挂 `FINAL_RESPONSE`:每轮先 `decay()` 自然衰减,再按本轮工具调用数(封顶 5 次, `AROUSAL_STEP_PER_TOOL_CALL=0.03`)对 `arousal` 施加小幅扰动 —— `valence` 不臆造对用户情绪的主观判断, 只交给 `decay` 回归中性,符合 `HUMANLIKE_RUNTIME.md` 6.2"缓慢变化不剧烈波动"。三注入器与 `PersonaManager` 访问器沿用既有接线(均为真实逻辑非空桩)。**2026-07-29 复核修正**:初版 arousal 扰动读 `response.tool_calls`,但 `FINAL_RESPONSE` 触发条件恰是 `response.tool_calls` 为空(`isac/agent/loop.py` 的 `else` 分支),该信号源恒为 0,是死代码;改为 `AgentContext.tool_calls_this_turn`(由 loop.py 在工具调用分支里累加)读取,并新增跑真实 `ISACAgentLoop` 的端到端测试防止同类回归。新增 `tests/unit/test_persona.py::TestMoodTracker`(5 例)+`test_register_hooks_attaches_mood_tracker`、`tests/unit/test_persona_injectors.py` 新增 3 例(persona 文本接线/回落默认/全局兜底);ruff/mypy 全绿, 全量回归(1473 单测 + 72 集成)无退化。
 
-- [ ] **Q3 插件与 MCP 生态数据面接线**(依赖 F1-F4/E4/H2,均已实现)
+- [~] **Q3 插件与 MCP 生态数据面接线**(依赖 F1-F4/E4/H2,均已实现)
   - **目标**：让插件(Native/AstrBot/MaiBot)与 MCP Server 注册的工具/命令/注入器真正进入 Agent 的运行时注册表并被 LLM 调用,而不仅仅是"加载成功但惰性"。
   - **验收**：`main.py` 构造 `PluginContext` 时传入真实的进程级共享工具/命令/注入器注册表(复用已验证的 `assembly.py:100-104` `plugin_agent_hooks` 模式),`assemble_agent` 把共享注册表合并进每个 Agent 的 `ToolRegistry`/`CommandRegistry`/`SystemPromptBuilder`;`plugin/runtime/loader.py` 加载 AstrBot/MaiBot 插件后调用 `FunctionToolAdapter`/`MaiBotPluginAdapter.adapt` 完成真正桥接;`PluginManager` 构造时传入 `EnableMatrix`,`plugins_allow`/`plugins_deny` 对插件 hooks 真实生效;`AgentConfig.mcp_servers` 配置后,`assembly` 按需构造 `MCPClient`、`connect`、把 `list_tools` 结果注册进 `ToolRegistry`,Agent 停止/销毁时 `disconnect`;`tools.workspace_root`/`tools.bash_allowlist` 配置项接入 `build_services`,使 `bash`/`read_file`/`write_file` 三个 CLI 工具不再因 services 未注入而恒被拒绝。
   - **产出**：共享注册表机制、AstrBot/MaiBot 桥接接线、PluginManager EnableMatrix 注入、MCP Client 生产接线、CLI 工具 services 注入、集成测试(示例插件注册的工具被 LLM 真实调用)。
   - **依赖**：F1-F4(兼容层与加载器已实现)、E4(EnableMatrix 已实现)、H2(MCPClient 已实现)。
-  - **当前**：未开始。
+  - **当前**：**部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)**。`EnableMatrix` 已注入 `PluginManager` (`main.py:1227`, `plugins_allow/deny` 对已加载插件 hooks 生效) + 进程级 `plugin_agent_hooks` 已按 priority 合并进每个 Agent (`assembly.py:265-269`)。**剩余**: ① per-Agent `PluginContext` 的 `_tools/_commands` 恒 `None` (`main.py:1362-1368`, 注释明示"per-Agent bridge 推迟") → AstrBot/MaiBot 插件仅 `exec_module` 实例化 (`loader.py:116-147`), 不调 `FunctionToolAdapter`/`MaiBotPluginAdapter.adapt`, `@filter.llm_tool`/`@register_action` 标记的 handler 在生产是死代码; ② `MCPClient` 全仓无生产 import/connect, `AgentConfig.mcp_servers` 零消费者; ③ `tools.workspace_root`/`bash_allowlist` 未接入 `build_services` (`main.py:719-751`) → `bash`/`read_file`/`write_file` 恒因 services 未注入被拒。接线后升级 `[x]`。
 
-- [ ] **Q4 多模态工具注册与计量收尾**(依赖 J1/J2,均已实现)
+- [~] **Q4 多模态工具注册与计量收尾**(依赖 J1/J2,均已实现)
   - **目标**：打通 J2 已就绪的 Provider/Router/Catalog/ArtifactStore 与 Agent 侧的"最后一厘米"——6 个语义媒体工具注册进 ToolRegistry,出入站媒体链路可用,多模态用量真实可查。
   - **验收**：`assembly.py` 注册 vision/STT/TTS/生图/视频理解/视频生成 6 个 `media.py` 工具(视频两模态可保留桩,待 O5 二次确认端点);`AgentConfig` 增 `model_capabilities_allow` 字段并映射为工具可见性;`_send_reply` 扫描回复中的 `artifact_id` 引用,经 `MediaResolver.resolve_for_channel` 转换为对应 Channel 的 segment 发送;入站媒体(用户上传图片/语音)下载落盘到 `data/uploads/`,`MediaNormalizer` 白名单相应扩展,生成合法 `media_uri` 供工具使用;`_MediaToolBase`/`EmbeddingManager`/`Reranker` 调用点接入 `UsageRecorder` 的 6 个多模态 `record_*` 方法;`data/pricing.jsonc` 价目表加载机制落地,`ModelUsageEvent` 的 provider 字段与价目表 key 对齐(而非记 `type(provider).__name__`)。
   - **产出**：媒体工具注册、`model_capabilities_allow` 字段、出/入站媒体链路、多模态计量埋点、价目表加载、集成测试(配置生图/视觉 key 后发图/识图全链可用且计量有数)。
   - **依赖**：J1(用量框架)、J2(Provider/Router/Catalog/ArtifactStore)。
-  - **当前**：未开始。
+  - **当前**：**部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)**。6 个语义媒体工具 (`GenerateImageTool`/`GenerateVideoTool`/`TranscribeAudioTool`/`SynthesizeSpeechTool`/`VisionUnderstandTool`/`UnderstandVideoTool`) 已注册进 ToolRegistry (`assembly.py:312-317`, 默认 deny, 需 `tools_policy` 显式开启)。**剩余**: ① 出站 `_send_reply` 仅处理纯文本 (`main.py:209`), 不扫描 `artifact_id`、不经 `MediaResolver.resolve_for_channel` → LLM 生成的图/语音发不出去; ② 入站用户媒体不下载落盘 `data/uploads/`, `MediaNormalizer` 白名单未扩展; ③ `UsageRecorder` 的 6 个 `record_*` 多模态方法零生产调用 → 多模态用量恒 0; ④ `PricingCatalog()` 构造传空表 (`main.py:770`), `estimated_cost` 恒 `None`; ⑤ `AgentConfig` 无 `model_capabilities_allow` 字段 (现经 `getattr` 兜底空)。接线后升级 `[x]`。
 
-- [ ] **Q5 WebUI 与控制面收尾**(依赖 J3/G2/G3,均已实现)
+- [~] **Q5 WebUI 与控制面收尾**(依赖 J3/G2/G3,均已实现)
   - **目标**：修掉 J3 WebUI 与 G2/G3 控制面里"看起来完成但实为占位"的断点,并给自动化场景补上生产启动点。
   - **验收**：Extensions 插件页改接真实 `/agents/{id}/plugins` API;SubAgent 任务表改正确 `agent_id` 参数(而非硬编码 `_`);新增 `GET /agents/{id}/config` 返回全量配置 + 真实 `revision`,WebUI `loadConfigForEdit` 改用它(乐观锁真实生效);WebUI 消费 `/events/stream` SSE(`EventSource`);Usage 明细表按实际 API 返回结构(裸数组)解析,不再读 `events?.events`;补 `routes_webhooks`(subscribe/unsubscribe/list + `/automation/trigger`)并在 `main.py` 构造 `WebhookManager` 订阅 `EventBus` 事件;`isac/control/mcp_server.py` 补生产启动点(独立进程或桥接到 Admin API)并补齐 5 个声明但未实现的工具;密钥管理策略文档化为"配置文件 + env 覆盖"(`ISAC_API_TOKEN` 已支持,Provider `api_key` 同理补 env 映射),`SecretStore` 接线留 MVP 之后。
   - **产出**：WebUI 断点修复、`GET /agents/{id}/config` 端点、SSE 前端消费、Webhook 路由与事件源接线、MCP Server 启动点、密钥管理文档、集成测试。
   - **依赖**：J3(WebUI v2)、G2(MCP Server)、G3(Webhooks)。
-  - **当前**：未开始。
+  - **当前**：**部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)**。Extensions 页已接真实 `/plugins/loaded` (`app.js:481`)、SSE `EventSource('/events/stream')` 已消费 (`app.js:292` + `routes_events.py` scope 过滤/断线恢复/连接上限)、Usage 明细表按正确结构解析。**剩余**: ① `GET /agents/{id}/config` 端点缺失 → 前端 `loadConfigForEdit` 伪造 `revision=1`, 乐观锁未真实生效; ② SubAgent 任务表调 `GET /agents/_/subagent-runs` (`app.js:495` 硬编码 `_`) → 恒空 (后端 `/{agent_id}/subagent-runs` 未被正确调用); ③ `WebhookManager`/`ISACMCPServer` 无生产启动点与路由挂载 (`main.py` 未实例化, `server.py` 未 include)。接线后升级 `[x]`。
 
-- [ ] **Q6 SubAgent 用量与安全补漏**(依赖 J4,已实现)
+- [~] **Q6 SubAgent 用量与安全补漏**(依赖 J4,已实现)
   - **目标**：让 J4 SubAgent 的用量/证据数据真实可信,并补上两个安全口子。
   - **验收**：`supervisor` 保存 `result.usage`/`evidence_refs` 到 `run.tokens_used`/`tool_calls_used`/journal(而非只留 `summary`);`delegate_task` 收集的背景摘要经 `ContextEnvelopeBuilder` 真正传给子 Agent;`SubAgentPolicy`/`supervisor` 加并发上限(信号量或计数器);`control/defaults.py` 的 `RESTRICTED_TOOLS_POLICY` 补 `deny` `delegate_task`。
   - **产出**：supervisor 用量/证据保存、summary 传递接线、并发信号量、受限策略修正、集成测试。
   - **依赖**：J4(SubAgent Runtime)。
-  - **当前**：未开始。
+  - **当前**：**大部分完成 (2026-07-29 代码复审校正, 原标"未开始"不准)**。`supervisor` 已把 `result.usage` 存入 `run.tokens_used`、`evidence_refs` 存入 `run.evidence_refs` (`supervisor.py:193-197`) + 并发上限 `asyncio.Semaphore` (`supervisor.py:54-60`, 默认 4) + `RESTRICTED_TOOLS_POLICY` 已 deny `delegate_task`/`task` (`defaults.py:35`, `runner.py:108` allow_delegate=False 时删除)。**剩余**: ① `delegate_task` 收集的背景摘要未经 `ContextEnvelopeBuilder.build()` 传子 Agent (`runner.py` 未调用, `task.objective` 直传, `context.summary` 丢弃); ② 子任务 `evidence_refs` 生成缺失 (`runner.py:93-99` 返回默认空列表)。补齐后升级 `[x]`。
 
 ---
 

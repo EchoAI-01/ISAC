@@ -107,6 +107,17 @@ def build_router(
     return router
 
 
+def _serialize_usage(usage: Any) -> dict | None:
+    """Q5: TokenUsage → dict (None 时返回 None, 保持 JSON 兼容)。"""
+    if usage is None:
+        return None
+    return {
+        "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+        "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+        "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+    }
+
+
 def _run_to_dict(run: Any) -> dict:
     """SubAgentRun → dict (供 API 响应)。"""
     return {
@@ -122,4 +133,8 @@ def _run_to_dict(run: Any) -> dict:
         "error_code": run.error_code,
         "error_summary": run.error_summary,
         "result_summary": getattr(run, "result_summary", ""),
+        # Q5: usage (TokenUsage) + evidence_refs 此前在 _run_task 被丢弃, 现保留到
+        # SubAgentRun 上, 控制面 list_subagent_runs / get_status 都能读到。
+        "evidence_refs": getattr(run, "evidence_refs", []) or [],
+        "usage": _serialize_usage(getattr(run, "usage", None)),
     }

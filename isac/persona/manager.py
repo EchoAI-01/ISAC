@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from isac.persona.behavior_learner import BehaviorLearner
 from isac.persona.mood import MoodEngine, MoodState
+from isac.persona.mood_tracker import MoodTracker
 from isac.persona.style_profiles import ExpressionStyle
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ class PersonaManager:
         self.agent_overrides = agent_overrides or {}
         self.mood_engine = mood_engine or MoodEngine()
         self.behavior_learner = behavior_learner or BehaviorLearner()
+        self.mood_tracker = MoodTracker(self.mood_engine)
 
     def get_drift_level(self) -> str:
         """当前注意力漂移档位: subtle | active | scattered | wild。"""
@@ -54,5 +56,6 @@ class PersonaManager:
         return self.mood_engine.current()
 
     def register_hooks(self, hooks: AgentHooks) -> None:
-        """注册 BehaviorLearner 的 FINAL_RESPONSE hook。"""
+        """注册 BehaviorLearner 与 MoodTracker 的 FINAL_RESPONSE hook。"""
         self.behavior_learner.register_hooks(hooks)
+        self.mood_tracker.register_hooks(hooks)

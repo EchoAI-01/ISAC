@@ -167,6 +167,13 @@
     }
   },
 
+  // 全局人格配置 (Q2 激活, SPECIFICATION.md 1.6/1.7)。description 为空时各 Agent
+  // 回落框架默认身份文案; 也可在 data/agents/<id>/config.jsonc 的 persona 段按
+  // Agent 覆盖 (优先于此处全局值)。
+  "persona": {
+    "description": ""
+  },
+
   // S4 跨平台身份归一 (P4, 默认关闭 = 走 UserMapper 原路径, 零行为变化)。
   // enabled=true 后入站消息经 IdentityResolver 归一到统一 person_id, 记忆按归一身份聚合;
   // heuristic_enabled=true 时按昵称启发式匹配 (低置信, 默认关防误合并)。
@@ -265,8 +272,9 @@
       "webhook_port": 8443,                    // 官方限制端口 80/443/8080/8443
       "webhook_path": "/qq_official/callback"
     },
-    // 微信 (S7 骨架, 未激活): 走公众号或企业微信官方路径 (个人微信违规不做)。
-    // 骨架阶段 start/stop no-op、send 返回 False, 需 O4 实现节点填充后才可用。
+    // 微信 (O4 激活): 企业微信 (mode="wecom") 已实现 Webhook 回调 + 消息发送;
+    // 公众号 (mode="mp") 仍是骨架。在回调 URL 里填 http://<外网>:<port>/wechat/events。
+    // encoding_aes_key 配置时事件走 AES-256-CBC 加解密 (WXBizMsgCrypt 算法)。
     "wechat": {
       "enabled": false,
       "mode": "wecom",                 // "wecom" 企业微信 | "mp" 公众号
