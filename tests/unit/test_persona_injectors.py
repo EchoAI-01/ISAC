@@ -182,3 +182,83 @@ async def test_assembly_registers_persona_injectors_into_prompt_builder() -> Non
     assert "mood_system" in keys
     assert "expression_style" in keys
     assert "attention_drift" in keys
+
+
+def _find_injector(instance, key: str):
+    for inj in instance.prompt_builder._injectors:  # type: ignore[attr-defined]
+        if inj.key == key:
+            return inj
+    raise AssertionError(f"未找到注入器 key={key!r}")
+
+
+@pytest.mark.asyncio
+async def test_assembly_wires_persona_description_into_base_identity() -> None:
+    """Q2 激活: config.persona.description 接入 BaseIdentityInjector, 不同 Agent
+    的人格文本在 System Prompt 中可辨。"""
+    from isac.memory.pipeline import NoOpMemoryPipeline
+    from isac.provider.llm.stub import StubProvider
+    from isac.provider.manager import ProviderManager
+    from isac.runtime.assembly import assemble_agent
+    from isac.runtime.config import AgentConfig
+
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    instance = await assemble_agent(
+        AgentConfig(agent_id="q2_persona_test", persona={"description": "你是爱丽丝，古灵精怪的猫娘助理。"}),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        },
+    )
+    injector = _find_injector(instance, "base_identity")
+    text = await injector.build(_ctx())
+    assert text == "你是爱丽丝，古灵精怪的猫娘助理。"
+
+
+@pytest.mark.asyncio
+async def test_assembly_base_identity_falls_back_without_persona_description() -> None:
+    """未配置 persona.description 时回落默认文案 (零行为变化)。"""
+    from isac.memory.pipeline import NoOpMemoryPipeline
+    from isac.provider.llm.stub import StubProvider
+    from isac.provider.manager import ProviderManager
+    from isac.runtime.assembly import assemble_agent
+    from isac.runtime.config import AgentConfig
+
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    instance = await assemble_agent(
+        AgentConfig(agent_id="q2_no_persona_test", persona={}),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        },
+    )
+    injector = _find_injector(instance, "base_identity")
+    text = await injector.build(_ctx())
+    assert text == "你是 ISAC，一个智能社交陪伴 AI。"
+
+
+@pytest.mark.asyncio
+async def test_assembly_global_persona_description_used_when_agent_level_absent() -> None:
+    """全局 persona.description 兜底; Agent 级配置存在时优先 Agent 级。"""
+    from isac.memory.pipeline import NoOpMemoryPipeline
+    from isac.provider.llm.stub import StubProvider
+    from isac.provider.manager import ProviderManager
+    from isac.runtime.assembly import assemble_agent
+    from isac.runtime.config import AgentConfig
+
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    instance = await assemble_agent(
+        AgentConfig(agent_id="q2_global_persona_test", persona={}),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {"persona": {"description": "全局默认人设文案"}},
+        },
+    )
+    injector = _find_injector(instance, "base_identity")
+    text = await injector.build(_ctx())
+    assert text == "全局默认人设文案"

@@ -252,7 +252,11 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     gating = GatingSystem(config=config.gating)
 
     prompt_builder = SystemPromptBuilder()
-    prompt_builder.register(BaseIdentityInjector())
+    # Q2 激活: persona.description (Agent 级覆盖全局) 接入身份注入器, 使不同 Agent
+    # 的人格文本在 System Prompt 中可辨; 未配置时两者皆空, 注入器自身回落默认文案
+    # (零行为变化)。
+    _identity_text = config.persona.get("description") or global_config.get("persona", {}).get("description")
+    prompt_builder.register(BaseIdentityInjector(_identity_text))
     # J2: 多模态能力注入器 (默认无授权媒体能力 → 注入空串, 主链路零变化)。
     # model_capabilities_allow 字段将在 J2 实现节点加入 AgentConfig; 当前经 getattr 兜底。
     _media_caps = [c for c in (getattr(config, "model_capabilities_allow", None) or []) if c != "chat"]
