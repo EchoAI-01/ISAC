@@ -6,11 +6,12 @@ import pytest
 
 from isac.agent.hooks import AgentHooks
 from isac.core.events import AgentHookPoint
-from isac.core.types import AgentContext, LLMResponse, TokenUsage
+from isac.core.types import AgentContext, LLMResponse, TokenUsage, ToolCall
 from isac.gateway.models import Session, UserProfile
 from isac.persona.behavior_learner import MAX_PATTERNS, BehaviorLearner
 from isac.persona.manager import PersonaManager
 from isac.persona.mood import MoodEngine
+from isac.persona.mood_tracker import AROUSAL_STEP_PER_TOOL_CALL, MAX_TOOL_CALLS_COUNTED, MoodTracker
 
 
 class TestMoodEngine:
@@ -69,6 +70,141 @@ class TestMoodEngine:
         state = engine.current()
         assert state.valence == 0.0
         assert state.label == "neutral"
+
+
+class TestMoodTracker:
+    """MoodTracker: MoodEngine 生产接入 (Q2 激活)。"""
+
+    def _make_context(self, tool_calls_this_turn: int = 0) -> AgentContext:
+        return AgentContext(
+            session=Session(session_id="s1", user_id="u1", platform="qq"),
+            user_profile=None,
+            current_message=object(),
+            tool_calls_this_turn=tool_calls_this_turn,
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_tool_calls_only_decays(self):
+        """无工具调用: 只 decay, 不额外扰动 (数值同 test_decay_moves_toward_neutral)。"""
+        engine = MoodEngine(decay_rate=0.5)
+        engine.update(valence_delta=1.0, arousal_delta=0.5)  # excited
+        tracker = MoodTracker(engine)
+        response = LLMResponse(content="ok", usage=TokenUsage())
+        await tracker._on_final_response(response, self._make_context())  # noqa: SLF001
+        state = engine.current()
+        assert abs(state.valence - 0.5) < 1e-9
+        assert abs(state.arousal - 0.75) < 1e-9
+        assert state.label == "excited"
+
+    @pytest.mark.asyncio
+    async def test_tool_calls_add_small_arousal_bump(self):
+        """本轮工具调用越多 (读 context.tool_calls_this_turn——FINAL_RESPONSE 触发时
+        response.tool_calls 恒为空, 不能从 response 上取), decay 之后再叠加的
+        arousal 扰动越大 (仍很小幅)。"""
+        engine = MoodEngine()  # decay_rate=0.05, 起点中性 (0.0, 0.5)
+        tracker = MoodTracker(engine)
+        response = LLMResponse(content="ok", usage=TokenUsage())
+        ctx = self._make_context(tool_calls_this_turn=2)
+        await tracker._on_final_response(response, ctx)  # noqa: SLF001
+        state = engine.current()
+        # decay 先把中性态原地不变 (valence=0, arousal=0.5); 再叠加 2 次工具调用扰动
+        assert abs(state.valence - 0.0) < 1e-9
+        assert abs(state.arousal - (0.5 + AROUSAL_STEP_PER_TOOL_CALL * 2)) < 1e-9
+
+    @pytest.mark.asyncio
+    async def test_tool_call_count_capped(self):
+        """单轮工具调用数超过上限时封顶, 避免工具风暴过度推高情绪。"""
+        engine = MoodEngine()
+        tracker = MoodTracker(engine)
+        response = LLMResponse(content="ok", usage=TokenUsage())
+        ctx = self._make_context(tool_calls_this_turn=MAX_TOOL_CALLS_COUNTED + 3)
+        await tracker._on_final_response(response, ctx)  # noqa: SLF001
+        state = engine.current()
+        assert abs(state.arousal - (0.5 + AROUSAL_STEP_PER_TOOL_CALL * MAX_TOOL_CALLS_COUNTED)) < 1e-9
+
+    @pytest.mark.asyncio
+    async def test_register_hooks_fires_on_final_response(self):
+        """经 register_hooks 挂到 AgentHooks 后, FINAL_RESPONSE 真实触发 decay。"""
+        engine = MoodEngine(decay_rate=0.5)
+        engine.update(valence_delta=1.0, arousal_delta=0.5)  # excited
+        tracker = MoodTracker(engine)
+        hooks = AgentHooks()
+        tracker.register_hooks(hooks)
+
+        response = LLMResponse(content="ok", usage=TokenUsage())
+        for hook in hooks.get_hooks(AgentHookPoint.FINAL_RESPONSE):
+            await hook(response, self._make_context())
+
+        state = engine.current()
+        assert state.valence < 1.0  # 已衰减, 不再钉在极值
+
+    @pytest.mark.asyncio
+    async def test_real_loop_drives_arousal_bump_end_to_end(self):
+        """回归防护: 只在单测里手工构造 LLMResponse(tool_calls=[...]) 直调
+        _on_final_response 曾经全绿, 但生产环境 FINAL_RESPONSE 触发时
+        response.tool_calls 恒为空 (isac/agent/loop.py 的 else 分支正是靠
+        "无 tool_calls" 才进入 FINAL_RESPONSE), 那条读法是死代码。这里跑真实
+        ISACAgentLoop (一次工具调用 + 一次最终回复), 证明 arousal 真的被推高。"""
+        from isac.agent.loop import ISACAgentLoop
+        from isac.agent.prompt_builder import SystemPromptBuilder
+        from isac.agent.tools.base import Tool, ToolContext
+        from isac.agent.tools.registry import ToolRegistry
+        from isac.core.types import ToolResult
+
+        class _ToolCallingProvider:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def chat(self, system, messages, tools=None, **kwargs):  # noqa: ANN001, ARG002
+                self.calls += 1
+                if self.calls == 1:
+                    return LLMResponse(
+                        content="",
+                        tool_calls=[ToolCall(id="t1", name="noop", arguments={})],
+                        usage=TokenUsage(total_tokens=1),
+                    )
+                return LLMResponse(content="done", usage=TokenUsage(total_tokens=1))
+
+            def chat_stream(self, *args, **kwargs):  # noqa: ANN002, ANN003
+                raise NotImplementedError
+
+            def get_model_name(self) -> str:
+                return "test"
+
+            def get_capabilities(self):
+                return None
+
+        class _NoopTool(Tool):
+            @property
+            def name(self) -> str:
+                return "noop"
+
+            @property
+            def description(self) -> str:
+                return "noop"
+
+            async def execute(self, context: ToolContext) -> ToolResult:  # noqa: ARG002
+                return ToolResult(content="ok")
+
+        engine = MoodEngine()  # 起点中性 (0.0, 0.5)
+        manager = PersonaManager({}, {}, mood_engine=engine)
+        hooks = AgentHooks()
+        manager.register_hooks(hooks)
+        registry = ToolRegistry()
+        registry.register(_NoopTool())
+        loop = ISACAgentLoop(
+            llm=_ToolCallingProvider(),
+            prompt_builder=SystemPromptBuilder(),
+            hooks=hooks,
+            tools=registry,
+        )
+        ctx = self._make_context()
+        result = await loop.run([{"role": "user", "content": "hi"}], ctx)
+
+        assert result.content == "done"
+        assert ctx.tool_calls_this_turn == 1
+        state = manager.current_mood()
+        assert abs(state.arousal - (0.5 + AROUSAL_STEP_PER_TOOL_CALL)) < 1e-9
 
 
 class TestBehaviorLearner:
@@ -174,3 +310,25 @@ class TestPersonaManager:
         for hook in hooks.get_hooks(AgentHookPoint.FINAL_RESPONSE):
             await hook(response, ctx)
         assert len(profile.behavior_patterns) == 1
+
+    @pytest.mark.asyncio
+    async def test_register_hooks_attaches_mood_tracker(self):
+        """Q2 激活: register_hooks 同时挂上 MoodTracker, FINAL_RESPONSE 后情绪真实衰减。"""
+        engine = MoodEngine()
+        engine.update(valence_delta=1.0, arousal_delta=0.5)  # excited
+        manager = PersonaManager({}, {}, mood_engine=engine)
+        hooks = AgentHooks()
+        manager.register_hooks(hooks)
+
+        response = LLMResponse(content="hello", usage=TokenUsage())
+        ctx = AgentContext(
+            session=Session(session_id="s1", user_id="u1", platform="qq"),
+            user_profile=None,
+            current_message=object(),
+        )
+        for hook in hooks.get_hooks(AgentHookPoint.FINAL_RESPONSE):
+            await hook(response, ctx)
+
+        state = manager.current_mood()
+        assert abs(state.valence - 0.95) < 1e-9  # 1.0 * (1 - 0.05)
+        assert abs(state.arousal - 0.975) < 1e-9  # 0.5 + (1.0 - 0.5) * (1 - 0.05)

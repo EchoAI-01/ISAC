@@ -6,4 +6,14 @@ TEXTS: dict[str, str] = {
     "attention_drift.active": "Drift level: active. Naturally associate to related topics while staying coherent.",
     "attention_drift.scattered": "Drift level: scattered. Your mind hops between related topics frequently.",
     "attention_drift.wild": "Drift level: wild. Rich, jumpy associations like a real human's wandering thoughts.",
+    # Q2: mood state prompt text (injected by MoodInjector; MoodState.label maps to a key)
+    "mood.neutral": "Mood is neutral; reply calmly and evenly.",
+    "mood.happy": "Feeling happy; replies carry a light, cheerful tone.",
+    "mood.excited": "Very excited and energetic; express strong enthusiasm.",
+    "mood.calm": "Feeling calm; tone is slow and unhurried.",
+    "mood.angry": "Slightly irritated; replies carry a restrained displeasure.",
+    "mood.sad": "Feeling down; tone is heavier.",
+    "mood.upset": "Mildly upset; replies carry light impatience or complaint.",
+    "mood.tense": "Tense and uneasy; replies are more abrupt or guarded.",
+    "mood.bored": "Bored; replies are perfunctory and detached.",
 }

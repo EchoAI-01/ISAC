@@ -17,6 +17,7 @@ from isac.channel.model import ISACMessage
 from isac.channel.registry import ChannelRegistry
 from isac.core.constants import INTERAGENT_PLATFORM
 from isac.core.events import EventType
+from isac.core.policy import EnableMatrix
 from isac.core.types import ProgressEvent
 from isac.gateway.event_bus import EventBus
 from isac.gateway.identity.resolver import IdentityResolver
@@ -399,8 +400,8 @@ def _register_channel_adapters(channel_registry: ChannelRegistry, global_config:
         from isac.channel.adapters.webchat.adapter import WebChatAdapter
 
         channel_registry.register(WebChatAdapter(webchat_config))
-    # O4 骨架适配器 (feishu/wechat/qq_official): start/stop no-op、send 返回 False,
-    # 连接与收发待 O4 实现节点填充。仅在显式 enabled 时注册, 默认不接入 → 零行为变化。
+    # O4 适配器: 飞书/企业微信已激活真实 Webhook + 出站消息; 公众号 (wechat mode="mp") 仍骨架。
+    # 仅在显式 enabled 时注册, 默认不接入 → 零行为变化。
     feishu_config = channels_config.get("feishu")
     if feishu_config and feishu_config.get("enabled"):
         from isac.channel.adapters.feishu.adapter import FeishuAdapter
@@ -908,6 +909,25 @@ async def _noop_start() -> None:
     return None
 
 
+def _build_plugin_enable_matrix(services: dict[str, Any] | None) -> EnableMatrix:
+    """Q3: 从 global_config 构造 PluginManager 的 EnableMatrix (Agent ∩ Channel ∩ 全局)。
+
+    从 shared services 的 global_config 读取 policy 与 channels.matrix, 构造全局
+    EnableMatrix。未注入 global_config 时返回空矩阵 (默认放行, 向后兼容)。
+    """
+    global_cfg = services.get("global_config") if isinstance(services, dict) else None
+    if not isinstance(global_cfg, dict):
+        return EnableMatrix()
+    channel_overrides: dict[str, dict] = {}
+    for platform, platform_cfg in (global_cfg.get("channels", {}) or {}).items():
+        if isinstance(platform_cfg, dict) and "matrix" in platform_cfg:
+            channel_overrides[platform] = platform_cfg["matrix"]
+    return EnableMatrix(
+        global_policy=global_cfg.get("policy", {}) or {},
+        channel_overrides=channel_overrides,
+    )
+
+
 async def _close_storage_stores(services: dict[str, Any]) -> None:
     """C1: shutdown 时关闭 VectorStore/GraphStore 持久连接, 防 WAL/SHM 残留 + FD 泄漏。
 
@@ -1199,7 +1219,14 @@ async def _register_control_plane(
         # 失败不阻塞控制面启动: 加载报告会作为日志输出, 单个插件加载错误由 PluginManager
         # 自身错误隔离 (CODE_REVIEW_REPORT.md #27)。
         plugin_config = (control_config.get("plugins", {}) or {}) if isinstance(control_config, dict) else {}
-        plugin_manager = PluginManager(plugin_config)
+        # Q3 激活: PluginManager 接入 EnableMatrix —— 此前 is_enabled_for 默认放行
+        # (enable_matrix=None → True), 部署方无法按 Agent/Channel/全局矩阵控制插件
+        # 启用。从 global_config 构造全局 EnableMatrix 注入, 让插件加载后也能参与
+        # 矩阵决策 (call_on_load 阶段先全部加载; 真实启用判定在 per-Agent 调用
+        # is_enabled_for 时按 Agent 配置 + Channel + 全局三路取交集)。
+        plugin_manager = PluginManager(
+            plugin_config, enable_matrix=_build_plugin_enable_matrix(services)
+        )
         # H2: 隔离插件跑在子进程 (daemon), 优雅关闭时显式终止, 不留残余子进程。
         runtime.register_lifecycle("plugins", _noop_start, plugin_manager.shutdown)
         plugins_dir = Path(control_config.get("plugins_dir", "plugins"))

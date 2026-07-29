@@ -110,6 +110,12 @@ class SubAgentRun:
     # Fix-10: 创建该子任务的父 Agent, 用于跨 Agent 鉴权 (_authorize) 与
     # Control API 按 agent_id 过滤 (routes_subagent.py::list_subagent_runs)。
     parent_agent_id: str = ""
+    # Q5: 此前 SubAgentResult.usage 与 evidence_refs 在 _run_task 里被丢弃——
+    # 只把 result.summary 存进 result_summary, usage/evidence_refs 完全没落
+    # 到 run 上, 控制面拿不到 (routes_subagent 只能查到 summary)。现在保留,
+    # 控制面 list_subagent_runs / get_status 都能读到。
+    usage: TokenUsage = field(default_factory=TokenUsage)
+    evidence_refs: list[str] = field(default_factory=list)
 
 
 @dataclass

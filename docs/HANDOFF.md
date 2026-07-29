@@ -8,7 +8,7 @@
 
 ## 0. 先读这一节(前置约定)
 
-**当前状态 (2026-07-28 更新)**:**1362 单测通过、ruff/mypy 全绿**。骨架轮 S1-S7 中 **S1-S5+S7 已激活** (真实业务逻辑 + 单测 + main/server 注入 + 主程序冒烟); **S6 视频 Provider 用户决定暂缓** (`generate` 仍抛 NotImplementedError, 待端点选型二次确认); S7 微信适配器用户决定本轮不做 (保持骨架)。`tests/browser/` 2 个 Playwright 用例因环境未装浏览器报错,与业务代码无关,本地可 `--ignore=tests/browser` 跳过。
+**当前状态 (2026-07-29 更新)**:**1526 单测函数通过 (133 文件)、ruff/mypy 全绿**。骨架轮 S1-S7 中 **S1-S5+S7 已激活** (真实业务逻辑 + 单测 + main/server 注入 + 主程序冒烟); **S6 视频 Provider 用户决定暂缓** (`generate` 仍抛 NotImplementedError, 待端点选型二次确认); **S7 微信 wecom 企业微信模式实为已实现并注册** (2026-07-29 代码复审确认: `adapter.py` start 启 uvicorn webhook + AES 验签 + send 真实发送, `main.py:410` enabled-gated 注册), 仅 mp 公众号模式仍骨架。`tests/browser/` 2 个 Playwright 用例因环境未装浏览器报错,与业务代码无关,本地可 `--ignore=tests/browser` 跳过。**2026-07-29 全量代码复审另发现 Q2-Q6 多为「部分接线」而非「未开始」** (Q2 三注入器已注册待 mood 回路+persona 文本、Q3 EnableMatrix+hooks 已接待 per-Agent 桥接/MCP/CLI、Q4 6 媒体工具已注册待出入站/计量、Q5 Extensions/SSE/Usage 已接待 config/Webhook、Q6 大部分完成仅剩背景摘要+evidence_refs), 详见 `PROGRESS.md` 与 `DEVELOPMENT_PLAN.md §四 Q`。
 
 **激活进度一览 (2026-07-28)**:
 - ✅ S1 主动任务生产者 (DateReminder/TopicFollowup/MemoryAssociation) — `__call__` async + 真实产出逻辑 + `_build_task_producer` 注入 memory (16 例单测)
@@ -19,9 +19,9 @@
 - ⏸ S6 视频 Provider — 用户决定暂缓, `generate` 保持 NotImplementedError
 - ✅ S7 飞书适配器 — Webhook 入站 (URL 校验 + 明文/加密两种模式, AES-256-CBC 解密字节序核对自 open.feishu.cn 官方文档) + 出站 (tenant_access_token 缓存) (14 例)
 - ✅ S7 QQ 官方适配器 — Ed25519 验签字节序核对自 bot.q.qq.com 官方文档 (seed=secret 重复双倍到 32 字节) + 三类消息事件 (AT/GROUP_AT/C2C) 规范化 + 出站 (access_token 缓存) (19 例)
-- ⏸ S7 微信适配器 — 用户决定本轮不做, 保持骨架
+- ✅ S7 微信适配器 (wecom 企业微信) — 2026-07-29 复审确认已实现并注册 (webhook + AES 验签 + access_token + send); mp 公众号模式仍骨架
 
-下一位开发者若要继续: S6 选端点 (Sora/Runway/Kling/自托管) 后仿 `image_gen` 实现 POST 生成 → 轮询/等待 → 结果写 ArtifactStore → 返回 ArtifactRef; 微信适配器按 `isac/channel/adapters/wechat/adapter.py` 顶部 docstring 的 WeCom/公众号机制备忘接入; S5 Agent 工具入口属 P5 决策, 接入需评估是否新增 Tool + assembly 注册 + engine 注入到 agent services。
+下一位开发者若要继续: S6 选端点 (Sora/Runway/Kling/自托管) 后仿 `image_gen` 实现 POST 生成 → 轮询/等待 → 结果写 ArtifactStore → 返回 ArtifactRef; 微信 mp 公众号模式按 `isac/channel/adapters/wechat/adapter.py` 顶部 docstring 机制备忘接入 (wecom 企业微信已实现); S5 Agent 工具入口属 P5 决策, 接入需评估是否新增 Tool + assembly 注册 + engine 注入到 agent services。
 
 **三态标记**(见 `DEVELOPMENT_PLAN.md` §二):
 - `[ ]` 未开始 / 仅骨架桩
@@ -124,7 +124,7 @@ uv run python -m pytest tests/unit tests/integration -q   # 跳过 tests/browser
 - **开启方式**:`channels.feishu.enabled` / `channels.wechat.enabled` / `channels.qq_official.enabled`。各 adapter 文件顶部 docstring 已写清入站/出站机制与 config 示例。
 - **待填**(各 `start`/`send` 的 `TODO(O4)`):
   - **feishu**:入站事件订阅(长连接 lark-oapi WS 或 Webhook challenge/验签/解密)→ 规范化 `ISACMessage` → `self.on_message`;出站 `POST /open-apis/im/v1/messages`(tenant_access_token 缓存续期)。
-  - **wechat**:走公众号或企业微信(个人微信违规不做);回调服务端(Token 签名 + AESKey 解密)入站;企业微信 `message/send` 出站。
+  - **wechat**:**wecom 企业微信模式已实现** (回调服务端 Token 签名 + AESKey 解密入站 + `message/send` 出站, 见 `adapter.py`); 仅剩 mp 公众号模式待接 (个人微信违规不做)。
   - **qq_official**:QQ 官方机器人网关(WS 鉴权 + 心跳 + resume + intents)或 Webhook(Ed25519 验签)入站;OpenAPI 频道/群 messages 出站。
 - **依赖**:惰性导入各平台 SDK,未安装时给友好 `ImportError`;新增可选依赖到 `pyproject.toml [project.optional-dependencies]`(仿 `onebot = [...]`)。
 - **QQ 说明(重要,别重复造轮子)**:QQ 经 **OneBot v11 连 NapCat** 已是**完整实现**——`isac/channel/adapters/onebot/adapter.py`(`platform_name="qq"`,反向 WebSocket,`channels.onebot.enabled`)。`qq_official` 是**另一条**官方机器人 API 路径(`platform_name="qq_official"`,与 `qq` 并存不撞键),一般二选一启用。

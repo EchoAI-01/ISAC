@@ -194,6 +194,10 @@ class AgentContext(RuntimeContext):
     budget: Budget = field(default_factory=Budget)
     iteration: int = 0
     interrupt_requested: bool = False
+    # Q2 激活: 本轮(FINAL_RESPONSE 前的所有迭代)累计工具调用数, 供 MoodTracker
+    # 等 FINAL_RESPONSE hook 读取"活跃度"信号——FINAL_RESPONSE 触发时 response
+    # 本身恒无 tool_calls (那正是进final分支的条件), 不能从 response 上取。
+    tool_calls_this_turn: int = 0
     reasoning_content: str = ""
     available_prompt_tokens: int = 8000
     streaming: bool = False

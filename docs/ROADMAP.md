@@ -16,9 +16,9 @@ ISAC 的能力分六个阶段推进。阶段 0/1 是"地基";阶段 1-4 各节�
 | **阶段 1** | 拟人化地基 | L1-L5 | ✅ 已接线 (P1, 2026-07-27):debounce/wait/打断/主动任务/恢复全部进主链路 |
 | **阶段 2** | 协作深化 | M1-M2 (路由 Mesh) | ✅ 已接线 (P2, 2026-07-27):observer/candidate + 4 A2A 工具真实可用 |
 | **阶段 3** | 记忆深化 | N1-N3 (MemoryItem/治理/身份) | 🟡 N2 已接线;**S3 激活图谱召回 (mentioned_in 边 + Reranker provider 注入, 2026-07-28)**、**S4 激活身份归一控制面 (bind/conflicts/resolve + main/server 注入, 2026-07-28)**;N1 MemoryItem 边界文档化 (热路径继续用 MemoryHit) |
-| **阶段 4** | 企业化与平台扩展 | O1-O5 (多租户/隔离/编排/平台/视频) | 🟡 O1 已接线;**S5 激活 Workflow 控制面 (action_handler + 声明式加载, 2026-07-28;剩 Agent 工具入口留 P5 决策)**;**S7 激活飞书 + QQ 官方 (Ed25519/AES 字节序核对自官方文档, 2026-07-28)**;微信保持骨架;O2/O3 剩 Agent 工具入口;O5 视频端点选型暂缓 (S6) |
+| **阶段 4** | 企业化与平台扩展 | O1-O5 (多租户/隔离/编排/平台/视频) | 🟡 O1 已接线;**S5 激活 Workflow 控制面 (action_handler + 声明式加载, 2026-07-28;剩 Agent 工具入口留 P5 决策)**;**S7 激活飞书 + QQ 官方 (Ed25519/AES 字节序核对自官方文档, 2026-07-28)**;微信 wecom 已实现 mp 骨架 (2026-07-29 校正);O2/O3 剩 Agent 工具入口;O5 视频端点选型暂缓 (S6) |
 | **阶段 5** | 主链路接线与激活 | P0-P5 | 🟡 P0/P1/P2 完成 (2026-07-27);**P3/P4/P5 子范围激活 (S3/S4/S5, 2026-07-28)**:图谱召回/身份归一控制面/Workflow action_handler + 声明式加载;剩 P3 通用实体关系图、P5 O1/O2 routes_tenants/loader 隔离模式、Agent 工具入口 |
-| **阶段 6** | MVP 收尾 | Q0-Q6 | 🟡 Q0/Q1 完成 (2026-07-27);Q2-Q6 未开始 |
+| **阶段 6** | MVP 收尾 | Q0-Q6 | 🟡 Q0/Q1/Q2 完成 (Q2 于 2026-07-29 补齐接线);**Q3-Q6 部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)** |
 
 图例: ✅ 已完成(交付) · 🟡 核心实现完成待接线 / 进行中 · ⬜ 未开始(仅设计蓝图)
 
@@ -80,7 +80,7 @@ ISAC 的能力分六个阶段推进。阶段 0/1 是"地基";阶段 1-4 各节�
 | **O1 多租户/组织隔离** | Agent/记忆/配置/用量按 organization 隔离 | 跨租户不可见;控制面按租户鉴权 | 🟡 核心 + 单测完成,主链路待接线(P 节点) |
 | **O2 插件进程级隔离** | 插件从进程内兼容层升级为进程级隔离 | 资源与故障不影响主进程;插件崩溃可恢复 | 🟡 核心 + 单测完成,主链路待接线(P 节点) |
 | **O3 Workflow 编排** | 声明式多步骤编排 (串/并/条件/重试),步骤可跨 Agent/工具 | 执行可观测、可恢复 | 🟡 **S5 激活 (2026-07-28)**:action_handler (tool: 路由 ToolRegistry.execute) + 声明式加载 + condition_evaluator;控制面 routes_workflows 已挂载;剩 Agent 工具入口 (P5 决策项) |
-| **O4 平台扩展** | 新增微信/Slack/飞书等 Channel 适配器 | 复用 Channel 抽象;媒体/富文本按平台声明适配 | 🟡 **飞书 + QQ 官方激活 (S7, 2026-07-28)**:飞书 Webhook (AES-256-CBC 解密字节序核对自 open.feishu.cn 官方文档) + 出站 (tenant_access_token 缓存);QQ 官方 Ed25519 验签字节序核对自 bot.q.qq.com 官方文档 + 三类消息事件 (AT/GROUP_AT/C2C) + access_token 缓存;微信保持骨架;不引入 lark-oapi/botpy SDK, 用 httpx+uvicorn+cryptography 既有依赖 |
+| **O4 平台扩展** | 新增微信/Slack/飞书等 Channel 适配器 | 复用 Channel 抽象;媒体/富文本按平台声明适配 | 🟡 **飞书 + QQ 官方激活 (S7, 2026-07-28)**:飞书 Webhook (AES-256-CBC 解密字节序核对自 open.feishu.cn 官方文档) + 出站 (tenant_access_token 缓存);QQ 官方 Ed25519 验签字节序核对自 bot.q.qq.com 官方文档 + 三类消息事件 (AT/GROUP_AT/C2C) + access_token 缓存;微信 wecom 已实现 (webhook+AES验签+send) mp 公众号骨架 (2026-07-29 校正);不引入 lark-oapi/botpy SDK, 用 httpx+uvicorn+cryptography 既有依赖 |
 | **O5 Video Provider** | 视频理解/生成 Provider 真实接入 | 经能力目录与 ModelRouter 选择;结果走 ArtifactStore | 🟡 注册挂点就位(骨架轮 S6:`kind="video_gen"` default-off;`generate` 仍抛 NotImplementedError,端点暂缓选型待二次确认) |
 
 ### 阶段 6 — MVP 收尾 (Q)
@@ -107,7 +107,7 @@ ISAC 的能力分六个阶段推进。阶段 0/1 是"地基";阶段 1-4 各节�
 | **M-2 会协作** | 旁听/候选路由 + Agent 间协作动作 | M1-M2 + P2 接线验收 |
 | **M-3 会记住** | 统一记忆 + 治理 + 跨平台身份 | **S3 激活 (2026-07-28)**:图谱召回 mentioned_in 边 + Reranker provider 注入;**S4 激活 (2026-07-28)**:身份归一控制面 routes_identity (bind/conflicts/resolve) + main/server 注入;**S2 激活 (2026-07-28)**:MemoryConsolidator 真实去重/剪枝/画像归纳;剩 P3 通用实体关系图、P4 集成测试 |
 | **M-4 可商业化** | 多租户 + 隔离 + 编排 + 多平台 | **S5 激活 (2026-07-28)**:Workflow action_handler (tool: 路由) + 声明式加载;**S7 激活 (2026-07-28)**:飞书 + QQ 官方平台适配器;剩 O1 routes_tenants / O2 loader 隔离可选模式 / P5 Agent 工具入口;视频 Provider (O5/S6) 端点暂缓选型 |
-| **M-MVP 最小可用产品**(新增) | 开箱可聊(WebChat 零依赖,Q0)+ 越聊越熟(记忆写入闭环,Q1)+ 拟人化基线可用(等待/打断/主动,P0/P1)+ 双 Agent 协作(P2) | ✅ **准入线代码达成 (2026-07-27)**:P0-P2 + Q0-Q1 全部完成并集成测试通过 (MVP Review 已启动)。**2026-07-28 骨架轮 S1-S5+S7 激活**:主动任务生产者/MemoryConsolidator/图谱召回/身份归一控制面/Workflow action_handler/飞书+QQ官方平台 全部填真实业务逻辑;S6 视频 Provider 暂缓。人设可辨(Q2)/插件与 MCP 生态(Q3)/多模态(Q4)/WebUI 无假数据(Q5)/SubAgent 用量真实(Q6)延后到 MVP+1,延后范围已在 AGENTS.md/PROGRESS.md 如实标注 |
+| **M-MVP 最小可用产品**(新增) | 开箱可聊(WebChat 零依赖,Q0)+ 越聊越熟(记忆写入闭环,Q1)+ 拟人化基线可用(等待/打断/主动,P0/P1)+ 双 Agent 协作(P2) | ✅ **准入线代码达成 (2026-07-27)**:P0-P2 + Q0-Q1 全部完成并集成测试通过 (MVP Review 已启动)。**2026-07-28 骨架轮 S1-S5+S7 激活**:主动任务生产者/MemoryConsolidator/图谱召回/身份归一控制面/Workflow action_handler/飞书+QQ官方平台 全部填真实业务逻辑;S6 视频 Provider 暂缓。人设可辨(Q2, **已于 2026-07-29 完成接线**)/插件与 MCP 生态(Q3)/多模态(Q4)/WebUI 无假数据(Q5)/SubAgent 用量真实(Q6)延后到 MVP+1。**2026-07-29 代码复审校正 + Q2 落地**:Q3-Q6 均已部分接线而非未开始 (Q3 EnableMatrix+hooks 已接待 per-Agent 桥接/MCP、Q4 6 工具已注册待出入站/计量、Q5 Extensions/SSE/Usage 已接待 config/Webhook、Q6 大部分完成),微信 wecom 亦已实现;详见 PROGRESS.md 与 DEVELOPMENT_PLAN §四 Q |
 
 ## 五、原则
 
