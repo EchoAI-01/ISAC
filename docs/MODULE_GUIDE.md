@@ -38,6 +38,10 @@
 
 **接线是第二道坎(实现 ≠ 交付)**: scaffolding 之后即便填充了业务逻辑 + 单测,仍只是 `[~]` **实现完成待接线** —— 若不把能力接入生产主链路 (manager / loop / assembly / pipeline / gateway 的真实调用点),它就是"实现了却激活不了"的孤立代码 (ISAC 曾出现 L2-L5/M/N/O1-O3 全部实现却因未接线而无法工作)。**必须再完成主链路接线 + 集成验证才算 `[x]` 交付**。为避免接线待办散落各节点、导致功能各自孤立无法协同,应把它们统一收敛为一个成体系的接线节点组 (见 DEVELOPMENT_PLAN.md §四 **P 主链路接线与激活**),按依赖顺序整体推进,而非各写各的。
 
+**触发条件是第三道坎(单测直调 ≠ 生产触发路径有效)**: 接线之后还有一类隐蔽失效 —— 代码挂上了正确的 hook,但**该 hook 的触发条件与代码读取的数据互斥**,于是生产路径恒不生效,而"手工构造入参直调被测方法"的单测却全绿。真实案例 (Q2 `MoodTracker`, 2026-07-29): 情绪扰动挂在 `FINAL_RESPONSE` 上并读 `response.tool_calls` 计工具数 —— 但 `agent/loop.py` 恰恰是在"`response.tool_calls` 为空"时才走到 `FINAL_RESPONSE` 分支,生产里该值恒为空,扰动分支是死代码;单测因为自己构造了 `LLMResponse(tool_calls=[...])` 直调 hook 而通过。修法: 数据改从跨轮累加的 `context.tool_calls_this_turn` 读,并补一条**跑真实 `ISACAgentLoop` 的端到端回归测试**。
+
+> 规则: 给 hook / injector / 回调写测试时,除了直调被测方法,**必须至少有一条测试经由真实触发者** (`loop.run` / `manager.process_message` / `pipeline.search`) 驱动。断言"这个函数逻辑对"不等于断言"生产会以这种入参调用它"。
+
 ## 三、分层与依赖规则
 
 新模块必须遵守 [DEVELOP.md](./DEVELOP.md) 1.2 的单向依赖链:

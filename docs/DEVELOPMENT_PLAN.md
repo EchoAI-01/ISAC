@@ -812,6 +812,138 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 ---
 
+### T 开箱可用轮 (2026-07-31 制定, **最高优先级, 先于 R**)
+
+> **为什么新增这一组**: 2026-07-31 首次做**真机部署冒烟**(此前所有轮次的验收都只跑单测 + 读文档),结果推翻了 2026-07-29 "v0.9 MVP 已达成"的结论 —— **按 README 拷 `config.sample.jsonc` 启动后,发消息永远收不到回复,且日志里没有任何错误**。这类缺陷单测抓不到(单测里门控被显式配置或绕过),只有真机走一遍用户旅程才会暴露。
+>
+> **目标标准变更**: 从"模块完整度"(补内部接线)改为"**产品可用度**"—— 对标 AstrBot / MaiBot:**部署完就能运行**。功能广度(原 R1-R6)在主干可用之前没有意义:一个连私聊都不回的系统,补多模态毫无价值。
+
+**2026-07-31 真机冒烟实证**(复现命令: 拷 `config.sample.jsonc` 到干净目录 `data/config.jsonc` → `python -m isac` → `POST /webchat/send` → `GET /webchat/poll`):
+
+| # | 缺陷 | 证据 | 严重度 |
+|---|------|------|--------|
+| 1 | **开箱发消息永不回复** | 私聊"你好"→ `{"replies": []}`。日志: `门控评分 score=30.0 threshold=80` → `门控未触发 kind=wait`。根因 `gating/system.py:174` 强制触发条件写作 `has_at or (is_private and has_mention)` —— 私聊被额外要求"必须提及机器人名",而私聊本身就是对 Bot 说话;`reply_necessity` 只给 private 记 40 分 < 阈值 80 → 静默 WAIT | **P0 阻断** |
+| 2 | **消息被吞且零反馈** | 用户端只得 `{"status":"ok"}` + 空 replies;服务端日志无 error/warning(连 LLM 都没调到)。用户无法判断是自己配错还是程序坏了 | **P0 阻断** |
+| 3 | **WebUI 开箱不可用** | `config.sample.jsonc` 的 `control.enabled: false` → 无任何管理界面(AstrBot 的核心体验是开箱 WebUI + 首登向导) | P1 |
+| 4 | **必须手写 JSONC 才能启动** | 无内置默认配置,必须拷 sample 并手改 `api_key: "sk-your-key"` 占位符;AstrBot 默认配置内置于 `core/config/default.py`,零文件即可跑 | P1 |
+
+**对标基线**(AstrBot `/Users/chen/ai/AI Agent/AstrBot`、MaiBot `/Users/chen/ai/AI Agent/MaiBot` 代码取证):AstrBot **WebChat 适配器无条件实例化并启动**(`core/platform/manager.py:100-102`)、默认配置内置代码、首登强制设密码(`default.py:252-256` + `auth_service.py:115-125`)、无 key 照常启动且 WebUI 可用、插件市场一键装 + 热重载;MaiBot 有 `/health`(`webui/routes.py:128`)、401 映射中文提示、配置自动升级迁移。
+
+**验收铁律(新增, 适用于 T 与其后所有节点)**：**任何节点声明完成,必须附真机部署证据**(命令 + 实际输出),不接受"单测通过"作为可用性证明。单测证明"函数逻辑对",真机才证明"用户能用"。参见 `MODULE_GUIDE.md` §二"第三道坎"。
+
+- [ ] **T1 开箱能对话**(P0 阻断, 下一步立即做)
+  - **目标**：让"部署 → 发消息 → 收到回复"这条最短路径无条件走通。
+  - **验收**：①`gating/system.py` 私聊无条件强制触发(`has_at or is_private`),不再额外要求 `has_mention`;群聊行为不变(仍需 @/提及/评分);②消息被门控 WAIT / 被 debounce 弃权 / 无可用 Provider 时**不得零反馈** —— 至少 WARNING 级日志说明原因,面向用户侧按人设给出可读提示或明确的"未回复原因"可查;③未配置有效 `api_key`(含 `sk-your-key` 占位符)时启动即 WARNING 提示"去哪配",调用失败映射为可操作提示而非静默;④**真机验收**:干净目录 + 默认配置启动 → 发"你好" → 收到回复。
+  - **产出**：门控私聊修复、无回复原因可观测、Provider 缺失/占位 key 检测与提示、真机冒烟脚本(纳入 CI 或 `scripts/`)、回归测试(经真实 `manager.process_message` 驱动,不是直调 gating)。
+  - **依赖**：无。
+  - **当前**：未开始。
+
+- [ ] **T2 零配置启动**(对标 AstrBot 默认配置内置)
+  - **目标**：不写任何配置文件也能启动并对话,`config.sample.jsonc` 降级为"可选覆盖参考"。
+  - **验收**：默认配置内置代码(仿 AstrBot `core/config/default.py`,与 `config_schema.py` 共用一份 schema);首启自动创建 `data/` 及子目录;无 `data/config.jsonc` 时不再依赖 StubProvider 兜底的隐式行为,而是明确的"未配置模型 → 引导去配"路径;占位符 key 视为未配置。
+  - **依赖**：T1。
+  - **当前**：未开始。
+
+- [ ] **T3 WebUI 开箱可用 + 首登向导**
+  - **目标**：装完打开浏览器就能管理,配置不用手写 JSONC。
+  - **验收**：`control.enabled` 默认 true 且默认仅绑 `127.0.0.1`;**首次登录强制设置管理员密码**(禁止硬编码默认密码,对标 AstrBot `password_change_required` + `/setup`);CLI `isac password reset` 兜底;Agent/Channel/Provider/路由等主要配置可经 WebUI 表单创建与修改(schema 驱动),不需手工编辑文件;配置热更新生效。
+  - **依赖**：T1、G(控制面已实现)、J3(WebUI v2 已实现)。
+  - **当前**：未开始。
+
+- [ ] **T4 错误可诊断**
+  - **目标**：出问题时用户知道"哪儿错了、去哪修",而不是看栈或看不到任何东西。
+  - **验收**：LLM 401/402/429/连接失败映射为可操作中文提示,**且提示里引用的配置路径必须是当前真实路径**(MaiBot 的反面教材:提示指向已过时的 `/config/model_list.toml`);新增 `/health` 端点(对标 MaiBot `webui/routes.py:128`)返回各子系统状态;WebUI 实时日志台;消息在链路各环节被丢弃/延迟/等待均可观测。
+  - **依赖**：T3(日志台挂 WebUI)。
+  - **当前**：未开始。
+
+- [ ] **T5 真实 IM 接入验收**(需用户提供凭据/环境)
+  - **目标**：把"适配器有单测"升级为"真机能收发"。
+  - **验收**：OneBot/NapCat 真实账号跑通(私聊回复 + 群聊 @ 触发 + 富媒体降级);WebUI 显示各平台连接状态实时回显;飞书 / QQ 官方 / 企业微信按用户提供的凭据逐个真机联调(此前只有字节序核对与单测,**从未真机验证**);真人连续对话 N 轮无异常栈、无消息丢失。
+  - **依赖**：T1-T4、O4(适配器已实现)。
+  - **当前**：未开始。
+  - **备注**：需要外部账号与回调公网地址,**开工前需与用户确认可用凭据与联调窗口**。
+
+- [ ] **T6 插件市场与热重载**(生态可用性, 对标 AstrBot)
+  - **目标**：插件"能装、能用、免重启",而不是"放进目录但不触发"。
+  - **验收**：插件市场列表 + 一键安装(市场 / Git / URL / 上传)+ 热重载免重启 + 失败插件单独列出可重试(对标 AstrBot `api/plugins.py:578-593,502,534,565,820,1064`)。
+  - **依赖**：**R3(插件桥接激活)必须先完成** —— 否则装了也不触发,是假功能。
+  - **当前**：未开始。
+
+- [ ] **T7 分发、运维与长跑验证**
+  - **目标**：让别人能照文档在自己机器上跑起来并长期运行。
+  - **验收**：`docker compose up` 一键(单服务 + 仅暴露 WebUI 端口 + 一个 `data` 卷,对标 AstrBot `compose.yml`);`pip`/`uv` 单包安装 3 步命令可用;配置版本自动升级迁移(对标 MaiBot `config_upgrade_hooks.py`);备份/导出;**24h soak test** 验证无内存/连接/任务泄漏;`docs/` 快速开始 5 分钟跑通(由未接触过项目的人按文档复现)。
+  - **依赖**：T1-T4。
+  - **当前**：未开始。
+
+---
+
+### R 功能广度轮 (2026-07-29 制定, **2026-07-31 降级到 T 之后**)
+
+**目标**：补齐 `REQUIREMENTS.md` 十二条里仍缺的实现 + 把 Q3-Q6 / P3-P5 的剩余接线做完。
+
+> **优先级说明 (2026-07-31)**: R 节点组原本被排在最前,但真机冒烟证明主干尚不可用 —— 已整组降级到 **T 之后**。其中 **R3(插件与 MCP 桥接)是 T6 插件市场的前置**,建议紧随 T 之后先做。
+
+**发布门重定义**(2026-07-31 修订, 准入清单见 [ROADMAP.md](./ROADMAP.md) 四、里程碑):
+
+| 版本 | 准入 | 状态 |
+|------|------|------|
+| ~~v0.9 MVP (P0-P2+Q0-Q1+Q2)~~ | ~~已达成~~ | ❌ **2026-07-31 推翻** —— 内部能力确实已接线,但真机部署后**无法对话**,不构成"最小可用产品" |
+| **v1.0 可对话** | T1 + T2 | 🔜 装上就能聊(真 MVP) |
+| **v1.0 可管理** | + T3 + T4 | 🔜 WebUI 开箱 + 可诊断 |
+| **v1.0 可接入** | + T5 | 🔜 真实 IM 跑通 |
+| **v1.0 可扩展** | + R3 + T6 | 🔜 插件生态真实可用 |
+| **v1.0 GA 正式版** | + T7 + R1/R2/R4/R5/R6 + R7 | 🔜 需求全覆盖 + 分发运维 + 发布准入 |
+
+**节奏假设**:1 个"开发轮" ≈ 3-7 个子项 + 单测 + **真机验证** + 文档同步 ≈ 1 个工作日。**"装上能聊"约 1-2 轮;"可部署可管理"约 4-5 轮;GA 约 13-16 轮**(不含 T5 真实凭据联调与 T7 24h soak 的等待时间)。
+
+依赖顺序：T1 → T2 → T3 → T4 → T5;R3 → T6;T7 依赖 T1-T4;R1/R2/R4/R5/R6 相互独立可并行插入;R7 必须最后。
+
+- [ ] **R1 多模态出入站闭环**(收敛 Q4;用户可见价值最高)
+  - **目标**：让"生成的图/语音真的发得出去、用户发来的媒体真的用得上、多模态用量真的查得到"。
+  - **验收**：`_send_reply` 扫描回复中 `artifact_id` 经 `MediaResolver.resolve_for_channel` 转 Channel segment 发送;入站媒体下载落盘 `data/uploads/` + `MediaNormalizer` 白名单扩展 + 生成合法 `media_uri`;`_MediaToolBase`/`EmbeddingManager`/`Reranker` 接入 `UsageRecorder` 6 个多模态 `record_*`;`data/pricing.jsonc` 价目表加载 + `ModelUsageEvent.provider` 与价目表 key 对齐;`AgentConfig` 增 `model_capabilities_allow` 字段并映射工具可见性。
+  - **依赖**：J1/J2(已实现)、Q4 现状(6 工具已注册)。
+  - **当前**：未开始。
+
+- [ ] **R2 控制面与 SubAgent 收尾**(收敛 Q5 + Q6)
+  - **目标**：消除 WebUI/控制面剩余占位与 SubAgent 数据失真。
+  - **验收**：新增 `GET /agents/{id}/config` 返回全量配置 + 真实 `revision`,WebUI `loadConfigForEdit` 改用它(乐观锁真实生效);SubAgent 任务表传真实 `agent_id`(修 `app.js` 硬编码 `_`);补 `routes_webhooks` + `main` 构造 `WebhookManager` 订阅 `EventBus`;`isac/control/mcp_server.py` 补生产启动点 + 补齐声明未实现的工具;`delegate_task` 背景摘要经 `ContextEnvelopeBuilder` 真传子 Agent;子任务 `evidence_refs` 真实生成。
+  - **依赖**：J3/J4/G2/G3(均已实现)。
+  - **当前**：未开始。
+
+- [ ] **R3 插件与 MCP 生态激活**(收敛 Q3;工作量最大)
+  - **目标**：让插件与 MCP 注册的工具/命令/注入器真正进入 Agent 运行时并被 LLM 调用。
+  - **验收**：`main` 构造 per-Agent `PluginContext` 时传入真实共享注册表(替换 `main.py:1362` 的 `_tools=None/_commands=None`);`loader.py` 加载 AstrBot/MaiBot 插件后调 `FunctionToolAdapter`/`MaiBotPluginAdapter.adapt` 完成桥接,`@filter.llm_tool`/`@register_action` handler 真实触发;`assembly` 按 `AgentConfig.mcp_servers` 构造 `MCPClient` + `connect` + `list_tools` 注册进 `ToolRegistry`,停止/销毁时 `disconnect`;`tools.workspace_root`/`bash_allowlist` 接入 `build_services`,`bash`/`read_file`/`write_file` 不再恒被拒。
+  - **依赖**：F1-F4/E4/H2(均已实现)。
+  - **当前**：未开始。
+
+- [ ] **R4 记忆完整性补齐**(收敛 P3 剩余 + 2026-07-29 新发现的需求缺口)
+  - **目标**：补上 `REQUIREMENTS.md` 4/5 明确要求、但读侧就绪写侧缺失的两项记忆能力,并完成 P3 剩余。
+  - **验收**：**①行话学习**(R5 要求) —— `JargonInjector` 已注册读侧(`assembly.py:341`)但 `upsert_jargon` 全仓零生产调用、行话表恒空;补群聊高频词/上下文的行话抽取写入回路(归 `MemoryConsolidator` 后台低频,`HUMANLIKE_RUNTIME.md` 6.3)。**②中期记忆真实压缩**(R5 要求) —— `MidTermMemoryInjector` 现仅截断复述 `pending_messages` 末 5 条,与其自述"由 COMPRESS hook 触发 + CompressionPolicy + Summary + Recall Cue"不符;改为真实接 `COMPRESS` hook 做摘要压缩并落中期记忆。**③P3 通用实体关系图** —— 现只有 `mentioned_in` 提及边,补人物-人物/人物-话题语义关系抽取写边。
+  - **依赖**：N1/N2、S2(MemoryConsolidator 已激活)、S3(图谱召回已激活)。
+  - **当前**：未开始。
+
+- [ ] **R5 持久化与密钥安全收尾**(补 `REQUIREMENTS.md` 9/10 缺口)
+  - **目标**：让"重启不丢会话"与"密钥不落明文"达到需求要求。
+  - **验收**：**①Session 持久化**(R10 明确要求"Agent、Session、身份、路由、Link 和记忆可持久化恢复") —— `SessionManager` 现为纯内存(`session.py:30-35`),补 SQLite 写穿 + 重启恢复,与 Q1 的 `UserMapper` 持久化同构。**②密钥安全**(R9"密钥只可设置或替换,不可回显") —— `SecretStore`(AES-256-GCM)现零生产调用点(仅注释提及),`api_key` 明文存 `data/config.jsonc`;接入 SecretStore 或落地"配置 + env 覆盖"并确保控制面/WebUI 不回显、审计不记明文。
+  - **依赖**：K4(持久化框架)、K7(SecretStore 已实现)。
+  - **当前**：未开始。
+
+- [ ] **R6 企业化激活**(收敛 P5 剩余)
+  - **目标**：完成 O1/O2/O3 的最后一段控制面与隔离接线。
+  - **验收**：`routes_tenants` 控制面落地 + 按租户鉴权(O1 数据面 `tenancy.enabled` 已接);`loader.py` 支持可选子进程隔离模式(按 manifest `isolated` 标记路由到已实现的 `PluginIsolationHost`),崩溃可恢复;Workflow Agent 工具入口决策落地(新增 Tool + `assembly` 注册 + engine 注入,或明确记录"不做"及理由,消除 `actions.py:57` 的 `agent:` noop 悬空)。
+  - **依赖**：O1/O2/O3、G(控制面)。
+  - **当前**：未开始。
+
+- [ ] **R7 集成测试补齐与发布准入**(GA 最后一道门,必须最后做)
+  - **目标**：补齐缺失的集成测试,复核 I 节点,过发布清单。
+  - **验收**：新增 `tests/integration/test_p3_*`(向量+图谱+治理过滤召回)、`test_p4_*`(两平台同一自然人 bind → 记忆聚合)、`test_p5_*`(跨租户不可见 + 插件隔离 + workflow 执行) —— 三者现全缺;R1-R6 各自的端到端集成测试就位;**每个 hook/injector 至少一条经真实触发者驱动的测试**(见 `MODULE_GUIDE.md` §二"第三道坎");I 节点复核由 85% 升 100%(浏览器测试 CI 已随 K8 接入);`scripts/release_checklist.md` 七段清单全过;真实启动冒烟 + Docker 健康检查;`REQUIREMENTS.md` 十二条逐条取证复核(仿 2026-07-26 方法)。
+  - **依赖**：R1-R6 全部完成。
+  - **当前**：未开始。
+
+**GA 后可选项(不阻塞正式版发布,用户已明确暂缓或判为增强)**：S6 视频 Provider 真实端点(待端点选型二次确认)、微信 mp 公众号模式(wecom 已实现)、Slack 适配器、主链路启用流式回复(Provider 层 `chat_stream` 已闭环且有测试,`loop` 流式路径存在但 `run_stream` 无生产调用点 —— 属体验增强而非需求缺口)。
+
+---
+
 ### 可观测性增强(横切,已落地)
 
 **目标**：无报错也能追踪每步操作,快速定位问题。**非节点,横切能力**,随各模块持续演进。
