@@ -1004,6 +1004,11 @@ async def main() -> None:
     # 但无统一入口, 首启日志零反馈、目录结构不透明。集中创建双保险 (各组件既有惰性
     # mkdir 保留, 零冲突)。
     _ensure_data_dirs()
+    # T4: 启用 LogBuffer 单例, 必须在 setup_logger 之前 (cache_logger_on_first_use 后
+    # 装不进 processor 链)。setup_logger 检测单例存在才插入 buffer processor。
+    from isac.utils.log_buffer import enable_log_buffer
+
+    enable_log_buffer()
     _logging_cfg = global_config.get("logging", {}) or {}
     # debug=true 视为全局 DEBUG; 否则用 log_level / logging.level; 均缺省时 setup_logger 落 INFO。
     _level = "debug" if global_config.get("debug") else (global_config.get("log_level") or _logging_cfg.get("level"))
@@ -1145,6 +1150,7 @@ async def main() -> None:
             session_mgr, services.get("metadata_store"),
             event_bus,
             services=services,
+            channel_registry=channel_registry,
         )
     runtime.register_lifecycle(
         "alerts",
@@ -1241,6 +1247,7 @@ async def _register_control_plane(
     event_bus: Any = None,
     *,
     services: dict[str, Any] | None = None,
+    channel_registry: Any = None,
 ) -> None:
     """把控制面 (uvicorn Server) 注册到 runtime 的生命周期管理。
 
@@ -1315,6 +1322,7 @@ async def _register_control_plane(
             workflow_engine=workflow_engine,
             identity_resolver=(services or {}).get("identity_resolver"),
             vector_resolver=(services or {}).get("vector_resolver"),
+            channel_registry=channel_registry,
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))

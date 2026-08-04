@@ -67,6 +67,69 @@ def _register_global_exception_handler(app: Any) -> None:
         )
 
 
+def _aggregate_health(
+    agent_manager: Any,
+    provider_manager: Any,
+    config: dict[str, Any],
+    channel_registry: Any,
+) -> dict[str, Any]:
+    """T4: 聚合各子系统状态供 /health 返回 (抽 helper 避免 create_control_app C901)。
+
+    各子系统用 getattr 防御: 旧测试替身/未注入的 manager 可能缺方法。任一关键
+    子系统异常 → status=degraded; 否则 ok。引用真实配置路径让用户知道去哪修。
+    """
+    # agents: running/total
+    agents_total = agents_running = 0
+    list_agents = getattr(agent_manager, "list", None)
+    if callable(list_agents):
+        try:
+            instances = list_agents()
+            agents_total = len(instances)
+            agents_running = sum(1 for a in instances if getattr(a, "status", "") == "running")
+        except Exception:  # noqa: BLE001
+            pass
+
+    # llm: provider 是否 stub (未配置真实 key 的引导态)
+    llm_status = "unknown"
+    pm_list = getattr(provider_manager, "list_providers", None) if provider_manager else None
+    if callable(pm_list):
+        try:
+            providers = pm_list()
+            # 检测是否含 StubProvider (T1: 未配置有效 key 时为 stub)
+            has_stub = any(type(p).__name__ == "StubProvider" for p in providers)
+            llm_status = "stub" if has_stub and len(providers) >= 1 else "configured"
+        except Exception:  # noqa: BLE001
+            pass
+    elif provider_manager is None:
+        llm_status = "not_configured"
+
+    # channels: 已注册平台列表
+    channels: list[str] = []
+    if channel_registry is not None:
+        list_ch = getattr(channel_registry, "list", None)
+        if callable(list_ch):
+            try:
+                channels = [getattr(a, "platform_name", "?") for a in list_ch()]
+            except Exception:  # noqa: BLE001
+                pass
+
+    control_cfg = config or {}
+    degraded = agents_total == 0 and not channels  # 无 Agent 且无 Channel → 不可用
+    return {
+        "status": "degraded" if degraded else "ok",
+        "subsystems": {
+            "agents": {"total": agents_total, "running": agents_running},
+            "llm": llm_status,
+            "channels": channels,
+            "control": {
+                "enabled": bool(control_cfg.get("enabled")),
+                "host": control_cfg.get("host", "127.0.0.1"),
+                "port": control_cfg.get("port", 8765),
+            },
+        },
+    }
+
+
 def create_control_app(
     agent_manager: AgentManager,
     router: MessageRouter,
@@ -86,6 +149,7 @@ def create_control_app(
     workflow_engine: Any = None,
     identity_resolver: Any = None,
     vector_resolver: Any = None,
+    channel_registry: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -202,7 +266,12 @@ def create_control_app(
 
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok"}
+        """T4: 聚合各子系统状态, 让用户/运维一眼看到"哪儿有问题"。
+
+        返回 {"status": "ok"|"degraded", "subsystems": {...}}; 任一关键子系统异常
+        → status=degraded。探针用途, 无认证 (不进 audit_deps)。
+        """
+        return _aggregate_health(agent_manager, provider_manager, config, channel_registry)
 
     @app.get("/api/v1/audit", dependencies=audit_deps)
     async def query_audit(
@@ -413,6 +482,12 @@ def _mount_optional_routers(
         app, identity_resolver, workflow_engine,
         auth_dependency=auth_dependency, scope_dependency=scope_dependency, audit_log=audit_log,
     )
+    # T4: 实时日志 SSE 端点 (LogBuffer 单例启用时挂载; 否则返回 None 不挂载)。
+    from isac.control.api import routes_logs
+
+    logs_router = routes_logs.build_router(auth_dependency=auth_dependency)
+    if logs_router is not None:
+        app.include_router(logs_router, prefix="/api/v1")
 
 
 def _mount_identity_workflow_routers(

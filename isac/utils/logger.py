@@ -69,6 +69,24 @@ def _make_module_filter(per_module: dict[str, int], default_level: int) -> Any:
     return _filter
 
 
+def _log_buffer_processor(logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """T4: structlog processor — 把日志事件塞进 LogBuffer 单例供 SSE 日志台。
+
+    同步、O(1) (deque.append), 不阻塞主链路; 消费者推送用 put_nowait, 队列满时丢弃
+    给该消费者。renderer 之前调用, 存结构化 event_dict。
+    """
+    from isac.utils.log_buffer import get_log_buffer
+
+    buf = get_log_buffer()
+    if buf is not None:
+        try:
+            buf.append(event_dict)
+        except Exception:  # noqa: BLE001
+            # 日志缓冲失败绝不影响主链路日志输出 (防御性, 不应发生)
+            pass
+    return event_dict
+
+
 def setup_logger(
     debug: bool = False,
     log_format: str = "console",
@@ -94,6 +112,14 @@ def setup_logger(
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),
         ]
+        # T4: 在 renderer 之前插入 buffer processor, 把结构化 event_dict 塞进 LogBuffer
+        # 单例供 /api/v1/logs/tail SSE 端点实时推送。enable_log_buffer() 后单例存在才装,
+        # 否则零开销 (进程未启控制面日志台时不插 processor)。必须在 renderer 前, 这样
+        # buffer 存的是结构化 dict (含 level/timestamp/event/logger), 而非渲染后字符串。
+        from isac.utils.log_buffer import get_log_buffer
+
+        if get_log_buffer() is not None:
+            processors.append(_log_buffer_processor)
         if per_module_int:
             # 全局 wrapper 放到最低阈值, 由 filter processor 按模块精确过滤。
             wrapper_level = min(global_level, *per_module_int.values())

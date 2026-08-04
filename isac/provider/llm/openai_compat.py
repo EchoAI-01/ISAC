@@ -393,24 +393,52 @@ class OpenAICompatProvider(LLMProvider):
 
     @staticmethod
     def _map_http_error(status_code: int, body: bytes) -> LLMError | RateLimitError:
-        """按 HTTP 状态码分类: 429 限流, 5xx 服务端错误 (可重试), 4xx 客户端错误。"""
+        """按 HTTP 状态码分类错误, 返回引用真实配置路径的中文可操作提示 (T4)。
+
+        错误消息要让用户知道"哪儿错了、去哪修", 而不是英文堆栈。引用 data/config.jsonc
+        的对应字段 (llm.api_key / llm.base_url), 由 chat_with_retry 降级时透给用户。
+        """
         try:
-            text = body.decode("utf-8", errors="replace")[:500]
+            text = body.decode("utf-8", errors="replace")[:200]
         except Exception:  # pragma: no cover - bytes 总能 decode
             text = ""
-        message = f"OpenAI API {status_code}: {text}"
+        if status_code == 401:
+            return LLMError(
+                f"LLM 鉴权失败 (401): api_key 无效或过期。请检查 data/config.jsonc 的 "
+                f"llm.api_key (服务端返回: {text})",
+                retriable=False,
+            )
+        if status_code == 402 or status_code == 403:
+            return LLMError(
+                f"LLM 调用被拒 ({status_code}): 余额不足或权限受限。请检查账户额度与 "
+                f"data/config.jsonc 的 llm 配置 (服务端返回: {text})",
+                retriable=False,
+            )
         if status_code == 429:
-            return RateLimitError(message)
+            return RateLimitError(
+                f"LLM 限流 (429): 请求过于频繁, 稍后会自动重试 (服务端返回: {text})"
+            )
         if status_code >= 500:
-            return LLMError(message, retriable=True)
-        # 4xx (非 429): 不可重试, 如 401 鉴权失败 / 400 参数错误
-        return LLMError(message, retriable=False)
+            return LLMError(
+                f"LLM 服务端错误 ({status_code}), 可重试 (服务端返回: {text})",
+                retriable=True,
+            )
+        # 其他 4xx: 不可重试, 如 400 参数错误 / 404 模型不存在
+        return LLMError(
+            f"LLM 调用失败 ({status_code}): 请检查 data/config.jsonc 的 llm.model / "
+            f"llm.base_url (服务端返回: {text})",
+            retriable=False,
+        )
 
     @staticmethod
     def _wrap_network_error(exc: Exception) -> LLMError:
-        """把 httpx 的网络异常 (ConnectError/ReadError/RemoteProtocolError) 包装为 LLMError。"""
+        """把 httpx 的网络异常 (ConnectError/ReadError/RemoteProtocolError) 包装为 LLMError。
+
+        T4: 中文可操作提示, 引用 base_url 配置路径, 让用户知道去哪查。
+        """
         exc_name = type(exc).__name__
         return LLMError(
-            f"OpenAI 网络错误 ({exc_name}): {exc}",
+            f"无法连接 LLM 服务 ({exc_name}): 请检查 data/config.jsonc 的 llm.base_url "
+            f"是否正确、网络是否可达 (详情: {exc})",
             retriable=True,
         )
