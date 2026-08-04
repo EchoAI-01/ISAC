@@ -105,3 +105,38 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
             control_port=control.port,
         )
     return config
+
+
+# T1: 占位符 api_key 检测。config.sample.jsonc 的 llm.api_key 默认值 "sk-your-key"
+# 此前被 register_llm_provider 当作有效 key (只检查非空), 真实调用 OpenAI 接口
+# 永远 401, 用户看到"发消息收不到回复"且日志无明显错误。这些子串覆盖 sample 里的
+# 占位形态 ("sk-your-key" / "your-internal-key") 与常见占位习惯 ("changeme" / "xxx"
+# / "replace_me" / "example")。命中即视为未配置 → 走 StubProvider + 引导去配。
+_PLACEHOLDER_KEY_MARKERS: tuple[str, ...] = (
+    "sk-your",
+    "your-key",
+    "your-internal-key",
+    "changeme",
+    "replace",
+    "example",
+    "placeholder",
+    "xxx",
+    "todo",
+    "fill-in",
+    "fillme",
+)
+
+
+def is_placeholder_key(api_key: str | None) -> bool:
+    """判断 api_key 是否为占位符 (非真实 key)。
+
+    空/None → True (未配置); 命中占位子串 → True; 否则 False。
+    小写匹配, 避免 "sk-Your-Key" 漏判。
+
+    不用长度阈值: 测试用 key 如 "sk-test" (7 字符) 不含占位子串, 应视为真实 key;
+    真实 key 短于 8 字符极罕见但并非不可, 长度阈值会误伤。
+    """
+    if not api_key:
+        return True
+    lowered = api_key.strip().lower()
+    return any(marker in lowered for marker in _PLACEHOLDER_KEY_MARKERS)

@@ -2,10 +2,16 @@
 
 决策流程:
 1. Focus Mode 激活 → TRIGGER
-2. 强制触发 (has_at 或私聊带 mention) → TRIGGER
+2. 强制触发 (has_at 或私聊) → TRIGGER
 3. 回复必要性评分 < 阈值 → WAIT
 4. 空闲退避中 → DELAY(N秒)
 5. 否则 → TRIGGER
+
+T1 (2026-08-04): 私聊无条件强制触发。原条件 `has_at or (is_private and
+has_mention)` 要求私聊里还得"提及机器人名"才回 —— 但私聊本身就是对 Bot 说话,
+私聊"你好"无 mention 时落到 reply_necessity 评分 40 < 阈值 80 → 静默 WAIT,
+真机部署冒烟实证"发消息永远收不到回复"。改为 `has_at or is_private`。群聊
+路径不变 (仍走 score, 需 @/提及/评分)。
 """
 
 from __future__ import annotations
@@ -170,8 +176,10 @@ class GatingSystem:
         if self.focus_mode.is_active(session_id):
             return GateDecision.trigger()
 
-        # 2. 强制触发
-        if context.has_at or (context.is_private and context.has_mention):
+        # 2. 强制触发: 被 @ 或私聊 (私聊本身就是对 Bot 说话, 无条件触发)。
+        # T1: 原条件 `has_at or (is_private and has_mention)` 让私聊普通消息
+        # 落到 score 40 < 80 → 静默 WAIT; 改为私聊无条件触发, 群聊仍需 @/评分。
+        if context.has_at or context.is_private:
             return GateDecision.trigger()
 
         # 3. 回复必要性评分
