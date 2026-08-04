@@ -398,7 +398,13 @@ class AgentManager:
         # 现在 drain 空即弃权 (根治重复), 门控与 Loop 都基于整个 burst。
         pending = self._drain_pending(conv_runtime, message)
         if not pending:
-            logger.debug("本条消息已被前一回合合并处理, 弃权避免重复回复", agent_id=agent_id)
+            # T1: "未回复原因可查"。drain 空是正常拟人合并 (突发被前回合合并处理),
+            # 但此前仅 debug, 用户侧"消息发出去没动静"无法判断原因。升级 info 带
+            # reason 字段, 经 T4 日志台可按 reason=gating_wait 查"未回复原因"。
+            logger.info(
+                "本条消息已被前一回合合并处理, 弃权避免重复回复",
+                agent_id=agent_id, reason="drain_empty",
+            )
             return None
 
         # P2: 互联消息 (ask/notify/handoff 经 bus 投递) 已过 Link ACL, 是显式协作
@@ -410,7 +416,12 @@ class AgentManager:
             )
             decision = await instance.gating.evaluate(pending, gating_context)
             if decision.kind != GateKind.TRIGGER:
-                logger.debug("门控未触发", agent_id=agent_id, kind=decision.kind.value)
+                # T1: 门控未触发是正常拟人行为 (群聊普通消息评分不足), 但此前仅
+                # debug, 用户侧零反馈。升级 info 带 reason, 经 T4 日志台可查。
+                logger.info(
+                    "门控未触发, 本轮不回复",
+                    agent_id=agent_id, kind=decision.kind.value, reason="gating_wait",
+                )
                 return None
 
         agent_context = self._build_agent_context(

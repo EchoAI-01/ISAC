@@ -451,14 +451,22 @@ def _ensure_default_routing(router: MessageRouter, channel_registry: ChannelRegi
 def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[str, Any]) -> None:
     """按配置注册 LLM Provider (K2, DEVELOPMENT_PLAN.md)。
 
-    - llm.provider + llm.api_key 同时配置时注册 OpenAICompatProvider (真实 HTTP 实现),
-      不再静默降级为 Stub; 真实模型不可达时走 chat_with_retry 的降级回复
-    - 未配置任何 Provider 时用 StubProvider 作为开发态兜底, 保证无 LLM 配置也能跑通主链路
+    - llm.provider + llm.api_key 同时配置且 api_key 非占位符时注册 OpenAICompatProvider
+      (真实 HTTP 实现), 不再静默降级为 Stub; 真实模型不可达时走 chat_with_retry 的降级回复
+    - 未配置 / api_key 为占位符 (T1: "sk-your-key" 等 sample 占位值) 时用 StubProvider
+      作为开发态兜底, 保证无 LLM 配置也能跑通主链路; Stub 回复含引导去配的提示
+
+    T1: 此前只检查 api_key 非空, config.sample.jsonc 的 "sk-your-key" 被当有效 key
+    注册 OpenAICompatProvider → 真实调用永远 401 → 用户看到"发消息收不到回复"且日志
+    无明显错误。占位符检测把这类 sample 占位值视为未配置, 引导用户去配真实 key。
     """
-    if llm_config.get("provider") and llm_config.get("api_key"):
+    from isac.utils.config_schema import is_placeholder_key
+
+    api_key = str(llm_config.get("api_key", "") or "")
+    if llm_config.get("provider") and not is_placeholder_key(api_key):
         provider_manager.register(
             OpenAICompatProvider(
-                api_key=str(llm_config.get("api_key", "")),
+                api_key=api_key,
                 base_url=str(llm_config.get("base_url", "")),
                 model=str(llm_config.get("model", "")),
             )
@@ -471,6 +479,12 @@ def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[st
         )
     else:
         provider_manager.register(StubProvider())
+        logger.warning(
+            "未配置有效 LLM api_key (为空或占位符), 使用 Stub 回复; "
+            "请在 data/config.jsonc 的 llm 段填入真实 api_key 后重启",
+            provider=llm_config.get("provider"),
+            api_key_placeholder=is_placeholder_key(api_key),
+        )
 
 
 # J2: 多模态 Provider 按 kind 实例化 + 注册到 ProviderManager + ModelCatalog

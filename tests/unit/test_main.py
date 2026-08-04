@@ -209,6 +209,35 @@ class TestRegisterLLMProvider:
 
         assert isinstance(provider, StubProvider)
 
+    def test_placeholder_api_key_falls_back_to_stub(self) -> None:
+        """T1: config.sample.jsonc 的占位符 "sk-your-key" 被当有效 key → 真实调用 401。
+        占位符检测把它视为未配置, 走 Stub + 引导去配, 不再静默 401。"""
+        manager = ProviderManager({})
+        register_llm_provider(
+            manager,
+            {"provider": "openai", "api_key": "sk-your-key", "model": "gpt-4o"},
+        )
+
+        provider = manager.for_agent(AgentConfig(agent_id="agent_a"))
+
+        assert isinstance(provider, StubProvider)
+
+    def test_placeholder_key_variants_all_fall_back_to_stub(self) -> None:
+        """T1: 各占位形态 (your-key/changeme/xxx/replace/example/placeholder) 均判占位。"""
+        from isac.utils.config_schema import is_placeholder_key
+
+        assert is_placeholder_key("sk-your-key")
+        assert is_placeholder_key("your-internal-key")
+        assert is_placeholder_key("changeme")
+        assert is_placeholder_key("replace-me-please")
+        assert is_placeholder_key("sk-EXAMPLE-1234")
+        assert is_placeholder_key("xxx")
+        assert is_placeholder_key("")
+        assert is_placeholder_key(None)
+        # 真实 key 不含占位子串, 不判占位
+        assert not is_placeholder_key("sk-proj-abc123def456ghi789")
+        assert not is_placeholder_key("sk-test")
+
     @pytest.mark.asyncio
     async def test_real_provider_config_degrades_gracefully_instead_of_silently_replying(
         self, monkeypatch: pytest.MonkeyPatch
