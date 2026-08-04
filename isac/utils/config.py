@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from collections.abc import Callable
@@ -53,6 +54,23 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "config_version": CONFIG_VERSION,
     "debug": False,
     "log_level": "info",
+    # T2: 内置最小可启动默认配置 (对标 AstrBot core/config/default.py)。无 data/config.jsonc
+    # 时不再依赖各处 .get(..., {}) 兜底拼凑的隐式行为, 而是一份明确的"未配置模型 →
+    # 引导去配"路径。webchat 默认开 (loopback), llm 空 (Stub + 引导), control/memory 默认关
+    # (default-off 铁律, 不引入隐式 SQLite/embedding 启动)。config.sample.jsonc 降级为
+    # 可选覆盖参考; 用户显式提供任一字段即覆盖默认值 (config.update 语义)。
+    "llm": {},
+    "control": {"enabled": False, "host": "127.0.0.1", "port": 8765, "api_token": ""},
+    "memory": {"enabled": False},
+    "channels": {
+        "webchat": {
+            "enabled": True,
+            "bind_host": "127.0.0.1",
+            "bind_port": 8090,
+            "max_message_age_seconds": 300,
+        }
+    },
+    "logging": {"level": "info"},
 }
 
 
@@ -72,7 +90,11 @@ def _set_nested(config: dict[str, Any], dotted_key: str, value: Any) -> None:
 
 def load_config(path: str | Path) -> dict[str, Any]:
     """加载配置文件，依次应用默认值、文件、环境变量。"""
-    config = dict(DEFAULT_CONFIG)
+    # T2: 深拷贝 DEFAULT_CONFIG。此前 dict(DEFAULT_CONFIG) 是浅拷贝, 嵌套 dict
+    # (control/channels/llm/...) 仍引用全局 DEFAULT_CONFIG 的同一子对象; _set_nested
+    # 原地改 config["control"]["enabled"] 会污染全局默认值, 让后续 load_config 调用
+    # 拿到被污染的默认 (如 control.enabled 残留 True)。深拷贝隔离每次加载。
+    config = copy.deepcopy(DEFAULT_CONFIG)
 
     file_path = Path(path)
     if file_path.exists():
