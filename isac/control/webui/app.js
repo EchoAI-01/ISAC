@@ -317,6 +317,42 @@ function startEventStream() {
     }
 }
 
+// T4: 实时日志台 —— 消费 /api/v1/logs/tail SSE, 把日志条目追加到 #log-stream。
+// 与 events/stream 同样限制: 仅会话 Cookie 模式 (EventSource 不支持 Bearer Header)。
+// level 过滤: 重连时带 ?level= 让服务端过滤, 客户端不再二次过滤。
+let logSource = null;
+const LOG_LEVELS = ["debug", "info", "warning", "error", "critical"];
+function startLogStream() {
+    if (logSource) logSource.close();
+    if (usingLegacyBearerAuth) return;
+    const filter = document.getElementById("log-level-filter");
+    const level = filter ? filter.value : "warning";
+    try {
+        const url = level ? `/api/v1/logs/tail?level=${encodeURIComponent(level)}` : "/api/v1/logs/tail";
+        logSource = new EventSource(url);
+        logSource.onmessage = (ev) => {
+            const pre = document.getElementById("log-stream");
+            if (!pre) return;
+            let entry;
+            try { entry = JSON.parse(ev.data || "{}"); } catch (_) { return; }
+            const ts = entry.timestamp || "";
+            const lvl = (entry.level || "").toUpperCase();
+            const logger = entry.logger || "";
+            const event = entry.event || "";
+            const line = `[${ts}] ${lvl.padEnd(8)} ${logger} ${event}`.trim() + "\n";
+            pre.textContent += line;
+            // 滚到底; 超长截断防内存爆
+            pre.scrollTop = pre.scrollHeight;
+            if (pre.textContent.length > 50000) {
+                pre.textContent = pre.textContent.slice(-40000);
+            }
+        };
+        logSource.onerror = () => { console.warn("日志 SSE 连接异常, 浏览器将自动重连"); };
+    } catch (e) {
+        console.warn("日志 EventSource 初始化失败", e);
+    }
+}
+
 // J3-5: SPA 导航 (10 域, 当前页 active)
 function navigate(page) {
     document.querySelectorAll(".page").forEach(el => el.classList.remove("active"));
@@ -329,7 +365,7 @@ function navigate(page) {
     if (page === "dashboard") refreshDashboard();
     if (page === "agents") refreshAgents();
     if (page === "channels") { refreshRules(); refreshLinks(); }
-    if (page === "logs") refreshAudit();
+    if (page === "logs") { refreshAudit(); startLogStream(); }
     if (page === "providers") refreshProviders();
     if (page === "usage") refreshUsage();
     if (page === "extensions") refreshExtensions();
@@ -522,6 +558,9 @@ document.addEventListener("DOMContentLoaded", () => {
         usingLegacyBearerAuth = false;
         refreshAll();
         startEventStream(); // Q5: SSE 实时事件流 (仅会话 Cookie 模式可用)
+        // T4: 日志级别过滤变化时重连日志 SSE (带新 ?level=)
+        const lvlFilter = document.getElementById("log-level-filter");
+        if (lvlFilter) lvlFilter.addEventListener("change", startLogStream);
         return;
     }
     const saved = sessionStorage.getItem("isac_token");

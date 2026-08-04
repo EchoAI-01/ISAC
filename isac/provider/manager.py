@@ -26,6 +26,28 @@ logger = get_logger(__name__)
 DEGRADED_REPLY = "我现在有点累，稍后再聊好吗？"  # 降级回复 (LLM 全部失败时)
 
 
+def _degraded_reply_from_error(error: Exception | None) -> str:
+    """T4: 根据 LLM 错误类型映射可操作降级文案 (引用真实配置路径)。
+
+    让用户知道"哪儿错了、去哪修", 而不是泛化"我现在有点累"。错误消息本身已含
+    配置路径 (见 openai_compat._map_http_error/_wrap_network_error), 这里按错误
+    类别选合适口径; 未知错误回退 DEGRADED_REPLY。
+    """
+    if error is None:
+        return DEGRADED_REPLY
+    msg = str(error)
+    if isinstance(error, RateLimitError):
+        return "我刚才说话太快被限流了, 稍等几秒再发一次好吗？"
+    if "鉴权失败" in msg or "401" in msg:
+        # 含 data/config.jsonc llm.api_key 提示, 直接透给用户
+        return msg
+    if "无法连接" in msg or "网络" in msg:
+        return msg
+    if "余额不足" in msg or "权限受限" in msg or "403" in msg or "402" in msg:
+        return msg
+    return DEGRADED_REPLY
+
+
 class ProviderManager:
     """Provider 管理器。"""
 
@@ -52,6 +74,14 @@ class ProviderManager:
             self._fallback = provider
         else:
             self._primary = provider
+
+    def list_providers(self) -> list[LLMProvider]:
+        """返回已注册的全局 Provider (primary + fallback), 供 /health 聚合查询。
+
+        T4: /health 用此判断 llm 是否 stub (未配置真实 key 的引导态)。agent 级
+        per-Agent Provider 不在此列 (按 agent_id 缓存, 非"全局"概念)。
+        """
+        return [p for p in (getattr(self, "_primary", None), self._fallback) if p is not None]
 
     def register_multimodal(
         self,
@@ -219,7 +249,8 @@ class ProviderManager:
                 last_error = exc
 
         logger.error("LLM 全部失败，降级回复", error=str(last_error))
-        return LLMResponse(content=DEGRADED_REPLY)
+        # T4: 降级文案按错误类型映射可操作提示 (引用真实配置路径), 而非泛化"我现在有点累"。
+        return LLMResponse(content=_degraded_reply_from_error(last_error))
 
     @staticmethod
     async def _retry_backoff(attempt: int) -> None:

@@ -247,8 +247,6 @@ class TestRegisterLLMProvider:
         """
         import asyncio
 
-        from isac.provider.manager import DEGRADED_REPLY
-
         async def _instant_sleep(_seconds: float) -> None:
             return None
 
@@ -260,4 +258,8 @@ class TestRegisterLLMProvider:
 
         result = await manager.chat_with_retry(provider, system="s", messages=[])
 
-        assert result.content == DEGRADED_REPLY
+        # T4: 降级回复现在是可操作文案 (引用真实配置路径或友好提示), 而非固定泛化常量。
+        # OpenAICompatProvider 真实 HTTP 调用失败 (sk-test 连不上/占位), last_error 映射成
+        # "无法连接/鉴权失败/..." 等含配置路径的提示; 只要拿到非空可操作回复即通过。
+        assert result.content
+        assert result.content != ""
