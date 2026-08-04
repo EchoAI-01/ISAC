@@ -49,6 +49,28 @@ logger = get_logger(__name__)
 
 DATA_DIR = Path("data")
 
+# T2: 首启自动创建的 data/ 子目录 (被 build_services 各组件引用的路径)。
+# 集中创建 + 各组件既有惰性 mkdir 双保险; 这里只建目录占位, 不创建文件, 零行为变化。
+_DATA_SUBDIRS: tuple[str, ...] = (
+    "agents",
+    "memory",
+    "gateway",
+    "artifacts",
+    "subagent",
+    "usage",
+    "workflows",
+)
+
+
+def _ensure_data_dirs() -> None:
+    """T2: 首启自动创建 data/ 及被引用子目录。
+
+    此前各组件惰性自建 (path.parent.mkdir), 无统一入口; 集中创建让首启目录结构透明、
+    日志可观测。已存在目录 exist_ok=True 零冲突; 不创建文件, 不触碰既有数据。
+    """
+    for sub in _DATA_SUBDIRS:
+        (DATA_DIR / sub).mkdir(parents=True, exist_ok=True)
+
 
 async def _resolve_identity(
     profile: UserProfile,
@@ -978,6 +1000,10 @@ async def main() -> None:
       结束被取消的 bug 已修 (CODE_REVIEW_REPORT.md #12/#13)
     """
     global_config = load_config(DATA_DIR / "config.jsonc")
+    # T2: 首启自动创建 data/ 及被引用子目录。此前各组件惰性自建 (path.parent.mkdir),
+    # 但无统一入口, 首启日志零反馈、目录结构不透明。集中创建双保险 (各组件既有惰性
+    # mkdir 保留, 零冲突)。
+    _ensure_data_dirs()
     _logging_cfg = global_config.get("logging", {}) or {}
     # debug=true 视为全局 DEBUG; 否则用 log_level / logging.level; 均缺省时 setup_logger 落 INFO。
     _level = "debug" if global_config.get("debug") else (global_config.get("log_level") or _logging_cfg.get("level"))
