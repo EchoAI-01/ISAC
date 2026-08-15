@@ -49,6 +49,35 @@ def _http_json(url: str, method: str = "GET", body: dict | None = None) -> tuple
         return exc.code, {}
 
 
+def _wait_webchat_ready(proc: subprocess.Popen, port: int) -> bool:
+    """轮询 /webchat/poll 直到服务就绪 (返回 200/401) 或子进程退出或超时。"""
+    deadline = time.time() + WAIT_START_SECONDS
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return False
+        try:
+            code, _ = _http_json(f"http://127.0.0.1:{port}/webchat/poll?session_id=probe")
+            if code in (200, 401):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.3)
+    return False
+
+
+def _poll_replies(port: int, session_id: str) -> list:
+    """轮询 /webchat/poll 直到拿到非空 replies 或超时。"""
+    deadline = time.time() + WAIT_REPLY_SECONDS
+    while time.time() < deadline:
+        code, resp = _http_json(f"http://127.0.0.1:{port}/webchat/poll?session_id={session_id}")
+        if code == 200:
+            replies = resp.get("replies", [])
+            if replies:
+                return replies
+        time.sleep(0.3)
+    return []
+
+
 def main() -> int:
     port = _free_port()
     tmp = Path(tempfile.mkdtemp(prefix="isac_smoke_"))
@@ -77,21 +106,7 @@ def main() -> int:
         text=True,
     )
     try:
-        # 等服务就绪
-        deadline = time.time() + WAIT_START_SECONDS
-        ready = False
-        while time.time() < deadline:
-            if proc.poll() is not None:
-                break
-            try:
-                code, _ = _http_json(f"http://127.0.0.1:{port}/webchat/poll?session_id=probe")
-                if code in (200, 401):
-                    ready = True
-                    break
-            except Exception:
-                pass
-            time.sleep(0.3)
-        if not ready:
+        if not _wait_webchat_ready(proc, port):
             out = proc.stdout.read() if proc.stdout else ""  # type: ignore[union-attr]
             print(f"[smoke] FAIL: webchat 未在 {WAIT_START_SECONDS}s 内就绪")
             print(out[-2000:])
@@ -99,7 +114,7 @@ def main() -> int:
 
         # 发消息 "你好" (私聊, session_id 模拟客户端)
         print("[smoke] POST /webchat/send '你好'")
-        code, resp = _http_json(
+        code, _ = _http_json(
             f"http://127.0.0.1:{port}/webchat/send",
             method="POST",
             body={"session_id": "s1", "user_id": "u1", "content": "你好"},
@@ -109,16 +124,7 @@ def main() -> int:
             return 3
 
         # poll 回复 (Stub 回复同步入队, 立即可取; 真实 LLM 也应数秒内)
-        deadline = time.time() + WAIT_REPLY_SECONDS
-        replies: list = []
-        while time.time() < deadline:
-            code, resp = _http_json(f"http://127.0.0.1:{port}/webchat/poll?session_id=s1")
-            if code == 200:
-                replies = resp.get("replies", [])
-                if replies:
-                    break
-            time.sleep(0.3)
-
+        replies = _poll_replies(port, "s1")
         if not replies:
             print(f"[smoke] FAIL: {WAIT_REPLY_SECONDS}s 内未收到回复 (修复前症状: 静默 WAIT)")
             return 4

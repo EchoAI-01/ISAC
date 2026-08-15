@@ -2,7 +2,11 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> ⚠️ **最近更新: 2026-07-31 —— 首次真机部署冒烟, 推翻"MVP 已达成"结论**。此前所有轮次的验收都只跑单测 + 读代码/文档,**从未真机走一遍用户旅程**。本次按 README 拷 `config.sample.jsonc` 到干净目录启动后实测:**发消息永远收不到回复,且日志里没有任何错误** —— 根因 `gating/system.py:174` 把私聊的强制触发条件写成 `has_at or (is_private and has_mention)`,私聊被额外要求"必须提及机器人名",私聊"你好"仅得 40 分 < 阈值 80 → `门控评分 score=30.0 threshold=80` → 静默 WAIT。另实测发现:消息被吞后用户端与日志双向零反馈;`control.enabled: false` 导致**WebUI 开箱不可用**;必须手写 JSONC 才能启动(AstrBot 默认配置内置代码,零文件即可跑)。结论:**内部能力确实已接线, 但产品尚不可部署可用, 不构成 MVP**。已新增最高优先级 **T 开箱可用轮**(§四 T, 先于 R),并立**验收铁律: 任何节点声明完成必须附真机部署证据, 不接受"单测通过"作为可用性证明**。详见 DEVELOPMENT_PLAN §四 T。
+> ⚠️ **最近更新: 2026-08-16 —— 阶段 0 工程纠偏 + FE0 API 契约冻结 + FE1 分离基建 + T3-backend 控制面开箱后端支撑 完成**。全量 **1582 测试通过**、ruff/mypy 全绿、两真机 smoke (smoke_webchat / smoke_control_setup) exit=0。阶段0: CI 分支修正 (dev 触发) + venv 重建 (shebang) + aiosqlite 连接未关闭警告归零 (24h soak 前置) + 清理残留 worktree/构建产物。FE0: openapi.json 契约基线归档 + 错误格式统一 (detail{code,message}) + 变更流程文档化。FE1: CORS 白名单 + Session SameSite 参数化 + WebUI 标 deprecated。T3-backend: control 默认开 (仅 127.0.0.1) + SetupManager 首登强制设密码 (428 gate + /setup API + PBKDF2) + CLI `isac password reset` + /api/v1/config/schema JSON Schema 端点。下一步 R3 插件与 MCP 生态激活。详见 DEVELOPMENT_PLAN §三之二 与 §四 FE/T3。
+>
+> 上一轮 2026-08-15 —— 前后端分离决策 + 文档整合; T 开箱可用轮 T1/T2/T4 已完成 (2026-08-04)。全量 **1568 测试通过**、ruff/mypy 全绿。T1 开箱能对话 (私聊无条件触发 + 未回复可观测 + 占位 key 检测)、T2 零配置启动 (默认配置内置 + 首启建 data 目录)、T4 错误可诊断 (中文可操作提示 + /health 聚合 + 实时日志台后端) 均附真机冒烟证据 (见对应 commit)。**T3 按前后端分离重定义** (后端先交付 setup/auth API, 见 DEVELOPMENT_PLAN §四 FE)。本轮文档整合: 2026-07-28/29 两份 Review 报告的遗留项已整合进 DEVELOPMENT_PLAN (架构债清单; 07-28 复审的 C-N1~C-N5 与全部 Required 项已由 Fix-22~Fix-36 修复), S 骨架轮 HANDOFF.md 已随轮次结束删除。
+>
+> 上一轮 2026-07-31 —— **首次真机部署冒烟, 推翻"MVP 已达成"结论**。此前所有轮次的验收都只跑单测 + 读代码/文档,**从未真机走一遍用户旅程**。本次按 README 拷 `config.sample.jsonc` 到干净目录启动后实测:**发消息永远收不到回复,且日志里没有任何错误** —— 根因 `gating/system.py:174` 把私聊的强制触发条件写成 `has_at or (is_private and has_mention)`,私聊被额外要求"必须提及机器人名",私聊"你好"仅得 40 分 < 阈值 80 → `门控评分 score=30.0 threshold=80` → 静默 WAIT。另实测发现:消息被吞后用户端与日志双向零反馈;`control.enabled: false` 导致**WebUI 开箱不可用**;必须手写 JSONC 才能启动(AstrBot 默认配置内置代码,零文件即可跑)。结论:**内部能力确实已接线, 但产品尚不可部署可用, 不构成 MVP**。已新增最高优先级 **T 开箱可用轮**(§四 T, 先于 R),并立**验收铁律: 任何节点声明完成必须附真机部署证据, 不接受"单测通过"作为可用性证明**。详见 DEVELOPMENT_PLAN §四 T。
 >
 > 上一轮 2026-07-29 (**全量代码复审校正进度**: 以代码为准重新核验 Q2-Q6 与 P 剩余项, 发现文档系统性**低估进度** —— Q2-Q6 多数为「实现完成待接线」而非「未开始」(**Q2 已于当日补齐接线并升级 `[x]`**: persona.description 接入 BaseIdentityInjector + 新增 MoodTracker 挂 FINAL_RESPONSE 真实驱动 decay/update)。Q3 EnableMatrix + 进程级 hooks 已接但 per-Agent PluginContext 恒 None、MCPClient 零接线、CLI 工具 services 未注入; Q4 6 个媒体工具已注册 assembly.py:312-317 但出站 _send_reply 不解析 artifact、record_* 计量零调用、PricingCatalog 空表; Q5 Extensions/SSE/Usage 已接但 GET config + SubAgent 表 agent_id + Webhook/MCP 启动点未接; Q6 用量证据保存 + 并发信号量 + delegate deny 已完成, 仅剩背景摘要传递与 evidence_refs 生成; O4 微信 wecom 模式实为已实现并注册 main.py:410, 仅 mp 公众号为骨架。测试实为 **1545 例/134 文件** (Q2 落地后), 旧记 1362 已订正。**另新增 R 发布收敛节点组** (§四 R): 三级发布门 v0.9 MVP ✅ 已达成 / v1.0 RC = R1-R5 / v1.0 GA = R6-R7; 并记录 4 个此前未记录的需求级缺口 (行话学习写入侧 / 中期记忆伪压缩 / Session 不持久化 / SecretStore 零调用)。详见下方"待实现能力"表与 DEVELOPMENT_PLAN §四 Q/R)。上一轮 2026-07-28 (**S1-S5+S7 飞书+QQ官方 激活**: S1 三个主动任务生产者填真实产出逻辑 + 注入 memory; S2 MemoryConsolidator run_once 三步 + 注入 llm; S4 身份归一控制面 routes_identity + resolve_conflict + main/server 注入; S3 图谱召回 mentioned_in 边 + _graph_search 真实召回 + Reranker provider 注入 + MemoryItem 边界; S5 Workflow action_handler + 声明式加载 + condition_evaluator; S7 飞书适配器 (AES-256-CBC 解密字节序核对自官方文档) + QQ 官方适配器 (Ed25519 验签字节序核对自官方文档, 三类消息事件规范化); 91 例新测试, 全量 1362 单测通过、ruff/mypy 全绿。详见 DEVELOPMENT_PLAN §四"S 骨架轮 / S1-S5+S7"。S6 视频 Provider 用户决定暂缓。上一轮 2026-07-27 **骨架轮 S1-S7**: 为 P3 图谱召回 / P4 身份归一 / P5 Workflow 控制面 / MemoryConsolidator / proactive-ext 生产者 / O4 飞书·微信·QQ 官方三平台 / O5 视频 Provider 一次性补齐**骨架 + 默认关闭接线锚点**,均 default-off、主链路零行为变化;1271 单测基线。骨架≠交付,真实激活按 P3/P4/P5 验收执行。上一轮 2026-07-26 对照 `REQUIREMENTS.md` 十二条需求做 10 域并行代码取证 + 真实启动实测,新增 **Q MVP 收尾** 节点组,其中 **Q1 记忆写入回路** 已完成)
 
@@ -27,7 +31,8 @@
 | O | 企业化与平台扩展 | 部分接线 | O1/O2/O3 核心+单测完成;**S5 激活 (2026-07-28)**:Workflow action_handler (tool: 路由 ToolRegistry.execute) + 声明式加载 + condition_evaluator (剩 Agent 工具入口留 P5 决策);**S7 激活 (2026-07-28)**:飞书 (AES-256-CBC 解密字节序核对自 open.feishu.cn 官方文档) + QQ 官方 (Ed25519 验签字节序核对自 bot.q.qq.com 官方文档) 适配器真实收发;**微信 wecom 企业微信模式实为已实现并注册 (2026-07-29 校正), mp 公众号仍骨架**;O5 视频 Provider 端点暂缓选型 (S6, 用户决定) |
 | P | 主链路接线与激活 | P0/P1/P2 完成 + P3/P4/P5 子范围激活 | **P0 并发化 + P1 拟人化 + P2 Mesh 已完成 (2026-07-27)**;**2026-07-28 S3/S4/S5 激活**:P3 图谱召回+Reranker / P4 身份归一控制面 / P5 Workflow action_handler+声明式加载 子范围激活;剩 P3 通用实体关系图、P5 O1/O2 routes_tenants/loader 隔离模式 + Agent 工具入口。定义见 DEVELOPMENT_PLAN §四 P |
 | Q | MVP 收尾(新增) | Q0/Q1/Q2 完成; Q3-Q6 部分接线 | 2026-07-26 差距复核发现、未被 P0-P5 覆盖但 MVP 必需的缺口。**Q0 开箱可触达已完成 (2026-07-27)**: 四平台注册+裸部署默认路由+样例死键修正+WebChat 端到端可聊;**Q1 记忆写入回路与身份稳定化已完成 (2026-07-27)**: 回复后 episodic 写入+画像/关系回路+UserMapper SQLite 持久化, "越聊越熟"闭环打通 (聊→重启→检索命中);**2026-07-29 代码复审校正**: Q2-Q6 多为**部分接线**而非未开始 —— Q2 三注入器已注册待 mood 回路+persona 文本、Q3 EnableMatrix+hooks 已接待 per-Agent 桥接/MCP/CLI、Q4 6 工具已注册待出入站+计量、Q5 Extensions/SSE/Usage 已接待 config/SubAgent 表/Webhook、Q6 大部分完成仅剩背景摘要+evidence_refs。定义见 DEVELOPMENT_PLAN §四 Q |
-| T | **开箱可用 (最高优先级)** | 0% (2026-07-31 制定) | **真机冒烟推翻"MVP 已达成"后新增**。目标标准由"模块完整度"改为"产品可用度",对标 AstrBot/MaiBot"部署完就能运行"。T1 开箱能对话 (**P0 阻断**: 门控私聊修复 + 消息不静默吞 + 无 key 明确提示) · T2 零配置启动 (默认配置内置代码) · T3 WebUI 开箱可用 + 首登强制设密码向导 · T4 错误可诊断 (401/429 中文提示 + `/health` + 实时日志台) · T5 真实 IM 接入验收 (需用户凭据) · T6 插件市场与热重载 (依赖 R3) · T7 分发运维 + 24h soak。定义见 DEVELOPMENT_PLAN §四 T |
+| T | **开箱可用 (最高优先级)** | T1/T2/T4 完成 + T3-backend 后端段完成 (2026-08-16); T3 前端段 F1/F2 待启动 | T1 开箱能对话 (门控私聊修复 + 未回复可观测 + 占位 key 检测)、T2 零配置启动、T4 错误可诊断 已完成并附真机冒烟证据;T3 按前后端分离重定义 (后端段 = FE/T3-backend);T5 真实 IM 验收 (需凭据)、T6 插件市场 (依赖 R3)、T7 分发运维未开始。定义见 DEVELOPMENT_PLAN §四 T |
+| FE | **前后端分离 (2026-08-15 制定, 后端先行)** | FE0/FE1/T3-backend 完成 (2026-08-16); F1-F4 待启动 | FE0 API 契约冻结 → FE1 分离基建 (CORS/跨源认证/静态托管降级) → T3-backend 控制面开箱后端支撑;前端轨道 F1-F4 (独立项目) 在 API 基线冻结后启动。定义见 DEVELOPMENT_PLAN §四 FE |
 | R | 功能广度 (降级到 T 之后) | 0% (2026-07-29 制定, 07-31 降级) | 补齐需求十二条仍缺的实现 + Q3-Q6/P3-P5 剩余接线。**2026-07-31 整组降级到 T 之后**(主干不可用时补功能广度无意义);其中 **R3 插件桥接是 T6 插件市场的前置**,建议紧随 T 之后先做。R1 多模态出入站闭环 (Q4) · R2 控制面与 SubAgent 收尾 (Q5+Q6) · R3 插件与 MCP 生态激活 (Q3) · R4 记忆完整性 (行话学习 + 中期记忆真实压缩 + P3 实体关系图) · R5 持久化与密钥安全 (Session 持久化 + SecretStore) · R6 企业化激活 (P5 剩余) · R7 集成测试补齐与发布准入。定义见 DEVELOPMENT_PLAN §四 R |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |
 
@@ -38,7 +43,7 @@
 **已达到「可运行(进程驻留)」完成度**(2026-07-26 实测,不等于「MVP 可用」,见下方 2026-07-26 差距复核与文首 2026-07-31 真机冒烟):
 
 - 主程序实测驻留(无 `data/config.jsonc` 时兜底默认值 + StubProvider 也能启动;18 秒驻留无异常栈),支持 SIGINT/SIGTERM 优雅关闭(Windows 下 Ctrl+C 尚不走优雅关闭路径,见 Q0)。
-- 1271 单元/集成测试通过;Ruff 通过;Mypy 全绿。
+- 1568 单元/集成测试通过 (2026-08-15 实测);Ruff 通过;Mypy 全绿 (256 文件)。
 - 集成测试就位:单 Agent 全链、多 Agent × 工具 × 记忆 × 控制面、启动驻留 smoke、J2 多模态全链 + Channel 投递、J4 SubAgent 全链 + Control API、J3 WebUI v2 SPA 十域。
 - 真实 `OpenAICompatProvider`(httpx + SSE + Tool Call + 错误分类 + 连接池)可用;主链路默认非流式,流式路径(CR3-H4 已修合并逻辑)尚未在生产启用。
 - Agent / 路由 / Link / 记忆可持久化恢复;SubAgent 任务可重启恢复 (running/queued → cancelled)。**订正**:此前"Session 可持久化恢复"表述不准确 —— `SessionManager`/`UserMapper` 实为纯内存实现(无落盘/无恢复),重启后会话状态与跨平台用户绑定丢失(对话内容因记忆子系统独立持久化不受影响);补齐计划见 Q1。
@@ -116,7 +121,7 @@ J3 WebUI v2 管理与观测已完整落地 (详见 DEVELOPMENT_PLAN.md J3 节"�
 
 - **S6 视频 Provider** — `generate` 仍抛 `NotImplementedError`; 用户决定暂缓端点选型 (Sora/Runway/Kling/自托管), 待确定后仿 image_gen 实现 (POST 生成 → 轮询/等待 → 结果写 ArtifactStore → 返回 ArtifactRef)。
 - **微信适配器** — 用户决定本轮不做, 保持骨架 (start/stop no-op、send 返回 False)。
-- **S5 Agent 工具入口** — 让 Agent 主动触发 workflow; HANDOFF 明确为 P5 决策项, 有意未做 (避免半接线死代码)。
+- **S5 Agent 工具入口** — 让 Agent 主动触发 workflow; 明确为 P5 决策项, 有意未做 (避免半接线死代码)。
 - **I 节点复核** — WebUI 浏览器测试 CI 已随 K8 接入,复核 I 是否可由 85% 升 100%。
 
 *已补齐*: N2 检索期软删除过滤已生效(CR2-Fix-12),N2 记忆治理已完整接入生产。

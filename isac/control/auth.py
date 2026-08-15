@@ -164,13 +164,19 @@ def _resolve_token(
     return verify_session_cookie(session_cookie, session_secret)
 
 
-def make_auth_dependency(expected_token: str, session_secret: bytes | None = None):
+def make_auth_dependency(
+    expected_token: str, session_secret: bytes | None = None, setup_manager: Any = None
+):
     """构造 FastAPI Bearer 认证依赖。
 
     返回可被 Depends() 使用的函数; 认证失败抛 HTTPException(401)。
     expected_token 为空时跳过认证 (开发模式, 不推荐生产使用)。
     session_secret 非 None 时, Authorization Header 缺失时回退校验签名会话
     Cookie (Fix-17), 使同源 WebUI 可以只靠 Cookie 完成认证。
+    setup_manager 非 None 时 (T3-backend): 候选 token 也比对首登密码 hash; 且当
+    "未配置 api_token + setup 未设密码"时返回 428 SETUP_REQUIRED (首登强制设
+    密码, 对标 AstrBot password_change_required)。setup_manager=None 时行为与
+    引入 T3 前完全一致 (向后兼容旧测试)。
     """
     from fastapi import Cookie, Header, HTTPException
 
@@ -178,15 +184,29 @@ def make_auth_dependency(expected_token: str, session_secret: bytes | None = Non
         authorization: str | None = Header(default=None),
         session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ) -> str:
-        if not expected_token:
-            return "anonymous"  # 未配置 token, 开发模式
         token = _resolve_token(authorization, session_cookie, session_secret)
-        if not verify_token(token, expected_token):
+        if expected_token and verify_token(token, expected_token):
+            return "authenticated"
+        if setup_manager is not None:
+            # T3-backend: setup_manager 注入后, 认证只认 api_token 或 setup 密码;
+            # setup 完成且 token 无效 → 401 (不再回退开发模式 anonymous)。
+            if setup_manager.is_password_valid(token):
+                return "authenticated"
+            if setup_manager.is_setup_required:
+                raise HTTPException(
+                    status_code=428,
+                    detail={"code": "SETUP_REQUIRED", "message": "首登未设置密码, 请 POST /api/v1/setup"},
+                )
             raise HTTPException(
                 status_code=401,
                 detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
             )
-        return "authenticated"
+        if not expected_token:
+            return "anonymous"  # 未配置 token 且无 setup_manager, 开发模式
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
+        )
 
     return _verify
 
@@ -226,7 +246,9 @@ def _find_matching_token(tokens: list[TokenScope], token: str | None) -> TokenSc
     return None
 
 
-def make_token_only_dependency(tokens: list[TokenScope], session_secret: bytes | None = None):
+def make_token_only_dependency(
+    tokens: list[TokenScope], session_secret: bytes | None = None, setup_manager: Any = None
+):
     """构造一个只校验 Bearer Token 在 tokens[] 中存在、不检查具体 scope 的依赖。
 
     用于路由级别的基线认证 (等价于 make_auth_dependency, 但按 tokens[] 而不是
@@ -234,6 +256,8 @@ def make_token_only_dependency(tokens: list[TokenScope], session_secret: bytes |
     否则任何不等于旧扁平 api_token 的合法 scoped token 会在到达端点级
     scope_dependency 检查之前就被路由级的旧 make_auth_dependency 拒绝 (401)。
     session_secret 非 None 时同样支持 Fix-17 的会话 Cookie 回退。
+    setup_manager 非 None 时 (T3-backend): 候选 token 也比对首登密码 hash; 且
+    当 setup 未设密码时返回 428 SETUP_REQUIRED (首登强制设密码)。
     """
     from fastapi import Cookie, Header, HTTPException
 
@@ -243,12 +267,20 @@ def make_token_only_dependency(tokens: list[TokenScope], session_secret: bytes |
     ) -> str:
         token = _resolve_token(authorization, session_cookie, session_secret)
         matched = _find_matching_token(tokens, token)
-        if matched is None:
-            raise HTTPException(
-                status_code=401,
-                detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
-            )
-        return matched.token
+        if matched is not None:
+            return matched.token
+        if setup_manager is not None:
+            if setup_manager.is_password_valid(token):
+                return "authenticated"
+            if setup_manager.is_setup_required:
+                raise HTTPException(
+                    status_code=428,
+                    detail={"code": "SETUP_REQUIRED", "message": "首登未设置密码, 请 POST /api/v1/setup"},
+                )
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
+        )
 
     return _verify
 

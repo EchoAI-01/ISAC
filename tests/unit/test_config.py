@@ -91,9 +91,10 @@ class TestZeroConfigStartup:
             monkeypatch.delenv(key, raising=False)
 
     def test_missing_config_uses_builtin_defaults(self, tmp_path, monkeypatch):
-        """无 config.jsonc → DEFAULT_CONFIG 兜底, webchat 默认开 + control/memory 关。
-        llm 不依赖 env: 不论 env 是否注入 provider/key, 无有效真实 key 时 (空或占位符)
-        register_llm_provider 都走 Stub + 引导 (T1)。"""
+        """无 config.jsonc → DEFAULT_CONFIG 兜底, webchat 默认开 + control 默认开 + memory 默认关。
+        T3: control 开箱可管理 (仅绑 127.0.0.1) + setup_enabled 首登强制设密码; llm 不依赖 env:
+        不论 env 是否注入 provider/key, 无有效真实 key 时 (空或占位符) register_llm_provider
+        都走 Stub + 引导 (T1)。"""
         # 显式清掉可能被其他测试注入的 env, 不依赖 autouse fixture 跨类隔离。
         for key in (
             "ISAC_CONTROL_ENABLED", "ISAC_CONTROL_HOST", "ISAC_CONTROL_PORT",
@@ -106,8 +107,10 @@ class TestZeroConfigStartup:
         assert config["channels"]["webchat"]["enabled"] is True
         assert config["channels"]["webchat"]["bind_host"] == "127.0.0.1"
         assert config["channels"]["webchat"]["bind_port"] == 8090
-        # control 默认关 (default-off 铁律)
-        assert config["control"]["enabled"] is False
+        # control 默认开 + setup_enabled 默认开 (T3: 开箱可管理 + 首登强制设密码;
+        # 仅绑 127.0.0.1, admin 端点首登态 428 SETUP_REQUIRED 直到 POST /setup)
+        assert config["control"]["enabled"] is True
+        assert config["control"]["setup_enabled"] is True
         # memory 默认关 (不引入隐式 SQLite/embedding 启动)
         assert config["memory"]["enabled"] is False
         # llm: 默认 {} 或 env 注入的占位符 key, is_placeholder_key 都判为未配置 → Stub

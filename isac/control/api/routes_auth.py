@@ -22,6 +22,7 @@ def build_router(
     expected_token: str,
     tokens: Any = None,
     session_secret: bytes | None = None,
+    samesite: str = "strict",
 ) -> Any:
     """构造 /auth/session 路由。
 
@@ -29,6 +30,8 @@ def build_router(
     tokens: Fix-12 解析出的 TokenScope 列表 (配置了 control.tokens[] 时非 None)。
     session_secret: 签名会话 Cookie 用的进程级密钥; None 时本端点直接 404 风格
     拒绝 (会话 Cookie 机制未启用, 不应该有调用方打这个端点)。
+    samesite: FE1 会话 Cookie 的 SameSite 策略。同源 (默认) 用 "strict";
+    control.cors.origins 非空 (分离 origin 跨源带 Cookie) 时由 server 传 "lax"。
     """
     from fastapi import APIRouter, HTTPException
 
@@ -53,7 +56,7 @@ def build_router(
                 status_code=401,
                 detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
             )
-        _set_session_cookies(response, request, candidate, session_secret)
+        _set_session_cookies(response, request, candidate, session_secret, samesite)
         return {"status": "ok"}
 
     @router.delete("/auth/session")
@@ -65,7 +68,9 @@ def build_router(
     return router
 
 
-def _set_session_cookies(response: Any, request: Any, token: str, session_secret: bytes) -> None:
+def _set_session_cookies(
+    response: Any, request: Any, token: str, session_secret: bytes, samesite: str = "strict"
+) -> None:
     """设置会话 Cookie (HttpOnly) + CSRF Cookie (非 HttpOnly, 前端要读它回填请求头)。
 
     CONTROL_PLANE_SPEC.md §8.2 第 5 条: "生产 HTTPS 环境必须同时设置 Secure,
@@ -73,6 +78,9 @@ def _set_session_cookies(response: Any, request: Any, token: str, session_secret
     不引入新的必需配置项 (反向代理场景若终结 TLS 后以 HTTP 转发给本进程,
     应在代理层设置 X-Forwarded-Proto 并由部署方自行决定是否需要额外配置,
     此处不臆造尚不存在的信任链)。
+
+    samesite: FE1 同源用 "strict"; 分离 origin (cors.origins 非空) 用 "lax"
+    让跨源请求可带 Cookie (写操作另由 Bearer Token + CSRF 双提交兜底)。
     """
     from isac.control.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, generate_csrf_token, sign_session_cookie
 
@@ -82,7 +90,7 @@ def _set_session_cookies(response: Any, request: Any, token: str, session_secret
         SESSION_COOKIE_NAME,
         session_value,
         httponly=True,
-        samesite="strict",
+        samesite=samesite,
         secure=is_https,
         path="/",
     )
@@ -90,7 +98,7 @@ def _set_session_cookies(response: Any, request: Any, token: str, session_secret
         CSRF_COOKIE_NAME,
         generate_csrf_token(),
         httponly=False,
-        samesite="strict",
+        samesite=samesite,
         secure=is_https,
         path="/",
     )

@@ -5,7 +5,26 @@ ISAC Admin API 提供对 Agent / 路由 / Link / 插件矩阵 / 审计日志的�
 
 **Base URL**: `http://127.0.0.1:8765/api/v1`
 
-**OpenAPI docs**: `http://127.0.0.1:8765/docs` (Swagger UI)
+**OpenAPI docs**: `http://127.0.0.1:8765/docs` (Swagger UI, 默认关闭; 见下方契约基线)
+
+---
+
+## API 契约基线 (FE0)
+
+本 API 的契约基线以 `docs/api/openapi.json` 为准 (由 `scripts/export_openapi.py`
+从 `create_control_app` 实时导出)。前后端分离后, 前端围绕此基线开发。
+
+**契约冻结规则**:
+- 版本前缀 `/api/v1` 保持; 破坏性变更 (删端点 / 改参数语义 / 改错误码) 须升
+  版本前缀 (如 `/api/v2`) 并保留 v1 过渡期。
+- 运行时 `/openapi.json` 按 R15 安全默认关闭 (`control.docs_enabled=false`),
+  防误暴露完整端点列表; 契约以归档文件为准而非运行时端点。
+- 任何 API 变更 (新增/修改/删除端点、改错误码) 须先改 `CONTROL_PLANE_SPEC.md`
+  对应章节 + 更新本文档端点说明, 再跑 `scripts/export_openapi.py` 刷新
+  `docs/api/openapi.json` 基线, 否则前后端契约漂移。
+
+**统一错误格式** (详见 `CONTROL_PLANE_SPEC.md` §3.6): `{"detail": {"code", "message"}}`,
+未捕获异常返回 500 `{"detail": {"code": "INTERNAL_ERROR", "message": "Internal server error"}}`。
 
 ---
 
