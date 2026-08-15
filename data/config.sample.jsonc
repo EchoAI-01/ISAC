@@ -236,7 +236,13 @@
     // manifest.jsonc) 强制隔离会导致加载失败 (清晰报错, 不会静默退回不受保护的
     // 宿主进程内加载)。
     "plugins": {
-      "isolated_plugins": []
+      "isolated_plugins": [],
+      // T6: 远程插件市场清单 URL。空 = 仅用本地 data/plugin_marketplace.jsonc。
+      // 配置后控制面 httpx 拉取远程清单 (SSRF 校验 + 超时 + 缓存), 与本地合并。
+      "marketplace_url": "",
+      // T6: 是否允许经控制面安装/卸载/热重载插件。默认 true (控制面仅 127.0.0.1 可达)。
+      // 暴露到外网时建议设 false, 经文件系统手动管理插件。
+      "allow_install": true
     }
   },
 

@@ -10,8 +10,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from isac.plugin.runtime.activation import activate_plugin, sync_plugin_tools_to_agents
+
 if TYPE_CHECKING:
     from isac.control.audit import AuditLog
+    from isac.plugin.runtime.installer import PluginInstaller
     from isac.plugin.runtime.manager import PluginManager
     from isac.runtime.manager import AgentManager
 
@@ -103,3 +106,188 @@ def build_loaded_plugins_router(
         return {"plugins": items, "total": len(items)}
 
     return router
+
+
+async def _audit_record(
+    audit_log: AuditLog | None, action: str, target: str, detail: str, status_code: int
+) -> None:
+    """记录插件操作审计日志 (审计为 None 时 no-op)。"""
+    if audit_log is not None:
+        await audit_log.record(
+            actor="authenticated",
+            method="POST",
+            path=f"/api/v1/plugins/{target}",
+            action=action,
+            target=target,
+            detail=detail,
+            status_code=status_code,
+        )
+
+
+async def _activate_and_sync(
+    plugin_manager: Any,
+    agent_manager: Any,
+    services: dict[str, Any],
+    name: str,
+    *,
+    event_bus: Any,
+    bus: Any,
+    router: Any,
+) -> dict[str, list[str]]:
+    """激活单个插件 + 同步共享表变更到运行中 Agent (T6 热重载核心路径)。"""
+    await activate_plugin(plugin_manager, name, services, event_bus=event_bus, bus=bus, router=router)
+    return await sync_plugin_tools_to_agents(agent_manager, services, name)
+
+
+async def _handle_install(
+    plugin_manager: Any, agent_manager: Any, installer: Any, services: dict[str, Any],
+    source: dict[str, Any], *, event_bus: Any, bus: Any, router: Any, audit_log: AuditLog | None,
+) -> dict[str, Any]:
+    from fastapi import HTTPException
+
+    name = source.get("name", "")
+    try:
+        status = await plugin_manager.install(source, installer)
+    except Exception as exc:  # noqa: BLE001
+        await _audit_record(audit_log, "install_plugin", name, f"failed: {exc}", 400)
+        raise HTTPException(
+            status_code=400, detail={"code": "INSTALL_FAILED", "message": str(exc)}
+        ) from exc
+    sync_result: dict[str, list[str]] = {}
+    if name and not status.startswith("failed"):
+        sync_result = await _activate_and_sync(
+            plugin_manager, agent_manager, services, name, event_bus=event_bus, bus=bus, router=router
+        )
+    await _audit_record(audit_log, "install_plugin", name, f"status={status}", 200)
+    return {"status": status, "sync": sync_result}
+
+
+async def _handle_reload(
+    plugin_manager: Any, agent_manager: Any, services: dict[str, Any], name: str,
+    *, event_bus: Any, bus: Any, router: Any, audit_log: AuditLog | None,
+) -> dict[str, Any]:
+    from fastapi import HTTPException
+
+    # 1. 先从共享表移除旧工具 (在 on_load 重新注册前, 避免干扰)
+    shared_tools = services.get("plugin_tools")
+    if shared_tools is not None:
+        shared_tools.deregister_by_source(name)
+    # 2. PluginManager reload (unload + 重新 load_entry)
+    try:
+        status = await plugin_manager.reload(name)
+    except Exception as exc:  # noqa: BLE001
+        await _audit_record(audit_log, "reload_plugin", name, f"failed: {exc}", 500)
+        raise HTTPException(
+            status_code=500, detail={"code": "RELOAD_FAILED", "message": str(exc)}
+        ) from exc
+    if status in ("not_loaded", "not_found"):
+        raise HTTPException(status_code=404, detail={"code": "PLUGIN_NOT_FOUND", "message": status})
+    if status.startswith("failed"):
+        raise HTTPException(status_code=500, detail={"code": "RELOAD_FAILED", "message": status})
+    # 3. 激活 (on_load/adapt) + 4. 同步运行中 Agent registry
+    sync_result = await _activate_and_sync(
+        plugin_manager, agent_manager, services, name, event_bus=event_bus, bus=bus, router=router
+    )
+    await _audit_record(audit_log, "reload_plugin", name, f"status={status}", 200)
+    return {"status": status, "sync": sync_result}
+
+
+async def _handle_uninstall(
+    plugin_manager: Any, agent_manager: Any, services: dict[str, Any], name: str,
+    *, audit_log: AuditLog | None,
+) -> dict[str, Any]:
+    # 先从共享表 + 运行中 Agent 移除该插件工具
+    shared_tools = services.get("plugin_tools")
+    if shared_tools is not None:
+        shared_tools.deregister_by_source(name)
+    status = await plugin_manager.uninstall(name)
+    sync_result = await sync_plugin_tools_to_agents(agent_manager, services, name)
+    await _audit_record(audit_log, "uninstall_plugin", name, f"status={status}", 200)
+    return {"status": status, "sync": sync_result}
+
+
+async def _handle_retry(
+    plugin_manager: Any, agent_manager: Any, services: dict[str, Any], name: str,
+    *, event_bus: Any, bus: Any, router: Any, audit_log: AuditLog | None,
+) -> dict[str, Any]:
+    from fastapi import HTTPException
+
+    try:
+        status = await plugin_manager.retry(name)
+    except Exception as exc:  # noqa: BLE001
+        await _audit_record(audit_log, "retry_plugin", name, f"failed: {exc}", 500)
+        raise HTTPException(
+            status_code=500, detail={"code": "RETRY_FAILED", "message": str(exc)}
+        ) from exc
+    sync_result: dict[str, list[str]] = {}
+    if not status.startswith("failed"):
+        sync_result = await _activate_and_sync(
+            plugin_manager, agent_manager, services, name, event_bus=event_bus, bus=bus, router=router
+        )
+    await _audit_record(audit_log, "retry_plugin", name, f"status={status}", 200)
+    return {"status": status, "sync": sync_result}
+
+
+def build_plugin_marketplace_router(
+    plugin_manager: PluginManager,
+    agent_manager: AgentManager,
+    installer: PluginInstaller,
+    services: dict[str, Any],
+    *,
+    event_bus: Any = None,
+    bus: Any = None,
+    router: Any = None,
+    auth_dependency: Any = None,
+    scope_dependency: Any = None,
+    audit_log: AuditLog | None = None,
+    allow_install: bool = True,
+) -> Any:
+    """T6: 插件市场 + 安装 + 热重载 + 卸载 + 失败重试路由。
+
+    前缀 /plugins, 写操作需 plugin:write scope + 审计日志。allow_install=False 时
+    只注册读端点 (marketplace/failed), 不注册写端点 (减少攻击面)。端点逻辑抽到
+    模块级 _handle_* 辅助以控制本函数复杂度。
+    """
+    from fastapi import APIRouter, Depends
+
+    api = APIRouter(
+        prefix="/plugins",
+        tags=["plugins"],
+        dependencies=[Depends(auth_dependency)] if auth_dependency else [],
+    )
+    read_deps = [Depends(scope_dependency("plugin:read"))] if scope_dependency else []
+    write_deps = [Depends(scope_dependency("plugin:write"))] if scope_dependency else []
+
+    @api.get("/marketplace", dependencies=read_deps)
+    async def list_marketplace(refresh: bool = False) -> dict:
+        entries = await installer.load_marketplace(refresh=refresh)
+        return {"plugins": entries, "total": len(entries)}
+
+    @api.get("/failed", dependencies=read_deps)
+    async def list_failed() -> dict:
+        failures = plugin_manager.list_failures()
+        return {"failures": failures, "total": len(failures)}
+
+    if not allow_install:
+        return api
+
+    kw = {"event_bus": event_bus, "bus": bus, "router": router, "audit_log": audit_log}
+
+    @api.post("/install", dependencies=write_deps)
+    async def install_plugin(body: dict) -> dict:
+        source = body.get("source", body) if isinstance(body, dict) else {}
+        return await _handle_install(plugin_manager, agent_manager, installer, services, source, **kw)
+
+    @api.post("/{name}/reload", dependencies=write_deps)
+    async def reload_plugin(name: str) -> dict:
+        return await _handle_reload(plugin_manager, agent_manager, services, name, **kw)
+
+    @api.delete("/{name}", dependencies=write_deps)
+    async def uninstall_plugin(name: str) -> dict:
+        return await _handle_uninstall(plugin_manager, agent_manager, services, name, audit_log=audit_log)
+
+    @api.post("/{name}/retry", dependencies=write_deps)
+    async def retry_plugin(name: str) -> dict:
+        return await _handle_retry(plugin_manager, agent_manager, services, name, **kw)
+
+    return api

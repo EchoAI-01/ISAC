@@ -233,6 +233,7 @@ def create_control_app(
     identity_resolver: Any = None,
     vector_resolver: Any = None,
     channel_registry: Any = None,
+    services: dict[str, Any] | None = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -336,6 +337,14 @@ def create_control_app(
         app, agent_manager, router, bus, plugin_manager, config,
         auth_dependency, audit_log, agents_dir, routing_rules_path, links_path,
         scope_dependency,
+    )
+    # T6: 插件市场 + 安装 + 热重载路由。installer 在此构造 (plugins_dir/marketplace_url
+    # 依赖 config); services 含共享注册表 + event_bus 等, 供 activation 激活 + sync。
+    _mount_plugin_marketplace_router(
+        app, agent_manager, plugin_manager, config, services or {},
+        event_bus=event_bus, bus=bus, router=router,
+        auth_dependency=auth_dependency, scope_dependency=scope_dependency,
+        audit_log=audit_log,
     )
     _mount_optional_routers(
         app, usage_store, subagent_supervisor, provider_manager, model_catalog,
@@ -469,6 +478,52 @@ def _mount_core_routers(
             plugin_manager,
             auth_dependency=auth_dependency,
             scope_dependency=scope_dependency,
+        ),
+        prefix="/api/v1",
+    )
+
+
+def _mount_plugin_marketplace_router(
+    app: Any,
+    agent_manager: Any,
+    plugin_manager: PluginManager,
+    config: dict[str, Any],
+    services: dict[str, Any],
+    *,
+    event_bus: Any = None,
+    bus: Any = None,
+    router: Any = None,
+    auth_dependency: Any = None,
+    scope_dependency: Any = None,
+    audit_log: Any = None,
+) -> None:
+    """T6: 挂载插件市场 + 安装 + 热重载 + 卸载 + 失败重试路由。
+
+    installer 在此构造 (plugins_dir/marketplace_url 依赖 config)。services 含进程级
+    共享注册表 (plugin_tools 等), 供 activation 模块激活 + sync 运行中 Agent。
+    """
+    from isac.control.api import routes_plugins
+    from isac.plugin.runtime.installer import PluginInstaller
+
+    plugins_cfg = (config.get("plugins", {}) or {}) if isinstance(config, dict) else {}
+    plugins_dir = config.get("plugins_dir", "plugins")
+    marketplace_url = plugins_cfg.get("marketplace_url", "")
+    allow_install = bool(plugins_cfg.get("allow_install", True))
+
+    installer = PluginInstaller(plugins_dir=plugins_dir, marketplace_url=marketplace_url)
+    app.include_router(
+        routes_plugins.build_plugin_marketplace_router(
+            plugin_manager,
+            agent_manager,
+            installer,
+            services,
+            event_bus=event_bus,
+            bus=bus,
+            router=router,
+            auth_dependency=auth_dependency,
+            scope_dependency=scope_dependency,
+            audit_log=audit_log,
+            allow_install=allow_install,
         ),
         prefix="/api/v1",
     )

@@ -1294,6 +1294,9 @@ async def _register_control_plane(
         # H2: 隔离插件跑在子进程 (daemon), 优雅关闭时显式终止, 不留残余子进程。
         runtime.register_lifecycle("plugins", _noop_start, plugin_manager.shutdown)
         plugins_dir = Path(control_config.get("plugins_dir", "plugins"))
+        # T6: 无条件记录 plugins_dir 供 reload/install/retry 定位 (即使目录尚不存在,
+        # 后续经控制面 install 会创建; 否则 reload 报 "plugins_dir 未设置")。
+        plugin_manager._plugins_dir = plugins_dir  # noqa: SLF001
         # 用 to_thread 包装 Path.exists 避免 event loop 内 blocking IO (ruff ASYNC240)。
         if await asyncio.to_thread(plugins_dir.exists):
             try:
@@ -1342,6 +1345,7 @@ async def _register_control_plane(
             identity_resolver=(services or {}).get("identity_resolver"),
             vector_resolver=(services or {}).get("vector_resolver"),
             channel_registry=channel_registry,
+            services=services or {},
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))
