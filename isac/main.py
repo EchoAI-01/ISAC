@@ -752,6 +752,14 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         subagent_journal = SubAgentJournal(str(DATA_DIR / "subagent" / "journal.db"))
     subagent_supervisor = SubAgentSupervisor(journal=subagent_journal)
 
+    # R3: CLI 工具 (bash/read_file/write_file) 后端注入。此前 build_services 不注入
+    # workspace_root/bash_allowlist → 三工具恒因 services 未注入被拒 (即使
+    # tools_policy allow 也调不通)。默认 workspace_root=data/workspace (LLM 文件
+    # 操作沙箱, mkdir 确保存在); bash_allowlist 默认空 (禁止所有命令, 需显式配置)。
+    tools_config = global_config.get("tools", {}) or {}
+    workspace_root = str(DATA_DIR / "workspace")
+    (DATA_DIR / "workspace").mkdir(parents=True, exist_ok=True)
+
     return {
         "global_config": global_config,
         "provider_manager": provider_manager,
@@ -784,6 +792,9 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         # J4: SubAgent 监督器 (常驻) 与日志句柄 (未启用时为 None)。
         "subagent_supervisor": subagent_supervisor,
         "subagent_journal": subagent_journal,
+        # R3: CLI 工具后端 (bash/read_file/write_file 经 ToolContext.services 取用)
+        "workspace_root": workspace_root,
+        "bash_allowlist": list(tools_config.get("bash_allowlist") or []),
     }
 
 

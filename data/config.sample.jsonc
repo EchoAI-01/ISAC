@@ -240,6 +240,13 @@
     }
   },
 
+  // R3: CLI 工具后端配置。workspace_root 固定为 data/workspace (LLM 文件操作沙箱,
+  // read_file/write_file 相对它解析, 禁绝对路径/..越权)。bash_allowlist 默认空
+  // (禁止所有命令); 配置允许的命令前缀让 bash 工具可用 (如 ["ls", "cat", "git"])。
+  "tools": {
+    "bash_allowlist": []
+  },
+
   // Channel 适配器 (Q0 起 4 个平台均在 main() 真实注册, enabled=true 即生效)
   "channels": {
     // OneBot/QQ: 反向 WebSocket 服务端, NapCat 等客户端连到 host:port
