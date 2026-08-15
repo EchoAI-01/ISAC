@@ -186,6 +186,46 @@ class TestToolCall:
         assert "error" in response
         assert response["error"]["code"] == -32602
 
+    @pytest.mark.asyncio
+    async def test_channel_bind_and_unbind(self, mcp_server) -> None:
+        """R2-④: channel_bind_agent + channel_unbind_agent 操作 RoutingRules.bindings。"""
+        params = {"meta": {"authorization": "Bearer mcp-secret"}, "name": "", "arguments": {}}
+        for tool in ("channel_bind_agent",):
+            p = {**params, "name": tool, "arguments": {"platform": "webchat", "agent_id": "a1"}}
+            resp = await mcp_server._handle_request({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": p})
+            result = json.loads(resp["result"]["content"][0]["text"])
+            assert result["status"] == "bound"
+        rules = mcp_server._router.get_rules()
+        assert any(b.platform == "webchat" and b.agent_id == "a1" for b in rules.bindings)
+        # unbind
+        p = {**params, "name": "channel_unbind_agent", "arguments": {"platform": "webchat", "agent_id": "a1"}}
+        resp = await mcp_server._handle_request({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": p})
+        result = json.loads(resp["result"]["content"][0]["text"])
+        assert result["status"] == "unbound"
+        assert result["removed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_plugin_set_enabled(self, mcp_server, tmp_path, monkeypatch) -> None:
+        """R2-④: plugin_set_enabled 调整 plugins_allow/deny 并持久化。"""
+        from isac.runtime.config import AgentConfig
+
+        cfg = AgentConfig(agent_id="r2plug", display_name="R2")
+        # chdir 到 tmp_path, 让工具内 save_agent_config 的 "data/agents" 相对路径落到临时目录
+        monkeypatch.chdir(tmp_path)
+        await mcp_server._agent_manager.create(cfg)
+        resp = await mcp_server._handle_request({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"meta": {"authorization": "Bearer mcp-secret"}, "name": "plugin_set_enabled",
+                       "arguments": {"agent_id": "r2plug", "plugins_allow": ["p1"], "plugins_deny": ["bad"]}},
+        })
+        result = json.loads(resp["result"]["content"][0]["text"])
+        assert result["status"] == "updated"
+        inst = await mcp_server._agent_manager.get("r2plug")
+        assert inst.config.plugins_allow == ["p1"]
+        assert inst.config.plugins_deny == ["bad"]
+        # 持久化文件已写 (含自增 revision)
+        assert (tmp_path / "data" / "agents" / "r2plug" / "config.jsonc").exists()
+
 
 class TestNotification:
     @pytest.mark.asyncio

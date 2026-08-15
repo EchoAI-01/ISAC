@@ -233,6 +233,7 @@ def create_control_app(
     identity_resolver: Any = None,
     vector_resolver: Any = None,
     channel_registry: Any = None,
+    webhook_manager: Any = None,
     services: dict[str, Any] | None = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
@@ -351,6 +352,7 @@ def create_control_app(
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
         scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
         sparse_resolver, workflow_engine, identity_resolver, vector_resolver,
+        webhook_manager,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -548,8 +550,9 @@ def _mount_optional_routers(
     workflow_engine: Any = None,
     identity_resolver: Any = None,
     vector_resolver: Any = None,
+    webhook_manager: Any = None,
 ) -> None:
-    """挂载可选路由 (usage / subagent / providers / config / sessions / memory / events / workflows / identity)。"""
+    """挂载可选路由 (usage/subagent/providers/config/sessions/memory/events/workflows/identity/webhooks)。"""
     if usage_store is not None:
         from isac.control.api import routes_usage
 
@@ -639,6 +642,29 @@ def _mount_optional_routers(
     logs_router = routes_logs.build_router(auth_dependency=auth_dependency)
     if logs_router is not None:
         app.include_router(logs_router, prefix="/api/v1")
+    # R2-③: Webhook 路由 (抽到 helper 降 _mount_optional_routers 复杂度)
+    _mount_webhook_router(
+        app, webhook_manager, auth_dependency=auth_dependency,
+        scope_dependency=scope_dependency, audit_log=audit_log,
+    )
+
+
+def _mount_webhook_router(
+    app: Any, webhook_manager: Any, *,
+    auth_dependency: Any, scope_dependency: Any, audit_log: Any,
+) -> None:
+    """R2-③: 挂载 Webhook 订阅与触发路由 (webhook_manager 注入时)。"""
+    if webhook_manager is None:
+        return
+    from isac.control.api import routes_webhooks
+
+    app.include_router(
+        routes_webhooks.build_router(
+            webhook_manager, auth_dependency=auth_dependency,
+            scope_dependency=scope_dependency, audit_log=audit_log,
+        ),
+        prefix="/api/v1",
+    )
 
 
 def _mount_identity_workflow_routers(

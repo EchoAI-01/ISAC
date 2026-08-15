@@ -528,7 +528,7 @@ async function refreshExtensions() {
         addRow("plugins-table", ["(无已加载插件)", "", ""]);
     }
     // SubAgent 任务 (Q5: usage/evidence 现在保留到 run 上, 控制面可读)
-    const runs = await apiCall("GET", "/agents/_/subagent-runs").catch(() => []);
+    const runs = await apiCall("GET", "/subagent-runs").catch(() => []);
     if (runs === null) return;
     clearTableBody("subagent-runs-table");
     (runs || []).forEach(r => {
@@ -663,13 +663,13 @@ let _loadedConfig = null;  // 缓存加载的配置, 供 diff/patch 使用
 async function loadConfigForEdit() {
     const agentId = document.getElementById("config-edit-agent-id")?.value.trim();
     if (!agentId) { showToast("请输入 agent_id", "error"); return; }
-    // GET /agents/{id} 当前只返回 agent_id + status; 需要从 config 文件读
-    // 这里简化: 直接构造一个示例 config (实际应从 /agents/{id}/config 读取, 待 J3 后续)
-    const agent = await apiCall("GET", `/agents/${encodeURIComponent(agentId)}`);
-    if (agent === null) return;
-    _loadedConfig = { agent_id: agentId, display_name: agentId, enabled: true, revision: 1 };
+    // R2: 从 /agents/{id}/config 读取全量配置 + 真实 revision (替代此前硬编码 revision:1,
+    // 使 patchConfig 的 ?if_match= 乐观锁真实生效)
+    const cfg = await apiCall("GET", `/agents/${encodeURIComponent(agentId)}/config`);
+    if (cfg === null) return;
+    _loadedConfig = cfg;
     document.getElementById("config-revision").value = _loadedConfig.revision;
-    document.getElementById("config-new-name").value = _loadedConfig.display_name;
+    document.getElementById("config-new-name").value = _loadedConfig.display_name || "";
     showToast("配置已加载");
 }
 

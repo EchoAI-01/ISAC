@@ -69,6 +69,12 @@ def build_router(
         runs = await supervisor.list_runs(filters={"parent_agent_id": agent_id})
         return [_run_to_dict(run) for run in runs]
 
+    @router.get("/subagent-runs", dependencies=read_deps)
+    async def list_all_subagent_runs() -> list[dict]:
+        """R2: 全局 SubAgent 任务列表 (无 parent_agent_id 过滤, 供 WebUI 系统扩展页)。"""
+        runs = await supervisor.list_runs(filters={})
+        return [_run_to_dict(run) for run in runs]
+
     @router.get("/subagent-runs/{task_id}", dependencies=read_deps)
     async def get_subagent_run(task_id: str) -> dict:
         run = await supervisor.get_status(task_id)

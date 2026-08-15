@@ -234,22 +234,26 @@ class ISACMCPServer:
             return None
         raise MCPError(-32601, f"Method not found: {method}")
 
+    async def _check_scope_if_needed(self, name: str, params: dict[str, Any]) -> None:
+        """C2: parsed_tokens 启用时按 tool→scope 映射校验 (抽自 _call_tool 降复杂度)。"""
+        if self._parsed_tokens is None:
+            return
+        auth_header = params.get("meta", {}).get("authorization", "")
+        from isac.control.auth import extract_bearer
+
+        scopes = self._find_token_scope(extract_bearer(auth_header))
+        if scopes is None:
+            raise MCPError(-32001, "Unauthorized: invalid or missing token")
+        if not self._check_tool_scope(name, scopes):
+            required = TOOL_SCOPE_MAP.get(name, "unknown")
+            raise MCPError(-32003, f"Forbidden: missing scope {required}")
+
     async def _call_tool(self, params: dict[str, Any]) -> dict[str, Any]:
         """调用 MCP 工具, 委托到 AgentManager/Router/Bus。"""
         name = params.get("name", "")
         args = params.get("arguments", {}) or {}
-        # C2: parsed_tokens 启用时按 tool→scope 映射校验
-        if self._parsed_tokens is not None:
-            auth_header = params.get("meta", {}).get("authorization", "")
-            from isac.control.auth import extract_bearer
-
-            token = extract_bearer(auth_header)
-            scopes = self._find_token_scope(token)
-            if scopes is None:
-                raise MCPError(-32001, "Unauthorized: invalid or missing token")
-            if not self._check_tool_scope(name, scopes):
-                required = TOOL_SCOPE_MAP.get(name, "unknown")
-                raise MCPError(-32003, f"Forbidden: missing scope {required}")
+        # C2: parsed_tokens 启用时按 tool→scope 映射校验 (抽 helper 降复杂度)
+        await self._check_scope_if_needed(name, params)
         if name == "agent_create" and self._agent_manager is not None:
             # CR3-L1: MCP 自动化创建同样走受限默认配置 (bash/task deny +
             # plugins_deny=["*"]), 调用方 arguments 里的能力字段被丢弃并告警。
@@ -276,6 +280,10 @@ class ISACMCPServer:
             rules.default_agents[args.get("platform", "")] = args.get("agent_id", "")
             self._router.set_rules(rules)
             return _text_result({"status": "updated"})
+        # R2-④: 5 个新工具抽到模块级 helper 降 _call_tool 复杂度
+        extra = await _call_r2_tools(name, args, self)
+        if extra is not None:
+            return extra
         raise MCPError(-32602, f"Unknown tool or missing dependency: {name}")
 
     async def _send_error(self, writer: asyncio.StreamWriter, request_id: Any, code: int, message: str) -> None:
@@ -295,6 +303,80 @@ class ISACMCPServer:
 def _text_result(payload: dict[str, Any]) -> dict[str, Any]:
     """构造 MCP tools/call 返回格式 (content 数组带 text 块)。"""
     return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]}
+
+
+async def _call_r2_tools(name: str, args: dict[str, Any], server: Any) -> dict[str, Any] | None:
+    """R2-④: 5 个声明未实现的工具 (channel_bind/unbind, agent_update_config,
+    plugin_set_enabled, message_send) 的实现, 抽到模块级降 _call_tool 复杂度。
+
+    返回 None 表示该工具不属于本 helper 或依赖缺失, 交给调用方兜底 raise。
+    """
+    if name == "channel_bind_agent" and server._router is not None:
+        from isac.router.rules import ChannelBinding
+
+        rules = server._router.get_rules()
+        rules.bindings.append(ChannelBinding(
+            platform=str(args.get("platform", "")), agent_id=str(args.get("agent_id", "")),
+            group_id=args.get("group_id"), user_id=args.get("user_id"),
+        ))
+        server._router.set_rules(rules)
+        return _text_result({"status": "bound"})
+    if name == "channel_unbind_agent" and server._router is not None:
+        rules = server._router.get_rules()
+        plat, gid, uid = args.get("platform", ""), args.get("group_id"), args.get("user_id")
+        before = len(rules.bindings)
+        rules.bindings = [
+            b for b in rules.bindings
+            if not (b.platform == plat and b.group_id == gid and b.user_id == uid)
+        ]
+        server._router.set_rules(rules)
+        return _text_result({"status": "unbound", "removed": before - len(rules.bindings)})
+    if name == "agent_update_config" and server._agent_manager is not None:
+        from pathlib import Path
+
+        from isac.control.api.routes_agents import _do_patch_agent
+
+        result = await _do_patch_agent(
+            server._agent_manager, args.get("agent_id", ""),
+            args.get("config", {}), args.get("if_match"), None, Path("data/agents"),
+        )
+        return _text_result(result)
+    if name == "plugin_set_enabled" and server._agent_manager is not None:
+        from pathlib import Path
+
+        from isac.runtime.config import save_agent_config
+
+        agent_id = args.get("agent_id", "")
+        instance = await server._agent_manager.get(agent_id)
+        if instance is None:
+            raise MCPError(-32602, f"agent not found: {agent_id}")
+        instance.config.plugins_allow = list(args.get("plugins_allow", ["*"]))
+        instance.config.plugins_deny = list(args.get("plugins_deny", []))
+        save_agent_config(Path("data/agents") / agent_id / "config.jsonc", instance.config)
+        return _text_result({"status": "updated", "agent_id": agent_id})
+    if name == "message_send" and server._agent_manager is not None:
+        import time
+
+        from isac.channel.model import ISACMessage
+        from isac.gateway.models import Session
+        from isac.utils.helpers import new_id, unix_now
+
+        agent_id = args.get("agent_id", "")
+        platform = str(args.get("platform", "mcp"))
+        user_id = str(args.get("user_id", "mcp"))
+        message = ISACMessage(
+            msg_id=new_id("mcp"), platform=platform, timestamp=int(time.time()),
+            user_id=user_id, user_name="", group_id=args.get("group_id"),
+            content=str(args.get("content", "")),
+        )
+        session = Session(
+            session_id=new_id("sess"), user_id=user_id, agent_id=agent_id,
+            platform=platform, group_id=args.get("group_id"),
+            is_group=args.get("group_id") is not None, created_at=unix_now(),
+        )
+        reply = await server._agent_manager.handle_message_serialized(agent_id, message, session, None)
+        return _text_result({"status": "sent", "reply": reply or ""})
+    return None
 
 
 class MCPError(Exception):

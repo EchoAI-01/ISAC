@@ -56,6 +56,17 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
             provider_manager=instance.loop.provider_manager,
             services=services,
         )
+        # R2-⑤: 经 ContextEnvelopeBuilder 把 delegate_task 填入 task.context["summary"] 的
+        # 背景摘要真传子 Agent (此前 build() 全仓零调用, summary 被忽略)。有摘要时
+        # 拼成 "[背景] ... [目标] ...", 否则只用 objective。
+        from isac.runtime.subagent.context import ContextEnvelopeBuilder
+
+        envelope = ContextEnvelopeBuilder().build(task)
+        user_content = (
+            f"[背景] {envelope.summary}\n\n[目标] {envelope.objective}"
+            if envelope.summary
+            else envelope.objective
+        )
         message = ISACMessage(
             msg_id=f"subagent:{task.task_id}",
             platform="subagent",
@@ -63,7 +74,7 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
             user_id=task.parent_agent_id,
             user_name="",
             group_id=None,
-            content=task.objective,
+            content=user_content,
         )
         session = Session(
             session_id=f"subagent:{task.task_id}",
@@ -87,18 +98,35 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
                 "task_max_depth": task.policy.max_depth,
             },
         )
-        result = await loop.run([{"role": "user", "content": task.objective}], context)
+        result = await loop.run([{"role": "user", "content": user_content}], context)
         status = "succeeded" if not result.stopped_by_budget else "failed"
         summary = result.content or "子任务预算耗尽，未产生结果"
+        # R2-⑥: 采集 evidence_refs (此前恒为空 list)。从 loop 结果的 data 字段提取
+        # artifact_id 等引用, 转 "artifact:<id>" 字符串; 无则空 list。
+        evidence_refs = _collect_evidence_refs(result)
         return SubAgentResult(
             task_id=task.task_id,
             status=status,
             summary=summary,
+            evidence_refs=evidence_refs,
             usage=_usage(context),
             completed_at=int(time.time()),
         )
 
     supervisor.set_runner_factory(_runner)
+
+
+def _collect_evidence_refs(result: Any) -> list[str]:
+    """R2-⑥: 从子 Agent 结果采集 evidence_refs (此前恒为空 list)。
+
+    AgentResult 无 data 字段, 只有 content 文本。从 content 扫描 ``artifact:<id>``
+    引用模式 (子 Agent 调图像/音频工具产 artifact 后, LLM 回复常引用其 id);
+    无则返回空 list (不强造)。后续可扩展从 hooks/ArtifactStore 按 task_id 采集。
+    """
+    import re
+
+    content = getattr(result, "content", "") or ""
+    return re.findall(r"artifact:([A-Za-z0-9_-]+)", content)
 
 
 def _build_tool_registry(parent: ToolRegistry, task: SubAgentTask) -> ToolRegistry:

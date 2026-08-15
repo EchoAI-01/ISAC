@@ -61,6 +61,11 @@ def build_router(
             raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
         return {"agent_id": instance.agent_id, "status": instance.status}
 
+    @router.get("/{agent_id}/config", dependencies=read_deps)
+    async def get_agent_config(agent_id: str) -> dict:
+        """R2: 返回全量 AgentConfig + 真实 revision (供 WebUI loadConfigForEdit 乐观锁)。"""
+        return await _get_agent_config(agent_manager, agent_id)
+
     @router.post("/{agent_id}/start", dependencies=write_deps)
     async def start_agent(agent_id: str) -> dict:
         await _require_agent(agent_manager, agent_id, "start")
@@ -213,6 +218,18 @@ async def _do_create_agent(agent_manager: AgentManager, config: dict) -> Any:
             status_code=409,
             detail={"code": "AGENT_EXISTS", "message": "Agent already exists or creation failed"},
         ) from exc
+
+
+async def _get_agent_config(agent_manager: AgentManager, agent_id: str) -> dict:
+    """R2: 返回全量 AgentConfig (asdict) + 真实 revision; Agent 不存在抛 404。"""
+    from dataclasses import asdict
+
+    from fastapi import HTTPException
+
+    instance = await agent_manager.get(agent_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
+    return asdict(instance.config)
 
 
 async def _require_agent(agent_manager: AgentManager, agent_id: str, action: str) -> None:
