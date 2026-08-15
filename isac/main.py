@@ -1167,7 +1167,11 @@ async def main() -> None:
         adapter.on_message = handle_message
 
     # ── Alert (规则驱动; 在 start 之前注册, 启动后才挂到 TaskGroup) ──
-    alert_manager = AlertManager(metrics)
+    # R2-③: WebhookManager 此前已实现但 main 不构造 + AlertManager 不注入 → 死代码。
+    # 本轮构造 WebhookManager + EventBus on_async 订阅 + 注入 AlertManager (抽到 helper
+    # 降 main 复杂度)。
+    webhook_manager = _setup_webhooks(event_bus)
+    alert_manager = AlertManager(metrics, webhook_manager=webhook_manager)
     for rule in get_default_alert_rules():
         alert_manager.add_rule(rule)
 
@@ -1188,6 +1192,7 @@ async def main() -> None:
             services.get("artifact_store"),
             session_mgr, services.get("metadata_store"),
             event_bus,
+            webhook_manager,
             services=services,
             channel_registry=channel_registry,
         )
@@ -1269,6 +1274,27 @@ async def main() -> None:
         logger.info("ISAC 已退出")
 
 
+def _setup_webhooks(event_bus: EventBus) -> Any:
+    """R2-③: 构造 WebhookManager + EventBus on_async 订阅 (消息事件 → webhook 推送)。
+
+    WebhookManager 类此前已实现但 main 不构造 + 不订阅 EventBus → 死代码。
+    on_async 异常隔离, webhook 推送失败不阻塞主流程。
+    """
+    from isac.control.webhooks import WebhookManager
+
+    webhook_manager = WebhookManager()
+
+    async def _dispatch_webhook(payload: Any, event_name: str = "") -> None:
+        try:
+            await webhook_manager.dispatch(event_name, {"event": event_name, "payload": payload})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Webhook 推送失败, 不阻塞主流程", event=event_name, error=str(exc))
+
+    event_bus.on_async(EventType.POST_MESSAGE, lambda p: _dispatch_webhook(p, "post_message"))
+    event_bus.on_async(EventType.POST_SEND, lambda p: _dispatch_webhook(p, "post_send"))
+    return webhook_manager
+
+
 async def _register_control_plane(
     runtime: ApplicationRuntime,
     control_config: dict[str, Any],
@@ -1284,6 +1310,7 @@ async def _register_control_plane(
     session_manager: Any = None,
     metadata_store: Any = None,
     event_bus: Any = None,
+    webhook_manager: Any = None,
     *,
     services: dict[str, Any] | None = None,
     channel_registry: Any = None,
@@ -1367,6 +1394,7 @@ async def _register_control_plane(
             identity_resolver=(services or {}).get("identity_resolver"),
             vector_resolver=(services or {}).get("vector_resolver"),
             channel_registry=channel_registry,
+            webhook_manager=webhook_manager,
             services=services or {},
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
@@ -1395,8 +1423,49 @@ async def _register_control_plane(
 
         runtime.register_lifecycle("control_plane", _start_control, _stop_control)
         logger.info("控制面已注册", host=host, port=port)
+        # R2-④: MCP Server stdio 启动点 (抽到 helper 降 _register_control_plane 复杂度)
+        _register_mcp_server(runtime, control_config, services, agent_manager, router, bus, plugin_manager)
     except Exception as exc:
         logger.error("控制面注册失败 (不阻塞数据面)", error=str(exc), exc_info=True)
+
+
+def _register_mcp_server(
+    runtime: ApplicationRuntime,
+    control_config: dict[str, Any],
+    services: dict[str, Any] | None,
+    agent_manager: AgentManager,
+    router: MessageRouter,
+    bus: InterAgentBus,
+    plugin_manager: Any,
+) -> None:
+    """R2-④: MCP Server 生产启动点 (control.mcp_server.enabled, 默认关闭零行为变化)。
+
+    ISACMCPServer 类此前已完整 (除 5 工具本轮补齐), 但生产无启动点 → 死代码。
+    启用时 spawn stdio task (NDJSON over stdin/stdout), 供 MCP 客户端编排。
+    """
+    mcp_cfg = (control_config.get("mcp_server", {}) or {}) if isinstance(control_config, dict) else {}
+    if not mcp_cfg.get("enabled"):
+        return
+    from isac.control.mcp_server import ISACMCPServer
+
+    mcp_server = ISACMCPServer(
+        services or {},
+        api_token=str(control_config.get("api_token", "")),
+        agent_manager=agent_manager,
+        router=router,
+        bus=bus,
+        plugin_manager=plugin_manager,
+    )
+
+    async def _start_mcp() -> None:
+        runtime.spawn(mcp_server.serve_stdio(), name="mcp-server-stdio")
+
+    async def _stop_mcp() -> None:
+        # serve_stdio 读 stdin 循环, 关闭时 stdin EOF 自然退出; 无显式 stop。
+        pass
+
+    runtime.register_lifecycle("mcp_server", _start_mcp, _stop_mcp)
+    logger.info("MCP Server 已注册 (stdio)", token=bool(control_config.get("api_token")))
 
 
 def _build_workflow_engine(control_config: dict[str, Any], agent_manager: AgentManager) -> Any:

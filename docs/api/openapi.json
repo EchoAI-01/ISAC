@@ -562,6 +562,83 @@
         }
       }
     },
+    "/api/v1/agents/{agent_id}/config": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Get Agent Config",
+        "description": "R2: 返回全量 AgentConfig + 真实 revision (供 WebUI loadConfigForEdit 乐观锁)。",
+        "operationId": "get_agent_config_api_v1_agents__agent_id__config_get",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Agent Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "isac_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Isac Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Agent Config Api V1 Agents  Agent Id  Config Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agents/{agent_id}/start": {
       "post": {
         "tags": [
@@ -2575,6 +2652,77 @@
                     "additionalProperties": true
                   },
                   "title": "Response List Subagent Runs Api V1 Agents  Agent Id  Subagent Runs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subagent-runs": {
+      "get": {
+        "tags": [
+          "subagent"
+        ],
+        "summary": "List All Subagent Runs",
+        "description": "R2: 全局 SubAgent 任务列表 (无 parent_agent_id 过滤, 供 WebUI 系统扩展页)。",
+        "operationId": "list_all_subagent_runs_api_v1_subagent_runs_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "isac_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Isac Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List All Subagent Runs Api V1 Subagent Runs Get"
                 }
               }
             }
