@@ -44,7 +44,7 @@ async def make_pipeline(
 ) -> MemoryRetrievalPipeline:
     metadata = MetadataStore(str(tmp_path / "memory.db"))
     await metadata.init_schema()
-    return MemoryRetrievalPipeline(
+    pipeline = MemoryRetrievalPipeline(
         namespace=namespace,
         metadata=metadata,
         vector=VectorStore(str(tmp_path / "vectors.db"), dimension=3),
@@ -54,6 +54,23 @@ async def make_pipeline(
         reranker=Reranker({}),
         metrics=metrics,
     )
+    _pipelines.append(pipeline)
+    return pipeline
+
+
+# 追踪本模块 make_pipeline 创建的 pipeline, 测试结束统一关闭底层 aiosqlite
+# 持久连接 (vector/graph), 避免 "Event loop is closed" / "deleted before being
+# closed" 警告 (阶段 0 / 24h soak 前置)。close() 幂等, 与 destroy 路径无冲突。
+_pipelines: list[MemoryRetrievalPipeline] = []
+
+
+@pytest.fixture(autouse=True)
+async def _close_pipelines_after_test() -> None:
+    yield
+    for p in _pipelines:
+        await p.vector.close()
+        await p.graph.close()
+    _pipelines.clear()
 
 
 @pytest.mark.asyncio
@@ -156,6 +173,7 @@ async def test_embedding_and_reranker_default_to_safe_degraded_mode() -> None:
     assert await embedder.embed_query("hello") == []
     assert reranker.is_available() is False
     assert await vector.search([1.0, 0.0, 0.0]) == []
+    await vector.close()  # 关闭持久连接, 避免 aiosqlite 后台线程报错
 
 
 @pytest.mark.asyncio

@@ -202,11 +202,26 @@
   //            (Q0 修正: 此前样例误写 auth_token, 代码不读该键, 照样例配置会
   //             得到无认证的控制面)
   "control": {
-    "enabled": false,
+    "enabled": true,
     "host": "127.0.0.1",
     "port": 8091,
     "agents_dir": "data/agents",
     "api_token": "",
+    // T3-backend: 首登强制设密码 (对标 AstrBot password_change_required)。开箱控制面
+    // 仅绑 127.0.0.1; setup_enabled=true 时 admin 端点首登态返回 428 SETUP_REQUIRED,
+    // POST /api/v1/setup {password} 设密码后才可用 (密码经 PBKDF2 哈希, 不落明文)。
+    // 轮换密码: isac password reset 后重新 POST /setup。配置 api_token/tokens 后 setup 自动跳过。
+    "setup_enabled": true,
+    "setup_state_path": "data/control/setup_state.json",
+    // FE1 前后端分离 CORS (默认空 = 不加 CORSMiddleware, 同源/纯 API 场景零行为
+    // 变化)。独立部署的前端 (如 http://localhost:5173) 消费本 API 时, 在此列出
+    // 允许的 origin; 此时 Session Cookie 自动降 SameSite=Lax 跨源可带, 写操作
+    // 另用 Bearer Token (双轨)。生产推荐同源反代 (前端与 /api 同 origin), 无需
+    // 配置本字段。
+    "cors": {
+      "origins": [],
+      "allow_credentials": true
+    },
     // S5 Workflow 控制面 (O3/P5, 默认关闭)。enabled=true 后挂载 /api/v1/workflows
     // (list/get/start) 并按 base_dir 持久化工作流实例。
     "workflow": {

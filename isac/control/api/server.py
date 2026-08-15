@@ -67,6 +67,89 @@ def _register_global_exception_handler(app: Any) -> None:
         )
 
 
+def _configure_cors(app: Any, config: dict[str, Any]) -> list[str]:
+    """FE1: CORS 策略 (前后端分离)。origins 非空时加 CORSMiddleware 放开跨源。
+
+    返回 cors_origins 供调用方决定 Session Cookie 的 SameSite (非空=lax 跨源可带,
+    空=strict 同源)。生产推荐同源反代 (前端与 API 同 origin), 无需配置本字段。
+    """
+    cors_cfg = config.get("cors") or {}
+    cors_origins = list(cors_cfg.get("origins") or [])
+    if cors_origins:
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=bool(cors_cfg.get("allow_credentials", True)),
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    return cors_origins
+
+
+def _build_setup_manager(config: dict[str, Any]) -> Any:
+    """T3-backend: 按 config.setup_enabled 构造 SetupManager (默认 None 向后兼容)。
+
+    setup_enabled 默认 False (不破坏无凭证的旧测试); config.sample.jsonc 的
+    control.setup_enabled=true 让开箱首登强制设密码。
+    """
+    if not config.get("setup_enabled", False):
+        return None
+    from isac.control.setup import SetupManager
+
+    return SetupManager(config.get("setup_state_path", "data/control/setup_state.json"))
+
+
+def _mount_session_auth(
+    app: Any, api_token: str, parsed_tokens: Any, session_secret: bytes | None, session_samesite: str
+) -> None:
+    """Fix-17: session_secret 非 None 时挂 CSRF middleware + /auth/session 路由。
+
+    CSRF 只对靠会话 Cookie 认证的写请求生效, 纯 Bearer Header 的 API 客户端不受影响。
+    """
+    if session_secret is None:
+        return
+    from isac.control.auth import CSRFProtectionMiddleware
+
+    app.add_middleware(CSRFProtectionMiddleware)
+    from isac.control.api import routes_auth
+
+    app.include_router(
+        routes_auth.build_router(
+            api_token, parsed_tokens, session_secret, samesite=session_samesite,
+        ),
+        prefix="/api/v1",
+    )
+
+
+def _mount_setup_router(app: Any, setup_manager: Any) -> None:
+    """T3-backend: setup_manager 非 None 时挂 /setup 路由 (首登态也要可达)。"""
+    if setup_manager is None:
+        return
+    from isac.control.api import routes_setup
+
+    app.include_router(routes_setup.build_router(setup_manager), prefix="/api/v1")
+
+
+def _build_auth_dependency(
+    api_token: str, parsed_tokens: Any, session_secret: bytes | None, setup_manager: Any
+) -> Any:
+    """T3-backend: 构造路由级认证依赖 (抽 helper 降低 create_control_app 圈复杂度)。
+
+    tokens[] 优先 → make_token_only_dependency; api_token 次 → make_auth_dependency;
+    都无 → make_auth_dependency("", ..., setup_manager): setup_manager 决定首登态
+    428 或纯开发模式 anonymous。setup_manager=None 时与引入 T3 前行为一致。
+    """
+    from isac.control.auth import make_auth_dependency, make_token_only_dependency
+
+    if parsed_tokens:
+        return make_token_only_dependency(parsed_tokens, session_secret, setup_manager)
+    if api_token:
+        return make_auth_dependency(api_token, session_secret, setup_manager)
+    return make_auth_dependency("", session_secret, setup_manager)
+
+
 def _aggregate_health(
     agent_manager: Any,
     provider_manager: Any,
@@ -184,9 +267,7 @@ def create_control_app(
     from isac.control.audit import AuditLog
     from isac.control.auth import (
         generate_session_secret,
-        make_auth_dependency,
         make_scope_dependency_factory,
-        make_token_only_dependency,
         parse_token_scopes,
     )
     from isac.observability import get_default_metrics
@@ -197,6 +278,11 @@ def create_control_app(
     parsed_tokens = parse_token_scopes(config)
     # R4: 控制面已启用但 api_token 与 tokens[] 均空时输出 CRITICAL 警告 (不阻止启动)。
     _warn_if_no_auth(api_token, parsed_tokens)
+    # T3-backend: 首登强制设密码状态机 (对标 AstrBot password_change_required)。
+    # setup_enabled 默认 False (向后兼容); config.sample.jsonc 的 control.setup_enabled=true
+    # 让开箱首登强制设密码。启用后: 无 api_token/tokens 且 setup_state 无密码 → admin
+    # 端点 428 SETUP_REQUIRED, 仅 /setup /health 可用。
+    setup_manager = _build_setup_manager(config)
     # Fix-17: 认证根本没启用 (开发模式, 没配 api_token 也没配 tokens[]) 时会话
     # Cookie 机制没有意义 (没有 Token 可换); 否则默认启用, 可通过
     # session_auth_enabled=False 显式关闭 (如纯 API 网关场景不需要 WebUI)。
@@ -209,10 +295,8 @@ def create_control_app(
     # tokens[] 配置生效时, 路由级基线认证必须按 tokens[] 校验 (而不是继续用扁平
     # api_token), 否则任何合法 scoped token 会在到达端点级 scope_dependency 检查
     # 之前就被拒绝 (401) —— 见 make_token_only_dependency 文档字符串。
-    if parsed_tokens:
-        auth_dependency = make_token_only_dependency(parsed_tokens, session_secret)
-    else:
-        auth_dependency = make_auth_dependency(api_token, session_secret) if api_token else None
+    # 无 api_token/tokens 时 setup_manager 决定首登态 428 或纯开发模式 anonymous。
+    auth_dependency = _build_auth_dependency(api_token, parsed_tokens, session_secret, setup_manager)
     audit_log = AuditLog(log_path=config.get("audit_log_path", "data/audit.ndjson"))
     agents_dir = config.get("agents_dir", "data/agents")
     routing_rules_path = config.get("routing_rules_path", "data/routing.jsonc")
@@ -223,9 +307,11 @@ def create_control_app(
     # admin 端点列表 + 参数形状。可通过 control.docs_enabled=true 显式开启
     # (开发/调试场景); 默认关闭 (安全默认)。
     docs_enabled = bool(config.get("docs_enabled", False))
+    from isac import __version__
+
     app = FastAPI(
         title="ISAC Admin API",
-        version="0.1.0",
+        version=__version__,
         docs_url="/docs" if docs_enabled else None,
         openapi_url="/openapi.json" if docs_enabled else None,
         redoc_url=None if not docs_enabled else "/redoc",
@@ -236,19 +322,15 @@ def create_control_app(
     # 路径/磁盘 IO 信息。HTTPException 由 FastAPI 默认处理 (保留 status code
     # 和 detail, 各路由已把 detail.message 改通用消息)。
     _register_global_exception_handler(app)
-    if session_secret is not None:
-        # Fix-17: CSRF 双提交校验只对"靠会话 Cookie 认证"的写请求生效, 纯 Bearer
-        # Header 认证的 API 客户端不受影响 (见 CSRFProtectionMiddleware 文档字符串)。
-        from isac.control.auth import CSRFProtectionMiddleware
-
-        app.add_middleware(CSRFProtectionMiddleware)
-
-        from isac.control.api import routes_auth
-
-        app.include_router(
-            routes_auth.build_router(api_token, parsed_tokens, session_secret),
-            prefix="/api/v1",
-        )
+    # FE1: CORS 策略 (前后端分离)。origins 非空时加 CORSMiddleware 放开跨源;
+    # 分离 origin 时 Session Cookie 降 SameSite=Lax (跨源可带), 同源保持 strict。
+    cors_origins = _configure_cors(app, config)
+    session_samesite = "lax" if cors_origins else "strict"
+    # Fix-17: session_secret 非 None 时挂 CSRF middleware + /auth/session 路由
+    # (CSRF 只对靠会话 Cookie 认证的写请求生效, 纯 Bearer Header 不受影响)。
+    _mount_session_auth(app, api_token, parsed_tokens, session_secret, session_samesite)
+    # T3-backend: 首登 setup 路由 (setup_manager 非 None 时挂载, 首登态也要可达)。
+    _mount_setup_router(app, setup_manager)
 
     _mount_core_routers(
         app, agent_manager, router, bus, plugin_manager, config,
@@ -268,10 +350,13 @@ def create_control_app(
     async def health() -> dict:
         """T4: 聚合各子系统状态, 让用户/运维一眼看到"哪儿有问题"。
 
-        返回 {"status": "ok"|"degraded", "subsystems": {...}}; 任一关键子系统异常
-        → status=degraded。探针用途, 无认证 (不进 audit_deps)。
+        返回 {"status": "ok"|"degraded", "subsystems": {...}, "setup_required": bool};
+        任一关键子系统异常 → status=degraded。setup_required=true 时控制面处于
+        首登待设置态 (T3-backend), 仅 /setup 与 /health 可用。探针用途, 无认证。
         """
-        return _aggregate_health(agent_manager, provider_manager, config, channel_registry)
+        result = _aggregate_health(agent_manager, provider_manager, config, channel_registry)
+        result["setup_required"] = setup_manager is not None and setup_manager.is_setup_required
+        return result
 
     @app.get("/api/v1/audit", dependencies=audit_deps)
     async def query_audit(
@@ -302,6 +387,17 @@ def create_control_app(
     async def metrics_snapshot() -> dict:
         """JSON 指标快照 (供 WebUI 或监控系统集成, 需认证)。"""
         return metrics.snapshot()
+
+    @app.get("/api/v1/config/schema", dependencies=audit_deps)
+    async def config_json_schema() -> dict:
+        """T3-backend: 暴露配置 JSON Schema (前端表单驱动前提, FE0/FE1 契约)。
+
+        返回 ISACConfig.model_json_schema() (pydantic 生成的 JSON Schema), 前端据此
+        渲染配置编辑表单 (字段类型/默认/校验), 不需手工编辑 config.jsonc。
+        """
+        from isac.utils.config_schema import ISACConfig
+
+        return ISACConfig.model_json_schema()
 
     # I1: 挂载 WebUI 管理面板 (Vanilla JS, 不依赖 Vue 构建工具链)
     try:

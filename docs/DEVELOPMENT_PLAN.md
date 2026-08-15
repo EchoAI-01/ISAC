@@ -39,20 +39,27 @@
 
 **2026-07-26 MVP 差距复核**：对照 `docs/REQUIREMENTS.md` 十二条原始需求做 10 域并行代码取证(498 次代码检索 + 一次真实启动实测),发现一批标 `[x]` **已交付**的节点(D8/E4/F1-F3/H1/H2/J1-J4/K1-K4/K7)存在与其"完成定义"矛盾的未接线子行为,已在对应节点下补记"**2026-07-26 MVP 缺口复核**"说明(不改动其余已验证部分的 `[x]`);并新增大节点 **Q MVP 收尾**,收纳未被 P0-P5 覆盖、但 MVP 必需的缺口(记忆写入回路等,定义见 §四 Q)。技术路线全景见 [ROADMAP.md](./ROADMAP.md);模块开发范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
 
-## 三之二、下一步开发计划
+## 三之二、下一步开发计划 (2026-08-15 整合: 前后端分离 · 后端先行)
 
-K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**剩余工作 = 把标 `[~]` 的能力接入生产主链路 + 补齐未开始功能**,按下述优先级推进(详见 §四 P 节点与各 `[~]` 节点"接线待办"):
+**重大决策**: 项目转入**前后端分离**开发。后端 (本仓库) 演进为纯 API 服务 (REST + SSE 控制面 + 消息数据面), 前端独立成项目围绕 API 契约开发。**先开发后端**, 前端轨道 (F 节点) 在 API 基线冻结后启动。决策记录见 `ARCHITECTURE.md` ADR-012, 节点定义见 §四 FE。
 
-1. **P0 消息处理并发化** — `manager` 用 `asyncio.create_task` 并发处理消息 + 单会话串行 + 优雅关闭,是 P1 的前置基础。
-2. **P1 拟人化激活(最优先)** — 接入 L2-L5:debounce 合并 / 主动调度启停 / 打断闭环 / 上下文恢复,受 `conversation.enabled` 开关控制。拟人化是 ISAC 核心差异点,已接近闭合。
-3. **P2 Mesh 激活** — 接入 M1/M2:observer/candidate 路由 + 4 个 A2A 工具(assembly 注入 `mesh_action_broker`)。
-4. **P3 记忆检索深化激活** — `pipeline.search()` 接入向量/图谱召回 + 检索期治理过滤(N2 生效) + MemoryItem 接入检索链(N1)。
-5. **P4 身份归一激活** — gateway 接入 `IdentityResolver`,记忆按归一身份聚合(N3)。
-6. **P5 企业化激活** — 多租户隔离 / 插件进程隔离 / Workflow 接入 control 与主链路(O1-O3)。
-7. **未开始功能(`[ ]`)** — O4 平台适配器(微信/Slack/飞书 ≥1 真实实现;**骨架轮 S7 已补飞书·微信·QQ 官方三平台骨架 + 默认关闭注册分支**,剩真实连接/收发)、O5 Video Provider 真实端点(**骨架轮 S6 已接注册挂点**,剩端点二次确认 + 真实调用)、MemoryConsolidator(记忆整合后台任务;**骨架轮 S2 已补骨架 + 后台生命周期挂点**,剩真实去重/合并/剪枝逻辑)、I 节点复核(浏览器测试 CI 已随 K8 接入,复核 85%→100%)。
-8. **Q MVP 收尾**(2026-07-26 新增,详见 §四 Q 节点) — 对照原始需求清单逐条代码取证后发现的、**未被 P0-P5 覆盖**的 MVP 必需缺口(按优先级排列,非编号顺序):**Q1 记忆写入回路与身份稳定化**(检索/注入/治理链路全通但生产从未写入,MVP 最高优先级,不依赖 P0)、Q0 开箱可触达与配置纠偏、Q2 人格差异化实现、Q3 插件与 MCP 生态数据面接线、Q4 多模态工具注册与计量收尾、Q5 WebUI 与控制面收尾、Q6 SubAgent 用量与安全补漏。
+**当前方位**: T 开箱可用轮 **T1/T2/T4 已完成 (2026-08-04)** —— 开箱能对话 (私聊无条件触发 + 未回复可观测 + 占位 key 检测)、零配置启动 (默认配置内置 + 首启建 data 目录)、错误可诊断 (中文可操作提示 + `/health` 聚合 + 实时日志台); **T3 未开始**并按前后端分离重定义 (后端先交付 setup/auth API, WebUI 页面归前端轨道); T5-T7 与 R 节点组未开始。1568 测试通过、ruff/mypy 全绿。**阶段 0 工程纠偏已完成 (2026-08-15)** (CI 分支/venv/aiosqlite/worktree/构建产物, 详见下方推进顺序第 1 项); **FE0 API 契约冻结已完成 (2026-08-16)** (openapi.json 基线归档 + 错误格式统一 + 变更流程文档化); **FE1 分离基建已完成 (2026-08-16)** (CORS 白名单 + Session SameSite 参数化 + WebUI 标 deprecated); **T3-backend 控制面开箱后端支撑已完成 (2026-08-16)** (control 默认开 + setup 首登强制设密码状态机 + CLI password reset + /config/schema JSON Schema 端点 + 真机验收 setup 流程走通), 下一步 **R3 插件与 MCP 生态激活** (T6 前置, 工作量最大)。前端轨道 F1-F4 (独立项目, 技术栈待决策) 暂不启动。**P 主链路接线 (历史阶段)** 已全部完成或被 T/R 收敛, 不再是独立工作线。
 
-依赖顺序：P0 → P1;P2 与 P3 可并行,P4 依赖 P3;P5 与 O4/O5/MemoryConsolidator/I 复核独立,可并行插入;**Q0/Q1 不依赖 P0,可立即开始甚至优先于 P0**,Q2-Q6 相互独立、与 P 节点也无强依赖,可并行插入。MVP 发布以 **P0-P2 + Q0-Q1** 完成为最低准入线(详见 [ROADMAP.md](./ROADMAP.md) M-MVP 里程碑)。每项按 §二"完成定义"验收(非桩实现 + 单测 + 集成/运行验证 + 主链路接线 + 文档 + `ruff`/`mypy`/CI),完成后把 §四 对应 `[~]` 升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。
+**后端推进顺序**(定义与验收见 §四对应节点):
+
+1. **阶段 0 工程纠偏 ✅ 已完成 (2026-08-15)** — CI 触发分支修正 (`ci.yml` `[main, develop]` → `[main, dev]`, 此前推 dev 从不触发 CI, 致 `scripts/smoke_webchat.py` 的 C901 一直没被发现); 重建 venv (shebang 指向迁移前旧路径 `/Users/chen/ai/ISAC`, `uv venv`+`uv sync` 重建后修正); 修复 aiosqlite 连接未关闭 (`test_graph_store`/`test_vector_store`/`test_memory_pipeline`/`test_runtime_manager` 的 fixture/teardown 补关闭长连接, `Event loop is closed`/`deleted before being closed` 警告归零, 24h soak 前置); 清理残留 worktree (6 个停在 `7df5e67` 的旧快照 + 分支, dev 已含全部内容, 删除无丢失) 与构建产物 (htmlcov/.coverage/dist)。顺手拆分 `smoke_webchat.py::main` 降 C901。验证: ruff/mypy 全绿、1568 测试通过(0 aiosqlite 警告)、smoke 真机冒烟退出码 0。
+2. **FE0/FE1 API 契约与分离基建** — OpenAPI 契约导出冻结; CORS 与跨源认证策略 (Session Cookie + CSRF 适配分离 origin, Bearer Token 保留双轨); 配置 Schema 暴露 (JSON Schema 端点, 前端表单驱动前提); 现内置 WebUI 静态托管标记 deprecated (迁移期保留); SSE 契约维持 (`/events/stream`、`/logs/tail`)。
+3. **T3-backend 控制面开箱后端支撑** — `control.enabled` 默认 true (仅绑 127.0.0.1); 首登强制设密码 (setup 状态 + `password_change_requires` + CLI reset 兜底); 真机验收。
+4. **T5 真实 IM 接入验收** — 需用户凭据; OneBot/NapCat 先行, 飞书/QQ 官方/企业微信逐个真机联调 (此前均只有单测, 从未真机验证); WebUI/控制面连接状态回显。
+5. **R3 插件与 MCP 生态激活 (T6 前置, 工作量最大)** — per-Agent PluginContext 真实注册表 + AstrBot/MaiBot `adapt` 桥接接线 + MCPClient 生产接线 + CLI 工具 services 注入; 兼容层插件同步迁进程隔离。
+6. **T6 插件市场与热重载**。
+7. **并行收尾 (相互独立, 可穿插)** — **R1** 多模态闭环 (出站 artifact 解析/入站落盘/6 个 record_* 计量/价目表加载, 顺带 Provider 测试端点改真实连接探测); **R2** 控制面与 SubAgent (`GET /agents/{id}/config` + 真实 revision、SubAgent 表真实 agent_id、Webhook/MCP Server 生产启动点、背景摘要传递 + evidence_refs 生成); **R4** 记忆完整性 (行话学习写入侧、中期记忆接 COMPRESS 真实压缩 —— 同时消除 COMPRESS hook 无监听者问题、实体关系图); **R5** 持久化与密钥 (Session 持久化、SecretStore 接线或"配置 + env + 不回显")。
+8. **R6 企业化激活** — routes_tenants / loader 可选隔离模式 / Workflow `agent:` 入口决策落地。
+9. **R7 发布准入 + T7 分发运维 (最后)** — P3/P4/P5 集成测试补齐 (现全缺)、I 节点复核升 100%、REQUIREMENTS 十二条逐条取证、release_checklist 七段、docker compose 一键 + 配置自动迁移、**24h soak** → v1.0 GA。
+
+**前端轨道 (独立项目, FE0/FE1 + T3-backend 之后启动)**: F1 项目初始化 + 登录/setup 向导 → F2 十域页面迁移 (配置编辑事务改接真实 API, 顺带修复 Q5 遗留假数据) → F3 实时日志与 SSE → F4 插件市场 UI。定义见 §四 FE。
+
+依赖顺序：阶段 0 → FE0/FE1 → T3-backend → T5;R3 → T6;R1/R2/R4/R5/R6 相互独立可并行;R7 必须最后。**验收铁律 (2026-07-31 立) 继续适用**: 任何节点声明完成必须附真机部署证据, 不接受"单测通过"作为可用性证明。每项按 §二"完成定义"验收, 完成后把 §四 对应标记升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。
 
 ---
 
@@ -831,30 +838,31 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 **验收铁律(新增, 适用于 T 与其后所有节点)**：**任何节点声明完成,必须附真机部署证据**(命令 + 实际输出),不接受"单测通过"作为可用性证明。单测证明"函数逻辑对",真机才证明"用户能用"。参见 `MODULE_GUIDE.md` §二"第三道坎"。
 
-- [ ] **T1 开箱能对话**(P0 阻断, 下一步立即做)
+- [x] **T1 开箱能对话**(P0 阻断)
   - **目标**：让"部署 → 发消息 → 收到回复"这条最短路径无条件走通。
   - **验收**：①`gating/system.py` 私聊无条件强制触发(`has_at or is_private`),不再额外要求 `has_mention`;群聊行为不变(仍需 @/提及/评分);②消息被门控 WAIT / 被 debounce 弃权 / 无可用 Provider 时**不得零反馈** —— 至少 WARNING 级日志说明原因,面向用户侧按人设给出可读提示或明确的"未回复原因"可查;③未配置有效 `api_key`(含 `sk-your-key` 占位符)时启动即 WARNING 提示"去哪配",调用失败映射为可操作提示而非静默;④**真机验收**:干净目录 + 默认配置启动 → 发"你好" → 收到回复。
   - **产出**：门控私聊修复、无回复原因可观测、Provider 缺失/占位 key 检测与提示、真机冒烟脚本(纳入 CI 或 `scripts/`)、回归测试(经真实 `manager.process_message` 驱动,不是直调 gating)。
   - **依赖**：无。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-04)**。`gating/system.py:182` 强制触发改 `has_at or is_private`;`manager` drain_empty/gating_wait 两处静默 return 升级 info 带 reason 字段;`config_schema.is_placeholder_key()` 检测占位 key (sk-your/your-key/changeme/replace/example/placeholder/xxx/todo);占位/空 key → StubProvider + WARNING 引导,Stub 默认回复改引导文案;`scripts/smoke_webchat.py` 真机冒烟脚本落地 (干净目录启动 → 发"你好" → 收到回复)。
 
-- [ ] **T2 零配置启动**(对标 AstrBot 默认配置内置)
+- [x] **T2 零配置启动**(对标 AstrBot 默认配置内置)
   - **目标**：不写任何配置文件也能启动并对话,`config.sample.jsonc` 降级为"可选覆盖参考"。
   - **验收**：默认配置内置代码(仿 AstrBot `core/config/default.py`,与 `config_schema.py` 共用一份 schema);首启自动创建 `data/` 及子目录;无 `data/config.jsonc` 时不再依赖 StubProvider 兜底的隐式行为,而是明确的"未配置模型 → 引导去配"路径;占位符 key 视为未配置。
   - **依赖**：T1。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-04)**。`utils/config.py` `DEFAULT_CONFIG` 扩充为最小可启动形态 (webchat 默认开 loopback + llm 空 + control/memory 默认关, default-off 铁律);`load_config` 改 `deepcopy(DEFAULT_CONFIG)` (顺带修复浅拷贝污染全局默认值的既有 bug);`main._ensure_data_dirs()` 首启集中创建 data/ 及被引用子目录。真机零配置验证: 干净目录无 config.jsonc 启动 → webchat 默认开 → 发"你好"收到引导回复。**遗留决策项 (2026-08-15)**: 零配置模式 `memory.enabled` 默认 false → "越聊越熟"开箱不生效, 是否放开待 T3-backend 一并决策。
 
-- [ ] **T3 WebUI 开箱可用 + 首登向导**
-  - **目标**：装完打开浏览器就能管理,配置不用手写 JSONC。
-  - **验收**：`control.enabled` 默认 true 且默认仅绑 `127.0.0.1`;**首次登录强制设置管理员密码**(禁止硬编码默认密码,对标 AstrBot `password_change_required` + `/setup`);CLI `isac password reset` 兜底;Agent/Channel/Provider/路由等主要配置可经 WebUI 表单创建与修改(schema 驱动),不需手工编辑文件;配置热更新生效。
-  - **依赖**：T1、G(控制面已实现)、J3(WebUI v2 已实现)。
-  - **当前**：未开始。
+- [~] **T3 控制面开箱可用**(2026-08-15 按前后端分离重定义, 后端部分 = T3-backend / FE 节点; 后端段已完成, 前端段 F1/F2 待启动)
+  - **目标**：装完打开浏览器就能管理,配置不用手写 JSONC。前后端分离后拆为两段: **后端**先交付控制面开箱与 setup/auth API (FE1 + T3-backend), **前端**向导与表单页面在独立项目实现 (F1/F2, 见 §四 FE)。
+  - **验收 (后端)**：`control.enabled` 默认 true 且默认仅绑 `127.0.0.1`;首登强制设密码的后端支撑 (setup 状态机 + `password_change_required` 标志 + `/setup` API, 禁止硬编码默认密码, 对标 AstrBot `password_change_required` + `/setup`);CLI `isac password reset` 兜底;配置 Schema 暴露 (JSON Schema 端点) 使前端表单可驱动 Agent/Channel/Provider/路由等主要配置的创建与修改, 不需手工编辑文件;配置热更新生效。
+  - **验收 (前端, F1/F2 节点)**：首登强制设密码向导页面;主要配置表单化 (schema 驱动)。
+  - **依赖**：T1、G(控制面已实现)、J3(WebUI v2 已实现)、FE1。
+  - **当前**：**T3-backend 后端段已完成 (2026-08-16)**, 前端段 F1/F2 (独立项目, 技术栈开工前决策) 待启动。①`control.enabled` 默认改 True + 仅绑 127.0.0.1 (DEFAULT_CONFIG + ControlConfig + enforce_safe_host; setup_enabled 默认 True 配套)。②**首登强制设密码状态机** `SetupManager` (`isac/control/setup.py`, PBKDF2-HMAC-SHA256 20 万次哈希, 禁止明文/硬编码默认密码, 状态文件 `data/control/setup_state.json` 原子写): 首登态 (无 api_token/tokens 且 setup_state 无密码) admin 端点 428 SETUP_REQUIRED, 仅 /setup /health 可用; `POST /api/v1/setup {password}` 设密码后作 Bearer 生效。③`auth.make_auth_dependency/make_token_only_dependency` 加 setup_manager 参数 (setup_manager=None 时行为不变向后兼容)。④**CLI `isac password reset`** 兜底 (`__main__.py` argparse 子命令, 删 setup_state 回首登态)。⑤**`GET /api/v1/config/schema`** JSON Schema 端点 (ISACConfig.model_json_schema, 前端表单驱动前提)。⑥`/health` 加 setup_required 标志。⑦**真机验收** `scripts/smoke_control_setup.py` (零配置启动 → /health setup_required=true → /api/v1/audit 428 → POST /setup 设密码 → Bearer 生效 200, exit=0)。`tests/unit/test_t3_backend.py` (8 例)。T4 日志台后端 (LogBuffer + `/logs/tail` SSE) 已先行完成, 页面消费等前端轨道 F3。
 
-- [ ] **T4 错误可诊断**
+- [x] **T4 错误可诊断**
   - **目标**：出问题时用户知道"哪儿错了、去哪修",而不是看栈或看不到任何东西。
   - **验收**：LLM 401/402/429/连接失败映射为可操作中文提示,**且提示里引用的配置路径必须是当前真实路径**(MaiBot 的反面教材:提示指向已过时的 `/config/model_list.toml`);新增 `/health` 端点(对标 MaiBot `webui/routes.py:128`)返回各子系统状态;WebUI 实时日志台;消息在链路各环节被丢弃/延迟/等待均可观测。
   - **依赖**：T3(日志台挂 WebUI)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-04)**。T4-1 LLM 错误中文可操作提示 (`openai_compat._map_http_error` 区分 401/402·403/429/5xx/其他 4xx, 全部引用 `data/config.jsonc` 真实配置路径;`manager._degraded_reply_from_error` 按错误类型映射可操作降级文案);T4-2 `/health` 聚合 (`_aggregate_health`: agents running/total + llm stub/configured + channels 平台列表 + control, 关键子系统缺失 → status=degraded);T4-3 LogBuffer 单例 + `/api/v1/logs/tail` SSE 实时日志台。**备注**: 日志台的**页面消费**属前端轨道 (F3), 后端 SSE 契约已就位;T4 先行于 T3 完成, 依赖倒挂在 FE1 解决 (control 默认开后日志台即可用)。
 
 - [ ] **T5 真实 IM 接入验收**(需用户提供凭据/环境)
   - **目标**：把"适配器有单测"升级为"真机能收发"。
@@ -941,6 +949,63 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **当前**：未开始。
 
 **GA 后可选项(不阻塞正式版发布,用户已明确暂缓或判为增强)**：S6 视频 Provider 真实端点(待端点选型二次确认)、微信 mp 公众号模式(wecom 已实现)、Slack 适配器、主链路启用流式回复(Provider 层 `chat_stream` 已闭环且有测试,`loop` 流式路径存在但 `run_stream` 无生产调用点 —— 属体验增强而非需求缺口)。
+
+---
+
+### FE 前后端分离 (2026-08-15 制定, 后端先行)
+
+**背景与决策**: 现 WebUI 是控制面静态托管的 SPA (`control/webui/`, Vanilla JS)。随管理面增长, 前后端耦合的代价上升 (前端产物随后端发布、页面演进受后端发版节奏制约、无法独立选型与迭代)。**2026-08-15 决策**: 转入前后端分离 —— 后端提供纯 REST + SSE API, 前端独立成项目围绕冻结的 API 契约开发。决策记录见 `ARCHITECTURE.md` ADR-012。**先开发后端**; 前端轨道 (F 节点) 在 FE0/FE1 + T3-backend 完成后启动。
+
+- [x] **FE0 API 契约冻结**
+  - **目标**：把既有控制面 API 冻结为前后端双方的正式契约。
+  - **验收**：`/openapi.json` 导出并归档为契约基线 (同步 `docs/api.md`); 全部既有端点通过契约自检 (命名/错误格式符合 `CONTROL_PLANE_SPEC.md` §3.6 统一错误格式); 版本策略确认 (`/api/v1` 前缀保持, 破坏性变更须升版本); 契约变更流程文档化 (改 API 先改 `CONTROL_PLANE_SPEC.md`)。
+  - **依赖**：无。
+  - **当前**：已完成 (2026-08-16)。`scripts/export_openapi.py` 用最小 mock 注入 `create_control_app` 挂载全部可选路由, 导出 `docs/api/openapi.json` 契约基线 (45 路径, version=1.0.0)。运行时 `/openapi.json` 仍按 R15 默认关闭 (`docs_enabled=false`), 契约以归档文件为准。统一错误格式对齐实际形态 `{"detail":{"code","message"}}` (CONTROL_PLANE_SPEC §3.6 订正; 原 `{"error":{...,"retriable","trace_id"}}` 形态中 retriable/trace_id 标为可选扩展留待 GA); 顺手修 `routes_identity` 两处纯字符串 detail (违反契约)。FastAPI app version 由硬编码 `0.1.0` 改读 `isac.__version__`。`docs/api.md` 加"API 契约基线"章节 (版本策略 + 变更流程: 改 API 先改规范再跑导出脚本刷新基线)。`tests/unit/test_api_contract.py` (4 例) 自检: 基线可加载 + version 一致 + 关键端点在 + 运行时 paths 与归档基线一致 (防漂移)。
+
+- [x] **FE1 分离基建 (CORS / 跨源认证 / 静态托管降级)**
+  - **目标**：让独立部署的前端能安全地消费 API。
+  - **验收**：CORS 策略落地 (开发态 origin 白名单可配, 生产推荐同源反代, 默认不放开); 跨源认证落地 (Session Cookie + CSRF 在分离 origin 下的 SameSite/credentials 策略, 自动化场景保留 Bearer Token 双轨); `control/webui/` 静态托管标记 deprecated (迁移期保留可用, F2 完成后移除); SSE 契约维持 (`/events/stream`、`/logs/tail`)。
+  - **依赖**：FE0。
+  - **当前**：已完成 (2026-08-16)。`CorsConfig` (origins 默认空 + allow_credentials) 加入 `ControlConfig` (`config_schema.py`); `server._configure_cors` helper: origins 非空时加 `CORSMiddleware` (allow_credentials + 全方法/头), 默认空不加零行为变化; `routes_auth.build_router` 加 `samesite` 参数, 分离 origin (origins 非空) 降 `SameSite=Lax` 跨源可带, 同源保持 `Strict`; 写操作 Bearer Token 双轨保留 (CSRF middleware 只对会话 Cookie 写请求生效)。`control/webui/__init__.py` docstring 标 DEPRECATED (迁移期保留, F2 后移除, 新功能去独立前端)。SSE 契约 (`/api/v1/events/stream`、`/api/v1/logs/tail`) 未动维持。`config.sample.jsonc` 加 `control.cors` 示例 (注释生产推荐同源反代)。`tests/unit/test_fe1_cors.py` (5 例): 默认不放开 / 配置 origin 预检放行 / 未列 origin 拒绝 / samesite strict 默认 / samesite lax 跨源。
+
+- [ ] **T3-backend 控制面开箱后端支撑** (T3 后端段)
+  - **验收**：`control.enabled` 默认 true 且仅绑 `127.0.0.1`; 首登强制设密码后端支撑 (setup 状态机 + `password_change_required` + `/setup` API, 禁止硬编码默认密码); CLI `isac password reset` 兜底; 配置 Schema 暴露 (JSON Schema 端点, 前端表单驱动前提); 真机验收 (干净目录启动 → 控制面可达 → setup 流程走通)。
+  - **依赖**：FE1。
+
+- [ ] **F1 前端项目初始化 + 登录/setup 向导** (前端轨道)
+  - **验收**：独立项目/目录 (技术栈开工前决策); 消费 `/api/v1` + SSE; 登录页 + 首登强制设密码向导页; 与后端 T3-backend 联调通过。
+  - **依赖**：FE1 + T3-backend。
+
+- [ ] **F2 十域页面迁移** (前端轨道)
+  - **验收**：Dashboard/Agents/Channels/Providers/Usage/Extensions/Memory/Sessions/Logs/System 十域在前端项目重实现; 配置编辑事务接真实 API (Schema 校验 + Diff + 二次确认 + 乐观锁, 消费 R2 的 `GET /agents/{id}/config` 真实 revision); 同步修复 Q5 遗留 (SubAgent 表真实 agent_id 等假数据); 完成后移除后端 `control/webui/` 静态托管。
+  - **依赖**：F1、R2。
+
+- [ ] **F3 实时体验** (前端轨道)
+  - **验收**：实时日志台 (`/logs/tail` SSE) + 事件流页面化 (`/events/stream`)。
+  - **依赖**：F2。
+
+- [ ] **F4 插件市场 UI** (前端轨道)
+  - **验收**：插件市场列表 + 一键安装 + 热重载操作 + 失败插件可重试的前端界面。
+  - **依赖**：T6 (后端能力先行)。
+
+---
+
+### 架构债清单 (2026-08-15 整合自 2026-07-28/29 两轮评审, 各轮顺手清)
+
+> 两轮评审 (Review/ 报告, 已整合删除) 遗留的架构级债务统一登记于此; 对应修复时机见"建议时机"列, 不单独立轮。
+> 2026-07-28 复审的 5 项 Critical (C-N1 SSE 泄露/C-N2 飞书绕过/C-N3 QQ 签名 oracle/C-N4 标签转义/C-N5 存储锁竞态) 与全部 Required 项已由 Fix-22~Fix-36 修复, 不在此列。
+
+| 债务 | 说明 | 建议时机 |
+|------|------|---------|
+| `services: dict[str, Any]` 弱类型 | 跨几十个文件传递, 改 key 名即全仓 AttributeError; 改 ServiceContainer Protocol/TypedDict | 功能面稳定后 (R7 收尾期) |
+| 兼容层插件宿主进程执行 | AstrBot/MaiBot 插件 `exec_module` 在宿主进程, 绕过 `PluginIsolationHost` 隔离承诺 | 与 R3 接线同步迁移 |
+| `main.py` (1518 行) / `manager.py` (1155 行) | 逼近 C901 红线; `main.py` 建议拆 `isac/bootstrap/{services,channels,control_plane,lifecycle,links}.py` | 独立重构项, 并行收尾期插入 |
+| 同步 IO | `audit.py` 同步 `open("a")`、`bus._trigger_persist` 同步 fsync、`routes_routing` 同步写盘 | 任意空档顺手清 |
+| Provider 测试端点假连接 | `POST /providers/{id}/test` 不发真实连接即返回 ok, 且访问私有属性 | R1 顺手做真实 ping |
+| 检索结构化过滤 | `pipeline.search()` 丢弃 `filters`/`agent_id` (topics/时间范围未实现) | R4 检索调优顺手做 |
+| 媒体 magic-byte 校验 | `utils/media.py` 仅扩展名推断 MIME, 无头部签名校验 | R1 顺手做 |
+| 429 退避区分 | `provider/manager.py` 重试不区分 RateLimitError 退避时长 | R1/T5 顺手做 |
+| `reload_config` 差量更新 | 现整实例重建, 应差量更新 gating/persona/权限 | 观察, 不紧急 |
 
 ---
 

@@ -165,16 +165,29 @@
 
 ### 3.6 统一错误格式
 
+所有 4xx/5xx 响应使用 FastAPI `HTTPException` 的 `detail` 承载结构化错误码, 实际
+序列化形状为 `{"detail": {"code": <str>, "message": <str>}}` (FastAPI 默认把
+`HTTPException.detail` 包在顶层 `detail` 字段下)。`code` 为大写蛇形机器可读码
+(如 `AGENT_NOT_FOUND` / `CONFIG_CONFLICT` / `TOO_MANY_CONNECTIONS`), `message`
+为面向操作者的人类可读说明 (中文, 不泄露 Python 类型/磁盘路径/参数明文)。
+
 ```json
 {
-    "error": {
+    "detail": {
         "code": "AGENT_NOT_FOUND",
-        "message": "Agent 不存在: tech_agent",
-        "retriable": false,
-        "trace_id": "trace_abc"
+        "message": "tech_agent"
     }
 }
 ```
+
+可选扩展字段 (当前未实现, 留待 GA):
+- `retriable: bool` — 客户端是否应重试 (429/5xx retriable, 404 non-retriable)。
+- `trace_id: str` — 关联服务端 trace 上下文, 便于跨日志串联。
+
+未捕获异常由全局 exception handler 兜底 (`control/api/server.py`), 返回 500 +
+`{"detail": {"code": "INTERNAL_ERROR", "message": "Internal server error"}}`,
+不泄露堆栈。错误响应形状以 `scripts/export_openapi.py` 导出的
+`docs/api/openapi.json` 契约基线为准。
 
 ---
 
@@ -351,6 +364,8 @@ Idempotency-Key: <client-generated-key>
 ---
 
 ## 八、WebUI v2 管理与观测
+
+> **2026-08-15 前后端分离决策 (ARCHITECTURE.md ADR-012)**: 本章描述的 WebUI 将拆分为独立前端项目。本规范的 REST API (§三) 与 SSE 端点是前后端双方的契约; 后端只保证 API 稳定与版本化 (`/api/v1`), 页面实现归前端轨道 (DEVELOPMENT_PLAN §四 FE)。迁移期内置 `control/webui/` 静态托管标记 deprecated 保留可用, 前端接管 (F2 完成) 后移除。
 
 WebUI 是 Control Plane 的浏览器客户端，不得绕过 REST API、权限、审计和配置持久化规则。现有 Vanilla JS 四模块面板保留为 v1 最小实现；v2 按领域拆分页面和前端模块，后端业务逻辑仍由 Control API 提供。
 

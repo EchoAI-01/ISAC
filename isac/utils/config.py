@@ -60,7 +60,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # (default-off 铁律, 不引入隐式 SQLite/embedding 启动)。config.sample.jsonc 降级为
     # 可选覆盖参考; 用户显式提供任一字段即覆盖默认值 (config.update 语义)。
     "llm": {},
-    "control": {"enabled": False, "host": "127.0.0.1", "port": 8765, "api_token": ""},
+    "control": {"enabled": True, "host": "127.0.0.1", "port": 8765, "api_token": "", "setup_enabled": True},
     "memory": {"enabled": False},
     "channels": {
         "webchat": {

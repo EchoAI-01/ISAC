@@ -1533,6 +1533,22 @@ drift_rule = load_text("attention_drift.subtle", locale="zh_CN")
 
 ---
 
+### ADR-012: 为什么前后端分离？
+
+**上下文**: WebUI v2 作为控制面静态托管的 SPA (`control/webui/`, Vanilla JS) 随 J3 落地。随着管理域持续增长（十域页面、配置编辑事务、实时日志台、插件市场），前后端同仓同发布的耦合代价上升：前端产物进后端发布包、页面迭代受后端发版节奏制约、前端技术选型被锁死在零构建方案。
+
+**决策** (2026-08-15): 转入前后端分离。后端（本仓库）演进为纯 API 服务：REST (`/api/v1`) + SSE (`/events/stream`、`/logs/tail`) + OpenAPI 契约；前端独立成项目，围绕冻结的 API 契约开发。**先后端、后前端**；迁移期内置 WebUI 标记 deprecated 保留可用，前端接管（F2）后移除。
+
+**原因**:
+- 控制面在 J3/G1 已按"后端业务逻辑由 Control API 提供、WebUI 不得绕过 REST API"设计（CONTROL_PLANE_SPEC §八），分离是既有边界的自然延伸
+- 前端独立迭代/选型/发布，不再拖累后端发版；后端发布包不含前端产物
+- API 契约（OpenAPI + CONTROL_PLANE_SPEC）同时服务第三方集成与 MCP/Webhook 自动化，契约先行收益外溢
+- 认证已具备双轨基础（Session Cookie + CSRF 与 Bearer Token），跨源适配成本可控
+
+**代价与约束**: 跨源认证需 CORS/SameSite 策略（FE1）；开箱体验在迁移期依赖过渡方案（control 默认开 + 保留内置 WebUI 至 F2 完成）；API 破坏性变更须升 `/api/v1` 版本。节点定义见 DEVELOPMENT_PLAN §四 FE。
+
+---
+
 ## 八、非功能性需求
 
 | 维度 | 要求 |
