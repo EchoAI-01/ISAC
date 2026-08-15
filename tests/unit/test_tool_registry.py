@@ -189,3 +189,94 @@ async def test_bash_tool_rejects_non_allowlisted_command() -> None:
 
     assert result.is_error is True
     assert "不在白名单" in result.content
+
+
+# ── T6: deregister + 来源追踪 ──────────────────────────────
+
+
+class _NamedTool(Tool):
+    def __init__(self, tool_name: str) -> None:
+        self._name = tool_name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str:
+        return "test"
+
+    async def execute(self, context: ToolContext) -> ToolResult:
+        return ToolResult(content="ok")
+
+
+def test_register_default_source_builtin() -> None:
+    registry = ToolRegistry()
+    registry.register(_NamedTool("a"))
+    assert registry.source_of("a") == "builtin"
+
+
+def test_register_with_source() -> None:
+    registry = ToolRegistry()
+    registry.register(_NamedTool("a"), source="plugin_x")
+    assert registry.source_of("a") == "plugin_x"
+
+
+def test_set_current_source() -> None:
+    registry = ToolRegistry()
+    registry.set_current_source("p1")
+    registry.register(_NamedTool("a"))
+    assert registry.source_of("a") == "p1"
+    registry.set_current_source(None)
+    registry.register(_NamedTool("b"))
+    assert registry.source_of("b") == "builtin"
+
+
+def test_deregister_removes_tool() -> None:
+    registry = ToolRegistry()
+    registry.register(_NamedTool("a"), source="p1")
+    assert registry.deregister("a") is True
+    assert registry.get("a") is None
+    assert registry.source_of("a") is None
+
+
+def test_deregister_nonexistent_returns_false() -> None:
+    registry = ToolRegistry()
+    assert registry.deregister("nope") is False
+
+
+def test_deregister_by_source() -> None:
+    registry = ToolRegistry()
+    registry.register(_NamedTool("a"), source="p1")
+    registry.register(_NamedTool("b"), source="p1")
+    registry.register(_NamedTool("c"), source="builtin")
+    removed = registry.deregister_by_source("p1")
+    assert sorted(removed) == ["a", "b"]
+    assert registry.get("a") is None
+    assert registry.get("b") is None
+    assert registry.get("c") is not None
+
+
+def test_deregister_plugin_sourced() -> None:
+    registry = ToolRegistry()
+    registry.register(_NamedTool("a"), source="p1")
+    registry.register(_NamedTool("b"), source="p2")
+    registry.register(_NamedTool("c"), source="builtin")
+    removed = registry.deregister_plugin_sourced()
+    assert sorted(removed) == ["a", "b"]
+    assert registry.get("c") is not None
+
+
+def test_get_by_source() -> None:
+    registry = ToolRegistry()
+    registry.register(_NamedTool("a"), source="p1")
+    registry.register(_NamedTool("b"), source="builtin")
+    tools = registry.get_by_source("p1")
+    assert [t.name for t in tools] == ["a"]
+
+
+def test_definitions_unaffected_by_source() -> None:
+    registry = ToolRegistry()
+    registry.register(_NamedTool("a"), source="p1")
+    defs = registry.definitions()
+    assert any(d["name"] == "a" for d in defs)

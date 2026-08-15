@@ -32,15 +32,64 @@ class ToolRegistry:
         agent_id: str = "",
     ):
         self._tools: dict[str, Tool] = {}
+        # T6: 工具来源追踪 (tool_name → "builtin" 或插件名), 供热重载按来源 deregister。
+        self._source: dict[str, str] = {}
+        # T6: on_load 期间设置的默认来源 (激活模块 set_current_source(plugin_name))。
+        self._current_source: str | None = None
         self.permission = permission or ToolPermission()
         self.enable_matrix = enable_matrix
         self.agent_id = agent_id
 
-    def register(self, tool: Tool) -> None:
-        """注册工具 (重名覆盖并告警)。"""
+    def register(self, tool: Tool, *, source: str | None = None) -> None:
+        """注册工具 (重名覆盖并告警)。
+
+        T6: source 追踪工具来源插件名。source=None 时取 _current_source (on_load
+        期间设置) 或 "builtin"。向后兼容: 既有 register(tool) 调用 → source="builtin"。
+        """
+        effective_source = source or self._current_source or "builtin"
         if tool.name in self._tools:
             logger.warning("工具重复注册，已覆盖", tool=tool.name)
         self._tools[tool.name] = tool
+        self._source[tool.name] = effective_source
+
+    def deregister(self, name: str) -> bool:
+        """移除工具 (T6 热重载)。返回是否移除成功。"""
+        if name not in self._tools:
+            return False
+        del self._tools[name]
+        self._source.pop(name, None)
+        return True
+
+    def deregister_by_source(self, source: str) -> list[str]:
+        """移除指定来源的全部工具, 返回被移除的工具名列表 (T6 热重载同步)。"""
+        removed = [n for n, s in self._source.items() if s == source]
+        for n in removed:
+            self._tools.pop(n, None)
+            self._source.pop(n, None)
+        return removed
+
+    def deregister_plugin_sourced(self) -> list[str]:
+        """移除全部插件来源工具 (source != "builtin"), 返回被移除的工具名列表。
+
+        供热重载全量同步: 先清空 per-Agent 的全部插件工具, 再从共享表重新合并。
+        """
+        removed = [n for n, s in self._source.items() if s != "builtin"]
+        for n in removed:
+            self._tools.pop(n, None)
+            self._source.pop(n, None)
+        return removed
+
+    def get_by_source(self, source: str) -> list[Tool]:
+        """返回指定来源的全部工具 (T6 热重载同步)。"""
+        return [self._tools[n] for n, s in self._source.items() if s == source and n in self._tools]
+
+    def set_current_source(self, source: str | None) -> None:
+        """设置后续 register() 的默认来源 (on_load 期间设为插件名, 结束后置 None)。"""
+        self._current_source = source
+
+    def source_of(self, tool_name: str) -> str | None:
+        """返回工具的来源插件名 (或 "builtin"), 不存在返回 None。"""
+        return self._source.get(tool_name)
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)

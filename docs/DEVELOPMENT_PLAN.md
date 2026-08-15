@@ -43,7 +43,7 @@
 
 **重大决策**: 项目转入**前后端分离**开发。后端 (本仓库) 演进为纯 API 服务 (REST + SSE 控制面 + 消息数据面), 前端独立成项目围绕 API 契约开发。**先开发后端**, 前端轨道 (F 节点) 在 API 基线冻结后启动。决策记录见 `ARCHITECTURE.md` ADR-012, 节点定义见 §四 FE。
 
-**当前方位**: T 开箱可用轮 **T1/T2/T4 已完成 (2026-08-04)** —— 开箱能对话 (私聊无条件触发 + 未回复可观测 + 占位 key 检测)、零配置启动 (默认配置内置 + 首启建 data 目录)、错误可诊断 (中文可操作提示 + `/health` 聚合 + 实时日志台); **T3 未开始**并按前后端分离重定义 (后端先交付 setup/auth API, WebUI 页面归前端轨道); T5-T7 与 R 节点组未开始。1568 测试通过、ruff/mypy 全绿。**阶段 0 工程纠偏已完成 (2026-08-15)** (CI 分支/venv/aiosqlite/worktree/构建产物, 详见下方推进顺序第 1 项); **FE0 API 契约冻结已完成 (2026-08-16)** (openapi.json 基线归档 + 错误格式统一 + 变更流程文档化); **FE1 分离基建已完成 (2026-08-16)** (CORS 白名单 + Session SameSite 参数化 + WebUI 标 deprecated); **T3-backend 控制面开箱后端支撑已完成 (2026-08-16)** (control 默认开 + setup 首登强制设密码状态机 + CLI password reset + /config/schema JSON Schema 端点 + 真机验收 setup 流程走通), **R3 插件与 MCP 生态激活已完成 (2026-08-16)** (收敛 Q3: 共享注册表 + AstrBot/MaiBot adapt 桥接 + MCPClient 生产接线, 真机冒烟 `MCP server 已接入 server=echo tools=1`), 下一步 T6 插件市场 或 R1/R2/R4/R5/R6 并行。前端轨道 F1-F4 (独立项目, 技术栈待决策) 暂不启动。**P 主链路接线 (历史阶段)** 已全部完成或被 T/R 收敛, 不再是独立工作线。
+**当前方位**: T 开箱可用轮 **T1/T2/T4 已完成 (2026-08-04)** —— 开箱能对话 (私聊无条件触发 + 未回复可观测 + 占位 key 检测)、零配置启动 (默认配置内置 + 首启建 data 目录)、错误可诊断 (中文可操作提示 + `/health` 聚合 + 实时日志台); **T3 未开始**并按前后端分离重定义 (后端先交付 setup/auth API, WebUI 页面归前端轨道); T5-T7 与 R 节点组未开始。1568 测试通过、ruff/mypy 全绿。**阶段 0 工程纠偏已完成 (2026-08-15)** (CI 分支/venv/aiosqlite/worktree/构建产物, 详见下方推进顺序第 1 项); **FE0 API 契约冻结已完成 (2026-08-16)** (openapi.json 基线归档 + 错误格式统一 + 变更流程文档化); **FE1 分离基建已完成 (2026-08-16)** (CORS 白名单 + Session SameSite 参数化 + WebUI 标 deprecated); **T3-backend 控制面开箱后端支撑已完成 (2026-08-16)** (control 默认开 + setup 首登强制设密码状态机 + CLI password reset + /config/schema JSON Schema 端点 + 真机验收 setup 流程走通), **R3 插件与 MCP 生态激活已完成 (2026-08-16)** (收敛 Q3: 共享注册表 + AstrBot/MaiBot adapt 桥接 + MCPClient 生产接线, 真机冒烟 `MCP server 已接入 server=echo tools=1`), **T6 插件市场与热重载已完成 (2026-08-16)** (PluginInstaller 四源安装 + SSRF/zip slip 防护 + ToolRegistry deregister/来源追踪 + activation 热重载同步运行中 Agent + 控制面端点 + CLI `isac plugin` + 本地/远程市场清单, 真机冒烟 `scripts/smoke_plugin_marketplace.py` 安装→reload→卸载 exit=0), 下一步 R1/R2/R4/R5/R6 并行收尾。前端轨道 F1-F4 (独立项目, 技术栈待决策) 暂不启动。**P 主链路接线 (历史阶段)** 已全部完成或被 T/R 收敛, 不再是独立工作线。
 
 **后端推进顺序**(定义与验收见 §四对应节点):
 
@@ -52,7 +52,7 @@
 3. **T3-backend 控制面开箱后端支撑** — `control.enabled` 默认 true (仅绑 127.0.0.1); 首登强制设密码 (setup 状态 + `password_change_requires` + CLI reset 兜底); 真机验收。
 4. **T5 真实 IM 接入验收** — 需用户凭据; OneBot/NapCat 先行, 飞书/QQ 官方/企业微信逐个真机联调 (此前均只有单测, 从未真机验证); WebUI/控制面连接状态回显。
 5. **R3 插件与 MCP 生态激活 ✅ 已完成 (2026-08-16, T6 前置)** — per-Agent PluginContext 真实共享注册表 + AstrBot/MaiBot `adapt` 桥接接线 (新建 `AstrBotStarAdapter`) + MCPClient 生产接线 (`mcp.servers` 配置节 + `_wire_mcp_clients` + stop/destroy/shutdown `disconnect`) + CLI 工具 services 注入; 真机冒烟 stdio MCP server 接入验证。兼容层插件迁进程隔离未做 (架构受限: 兼容层无 manifest, Fix-31 已安全兜底, 留架构债)。
-6. **T6 插件市场与热重载**。
+6. **T6 插件市场与热重载 ✅ 已完成 (2026-08-16)** — `PluginInstaller` (market/git/url/upload + SSRF/zip slip 防护) + `ToolRegistry` deregister/来源追踪 + `activation` 模块 (热重载同步运行中 Agent) + 控制面 marketplace/install/reload/uninstall/failed/retry 端点 + CLI `isac plugin` + 市场清单 (本地+可配远程); 真机冒烟 exit=0。
 7. **并行收尾 (相互独立, 可穿插)** — **R1** 多模态闭环 (出站 artifact 解析/入站落盘/6 个 record_* 计量/价目表加载, 顺带 Provider 测试端点改真实连接探测); **R2** 控制面与 SubAgent (`GET /agents/{id}/config` + 真实 revision、SubAgent 表真实 agent_id、Webhook/MCP Server 生产启动点、背景摘要传递 + evidence_refs 生成); **R4** 记忆完整性 (行话学习写入侧、中期记忆接 COMPRESS 真实压缩 —— 同时消除 COMPRESS hook 无监听者问题、实体关系图); **R5** 持久化与密钥 (Session 持久化、SecretStore 接线或"配置 + env + 不回显")。
 8. **R6 企业化激活** — routes_tenants / loader 可选隔离模式 / Workflow `agent:` 入口决策落地。
 9. **R7 发布准入 + T7 分发运维 (最后)** — P3/P4/P5 集成测试补齐 (现全缺)、I 节点复核升 100%、REQUIREMENTS 十二条逐条取证、release_checklist 七段、docker compose 一键 + 配置自动迁移、**24h soak** → v1.0 GA。
@@ -60,6 +60,8 @@
 **前端轨道 (独立项目, FE0/FE1 + T3-backend 之后启动)**: F1 项目初始化 + 登录/setup 向导 → F2 十域页面迁移 (配置编辑事务改接真实 API, 顺带修复 Q5 遗留假数据) → F3 实时日志与 SSE → F4 插件市场 UI。定义见 §四 FE。
 
 依赖顺序：阶段 0 → FE0/FE1 → T3-backend → T5;R3 → T6;R1/R2/R4/R5/R6 相互独立可并行;R7 必须最后。**验收铁律 (2026-07-31 立) 继续适用**: 任何节点声明完成必须附真机部署证据, 不接受"单测通过"作为可用性证明。每项按 §二"完成定义"验收, 完成后把 §四 对应标记升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。
+
+**GA 之后做什么**: 本节计划全部完成 (v1.0 GA) 后的预置蓝图见 §四 **"GA 后开发计划"** (V 功能广度兑现 / X 生态与商业化 / Y 智能演进 / Z 工程演进持续线), M-GA 验收通过后才激活排期, 不影响当前推进。
 
 ---
 
@@ -871,11 +873,11 @@
   - **当前**：未开始。
   - **备注**：需要外部账号与回调公网地址,**开工前需与用户确认可用凭据与联调窗口**。
 
-- [ ] **T6 插件市场与热重载**(生态可用性, 对标 AstrBot)
+- [x] **T6 插件市场与热重载**(生态可用性, 对标 AstrBot)
   - **目标**：插件"能装、能用、免重启",而不是"放进目录但不触发"。
   - **验收**：插件市场列表 + 一键安装(市场 / Git / URL / 上传)+ 热重载免重启 + 失败插件单独列出可重试(对标 AstrBot `api/plugins.py:578-593,502,534,565,820,1064`)。
   - **依赖**：**R3(插件桥接激活)必须先完成** —— 否则装了也不触发,是假功能。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。新建 `PluginInstaller` (`isac/plugin/runtime/installer.py`, 对标 AstrBot `PluginUpdator`) 支持 market/git/url/upload 四源安装 (SSRF `is_safe_url` + zip slip `safe_extractall` + 失败回滚), 市场清单本地 `data/plugin_marketplace.jsonc` + 可配远程 `marketplace_url` (httpx 拉取, 失败降级仅本地); `PluginManager` 加 `install/reload/uninstall/list_failures/retry`; `ToolRegistry` 加 `deregister`/`deregister_by_source`/`deregister_plugin_sourced` + 来源追踪 (`_source`/`set_current_source`); 新建 `activation` 模块 (`activate_plugin` + `sync_plugin_tools_to_agents`) 遍历运行中 Agent deregister 旧工具 + register 新工具, 运行中会话立即生效 (对标 AstrBot reload 全局重建, 适配 ISAC per-Agent registry); 控制面新增 `GET /plugins/marketplace` + `POST /plugins/install` + `POST /plugins/{name}/reload` + `DELETE /plugins/{name}` + `GET /plugins/failed` + `POST /plugins/{name}/retry` (写操作 `plugin:write` scope + 审计, `allow_install=false` 不注册写端点); CLI `isac plugin list/marketplace/install/reload/uninstall/failed/retry` 经 HTTP; upload 用 base64 body 不引 multipart 依赖。injectors/commands 热重载为加法语义 (仅 tools 精确 deregister, 已知限制)。新增 60 单测 (safe_install/tool_registry/activation/installer/manager_t6/routes_t6), ruff/mypy 全绿; 真机冒烟 `scripts/smoke_plugin_marketplace.py` (干净目录启动 → 列市场清单 → 上传安装 echo 插件 → reload → 卸载, exit=0)。
 
 - [ ] **T7 分发、运维与长跑验证**
   - **目标**：让别人能照文档在自己机器上跑起来并长期运行。
@@ -1017,6 +1019,61 @@
   - **验收**：trace_id/session_id/agent_id 经 `contextvars` 贯穿路由→门控→Loop→工具→记忆→回复,无需逐处手传;日志可按 level 与按模块前缀分级;默认 `INFO` 时 debug 零输出、零性能影响;全程脱敏 (不打密钥/完整参数/未清洗结果)。
   - **产出**：`utils/logging_context.py` (`bind_log_context`)、`utils/logger.py` (level + per_module 分级)、`manager.handle_message` trace 绑定、`agent/loop.py`/`gating/system.py` 等关键链路 debug 日志、`docs/LOGGING.md`、`data/config.sample.jsonc` logging 段、单测。
   - **当前**：已落地。用法与排查树见 [LOGGING.md](./LOGGING.md)。
+
+---
+
+### GA 后开发计划 (2026-08-16 预置, M-GA 验收通过后激活, 不影响当前 T/R/FE 推进)
+
+**定位**: 本节是"当前计划全部开发完成 (v1.0 GA) 之后做什么"的预置蓝图, 依据三处既有记录推演: ①§四 R 末尾的 **GA 后可选项** (S6 视频端点 / 微信 mp / Slack / 主链路流式); ②§四**架构债清单**的持续清偿; ③`REQUIREMENTS.md` 第 12 条总体目标中尚未展开的"商业化基础"与"通用 Agent 框架"外延。**激活前提**: M-GA 达成 (R7 + T7 验收通过); 本节节点在激活前一律视为 `[ ]` 预置, 不排期不占资源。验收铁律 (真机部署证据) 继续适用。
+
+#### V 功能广度兑现轮 (v1.1–v1.2): 把 GA 后可选项做成产品能力
+
+- [ ] **V1 主链路流式回复**
+  - **目标**: Provider 层 `chat_stream` 已闭环、`loop` 流式路径存在但 `run_stream` 无生产调用点 —— 启用流式, 回复边生成边送达。
+  - **验收**: `AgentContext.streaming=True` 生产路径接线; Channel 侧分片送达/编辑追加按平台能力适配 (WebChat 原生流式帧, IM 平台分片或编辑消息降级); 流式失败回退非流式 (已有 CR3-H4); 前端流式渲染契约进 FE (独立前端项目消费)。
+  - **依赖**: M-GA; 前端流式渲染属前端轨道。
+- [ ] **V2 视频生成 Provider (原 S6)**
+  - **目标**: `OpenAICompatVideoGenProvider.generate` 落地真实端点。
+  - **验收**: **开工前用户二次确认端点** (Sora/Runway/Kling/即梦/自托管); 仿 image_gen: POST 生成 → 轮询/等待 → ArtifactStore → ArtifactRef; 计量埋点 (record_video 已就绪)。
+  - **依赖**: M-GA; 端点选型为用户决策闸门。
+- [ ] **V3 微信公众号 (mp) 适配器**
+  - **目标**: wecom 企业微信已实现, 补齐 mp 公众号模式。
+  - **验收**: 服务器配置校验 (signature) + 消息/事件接收 + 被动回复 + access_token 缓存; 富媒体按能力降级。
+  - **依赖**: M-GA。
+- [ ] **V4 更多平台 (Slack 优先, Line/WhatsApp 可选)**
+  - **验收**: 复用 Channel 抽象 + enabled-gated 注册 + 真机收发验证。
+  - **依赖**: M-GA。
+- [ ] **V5 语音交互链路**
+  - **目标**: 从"语音消息转写工具"升级为连续语音对话 (陪伴场景核心体验)。
+  - **验收**: 流式 STT/TTS Provider 选型落地 (现 stt_tts 为 OpenAI 兼容基类); 语音消息入站转写 → 回复 TTS 出站全链; 与 V1 流式协同降低首音延迟。
+  - **依赖**: V1; 端点选型为用户决策。
+- [ ] **V6 前端体验扩展** (独立前端项目)
+  - **验收**: 移动端适配 / 界面 i18n / Dashboard 可视化增强 (用量趋势图、记忆图谱视图); 以冻结的 API 契约为准, 不改后端。
+  - **依赖**: F1-F4 完成。
+
+#### X 生态与商业化轮 (v1.2–v2.0): 从"能用的框架"到"有人用的生态"
+
+- [ ] **X1 分发与托管体系** — 官方镜像与版本化发布节奏; 一键部署模板生态 (1Panel/宝塔/NAS 等); 官方文档站独立部署; 升级迁移自动化在 T7 基础上产品化。
+- [ ] **X2 插件生态运营** — T6 插件市场之上: 市场托管与审核签名机制、插件开发文档与模板库、版本兼容声明; 与 AstrBot/MaiBot 存量插件的迁移工具产品化 (scripts/migrate.py 升级)。
+- [ ] **X3 多租户商业化** — R6 routes_tenants 之上: 组织/配额/计费模型、用量成本按租户结算 (usage 计量已就绪)、租户级 WebUI 视图。
+- [ ] **X4 安全与合规** — 第三方安全审计; 数据合规能力 (记忆治理 freeze/delete 扩展为"被遗忘权"导出与清除流程); 审计日志归档策略。
+
+#### Y 智能演进轮 (v2.0): 深化"像人"的核心差异
+
+- [ ] **Y1 长期记忆深化** — R4 实体关系图之上: 人物-人物/人物-话题语义网络持续抽取; 记忆反思 (定期自省生成自我叙事与关系总结, 经 MemoryConsolidator 通道); 记忆可解释性 (用户可查"为什么记得这个")。
+- [ ] **Y2 多 Agent 社会** — Mesh 从少数 Agent 协作扩展为大规模拓扑: 群聊中多角色并存、Agent 社区模拟、跨 Agent 记忆共享的 ACL 精细化。
+- [ ] **Y3 自主成长** — BehaviorLearner 的行为特征累积升级为长期行为画像演化闭环 (风格随关系深度与互动历史渐变, 有界不漂移)。
+
+#### Z 工程演进 (持续线, 不设节点门, 见缝插针)
+
+> 承接 §四架构债清单, 在 V/X/Y 各轮开发中顺手清偿; 清偿一项从架构债清单移除一项。
+
+- [ ] **Z1 ServiceContainer 强类型化** — `services: dict[str, Any]` → Protocol/TypedDict (越晚改越贵, 建议 V 轮启动时做)。
+- [ ] **Z2 main.py 拆分** — `isac/bootstrap/{services,channels,control_plane,lifecycle,links}.py` (2026-07-28 复审给出的划分方案)。
+- [ ] **Z3 兼容层插件子进程化** — AstrBot/MaiBot 插件全部迁 PluginIsolationHost (R3 留下的架构受限项, 需先解决"兼容层无 manifest"问题)。
+- [ ] **Z4 上游兼容测试矩阵** — AstrBot/MaiBot 真实插件样本的 CI 兼容回归 (现兼容层测试用仿写样本)。
+
+**GA 后里程碑**: M-v1.1 (V1-V4 流式+视频+微信 mp+Slack) → M-v1.2 (V5-V6 语音+前端扩展 + X1-X2 分发+插件生态) → **M-v2.0** (X3-X4 商业化+合规 + Y1-Y3 智能演进)。Z 线贯穿始终。依赖要点: V5 依赖 V1; V2/V5 含用户选型闸门; X3 依赖 R6; Y1 依赖 R4。
 
 ---
 

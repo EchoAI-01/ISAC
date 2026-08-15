@@ -240,8 +240,11 @@ def _merge_shared_plugin_tools(
     """
     shared_tools = services.get("plugin_tools")
     if shared_tools is not None:
-        for _tool in shared_tools._tools.values():  # noqa: SLF001
-            tools.register(_tool)
+        for _name, _tool in shared_tools._tools.items():  # noqa: SLF001
+            # T6: 透传共享表来源, 让 per-Agent registry 也带 source 追踪,
+            # 否则热重载 deregister_by_source 在运行中 Agent 不生效。
+            _src = shared_tools._source.get(_name, "builtin")  # noqa: SLF001
+            tools.register(_tool, source=_src)
     shared_prompt = services.get("plugin_prompt_builder")
     if shared_prompt is not None:
         for _inj in shared_prompt._injectors:  # noqa: SLF001
