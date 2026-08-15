@@ -247,6 +247,26 @@
     "bash_allowlist": []
   },
 
+  // R3: 全局 MCP Server 定义。assemble_agent 按 Agent 级 mcp_servers (允许名列表)
+  // 查此表构造 MCPClient, connect + list_tools 把 MCP 工具桥接为 ISAC Tool 注册进
+  // per-Agent ToolRegistry; Agent 停止/销毁时 disconnect。stdio 启动子进程,
+  // http 用 httpx, sse 暂未实现 (会显式报错)。默认 servers 空 (不连接任何 MCP)。
+  "mcp": {
+    "servers": {
+      // "example_stdio": {
+      //   "transport": "stdio",
+      //   "command": "npx",
+      //   "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      //   "env": {}
+      // },
+      // "example_http": {
+      //   "transport": "http",
+      //   "url": "https://mcp.example.com",
+      //   "token": ""
+      // }
+    }
+  },
+
   // Channel 适配器 (Q0 起 4 个平台均在 main() 真实注册, enabled=true 即生效)
   "channels": {
     // OneBot/QQ: 反向 WebSocket 服务端, NapCat 等客户端连到 host:port

@@ -71,6 +71,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         }
     },
     "logging": {"level": "info"},
+    # R3: 全局 MCP Server 定义 (name → 连接配置 {transport,command,args,env,url,token})。
+    # assemble_agent 按 AgentConfig.mcp_servers (允许名列表) 查此表构造 MCPClient。
+    # 默认空, 零行为变化; 用户在 config.jsonc 顶层 mcp.servers 下定义 server。
+    "mcp": {"servers": {}},
 }
 
 

@@ -227,6 +227,88 @@ async def _setup_conversation_runtime(
         logger.info("会话拟人状态快照已恢复", agent_id=config.agent_id, count=len(snapshots))
 
 
+def _merge_shared_plugin_tools(
+    services: dict[str, Any], tools: ToolRegistry, prompt_builder: SystemPromptBuilder
+) -> None:
+    """R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry。
+
+    同 plugin_agent_hooks 合并模式 (assembly.py assemble_agent 内 269-273 行): 共享
+    表是裸收集器, 合并进 per-Agent 后由 per-Agent 的 permission/enable_matrix 控可见性。
+    native 插件经 on_load 主动 register, AstrBot/MaiBot 兼容层经 _adapt_compat_plugins
+    调 adapter.adapt 注册到共享表 (_fire_plugin_on_load 收集)。默认无插件时空操作。
+    shared_commands 合并由调用方在 commands 构造后单独处理 (commands 此处尚未构造)。
+    """
+    shared_tools = services.get("plugin_tools")
+    if shared_tools is not None:
+        for _tool in shared_tools._tools.values():  # noqa: SLF001
+            tools.register(_tool)
+    shared_prompt = services.get("plugin_prompt_builder")
+    if shared_prompt is not None:
+        for _inj in shared_prompt._injectors:  # noqa: SLF001
+            prompt_builder.register(_inj)
+
+
+async def _wire_mcp_clients(
+    config: AgentConfig, services: dict[str, Any], tools: ToolRegistry
+) -> list[Any]:
+    """R3: 按 AgentConfig.mcp_servers 构造并连接 MCPClient, MCP 工具注册进 tools。
+
+    AgentConfig.mcp_servers (允许名列表) 查全局 services["mcp_servers"] (build_services
+    注入, config.jsonc 顶层 mcp.servers 节)。逐 server 构造 MCPClient + connect +
+    list_tools, MCPToolBridge (Tool 子类, client.py:268) 注册进 per-Agent tools。
+    返回 MCPClient 实例列表 (供 agent_services["mcp_clients"] 存储, stop/destroy 时
+    disconnect)。默认 mcp_servers=[] 或无全局定义时返回空列表, 零行为变化。
+    逐 server 错误隔离, 失败不阻塞 Agent 启动。
+    """
+    mcp_clients: list[Any] = []
+    mcp_servers_def = services.get("mcp_servers", {})
+    if not config.mcp_servers or not mcp_servers_def:
+        return mcp_clients
+    from isac.agent.tools.mcp.client import MCPClient
+
+    for _srv_name in config.mcp_servers:
+        _srv_cfg = mcp_servers_def.get(_srv_name)
+        if not _srv_cfg:
+            logger.warning(
+                "MCP server 配置缺失, 跳过",
+                server=_srv_name, agent_id=config.agent_id,
+            )
+            continue
+        try:
+            _client = MCPClient(_srv_name, _srv_cfg)
+            await _client.connect()
+            _bridges = await _client.list_tools()
+            for _bridge in _bridges:
+                tools.register(_bridge)
+            mcp_clients.append(_client)
+            logger.info(
+                "MCP server 已接入",
+                server=_srv_name, agent_id=config.agent_id, tools=len(_bridges),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "MCP server 接入失败, 不阻塞 Agent",
+                server=_srv_name, agent_id=config.agent_id,
+                error=str(exc), exc_info=True,
+            )
+    return mcp_clients
+
+
+def _merge_shared_plugin_commands(
+    services: dict[str, Any], commands: CommandRegistry
+) -> None:
+    """R3: 合并进程级共享插件 commands 进 per-Agent CommandRegistry。
+
+    同 plugin_agent_hooks 合并模式; 由 assemble_agent 在 commands 构造后调用
+    (commands 在 tools 之后定义, 故不能并入 _merge_shared_plugin_tools)。
+    默认无插件时空操作。
+    """
+    shared_commands = services.get("plugin_commands")
+    if shared_commands is not None:
+        for _cmd in shared_commands._commands.values():  # noqa: SLF001
+            commands.register(_cmd)
+
+
 async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> AgentInstance:
     """按配置组装一个 AgentInstance。
 
@@ -319,6 +401,14 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     tools.register(SynthesizeSpeechTool())
     tools.register(VisionUnderstandTool())
     tools.register(UnderstandVideoTool())
+
+    # R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry (同 plugin_agent_hooks
+    # 合并模式; shared_commands 合并见下方 commands 定义后) + MCPClient 按
+    # AgentConfig.mcp_servers 构造+connect+list_tools 注册 MCP 工具进 tools。client
+    # 存 agent_services["mcp_clients"] 供 stop/destroy disconnect。默认空, 零行为变化。
+    _merge_shared_plugin_tools(services, tools, prompt_builder)
+    mcp_clients = await _wire_mcp_clients(config, services, tools)
+
     prompt_builder.register(ToolsAvailableInjector(tools))
 
     # E4 命令注册表: commands_allow 矩阵在 try_execute 时生效
@@ -333,6 +423,9 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     commands.register(FocusCommand())
     commands.register(MuteCommand())
     commands.register(UnmuteCommand())
+    # R3: 合并进程级共享插件命令 (services["plugin_commands"]) 进 per-Agent
+    # CommandRegistry, 同 plugin_agent_hooks 合并模式。默认空。
+    _merge_shared_plugin_commands(services, commands)
 
     provider_manager = services["provider_manager"]
     llm = provider_manager.for_agent(config)
@@ -342,6 +435,9 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     prompt_builder.register(HeuristicMemoryInjector(memory))
     prompt_builder.register(MidTermMemoryInjector(memory))
     agent_services = {**services, "memory": memory}
+    # R3: MCPClient 引用 (上方构造) 存入 services, 供 AgentManager.stop/destroy
+    # 与 _shutdown_message_pipeline 调 disconnect (避免子进程/HTTP 连接泄漏)。
+    agent_services["mcp_clients"] = mcp_clients
 
     # 后台记忆整合器 (默认关闭: memory.consolidation.enabled!=true → None → 生命周期不启动)。
     # 骨架期 run_once 为 no-op, 由 AgentManager 随 Agent start/stop 驱动。

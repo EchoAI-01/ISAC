@@ -795,6 +795,10 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         # R3: CLI 工具后端 (bash/read_file/write_file 经 ToolContext.services 取用)
         "workspace_root": workspace_root,
         "bash_allowlist": list(tools_config.get("bash_allowlist") or []),
+        # R3: 全局 MCP Server 定义 (name → {transport,command,args,env,url,token}),
+        # config.jsonc 顶层 mcp.servers 节。assemble_agent 按 AgentConfig.mcp_servers
+        # (允许名列表) 查此定义构造 MCPClient。默认空, 零行为变化。
+        "mcp_servers": (global_config.get("mcp", {}) or {}).get("servers", {}) or {},
     }
 
 
@@ -949,6 +953,8 @@ async def _shutdown_message_pipeline(
         scheduler = instance.services.get("proactive_scheduler")
         if scheduler is not None:
             await scheduler.stop()
+        # R3: 断开该 Agent 的 MCPClient (子进程/HTTP 连接), 避免关闭时泄漏。
+        await agent_manager._disconnect_mcp_clients(instance)  # noqa: SLF001
 
 
 async def _noop_start() -> None:
@@ -1294,13 +1300,15 @@ async def _register_control_plane(
                 load_report = await plugin_manager.load_all(plugins_dir)
                 if load_report:
                     logger.info("插件加载完成", report=load_report)
-                # CR3-H2: 接线 on_load 生命周期钩子 —— 此前 call_on_load 全仓无
-                # 调用点, 插件即使被加载也是"惰性"的 (无法注册事件订阅/互联钩子/
-                # Admin Route)。event_bus/inter_agent_bus/router 都是生产实例,
-                # 插件经 on_event_intercept/on_event_async 的订阅会真实参与
-                # process_message 主链路。tools/commands/prompt_builder 是
-                # per-Agent 注册表, 留 None (插件调用对应 register_* 会得到明确
-                # 报错并被 call_on_load 按插件隔离); per-Agent 桥接见 P 节点。
+                # CR3-H2/R3: 接线 on_load 生命周期钩子 + 插件注册表/兼容层桥接。
+                # 此前 call_on_load 全仓无调用点, 插件即使被加载也是"惰性"的
+                # (无法注册事件订阅/互联钩子/Admin Route)。event_bus/inter_agent_bus/
+                # router 都是生产实例, 插件经 on_event_intercept/on_event_async 的
+                # 订阅会真实参与 process_message 主链路。R3 起 tools/commands/
+                # prompt_builder 改为进程级共享注册表 (services["plugin_tools"] 等),
+                # native 插件 on_load register 真实写入, 兼容层 (AstrBot/MaiBot) 经
+                # _adapt_compat_plugins 桥接 @filter.llm_tool/@register_action;
+                # assemble_agent 合并进 per-Agent registry。详见 _fire_plugin_on_load docstring。
                 await _fire_plugin_on_load(
                     plugin_manager, services or {}, event_bus=event_bus, bus=bus, router=router
                 )
@@ -1404,32 +1412,106 @@ async def _fire_plugin_on_load(
     bus: Any = None,
     router: Any = None,
 ) -> None:
-    """CR3-H2: 构造 PluginContext 并触发全部 Native 插件的 on_load 钩子。
+    """R3: 构造 PluginContext + 触发 native 插件 on_load + 桥接兼容层插件装饰器。
 
     agent_hooks 是进程级共享注册表 (services["plugin_agent_hooks"]), 组装每个
     Agent 时由 assemble_agent 合并进该 Agent 的私有 hooks; event_bus 缺失
     (极少数测试路径) 时跳过, 不构造无效 context。失败只记日志不阻塞启动。
+
+    R3 (收敛 Q3): 此前 PluginContext 的 tools/commands/prompt_builder 留 None
+    (注释明示"per-Agent 桥接见 P 节点"), 导致 native 插件 on_load 调
+    register_tool/register_command/register_injector 会 raise (被 call_on_load
+    按插件隔离吞掉), 兼容层 (AstrBot/MaiBot) @filter.llm_tool/@register_action
+    标记的 handler 是死代码。本轮复用 plugin_agent_hooks 三阶段共享模式: 建立
+    进程级共享 ToolRegistry/CommandRegistry/SystemPromptBuilder 注入
+    PluginContext, native 插件 on_load register 写入共享表; 随后调
+    _adapt_compat_plugins 把兼容层插件装饰器标记桥接进共享表。assemble_agent
+    再把共享表合并进 per-Agent registry (见 assembly.py)。
     """
     if event_bus is None:
         logger.debug("event_bus 未注入, 跳过插件 on_load 接线")
         return
     try:
         from isac.agent.hooks import AgentHooks
+        from isac.agent.prompt_builder import SystemPromptBuilder
+        from isac.agent.tools.registry import ToolRegistry
+        from isac.commands.registry import CommandRegistry
         from isac.plugin.native.plugin import make_plugin_context
 
+        # R3: 进程级共享注册表 (仿 plugin_agent_hooks 三阶段模式)。裸 ToolRegistry()
+        # 无策略仅作收集器; assemble_agent 合并进 per-Agent registry 时由 per-Agent
+        # 的 permission/enable_matrix 控可见性。setdefault 幂等, 多次调用安全。
+        shared_tools = services.setdefault("plugin_tools", ToolRegistry())
+        shared_commands = services.setdefault("plugin_commands", CommandRegistry())
+        shared_prompt = services.setdefault("plugin_prompt_builder", SystemPromptBuilder())
         plugin_agent_hooks = services.setdefault("plugin_agent_hooks", AgentHooks())
+
         context = make_plugin_context(
             agent_hooks=plugin_agent_hooks,
             event_bus=event_bus,
             services=services,
             inter_agent_bus=bus,
             router=router,
+            tools=shared_tools,
+            commands=shared_commands,
+            prompt_builder=shared_prompt,
         )
         on_load_report = await plugin_manager.call_on_load(context)
         if on_load_report:
             logger.info("插件 on_load 完成", report=on_load_report)
+
+        # R3: 桥接兼容层插件 (AstrBot/MaiBot) 的装饰器标记到共享注册表。
+        # native 插件经 on_load 主动 register; 兼容层插件靠 adapter 扫描标记。
+        await _adapt_compat_plugins(plugin_manager, shared_tools, shared_commands)
     except Exception as exc:  # noqa: BLE001
         logger.warning("插件 on_load 接线失败, 不阻塞控制面", error=str(exc), exc_info=True)
+
+
+async def _adapt_compat_plugins(
+    plugin_manager: Any,
+    shared_tools: Any,
+    shared_commands: Any,
+) -> None:
+    """R3: 遍历已加载的 AstrBot/MaiBot 兼容层插件, 调 adapter.adapt 桥接装饰器标记。
+
+    loader 加载兼容层插件后只 exec_module+实例化, 不调 adapt →
+    @filter.llm_tool / @register_action 标记的 handler 在生产是死代码。本函数
+    补齐: 对每个 AstrBot Star 实例调 AstrBotStarAdapter.adapt 注册 tools; 对每个
+    MaiBot 插件实例调 MaiBotPluginAdapter.adapt 注册 tools+commands。逐插件错误
+    隔离, 失败不阻塞其他插件。call_on_load 已显式跳过非 native (manager.py:239),
+    故兼容层插件不在此前经 PluginContext.on_load, 必须经本函数桥接。
+    """
+    try:
+        from isac.plugin.compatibility.astrbot.adapter import AstrBotStarAdapter
+        from isac.plugin.compatibility.maibot.plugin import MaiBotPluginAdapter
+    except ImportError as exc:
+        logger.debug("兼容层适配器不可用, 跳过桥接", error=str(exc))
+        return
+
+    loaded: dict[str, Any] = getattr(plugin_manager, "_loaded", {})
+    for name, plugin in loaded.items():
+        instance = getattr(plugin, "instance", None)
+        if instance is None:
+            continue
+        try:
+            if getattr(plugin, "is_astrbot", lambda: False)():
+                result = await AstrBotStarAdapter(instance).adapt(shared_tools)
+                if result.get("tools") or result.get("hooks"):
+                    logger.info(
+                        "AstrBot 插件已桥接", plugin=name,
+                        tools=result.get("tools"), pending_hooks=result.get("hooks"),
+                    )
+            elif getattr(plugin, "is_maibot", lambda: False)():
+                result = await MaiBotPluginAdapter(instance).adapt(
+                    shared_tools, shared_commands
+                )
+                if result.get("tools") or result.get("commands"):
+                    logger.info(
+                        "MaiBot 插件已桥接", plugin=name,
+                        tools=result.get("tools"), commands=result.get("commands"),
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("兼容层插件桥接失败, 跳过该插件", plugin=name, error=str(exc), exc_info=True)
 
 
 def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
