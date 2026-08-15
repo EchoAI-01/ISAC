@@ -44,6 +44,7 @@ from isac.runtime.bus import InterAgentBus, InterAgentLink, InterAgentMessage
 from isac.runtime.manager import AgentManager, ensure_default_agent, load_persisted_agents
 from isac.utils.config import load_config
 from isac.utils.logger import get_logger, setup_logger
+from isac.utils.security import SecretStore, resolve_secrets_in_config
 
 logger = get_logger(__name__)
 
@@ -468,6 +469,20 @@ def _ensure_default_routing(router: MessageRouter, channel_registry: ChannelRegi
         platforms=platforms,
         agent_id=fallback_agent_id,
     )
+
+
+def _build_secret_store() -> SecretStore | None:
+    """R5: 构造 SecretStore (env ISAC_SECRET_KEY 设置时; 否则 None 走原明文路径)。
+
+    SecretStore 仅在 env ISAC_SECRET_KEY 配置时可用 (AES-256-GCM 解密需要密钥)。
+    未配置时返回 None, ``resolve_secret_async`` 对 ``secret:`` 前缀值原样回退 + warning,
+    向后兼容 (旧明文配置零行为变化)。
+    """
+    import os
+
+    if not os.environ.get("ISAC_SECRET_KEY"):
+        return None
+    return SecretStore(str(DATA_DIR / ".secrets.enc"))
 
 
 def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[str, Any]) -> None:
@@ -1021,6 +1036,13 @@ async def main() -> None:
     # 但无统一入口, 首启日志零反馈、目录结构不透明。集中创建双保险 (各组件既有惰性
     # mkdir 保留, 零冲突)。
     _ensure_data_dirs()
+    # R5: 密钥安全。配置中 api_key 形如 "secret:<key>" 时经 SecretStore 解密 (AES-256-GCM,
+    # env ISAC_SECRET_KEY 加载)。env 未配置时不构造 store → secret: 前缀值原样回退
+    # (warning), 走原明文路径, 向后兼容。在 build_services/register_llm_provider 之前
+    # 就地解析, 使同步注册函数拿到明文 api_key。env ISAC_LLM_API_KEY 仍最高优先级
+    # (load_config 已写入 llm.api_key, 非 secret: 前缀原样返回)。
+    secret_store = _build_secret_store()
+    await resolve_secrets_in_config(global_config, secret_store)
     # T4: 启用 LogBuffer 单例, 必须在 setup_logger 之前 (cache_logger_on_first_use 后
     # 装不进 processor 链)。setup_logger 检测单例存在才插入 buffer processor。
     from isac.utils.log_buffer import enable_log_buffer
@@ -1109,7 +1131,7 @@ async def main() -> None:
 
     # ── Gateway ─────────────────────────────────────────────
     event_bus = EventBus()
-    session_mgr = SessionManager(global_config)
+    session_mgr = SessionManager(global_config, db_path=str(DATA_DIR / "gateway" / "sessions.db"))
     # Q1: 跨平台身份映射 SQLite 持久化 (master_id/person_id 跨重启稳定,
     # 人物画像与记忆按归一身份聚合的前提)
     user_mapper = UserMapper(str(DATA_DIR / "gateway" / "identity.db"))

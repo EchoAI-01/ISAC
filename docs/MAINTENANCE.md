@@ -136,6 +136,10 @@ LLM 报错
 ## 七、安全运维要点
 
 - **密钥**: 用 SecretStore (AES-256-GCM);WebUI 密钥只可替换不可回显;日志/审计不落明文密钥。
+  - **R5 接入** (2026-08-16): 配置中 `llm.api_key` (含 `llm.multimodal[*].api_key`) 可填 `secret:<key>` 引用 SecretStore 加密存储。
+  - 步骤: ①生成 32 字节密钥 `python -c "import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())"` → ②`export ISAC_SECRET_KEY=<上面输出>` → ③`isac secret set openai_api_key` (getpass 不回显输入明文) → ④配置 `llm.api_key: "secret:openai_api_key"`。
+  - env `ISAC_LLM_API_KEY` 仍最高优先级 (直接覆盖 `llm.api_key`, 非 `secret:` 前缀)。未配 `ISAC_SECRET_KEY` 时 `secret:` 前缀值原样回退 + warning (走原明文路径向后兼容, 不静默降级)。
+  - 密钥文件 `data/.secrets.enc` (加密 JSON), 备份时连同 `data/` 一并备份, 但**务必与 `ISAC_SECRET_KEY` env 分离存储** (env 在运维密钥管理, 不入 `data/` 备份)。
 - **控制面**: 空 Token 仅限显式开发模式;生产必须配 Token;审计/JSON 指标端点需认证。
 - **SSRF**: Webhook 与远程媒体下载有 SSRF 防护;新增出站请求务必走既有校验。
 - **资源上限**: Bash/File/MCP 有字节/时间/进程/路径/pending 上限;Session/Lock/队列有 TTL/LRU。改配置时勿无限放大。

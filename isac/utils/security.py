@@ -124,3 +124,55 @@ def _generate_nonce() -> bytes:
     import secrets
 
     return secrets.token_bytes(12)
+
+
+# R5: secret: 前缀约定 —— 配置中 api_key 值形如 "secret:<key>" 时经 SecretStore 解密。
+SECRET_PREFIX = "secret:"
+
+
+async def resolve_secret_async(value: str, secret_store: SecretStore | None) -> str:
+    """解析 ``secret:<key>`` 前缀的密钥引用, 返回真实明文值。
+
+    - 非 ``secret:`` 前缀 (含明文 / 占位符 / env 覆盖值) 原样返回。
+    - ``secret:`` 前缀但 secret_store 为 None (未配置 ISAC_SECRET_KEY env) → 回退
+      原值 + warning (不静默降级到明文, 但也不硬阻断 —— 用户可能尚未配置 env)。
+    - ``secret:`` 前缀 + store 非 None → ``store.get(key)``; 不存在返回空串 + warning。
+    """
+    if not value or not value.startswith(SECRET_PREFIX):
+        return value
+    key = value[len(SECRET_PREFIX) :]
+    if secret_store is None:
+        import warnings
+
+        warnings.warn(
+            f"配置值 {value} 引用 SecretStore 但 ISAC_SECRET_KEY 未配置, 无法解密",
+            stacklevel=2,
+        )
+        return value
+    resolved = await secret_store.get(key)
+    if resolved is None:
+        import warnings
+
+        warnings.warn(f"SecretStore 中未找到 {key}, 该密钥引用将无法使用", stacklevel=2)
+        return ""
+    return resolved
+
+
+async def resolve_secrets_in_config(config: dict, secret_store: SecretStore | None) -> None:
+    """就地解析 global_config 中所有 ``secret:`` 前缀的密钥引用 (R5)。
+
+    扫描 ``llm.api_key`` + ``llm.multimodal[*].api_key`` (J2 多模态 Provider)。
+    在 build_services / register_llm_provider 之前调用, 使同步注册函数拿到明文。
+    """
+    llm = config.get("llm")
+    if isinstance(llm, dict):
+        api_key = llm.get("api_key")
+        if isinstance(api_key, str):
+            llm["api_key"] = await resolve_secret_async(api_key, secret_store)
+        mm = llm.get("multimodal")
+        if isinstance(mm, list):
+            for entry in mm:
+                if isinstance(entry, dict):
+                    mk = entry.get("api_key")
+                    if isinstance(mk, str):
+                        entry["api_key"] = await resolve_secret_async(mk, secret_store)
