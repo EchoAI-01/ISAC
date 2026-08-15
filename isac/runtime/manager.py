@@ -118,6 +118,8 @@ class AgentManager:
         consolidator = instance.services.get("memory_consolidator")
         if consolidator is not None:
             await consolidator.stop()
+        # R3: 断开 MCPClient (子进程/HTTP 连接), 异常隔离不阻塞停止。
+        await self._disconnect_mcp_clients(instance)
         self._inc_metric("isac_agent_stops_total")
         self._update_active_gauge()
         logger.info("Agent 已停止", agent_id=agent_id)
@@ -133,6 +135,8 @@ class AgentManager:
         consolidator = instance.services.get("memory_consolidator")
         if consolidator is not None:
             await consolidator.stop()
+        # R3: 断开 MCPClient (子进程/HTTP 连接), 异常隔离不阻塞销毁。
+        await self._disconnect_mcp_clients(instance)
         self._update_active_gauge()
         # Q0: 失效独立 Provider 缓存 (否则重建同名 Agent 仍拿到旧 llm 配置的 Provider)
         await self._invalidate_agent_provider(agent_id)
@@ -144,6 +148,21 @@ class AgentManager:
             await self._drain_agent_memory_tasks(agent_id)
             await self._purge_memory(instance)
         logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
+
+    async def _disconnect_mcp_clients(self, instance: Any) -> None:
+        """R3: 断开该 Agent 的所有 MCPClient (避免子进程/HTTP 连接泄漏)。
+
+        assemble_agent 把构造并 connect 的 MCPClient 存 instance.services[
+        "mcp_clients"]; stop/destroy 时逐个 disconnect, 异常隔离不阻塞停止。
+        """
+        mcp_clients = instance.services.get("mcp_clients")
+        if not mcp_clients:
+            return
+        for client in mcp_clients:
+            try:
+                await client.disconnect()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("MCPClient disconnect 失败, 不阻塞停止", error=str(exc), exc_info=True)
 
     async def _drain_agent_memory_tasks(self, agent_id: str, timeout_seconds: float = 10.0) -> None:
         """Fix-26: 等待指定 agent_id 在途的记忆写入/旁听任务完成。

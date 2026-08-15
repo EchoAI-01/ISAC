@@ -52,7 +52,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 1. **阶段 0 工程纠偏 (~0.5 轮)** — CI 触发分支修正 (`ci.yml` 监听 `develop` 但实际分支是 `dev`)、venv 重建 (入口脚本旧路径)、aiosqlite 连接未关闭修复 (24h soak 前置)、worktree 残留清理。
 2. **FE 前后端分离 (后端先行)** — FE0 API 契约冻结 → FE1 CORS/跨源认证/静态托管降级 → T3-backend 控制面开箱 (control 默认开 + 首登强制设密码 API + 配置 Schema 端点);前端轨道 F1-F4 独立项目, API 基线冻结后启动。
 3. **T5 真实 IM 接入验收** — 需用户凭据;OneBot/NapCat 先行, 飞书/QQ 官方/企业微信逐个真机联调 (此前只有单测)。
-4. **R3 插件与 MCP 生态激活 (T6 前置, 工作量最大)** → **T6 插件市场与热重载**。
+4. **R3 插件与 MCP 生态激活 ✅ 已完成 (2026-08-16)** → **T6 插件市场与热重载**。
 5. **并行收尾 (Q3-Q6/P3-P5 剩余收敛于此)** — R1 多模态闭环 · R2 控制面与 SubAgent · R4 记忆完整性 (行话写入/中期记忆 COMPRESS/实体关系图) · R5 持久化与密钥 (Session 持久化 + SecretStore) · R6 企业化激活。
 6. **R7 发布准入 + T7 分发运维 (最后)** — P3/P4/P5 集成测试补齐 (现全缺)、十二条需求逐条取证、release_checklist、docker compose 一键、24h soak → v1.0 GA。
 
