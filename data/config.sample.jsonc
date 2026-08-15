@@ -23,6 +23,9 @@
   // 主 LLM (文生文): K2 已落地, OpenAI 兼容 chat/completions
   "llm": {
     "provider": "openai",
+    // api_key 明文填写 (开发态); 生产环境可填 "secret:<key>" 引用 SecretStore 加密存储
+    // (R5): 先设 env ISAC_SECRET_KEY (32 字节 base64), 再用 `isac secret set <key>` 存入
+    // 明文, 配置中填 "secret:<key>"。env ISAC_LLM_API_KEY 仍最高优先级覆盖此处。
     "api_key": "sk-your-key",
     "base_url": "https://api.openai.com/v1",
     "model": "gpt-4o-mini"

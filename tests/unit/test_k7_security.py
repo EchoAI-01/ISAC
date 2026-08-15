@@ -359,3 +359,122 @@ async def test_read_file_only_reads_max_bytes(tmp_path: Path) -> None:
     assert not result.is_error
     # 内容长度应 <= MAX_READ_BYTES (截断)
     assert len(result.content) < MAX_READ_BYTES * 2
+
+
+# ── R5: SessionManager SQLite 持久化 + SecretStore 接入 ───────────────
+
+
+def _r5_msg(user_id: str = "u1") -> ISACMessage:
+    return ISACMessage(
+        msg_id="m", platform="fake", timestamp=int(time.time()),
+        user_id=user_id, user_name=user_id, group_id=None, content="hi",
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_persistence_restart_recovers_session_id(tmp_path: Path) -> None:
+    """R5: 重启后新实例同 db_path 恢复既有 session_id (不新建)。"""
+    from isac.gateway.session import SessionManager
+
+    db = str(tmp_path / "sessions.db")
+    mgr1 = SessionManager({}, db_path=db)
+    s1 = await mgr1.get_or_create(_r5_msg(), agent_id="a")
+    sid = s1.session_id
+    # 模拟重启: 新实例同 db_path, 内存缓存为空
+    mgr2 = SessionManager({}, db_path=db)
+    s2 = await mgr2.get_or_create(_r5_msg(), agent_id="a")
+    assert s2.session_id == sid  # 恢复既有 session_id, 未新建
+
+
+@pytest.mark.asyncio
+async def test_session_no_db_path_is_in_memory(tmp_path: Path) -> None:
+    """R5: 不传 db_path 时纯内存, 不创建 SQLite 文件 (向后兼容)。"""
+    from isac.gateway.session import SessionManager
+
+    mgr = SessionManager({})
+    await mgr.get_or_create(_r5_msg(), agent_id="a")
+    assert not (tmp_path / "sessions.db").exists()
+
+
+@pytest.mark.asyncio
+async def test_session_concurrent_no_double_create(tmp_path: Path) -> None:
+    """R5: 并发 get_or_create 同一会话不双创建 session_id (锁串行 check-then-create)。"""
+    from isac.gateway.session import SessionManager
+
+    mgr = SessionManager({}, db_path=str(tmp_path / "sessions.db"))
+    msg = _r5_msg()
+    s1, s2 = await asyncio.gather(
+        mgr.get_or_create(msg, agent_id="a"),
+        mgr.get_or_create(msg, agent_id="a"),
+    )
+    assert s1.session_id == s2.session_id
+
+
+@pytest.mark.asyncio
+async def test_session_close_deletes_from_db(tmp_path: Path) -> None:
+    """R5: close 后库行删除, 重启不再恢复。"""
+    from isac.gateway.session import SessionManager
+
+    db = str(tmp_path / "sessions.db")
+    mgr1 = SessionManager({}, db_path=db)
+    s = await mgr1.get_or_create(_r5_msg(), agent_id="a")
+    await mgr1.close(s.session_id)
+    mgr2 = SessionManager({}, db_path=db)
+    s2 = await mgr2.get_or_create(_r5_msg(), agent_id="a")
+    assert s2.session_id != s.session_id  # 旧的已 close 删除, 新建了新 session_id
+
+
+@pytest.mark.asyncio
+async def test_resolve_secret_plain_value_passthrough() -> None:
+    """R5: 非 secret: 前缀值原样返回。"""
+    from isac.utils.security import resolve_secret_async
+
+    assert await resolve_secret_async("sk-real-key", None) == "sk-real-key"
+    assert await resolve_secret_async("", None) == ""
+
+
+@pytest.mark.asyncio
+async def test_resolve_secret_secret_prefix_resolves(tmp_path: Path) -> None:
+    """R5: secret:<key> 前缀经 SecretStore 解密为真实值。"""
+    from isac.utils.security import SecretStore, resolve_secret_async
+
+    os.environ["ISAC_SECRET_KEY"] = base64.b64encode(b"0" * 32).decode()
+    try:
+        store = SecretStore(str(tmp_path / ".secrets.enc"))
+        await store.set("openai", "sk-from-store")
+        assert await resolve_secret_async("secret:openai", store) == "sk-from-store"
+    finally:
+        os.environ.pop("ISAC_SECRET_KEY", None)
+
+
+@pytest.mark.asyncio
+async def test_resolve_secret_store_none_falls_back(tmp_path: Path) -> None:
+    """R5: secret: 前缀但 store 为 None (未配 env) → 原值回退 + warning。"""
+    from isac.utils.security import resolve_secret_async
+
+    # store=None 模拟 ISAC_SECRET_KEY 未配置
+    assert await resolve_secret_async("secret:openai", None) == "secret:openai"
+
+
+@pytest.mark.asyncio
+async def test_resolve_secrets_in_config_scans_llm_and_multimodal(tmp_path: Path) -> None:
+    """R5: resolve_secrets_in_config 就地解析 llm.api_key + multimodal[].api_key。"""
+    from isac.utils.security import SecretStore, resolve_secrets_in_config
+
+    os.environ["ISAC_SECRET_KEY"] = base64.b64encode(b"0" * 32).decode()
+    try:
+        store = SecretStore(str(tmp_path / ".secrets.enc"))
+        await store.set("llm_key", "sk-llm")
+        await store.set("mm_key", "sk-mm")
+        config = {
+            "llm": {
+                "api_key": "secret:llm_key",
+                "model": "gpt-4o",
+                "multimodal": [{"kind": "image_gen", "api_key": "secret:mm_key"}],
+            }
+        }
+        await resolve_secrets_in_config(config, store)
+        assert config["llm"]["api_key"] == "sk-llm"
+        assert config["llm"]["multimodal"][0]["api_key"] == "sk-mm"
+    finally:
+        os.environ.pop("ISAC_SECRET_KEY", None)

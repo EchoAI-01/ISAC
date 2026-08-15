@@ -131,6 +131,49 @@ def _add_common_opts(p: Any) -> None:
     )
 
 
+def _cmd_secret(args) -> int:
+    """密钥管理 (R5): SecretStore (AES-256-GCM) 加密读写。需 env ISAC_SECRET_KEY。"""
+    import os
+
+    env_key = os.environ.get("ISAC_SECRET_KEY")
+    if not env_key:
+        print(
+            "[secret] 未配置 ISAC_SECRET_KEY 环境变量 (32 字节 base64)。生成命令:\n"
+            "  python -c \"import secrets,base64; print(base64.b64encode(secrets.token_bytes(32)).decode())\"\n"
+            "设置后重试 (export ISAC_SECRET_KEY=<上面输出>)。"
+        )
+        return 1
+    from isac.utils.security import SecretStore
+
+    store = SecretStore("data/.secrets.enc")
+    import asyncio
+
+    if args.secret_command == "set":
+        # 不 echo 明文 (getpass); 无 TTY 时退化为 stdin
+        try:
+            import getpass
+
+            value = getpass.getpass(f"输入 {args.key} 的值 (不回显): ")
+        except Exception:  # noqa: BLE001 无 TTY
+            value = input(f"输入 {args.key} 的值: ")
+        if not value:
+            print("[secret] 值为空, 已取消")
+            return 1
+        asyncio.run(store.set(args.key, value))
+        print(f"[secret] 已加密存储 {args.key}")
+        return 0
+    if args.secret_command == "get":
+        fetched: str | None = asyncio.run(store.get(args.key))
+        print(fetched if fetched else "[secret] 未找到该密钥")
+        return 0 if fetched else 1
+    if args.secret_command == "delete":
+        ok = asyncio.run(store.delete(args.key))
+        print(f"[secret] {'已删除' if ok else '未找到'} {args.key}")
+        return 0 if ok else 1
+    print(f"[secret] 未知子命令: {args.secret_command}")
+    return 1
+
+
 def main_cli() -> int:
     parser = argparse.ArgumentParser(prog="isac", description="ISAC 命令行入口")
     sub = parser.add_subparsers(dest="command")
@@ -144,6 +187,16 @@ def main_cli() -> int:
         default="data/control/setup_state.json",
         help="setup_state.json 路径 (默认 data/control/setup_state.json)",
     )
+
+    # secret (R5)
+    sec = sub.add_parser("secret", help="密钥管理 (R5, AES-256-GCM 加密存储)")
+    sec_sub = sec.add_subparsers(dest="secret_command", required=True)
+    sec_set = sec_sub.add_parser("set", help="加密存储一个密钥")
+    sec_set.add_argument("key", help="密钥引用名 (配置中用 secret:<key> 引用)")
+    sec_get = sec_sub.add_parser("get", help="读取一个密钥明文")
+    sec_get.add_argument("key", help="密钥引用名")
+    sec_del = sec_sub.add_parser("delete", help="删除一个密钥")
+    sec_del.add_argument("key", help="密钥引用名")
 
     # plugin (T6)
     plugin = sub.add_parser("plugin", help="插件管理 (T6, 经控制面 API)")
@@ -175,6 +228,8 @@ def main_cli() -> int:
         return 1
     if args.command == "plugin":
         return _cmd_plugin(args)
+    if args.command == "secret":
+        return _cmd_secret(args)
 
     # 默认: 启动服务
     from isac.main import main

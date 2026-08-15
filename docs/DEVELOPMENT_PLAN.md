@@ -43,7 +43,7 @@
 
 **重大决策**: 项目转入**前后端分离**开发。后端 (本仓库) 演进为纯 API 服务 (REST + SSE 控制面 + 消息数据面), 前端独立成项目围绕 API 契约开发。**先开发后端**, 前端轨道 (F 节点) 在 API 基线冻结后启动。决策记录见 `ARCHITECTURE.md` ADR-012, 节点定义见 §四 FE。
 
-**当前方位**: T 开箱可用轮 **T1/T2/T4 已完成 (2026-08-04)** —— 开箱能对话 (私聊无条件触发 + 未回复可观测 + 占位 key 检测)、零配置启动 (默认配置内置 + 首启建 data 目录)、错误可诊断 (中文可操作提示 + `/health` 聚合 + 实时日志台); **T3 未开始**并按前后端分离重定义 (后端先交付 setup/auth API, WebUI 页面归前端轨道); T5-T7 与 R 节点组未开始。1568 测试通过、ruff/mypy 全绿。**阶段 0 工程纠偏已完成 (2026-08-15)** (CI 分支/venv/aiosqlite/worktree/构建产物, 详见下方推进顺序第 1 项); **FE0 API 契约冻结已完成 (2026-08-16)** (openapi.json 基线归档 + 错误格式统一 + 变更流程文档化); **FE1 分离基建已完成 (2026-08-16)** (CORS 白名单 + Session SameSite 参数化 + WebUI 标 deprecated); **T3-backend 控制面开箱后端支撑已完成 (2026-08-16)** (control 默认开 + setup 首登强制设密码状态机 + CLI password reset + /config/schema JSON Schema 端点 + 真机验收 setup 流程走通), **R3 插件与 MCP 生态激活已完成 (2026-08-16)** (收敛 Q3: 共享注册表 + AstrBot/MaiBot adapt 桥接 + MCPClient 生产接线, 真机冒烟 `MCP server 已接入 server=echo tools=1`), **T6 插件市场与热重载已完成 (2026-08-16)** (PluginInstaller 四源安装 + SSRF/zip slip 防护 + ToolRegistry deregister/来源追踪 + activation 热重载同步运行中 Agent + 控制面端点 + CLI `isac plugin` + 本地/远程市场清单, 真机冒烟 `scripts/smoke_plugin_marketplace.py` 安装→reload→卸载 exit=0), 下一步 R1/R2/R4/R5/R6 并行收尾。前端轨道 F1-F4 (独立项目, 技术栈待决策) 暂不启动。**P 主链路接线 (历史阶段)** 已全部完成或被 T/R 收敛, 不再是独立工作线。
+**当前方位**: T 开箱可用轮 **T1/T2/T4 已完成 (2026-08-04)** —— 开箱能对话 (私聊无条件触发 + 未回复可观测 + 占位 key 检测)、零配置启动 (默认配置内置 + 首启建 data 目录)、错误可诊断 (中文可操作提示 + `/health` 聚合 + 实时日志台); **T3 未开始**并按前后端分离重定义 (后端先交付 setup/auth API, WebUI 页面归前端轨道); T5-T7 与 R 节点组未开始。1568 测试通过、ruff/mypy 全绿。**阶段 0 工程纠偏已完成 (2026-08-15)** (CI 分支/venv/aiosqlite/worktree/构建产物, 详见下方推进顺序第 1 项); **FE0 API 契约冻结已完成 (2026-08-16)** (openapi.json 基线归档 + 错误格式统一 + 变更流程文档化); **FE1 分离基建已完成 (2026-08-16)** (CORS 白名单 + Session SameSite 参数化 + WebUI 标 deprecated); **T3-backend 控制面开箱后端支撑已完成 (2026-08-16)** (control 默认开 + setup 首登强制设密码状态机 + CLI password reset + /config/schema JSON Schema 端点 + 真机验收 setup 流程走通), **R3 插件与 MCP 生态激活已完成 (2026-08-16)** (收敛 Q3: 共享注册表 + AstrBot/MaiBot adapt 桥接 + MCPClient 生产接线, 真机冒烟 `MCP server 已接入 server=echo tools=1`), **T6 插件市场与热重载已完成 (2026-08-16)** (PluginInstaller 四源安装 + SSRF/zip slip 防护 + ToolRegistry deregister/来源追踪 + activation 热重载同步运行中 Agent + 控制面端点 + CLI `isac plugin` + 本地/远程市场清单, 真机冒烟 `scripts/smoke_plugin_marketplace.py` 安装→reload→卸载 exit=0), 下一步 R1/R2/R4/R6 并行收尾 (R5 持久化与密钥安全已完成)。前端轨道 F1-F4 (独立项目, 技术栈待决策) 暂不启动。**P 主链路接线 (历史阶段)** 已全部完成或被 T/R 收敛, 不再是独立工作线。
 
 **后端推进顺序**(定义与验收见 §四对应节点):
 
@@ -53,7 +53,7 @@
 4. **T5 真实 IM 接入验收** — 需用户凭据; OneBot/NapCat 先行, 飞书/QQ 官方/企业微信逐个真机联调 (此前均只有单测, 从未真机验证); WebUI/控制面连接状态回显。
 5. **R3 插件与 MCP 生态激活 ✅ 已完成 (2026-08-16, T6 前置)** — per-Agent PluginContext 真实共享注册表 + AstrBot/MaiBot `adapt` 桥接接线 (新建 `AstrBotStarAdapter`) + MCPClient 生产接线 (`mcp.servers` 配置节 + `_wire_mcp_clients` + stop/destroy/shutdown `disconnect`) + CLI 工具 services 注入; 真机冒烟 stdio MCP server 接入验证。兼容层插件迁进程隔离未做 (架构受限: 兼容层无 manifest, Fix-31 已安全兜底, 留架构债)。
 6. **T6 插件市场与热重载 ✅ 已完成 (2026-08-16)** — `PluginInstaller` (market/git/url/upload + SSRF/zip slip 防护) + `ToolRegistry` deregister/来源追踪 + `activation` 模块 (热重载同步运行中 Agent) + 控制面 marketplace/install/reload/uninstall/failed/retry 端点 + CLI `isac plugin` + 市场清单 (本地+可配远程); 真机冒烟 exit=0。
-7. **并行收尾 (相互独立, 可穿插)** — **R1** 多模态闭环 (出站 artifact 解析/入站落盘/6 个 record_* 计量/价目表加载, 顺带 Provider 测试端点改真实连接探测); **R2** 控制面与 SubAgent (`GET /agents/{id}/config` + 真实 revision、SubAgent 表真实 agent_id、Webhook/MCP Server 生产启动点、背景摘要传递 + evidence_refs 生成); **R4** 记忆完整性 (行话学习写入侧、中期记忆接 COMPRESS 真实压缩 —— 同时消除 COMPRESS hook 无监听者问题、实体关系图); **R5** 持久化与密钥 (Session 持久化、SecretStore 接线或"配置 + env + 不回显")。
+7. **并行收尾 (相互独立, 可穿插)** — **R1** 多模态闭环 (出站 artifact 解析/入站落盘/6 个 record_* 计量/价目表加载, 顺带 Provider 测试端点改真实连接探测); **R2** 控制面与 SubAgent (`GET /agents/{id}/config` + 真实 revision、SubAgent 表真实 agent_id、Webhook/MCP Server 生产启动点、背景摘要传递 + evidence_refs 生成); **R4** 记忆完整性 (行话学习写入侧、中期记忆接 COMPRESS 真实压缩 —— 同时消除 COMPRESS hook 无监听者问题、实体关系图); **R5 持久化与密钥 ✅ 已完成 (2026-08-16)** (SessionManager SQLite 写穿+重启恢复 + SecretStore `secret:` 前缀接入 + CLI `isac secret` + 真机冒烟重启恢复 session_id exit=0)。
 8. **R6 企业化激活** — routes_tenants / loader 可选隔离模式 / Workflow `agent:` 入口决策落地。
 9. **R7 发布准入 + T7 分发运维 (最后)** — P3/P4/P5 集成测试补齐 (现全缺)、I 节点复核升 100%、REQUIREMENTS 十二条逐条取证、release_checklist 七段、docker compose 一键 + 配置自动迁移、**24h soak** → v1.0 GA。
 
@@ -932,11 +932,11 @@
   - **依赖**：N1/N2、S2(MemoryConsolidator 已激活)、S3(图谱召回已激活)。
   - **当前**：未开始。
 
-- [ ] **R5 持久化与密钥安全收尾**(补 `REQUIREMENTS.md` 9/10 缺口)
+- [x] **R5 持久化与密钥安全收尾**(补 `REQUIREMENTS.md` 9/10 缺口)
   - **目标**：让"重启不丢会话"与"密钥不落明文"达到需求要求。
   - **验收**：**①Session 持久化**(R10 明确要求"Agent、Session、身份、路由、Link 和记忆可持久化恢复") —— `SessionManager` 现为纯内存(`session.py:30-35`),补 SQLite 写穿 + 重启恢复,与 Q1 的 `UserMapper` 持久化同构。**②密钥安全**(R9"密钥只可设置或替换,不可回显") —— `SecretStore`(AES-256-GCM)现零生产调用点(仅注释提及),`api_key` 明文存 `data/config.jsonc`;接入 SecretStore 或落地"配置 + env 覆盖"并确保控制面/WebUI 不回显、审计不记明文。
   - **依赖**：K4(持久化框架)、K7(SecretStore 已实现)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。①`SessionManager` (`isac/gateway/session.py`) 照 `UserMapper` 同构加 `db_path` 参数: `SCHEMA_SQL` 建 `sessions` 表 + `_ensure_schema` (惰性建表) + `_load_from_db` (缓存未命中先查库 hydrate 既有会话, 重启复用 session_id 不新建) + `_persist` (best-effort 写穿, 失败仅记日志不阻塞消息流) + `_delete_from_db` (close/gc 同步删) + `asyncio.Lock` 串行 check-then-create (防并发双创建); `main` 传 `db_path=data/gateway/sessions.db`, 不传则纯内存向后兼容。②`SecretStore` 接入: `resolve_secret_async` (`security.py`) 用 `secret:<key>` 前缀约定解密配置中 api_key; `resolve_secrets_in_config` 在 `build_services`/`register_llm_provider` 之前就地解析 `llm.api_key` + `llm.multimodal[*].api_key` 使同步注册函数拿明文; env `ISAC_SECRET_KEY` 未配置时不构造 store → `secret:` 前缀值原样回退 (warning) 走原明文路径向后兼容; env `ISAC_LLM_API_KEY` 仍最高优先级 (非 `secret:` 前缀原样返回); CLI `isac secret set/get/delete` 管理加密密钥 (getpass 不回显); 控制面无 GET config 明文回显端点 (routes_config 仅 validate/diff), 审计 `secret:` 前缀本身不含明文天然安全。默认无 db_path/无 env/无 `secret:` 前缀零行为变化。新增 8 单测 (SessionManager 持久化/重启恢复/并发/close + resolve_secret 各分支/resolve_secrets_in_config); ruff/mypy 全绿 (262 文件); 真机冒烟 `scripts/smoke_session_persistence.py` (建会话→SIGTERM 停→重启→同会话键发消息验证 session_id 不变, exit=0)。
 
 - [ ] **R6 企业化激活**(收敛 P5 剩余)
   - **目标**：完成 O1/O2/O3 的最后一段控制面与隔离接线。
