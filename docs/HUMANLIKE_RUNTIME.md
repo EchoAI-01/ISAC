@@ -352,6 +352,8 @@ class MoodState:
 |------|------|------|----------|
 | ExpressionLearner | 用户与 Agent 的可见文本 | 表达偏好 | 后台低频 |
 | JargonLearner | 群聊高频词/上下文 | 行话条目 | 后台低频 |
+
+> **实现状态 (2026-08-16, R4-①)**: `JargonLearner` 由 `MemoryConsolidator._extract_jargon_step` 承接 (非独立类): `run_once` 第 4 步按 `group_id` 聚合群聊 episode → `_top_candidate_words` (内置 CJK 2-gram bigram + 停用词/单字/既有 jargon 过滤, 无 jieba) 统计高频词 → `self._llm.chat` 释义 → `metadata.upsert_jargon`; LLM 未注入/无群聊时跳过, 默认零行为变化。`JargonInjector` 读侧注入既有行话表。
 | BehaviorLearner | Agent 回复与用户反馈 | 行为偏好 | FINAL_RESPONSE 后 |
 | ReplyEffectTracker | 回复后续用户反应 | 回复效果评分 | 回复后观察窗口 |
 

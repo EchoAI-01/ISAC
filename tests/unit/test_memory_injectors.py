@@ -91,9 +91,7 @@ async def test_jargon_injector_matches_current_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mid_term_memory_injector_summarizes_pending_messages() -> None:
+async def test_mid_term_memory_injector_returns_empty_without_summary() -> None:
+    """R4-②: 无已落盘 summary 时降级返回空串 (不再复述 pending_messages)。"""
     text = await MidTermMemoryInjector(FakePipeline()).build(make_context(pending_count=2))
-
-    assert "【中期记忆-内部参考】" in text
-    assert "第 0 条消息" in text
-    assert "第 1 条消息" in text
+    assert text == ""

@@ -190,7 +190,7 @@ async def process_message(
         # R1-①: 取目标 Agent 的 artifact_store 供 _send_reply 扫回复 artifact 转 segment
         await _send_reply(
             channel_registry, routed_message, reply, final_agent_id, platform_session_id,
-            artifact_store=_resolve_artifact_store(agent_manager, final_agent_id),
+            artifact_store=await _resolve_artifact_store(agent_manager, final_agent_id),
         )
     await event_bus.fire_async(EventType.POST_MESSAGE, routed_message)
 
