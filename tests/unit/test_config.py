@@ -21,6 +21,40 @@ class TestConfigMigrator:
         assert result["config_version"] == CONFIG_VERSION
         assert result["debug"] is True
 
+    def test_chain_migration_across_multiple_versions(self, monkeypatch: pytest.MonkeyPatch):
+        """多版本链式迁移: 从旧版本经中间版本逐级升到最新 (while 循环逻辑)。
+
+        T7: 验证 ConfigMigrator 能跨多个版本链式升级 (对标 MaiBot config_upgrade_hooks)。
+        用 monkeypatch 注入假迁移表 + 假最新版本, 不污染生产 MIGRATIONS。
+        """
+        applied: list[str] = []
+
+        def m_000(cfg: dict) -> dict:
+            applied.append("0.0.0→0.5.0")
+            return {**cfg, "config_version": "0.5.0", "v0_5_field": "added"}
+
+        def m_050(cfg: dict) -> dict:
+            applied.append("0.5.0→2.0.0")
+            return {**cfg, "config_version": "2.0.0", "v2_field": "added"}
+
+        monkeypatch.setattr(ConfigMigrator, "MIGRATIONS", {"0.0.0": m_000, "0.5.0": m_050})
+        monkeypatch.setattr(ConfigMigrator, "_get_latest_version", lambda self: "2.0.0")
+        migrator = ConfigMigrator()
+        result = migrator.migrate({"debug": True})  # 缺 config_version 视为 0.0.0
+        assert result["config_version"] == "2.0.0"
+        assert applied == ["0.0.0→0.5.0", "0.5.0→2.0.0"], "应按版本链逐级迁移"
+        assert result["v0_5_field"] == "added" and result["v2_field"] == "added"
+
+    def test_broken_path_warns_and_stops_at_dead_end(self, monkeypatch: pytest.MonkeyPatch):
+        """迁移路径中断 (中间版本无下一步迁移函数): 记 warning + 停在死端, 不抛异常。"""
+        monkeypatch.setattr(
+            ConfigMigrator, "MIGRATIONS", {"0.0.0": lambda cfg: {**cfg, "config_version": "0.5.0"}}
+        )
+        monkeypatch.setattr(ConfigMigrator, "_get_latest_version", lambda self: "2.0.0")
+        migrator = ConfigMigrator()
+        result = migrator.migrate({"debug": True})
+        assert result["config_version"] == "0.5.0", "无 0.5.0→下一步迁移, 应停在 0.5.0"
+
 
 class TestDockerComposeEnvMapping:
     """docker-compose.yml 设置的环境变量必须被 load_config() 真正映射进配置。"""
