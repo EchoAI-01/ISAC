@@ -246,6 +246,7 @@ class FeishuAdapter(PlatformAdapter):
         message = event.get("message") or {}
         sender = event.get("sender") or {}
         chat_id = str(message.get("chat_id", "") or "")
+        chat_type = str(message.get("chat_type", "") or "")
         open_id = str((sender.get("sender_id") or {}).get("open_id", "") or "")
         message_id = str(message.get("message_id", "") or "")
         msg_type = str(message.get("message_type", "") or "")
@@ -254,13 +255,19 @@ class FeishuAdapter(PlatformAdapter):
         if not open_id:
             logger.warning("飞书事件缺 sender open_id, 丢弃", message_id=message_id)
             return None
+        # N5b 批次G: chat_id 非空≠群聊 —— 飞书 p2p 私聊事件也带 chat_id, 此前一律
+        # group_id=chat_id 把 p2p 误判群聊 (下游 @mention/群上下文/群专属行为误触发)。
+        # 按 chat_type=="group" 判定 (与 telegram 适配器同构)。
+        group_id = chat_id or None
+        if chat_type and chat_type != "group":
+            group_id = None
         return ISACMessage(
             msg_id=message_id,
             platform="feishu",
             timestamp=int(time.time()),
             user_id=open_id,
             user_name=open_id,  # 飞书不直接给昵称, 用 open_id 占位 (N3 归一后可填充)
-            group_id=chat_id or None,  # chat_id 非空时视为群聊 (含 oc_ 前缀)
+            group_id=group_id,
             content=text,
         )
 
