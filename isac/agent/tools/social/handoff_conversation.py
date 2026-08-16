@@ -46,6 +46,14 @@ class HandoffConversationTool(Tool):
         target = str(context.args.get("target_agent", ""))
         summary = str(context.args.get("summary", ""))
         agent_id = str(context.services.get("agent_id", ""))
+        router = context.services.get("router")
+        # Fix-70: 登记前存活性检查 —— 目标不在 agents_provider (生产即非 running)
+        # 时拒绝移交: 否则摘要白发, 且会话被一个无人接手的 handoff 覆盖劫持到
+        # TTL 到期。交还 (target==自己) 不受此限制, 撤销路径必须始终可用。
+        if router is not None and target and target != agent_id and not router.is_agent_routable(target):
+            return ToolResult(
+                content=f"移交失败: 目标 Agent {target} 当前未运行, 无法接手会话。", is_error=True
+            )
         ok = await broker.handoff(agent_id, target, summary, policy)
         if not ok:
             return ToolResult(
@@ -54,7 +62,6 @@ class HandoffConversationTool(Tool):
         # P2: 会话归属转移 —— router 经 services 注入 (无 router 时降级为仅投递摘要)。
         # MVP-Fix: 移交带 TTL (router.DEFAULT_HANDOFF_TTL_SECONDS), 到期归属自动
         # 回落常规路由; 接手方把会话移交回原归属者即可提前撤销。
-        router = context.services.get("router")
         session = context.agent_context.session
         if router is not None and session is not None:
             platform = getattr(session, "platform", "")

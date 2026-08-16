@@ -49,9 +49,13 @@ class TaskTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        # 递归深度检查: services["task_depth"] 由 runtime 维护, 默认 0
-        depth = int(context.services.get("task_depth", 0) or 0)
-        max_depth = int(context.services.get("task_max_depth", 3) or 3)
+        # 递归深度检查: services["task_depth"] 由 runtime (subagent/runner.py) 写入
+        # **AgentContext.services**。Fix-68: 此前从 ToolContext.services (= loop.services,
+        # 子 Agent 经 _build_services 收窄, 不含 task_depth) 读 → 恒 0 → 深度守卫
+        # 形同虚设, 一旦启用委派即无限递归。改从 agent_context.services 读
+        # (与本文件其他 agent_id/task_id 取值口径一致)。
+        depth = int(context.agent_context.services.get("task_depth", 0) or 0)
+        max_depth = int(context.agent_context.services.get("task_max_depth", 3) or 3)
         if depth >= max_depth:
             return ToolResult(
                 content=f"子任务递归深度已达上限 ({max_depth}), 拒绝继续委派。",

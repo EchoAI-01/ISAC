@@ -154,10 +154,14 @@ async def _do_patch_agent(
                         "current_revision": current_revision,
                     },
                 )
-        # 合并 payload 到现有 config (部分更新; agent_id 不可改)
+        # 合并 payload 到现有 config (部分更新; agent_id/revision 不可经 payload 改)
+        # Fix-66: revision 必须由服务端单调管理 —— 此前 payload 可携带 revision
+        # 覆盖当前值: ① 乐观锁 ABA (攻击者把 revision 改回旧值后, 持有旧 If-Match
+        # 的合法编辑者校验通过, 覆盖他人修改, 冲突检测失效); ② 非法值 ("abc")
+        # 在 save_agent_config 的 int() 抛出 → 500。与 agent_id 同等对待, 剥离。
         merged = asdict(instance.config)
         for k, v in payload.items():
-            if k in merged and k != "agent_id":
+            if k in merged and k not in ("agent_id", "revision"):
                 merged[k] = v
         try:
             new_config = AgentConfig(**merged)

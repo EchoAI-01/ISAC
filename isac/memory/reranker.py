@@ -47,8 +47,16 @@ class Reranker:
         self._record_rerank(n_candidates=len(candidates))
         if len(scores) != len(candidates):
             return candidates
+        # Fix-65: 后处理也纳入降级保护 —— 脏分数 (None/字符串混杂) 会让 sort 抛
+        # TypeError 冒泡到 pipeline.search 外层 except → 整次检索返回 [] 而非
+        # 降级原序 (与"rerank 失败回退原顺序"承诺相悖)。先强制转 float, 不可
+        # 数值化的分数按 0.0 计; 整体转换异常则回退原顺序。
+        try:
+            numeric = [float(s) if s is not None else 0.0 for s in scores]
+        except (TypeError, ValueError):
+            return candidates
         # 按分数倒序排 (provider 返回相关性分数, 越大越相关)
-        paired = list(zip(candidates, scores, strict=False))
+        paired = list(zip(candidates, numeric, strict=False))
         paired.sort(key=lambda x: x[1], reverse=True)
         return [hit for hit, _ in paired]
 

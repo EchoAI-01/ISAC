@@ -170,3 +170,30 @@ async def test_put_metadata_persisted(store: ArtifactStore) -> None:
     # 再读回来 make_ref 不带 metadata, 但 DB 行已存, 后续可按 artifact_id 查元数据
     file_path = Path(store.root_dir) / ref.artifact_id[:2] / f"{ref.artifact_id}.bin"
     assert file_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_same_content_second_put_keeps_first_registration(store: ArtifactStore) -> None:
+    """Fix-69: 同内容二次 put (不同 kind/mime/更短 TTL) 不得覆盖首次登记的行 ——
+    此前 INSERT OR REPLACE 让第二个调用方篡改第一个 ArtifactRef 的元数据, 且短
+    TTL 覆盖后 sweep 会把两个引用共享的文件提前删掉。"""
+    data = b"shared content across callers"
+    first = await store.put(
+        data, kind="image", mime_type="image/png", metadata={"owner": "first"}
+    )
+    second = await store.put(
+        data,
+        kind="file",
+        mime_type="application/octet-stream",
+        metadata={"owner": "second"},
+        expires_at=int(time.time()) - 10,  # 已过期的 TTL, 若被采纳文件立即被扫掉
+    )
+    assert second.artifact_id == first.artifact_id
+    # 返回的是首次登记的行, 而非第二次传入的参数
+    assert second.kind == "image"
+    assert second.mime_type == "image/png"
+    assert second.metadata == {"owner": "first"}
+    assert second.expires_at == first.expires_at
+    # 短 TTL 未被采纳: sweep 不删共享文件
+    await store.sweep_expired()
+    assert await store.get(first.artifact_id) == data

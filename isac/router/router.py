@@ -110,6 +110,14 @@ class MessageRouter:
             return None
         return agent_id
 
+    def is_agent_routable(self, agent_id: str) -> bool:
+        """Fix-70: 目标 Agent 当前是否可路由 (在 agents_provider 中, 生产即 running)。
+
+        handoff 存活性检查的唯一事实源: runtime 注入的 agents_provider 只返回
+        运行中 Agent (AgentManager.routing_infos 按 status=="running" 过滤)。
+        """
+        return any(info.agent_id == agent_id for info in self._agents_provider())
+
     def _gc_expired_handoffs(self) -> None:
         """R2-4: 清理所有已过期的会话移交。
 
@@ -135,7 +143,18 @@ class MessageRouter:
         # P2: 会话移交覆盖 (最高优先级; handoff 后该会话由接手 Agent 处理)
         handoff_agent = self.get_handoff(message.platform, message.group_id, message.user_id)
         if handoff_agent:
-            return RoutingDecision(agent_id=handoff_agent, matched_by="handoff", content=message.content)
+            # Fix-70: 存活性检查 —— 接手方被 stop/destroy 后不在 agents_provider
+            # 中, 若仍按 handoff 路由, 该会话最长一个 TTL 周期内每条消息都发往
+            # 死 Agent (下游查无实例即丢弃), 且绑定/默认 Agent 等常规路由被架空。
+            # 目标不可路由时清除残留登记, 归属立即回落常规路由 (自愈)。
+            if self.is_agent_routable(handoff_agent):
+                return RoutingDecision(agent_id=handoff_agent, matched_by="handoff", content=message.content)
+            self.clear_handoff(message.platform, message.group_id, message.user_id)
+            logger.info(
+                "会话移交目标已不可路由, 归属回落常规路由",
+                key=self.handoff_key(message.platform, message.group_id, message.user_id),
+                agent_id=handoff_agent,
+            )
 
         # 0. 自定义 Router Hook (预留接口)
         for hook in self._router_hooks:
