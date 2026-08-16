@@ -641,6 +641,15 @@ def register_multimodal_providers(
         )
 
 
+def _build_tenant_manager(tenancy_config: dict[str, Any]) -> Any:
+    """R6-①: tenancy.enabled 时构造 TenantManager (SQLite); 否则 None (路由不挂载, 零行为变化)。"""
+    if not bool(tenancy_config.get("enabled")):
+        return None
+    from isac.runtime.tenancy.manager import TenantManager
+
+    return TenantManager(db_path=str(DATA_DIR / "gateway" / "tenants.db"))
+
+
 def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。
 
@@ -678,6 +687,9 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         organization_id=str(tenancy_config.get("organization_id") or DEFAULT_ORG),
         tenant_id=str(tenancy_config.get("tenant_id") or DEFAULT_TENANT),
     )
+    # R6-①: TenantManager (租户 CRUD + 成员, SQLite)。抽 helper 降 build_services 复杂度。
+    # tenancy.enabled 时构造并传入控制面 routes_tenants; 默认关闭 → None → 路由不挂载。
+    tenant_manager = _build_tenant_manager(tenancy_config)
 
     if memory_config.get("enabled"):
         metadata_store, graph_store, embedder, reranker = _build_memory_stack(
@@ -796,6 +808,8 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         # CR3-L2: 租户上下文 (默认单租户 passthrough)
         "tenant_guard": tenant_guard,
         "tenant_context": tenant_context,
+        # R6-①: 租户 CRUD 管理器 (tenancy.enabled 时构造, 否则 None)
+        "tenant_manager": tenant_manager,
         # J1: 计量子系统句柄 (未启用时为 None, main 据此决定是否注册生命周期)。
         "usage_store": usage_store,
         "usage_recorder": usage_recorder,
@@ -1395,6 +1409,7 @@ async def _register_control_plane(
             vector_resolver=(services or {}).get("vector_resolver"),
             channel_registry=channel_registry,
             webhook_manager=webhook_manager,
+            tenant_manager=(services or {}).get("tenant_manager"),
             services=services or {},
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))

@@ -185,9 +185,11 @@
     "heuristic_enabled": false
   },
 
-  // 多租户隔离 (O1, 默认关闭 = 单租户零行为变化)
+  // 多租户隔离 (O1/R6, 默认关闭 = 单租户零行为变化)
   // enabled=true 且填入非 default 的 org/tenant 时: 记忆命名空间加 org:tenant 前缀,
   // episodes 读写带租户谓词/打标 (多个租户进程共享同一数据目录时互不可见)。
+  // R6: enabled=true 同时启用租户控制面 routes_tenants (CRUD 租户+成员, tenant:read/write
+  // scope, SQLite 存 data/gateway/tenants.db); enabled=false 时路由不挂载。
   "tenancy": {
     "enabled": false,
     "organization_id": "default",

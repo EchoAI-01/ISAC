@@ -293,7 +293,11 @@ timestamp + "." + raw_body
         "provider:read",
         "provider:write",
         "artifact:read",
-        "artifact:delete"
+        "artifact:delete",
+        "webhook:read",
+        "webhook:write",
+        "tenant:read",
+        "tenant:write"
     ]
 }
 ```
