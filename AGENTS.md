@@ -47,18 +47,17 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-历史轮次 (A-K 基础体系 / P0-P2 主链路接线 / Q0-Q2 MVP 收尾 / S1-S7 骨架激活 / MVP-Fix / CR1-CR3 修复轮) 均已交付, 过程细节见 [docs/PROGRESS.md](./docs/PROGRESS.md) 与 [CHANGELOG.md](./CHANGELOG.md)。当前剩余工作按 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §三之二 推进 (**前后端分离 · 后端先行**):
+后端代码工作已基本收尾: 阶段 0 / FE0 / FE1 / T3-backend / T1/T2/T4 / T6 / R1-R6 全部完成, R7 代码部分完成 (P3/P4/P5 集成测试补齐 + RELEASE_AUDIT 取证 + QUICKSTART); 全量 1739 测试通过、ruff/mypy 全绿 (2026-08-16 实测)。**剩余项几乎全部是环境/凭据依赖与前端轨道**, 下一步行动见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) **§三之三 下一步行动计划 (N1-N5)**:
 
-1. **阶段 0 工程纠偏 (~0.5 轮)** — CI 触发分支修正 (`ci.yml` 监听 `develop` 但实际分支是 `dev`)、venv 重建 (入口脚本旧路径)、aiosqlite 连接未关闭修复 (24h soak 前置)、worktree 残留清理。
-2. **FE 前后端分离 (后端先行)** — FE0 API 契约冻结 → FE1 CORS/跨源认证/静态托管降级 → T3-backend 控制面开箱 (control 默认开 + 首登强制设密码 API + 配置 Schema 端点);前端轨道 F1-F4 独立项目, API 基线冻结后启动。
-3. **T5 真实 IM 接入验收** — 需用户凭据;OneBot/NapCat 先行, 飞书/QQ 官方/企业微信逐个真机联调 (此前只有单测)。
-4. **R3 插件与 MCP 生态激活 ✅ 已完成 (2026-08-16)** → **T6 插件市场与热重载 ✅ 已完成 (2026-08-16)**。
-5. **并行收尾 (Q3-Q6/P3-P5 剩余收敛于此)** — **R1 多模态闭环 ✅ 已完成 (2026-08-16)** · **R2 控制面与 SubAgent ✅ 已完成 (2026-08-16)** · **R4 记忆完整性 ✅ 已完成 (2026-08-16)** (①行话学习写入回路 consolidator `_extract_jargon_step` + ②中期记忆真实 COMPRESS 方案 A: hook 入队→consolidator 后台摘要落 `episodes.summary`→MidTermMemoryInjector 改读 summary 注入 + ③语义关系图跳过留架构债: 写边层已就绪待补 LLM 抽取层) · **R5 持久化与密钥 ✅ 已完成 (2026-08-16)** (Session 持久化 + SecretStore) · **R6 企业化激活 ✅ 已完成 (2026-08-16)** (routes_tenants + TenantManager + ②隔离已满足 + ③workflow 决策落地)。
-6. **R7 发布准入 + T7 分发运维 (最后)** — **P3/P4/P5 集成测试补齐 ✅ 已完成 (2026-08-16)** (新增 test_p3/p4/p5 三套 19 例, 现全缺→补齐)、十二条需求逐条取证、release_checklist、docker compose 一键、24h soak → v1.0 GA。环境准入项 (真机/Docker/soak/browser CI/十二条取证) 待环境。
+1. **N1 文档与标记收敛** (进行中) — 三态标记已收敛 (T3-backend/P3-P5/Q4-Q6 升 `[x]`); 剩 README/AGENTS 同步。
+2. **N2 环境准入项清偿** — Docker 冒烟 + browser CI 复核 (I 节点 85%→100%) + release_checklist 七段 + **24h soak** (需 docker daemon/浏览器环境/真实 LLM key)。
+3. **N3 T5 真实 IM 验收** (外部阻塞) — 凭据准备清单先行, OneBot 先行联调, 飞书/QQ 官方/wecom 逐个真机验证。
+4. **N4 前端轨道启动** — API 基线已冻结 (FE0 openapi.json + FE1 CORS + T3-backend setup API + config schema 端点); 技术栈决策 → F1 登录/setup 向导 → F2 十域迁移 (完成后移除内置 WebUI) → F3 实时 → F4 插件市场 UI。
+5. **N5 剩余架构债并行线** — services 强类型化 (Z1) / main.py 拆分 (Z2) / 同步 IO 异步化 / reload_config 差量更新。
 
-**里程碑**: M-T1 装上就能聊 (T1+T2, 代码已达成) → M-T2 可部署可管理 (T3/FE + T4) → M-T3 可接入真实 IM (T5) → M-T4 生态可扩展 (R3+T6) → **M-GA 正式版 (T7 + R1-R7)**。GA 后可选: S6 视频 Provider 端点 (暂缓)、微信 mp 公众号 (wecom 已实现)、Slack、主链路流式。
+**里程碑**: M-T1 ✅ → M-T2 后端段 ✅ (前端 F1/F2 落地即全达成) → M-T3 可接入 (N2+N3) → M-T4 可扩展 ✅ (R3+T6) → **M-GA** = N2 全过 + N3 至少一个平台真机通过 + F2 完成。GA 后进入 §四 GA 后开发计划 (V/X/Y/Z)。
 
-**验收铁律**:任何节点声明完成必须附**真机部署证据**(命令 + 实际输出),不接受"单测通过"作为可用性证明。节点定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §四 (含 T/FE/R),进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
+**验收铁律**:任何节点声明完成必须附**真机部署证据**(命令 + 实际输出),不接受"单测通过"作为可用性证明。节点定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §三之三/§四,进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
 
 ## 目录速查
 

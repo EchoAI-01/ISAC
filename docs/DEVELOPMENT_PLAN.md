@@ -65,6 +65,54 @@
 
 ---
 
+## 三之三、下一步行动计划 (2026-08-16 制定, 取代 §三之二 推进顺序的未完成部分)
+
+**背景**: 后端代码工作已基本收尾 —— 阶段 0 / FE0 / FE1 / T3-backend / T1-T2/T4 / T6 / R1-R6 全部完成, R7 代码部分 (P3/P4/P5 集成测试 + hook 真实触发测试 + ConfigMigrator 测试 + QUICKSTART) 完成; 全量 1739 测试、ruff/mypy 全绿。**剩余项几乎全部是环境/凭据依赖与前端轨道**, 不再有纯后端代码缺口。本计划按"解除阻塞的先后"排列。
+
+### N1 文档与标记收敛 (立即, ~0.5 轮) — **进行中**
+
+- [x] 三态标记漂移修复: T3-backend `[ ]`→`[x]`; Q4/Q5/Q6/P3/P4/P5 已被 R 节点收敛, 由 `[~]` 升 `[x]` 并补"结论"行 (2026-08-16)。
+- [ ] PROGRESS.md 节点总览表 N/O/Q 行同步收敛口径; T7 `[~]` 与 R7 `[~]` 的剩余项逐一挂到 `RELEASE_AUDIT.md` 第三节环境项。
+- [ ] README 状态表与 AGENTS.md 剩余工作同步 (T6/R1-R6 完成态)。
+
+### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
+
+> 对应 `docs/RELEASE_AUDIT.md` 第三节。验收铁律适用: 每项附真实输出。
+
+- [ ] **N2-1 Docker 健康检查冒烟**: `docker build` + `docker compose up` + `/health` 循环实测 (T7 验收 + release_checklist 第 3 段)。
+- [ ] **N2-2 browser CI 复核**: 装 Playwright chromium 跑 `tests/browser/` 黄金路径, I 节点 85%→100% (release_checklist 第 4 段)。
+- [ ] **N2-3 release_checklist 七段过一遍** (除真实 IM 凭据段): CI 全绿 + 本地全量 + 文档同步 + 版本号一致 + 发布标签 + 回滚预案 + 发布后监控预案。
+- [ ] **N2-4 24h soak**: 真实 LLM key + 连续对话负载, 验证无内存/连接/任务泄漏 (验收铁律的最后一道)。
+
+### N3 T5 真实 IM 接入验收 (外部阻塞: 需用户凭据 + 回调公网地址)
+
+- [ ] **N3-1 凭据准备清单** (不依赖开发, 先交付给用户): OneBot/NapCat 测试 QQ 号; 飞书自建应用 (encrypt_key + verification_token); QQ 官方机器人 (app_id + secret); 企业微信 wecom (corpid/secret/agentid + 回调 URL)。
+- [ ] **N3-2 逐平台真机联调**: OneBot 先行 (私聊 + 群聊 @ + 富媒体降级) → 飞书 → QQ 官方 → wecom; 每平台附收发实证。
+- [ ] **N3-3 控制面连接状态回显** (Channel 实时状态经 `/health` 与 SSE 暴露)。
+
+### N4 前端轨道启动 (独立项目, 后端 API 基线已冻结可直接开工)
+
+> 前置已全部就绪: FE0 openapi.json 契约基线 + FE1 CORS/跨源认证 + T3-backend setup API + `/config/schema` JSON Schema 端点。
+
+- [ ] **N4-1 技术栈决策** (开工第一决策): 框架与构建工具选型, 消费 `docs/api/openapi.json` 生成客户端。
+- [ ] **F1** 项目初始化 + 登录页 + 首登强制设密码向导 (对接 `/setup` API + 428 gate)。
+- [ ] **F2** 十域页面迁移 (配置编辑事务接真实 API + 乐观锁, 顺带清除 Q5 遗留假数据); 完成后移除后端 `control/webui/` 静态托管。
+- [ ] **F3** 实时日志台 (`/logs/tail` SSE) + 事件流页面 (`/events/stream`)。
+- [ ] **F4** 插件市场 UI (对接 T6 的 marketplace/install/reload/uninstall 端点)。
+
+### N5 并行线: 剩余架构债与加固 (见缝插针)
+
+- [ ] **Z1** `services` 弱类型 → ServiceContainer 强类型 (建议 N2 期间做, 功能面已稳定)。
+- [ ] **Z2** `main.py` (1518 行) 拆 `isac/bootstrap/` 五模块。
+- [ ] 同步 IO 异步化 (audit/bus persist/routes_routing 写盘)。
+- [ ] `reload_config` 差量更新 (观察项, 不紧急)。
+
+### 里程碑路径
+
+M-T2 可部署可管理 = N1 + N4-F1/F2 (前端落地即达成, 后端段已完成); **M-T3 可接入 = N2 + N3** (环境与凭据解除后); M-T4 可扩展已达成 (R3+T6); **M-GA v1.0 = N2 全过 + N3 至少一个平台真机通过 + N4-F2 完成** + release_checklist 七段全绿。GA 后进入 §四 GA 后开发计划 (V/X/Y/Z)。
+
+---
+
 ## 四、详细节点
 
 ### A 文档冻结
@@ -687,21 +735,24 @@
     - 动作审计: broker 4 类动作 (含拒绝) 结构化日志埋点 (trace 贯穿, 可与发起方消息串联)。
     - 集成测试 `tests/integration/test_p2_mesh_activation.py` (7): observer 旁听入记忆不回复 / candidate 评分切换 / 无角色零行为变化 / notify 真实投递 / notify 无权限拒绝 / handoff 归属转移 (后续消息路由接手方) / memory_query scope 裁剪同步返回。
 
-- [~] **P3 记忆检索深化激活**(依赖 N1 + VectorStore/GraphStore/Embedding/Reranker)
+- [x] **P3 记忆检索深化激活**(依赖 N1 + VectorStore/GraphStore/Embedding/Reranker)
+  - **结论**：**已完成 (2026-08-16 收敛)** —— ①图谱召回接入 + ②Reranker provider 注入 + ③MemoryItem 落地边界均于 S3 轮 (2026-07-28) 激活;集成测试 `tests/integration/test_p3_memory_retrieval.py` (8 例) 于 R7 补齐;剩余"通用实体关系图抽取层"按 R4 决策转 **Y1 (GA 后)** 承接,写边层 `GraphStore.add_edge` 已就绪。
   - **目标**：`pipeline.search()` 接入向量 KNN(VectorStore)+ 图谱邻居(GraphStore)召回,与现有 FTS/BM25/Reranker 融合;`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确其落地边界(N1)。(注:检索期软删除 `deleted` 过滤已由 CR2-Fix-12 生效,向量召回+RRF 融合已由 CR3-H3 生效,均不在本节点剩余范围。)**(2026-07-26 差距复核扩充)** 本节点剩余范围收窄为:①图谱召回接入(`GraphStore` 边写入 + `neighbors` 结果并入 RRF,目前全仓无 `add_edge`/`neighbors` 调用点,图始终为空);②`Reranker` provider 注入 —— `main.py` 构造 `Reranker(memory_config.get("reranker", {}))` 时从未传入 provider,`is_available()` 恒 `False`,rerank 步骤永不执行,补齐仿 CR3-H3 embedding 的写法(按 `memory.reranker.{api_key,model,protocol}` 构造 `OpenAICompatRerankerProvider` 注入);③`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确落地边界。
   - **验收**：配置 embedding 时向量召回已生效(CR3-H3);配置 reranker 时 rerank 步骤真实执行;图谱召回生效;被治理条目不被检索命中;`MemoryItem` 成为检索/注入统一载体;集成测试。
   - **产出**：pipeline 图谱召回接线、Reranker provider 注入、MemoryItem 接入、集成测试。
   - **依赖**：N1、N2、J2(embed/rerank Provider)。
   - **当前**：**2026-07-28 S3 激活**:`store_episode` 成功后 + `enable_graph_recall=True` 时写 user/group → episode `mentioned_in` 边 (写边失败不影响 episode 已成功存储); `_graph_search` 实现: 种子锚定调用方 user_id/group_id (满足 ACL 铁律), `graph.neighbors` 取邻居剥 `episode:` 前缀还原 memory_id, 按 weight 降序去重截断; `_build_memory_stack` 注入 `OpenAICompatRerankerProvider` (够 `api_key+model` 时, 仿 CR3-H3 embedding 注入写法), `Reranker.is_available()` 不再恒 False; pipeline 模块 docstring 明确 MemoryItem 落地边界 (检索热路径继续用 MemoryHit, 治理路径用 MemoryItemAdapter)。新增 `test_graph_recall_s3.py` (12 例)。**剩余范围**: 通用实体关系图 (人物-人物/人物-话题等语义关系抽取, 本轮只交付 mentioned_in 提及图)、P3 集成测试。
 
-- [~] **P4 身份归一激活**(依赖 N3 + N1 + P3)
+- [x] **P4 身份归一激活**(依赖 N3 + N1 + P3)
+  - **结论**：**已完成 (2026-08-16 收敛)** —— 控制面 bind/conflicts/resolve 于 S4 轮 (2026-07-28) 激活;集成测试 `tests/integration/test_p4_identity_bind.py` (6 例: 两平台 bind 同 person_id + 记忆按归一身份聚合 + 冲突裁决) 于 R7 补齐。
   - **目标**：gateway 入站主链路接入 `IdentityResolver.resolve`,把跨平台同一用户归一到统一 identity;记忆按归一身份聚合。
   - **验收**：不同 IM 的同一用户归一为同一 person、记忆按归一身份聚合、低置信冲突写入 `identity_conflicts` 供人工裁决;集成测试。
   - **产出**：gateway 接线、记忆聚合按归一身份、集成测试。
   - **依赖**：N3、N1、P3。
   - **当前**：**2026-07-28 S4 激活**:`IdentityResolver` 新增 `resolve_conflict` (人工裁决 conflict + 更新 person_id); 新建 `routes_identity.py` (bind / list conflicts / resolve conflict 三个 REST 入口, scope=identity:read/write, 无 resolver 注入时返回 None 不挂载); `server.create_control_app`/`_mount_optional_routers` 接收 `identity_resolver`; `main` 把 `services["identity_resolver"]` 注入并经 `_register_control_plane` 透传 (helper `_mount_identity_workflow_routers` 抽出避免 C901 超)。新增 `test_routes_identity.py` (7 例)。**剩余范围**: P4 集成测试 (两平台同一自然人 bind → 记忆聚合验证)。
 
-- [~] **P5 企业化激活**(依赖 O1/O2/O3)
+- [x] **P5 企业化激活**(依赖 O1/O2/O3)
+  - **结论**：**已完成 (R6, 2026-08-16 收敛)** —— Workflow action_handler + 声明式加载于 S5 激活;R6 补齐 routes_tenants + TenantManager、loader 子进程隔离经核验已满足、`agent:` 工具入口决策落地 (选 B 文档化不做);集成测试 `tests/integration/test_p5_enterprise_isolation.py` (5 例) 于 R7 补齐。
   - **目标**：`TenantIsolationGuard` 接入 memory store/control/用量计量 + MetadataStore 增 `tenant_id` 列 + `routes_tenants` 控制面(O1);`PluginIsolationHost` 接入 loader 作为可选隔离模式(O2);`WorkflowEngine` 暴露 control 路由/工具入口 + 生产注入 action handler(O3)。
   - **验收**：跨租户不可见且控制面按租户鉴权、插件进程隔离可选启用且崩溃可恢复、Workflow 可声明式执行且可观测;集成测试。
   - **产出**：租户接线 + tenant_id 列 + routes_tenants、loader 隔离模式、workflow 控制面入口、集成测试。
@@ -798,21 +849,24 @@
   - **依赖**：F1-F4(兼容层与加载器已实现)、E4(EnableMatrix 已实现)、H2(MCPClient 已实现)。
   - **当前**：**已完成 (2026-08-16, 由 R3 收敛)**。原三项剩余全部落地: ① per-Agent `PluginContext` 的 `_tools/_commands/_prompt_builder` 不再留 None —— `_fire_plugin_on_load` 建立进程级共享 `ToolRegistry`/`CommandRegistry`/`SystemPromptBuilder` 注入 `make_plugin_context`, native 插件 `register_*` 真实写入; 新建 `AstrBotStarAdapter` (`isac/plugin/compatibility/astrbot/adapter.py`) + `_adapt_compat_plugins` 把 AstrBot `@filter.llm_tool` / MaiBot `@register_action`/`@register_command` 桥接进共享表 (loader 不改: ToolRegistry per-Agent, adapt 在共享收集层); `assemble_agent` 经 `_merge_shared_plugin_tools`/`_merge_shared_plugin_commands` 合并共享表进 per-Agent registry。② `MCPClient` 生产接线: `build_services` 注入 `services["mcp_servers"]` (config.jsonc 顶层 `mcp.servers` 节), `assemble_agent` 经 `_wire_mcp_clients` 按 `AgentConfig.mcp_servers` 构造+connect+list_tools 注册 `MCPToolBridge`, `AgentManager.stop`/`destroy`/`_shutdown_message_pipeline` 调 `disconnect`。③ CLI 工具 services 注入此前已完成。EnableMatrix 注入 PluginManager (hooks 生效) + 共享 hooks 合并 (`assembly.py:269-273`) 保持。新增 7 例单测 + 真机冒烟 (`dev_mcp_echo_server.py` → `MCP server 已接入 server=echo tools=1`); ruff/mypy 全绿。AstrBot `@filter.on_message`/`@filter.on_llm_request` hook 桥接 (EventBus/AgentHooks 签名适配) 与兼容层进程隔离迁移 (需 manifest 机制) 留后续, 非本节点"工具激活"范围。
 
-- [~] **Q4 多模态工具注册与计量收尾**(依赖 J1/J2,均已实现)
+- [x] **Q4 多模态工具注册与计量收尾**(依赖 J1/J2,均已实现)
+  - **结论**：**已完成 (R1, 2026-08-16 收敛)** —— 6 工具注册 (87a84fa) + R1 补齐出站 artifact 扫描、入站落盘 `data/uploads/`、6 个 `record_*` 计量接入、`data/pricing.jsonc` 价目表加载、`model_capabilities_allow` 字段;集成测试见 `test_r1_*`。
   - **目标**：打通 J2 已就绪的 Provider/Router/Catalog/ArtifactStore 与 Agent 侧的"最后一厘米"——6 个语义媒体工具注册进 ToolRegistry,出入站媒体链路可用,多模态用量真实可查。
   - **验收**：`assembly.py` 注册 vision/STT/TTS/生图/视频理解/视频生成 6 个 `media.py` 工具(视频两模态可保留桩,待 O5 二次确认端点);`AgentConfig` 增 `model_capabilities_allow` 字段并映射为工具可见性;`_send_reply` 扫描回复中的 `artifact_id` 引用,经 `MediaResolver.resolve_for_channel` 转换为对应 Channel 的 segment 发送;入站媒体(用户上传图片/语音)下载落盘到 `data/uploads/`,`MediaNormalizer` 白名单相应扩展,生成合法 `media_uri` 供工具使用;`_MediaToolBase`/`EmbeddingManager`/`Reranker` 调用点接入 `UsageRecorder` 的 6 个多模态 `record_*` 方法;`data/pricing.jsonc` 价目表加载机制落地,`ModelUsageEvent` 的 provider 字段与价目表 key 对齐(而非记 `type(provider).__name__`)。
   - **产出**：媒体工具注册、`model_capabilities_allow` 字段、出/入站媒体链路、多模态计量埋点、价目表加载、集成测试(配置生图/视觉 key 后发图/识图全链可用且计量有数)。
   - **依赖**：J1(用量框架)、J2(Provider/Router/Catalog/ArtifactStore)。
   - **当前**：**部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)**。6 个语义媒体工具 (`GenerateImageTool`/`GenerateVideoTool`/`TranscribeAudioTool`/`SynthesizeSpeechTool`/`VisionUnderstandTool`/`UnderstandVideoTool`) 已注册进 ToolRegistry (`assembly.py:312-317`, 默认 deny, 需 `tools_policy` 显式开启)。**剩余**: ① 出站 `_send_reply` 仅处理纯文本 (`main.py:209`), 不扫描 `artifact_id`、不经 `MediaResolver.resolve_for_channel` → LLM 生成的图/语音发不出去; ② 入站用户媒体不下载落盘 `data/uploads/`, `MediaNormalizer` 白名单未扩展; ③ `UsageRecorder` 的 6 个 `record_*` 多模态方法零生产调用 → 多模态用量恒 0; ④ `PricingCatalog()` 构造传空表 (`main.py:770`), `estimated_cost` 恒 `None`; ⑤ `AgentConfig` 无 `model_capabilities_allow` 字段 (现经 `getattr` 兜底空)。接线后升级 `[x]`。
 
-- [~] **Q5 WebUI 与控制面收尾**(依赖 J3/G2/G3,均已实现)
+- [x] **Q5 WebUI 与控制面收尾**(依赖 J3/G2/G3,均已实现)
+  - **结论**：**已完成 (R2, 2026-08-16 收敛)** —— Extensions/SSE/Usage 页此前已接真实数据;R2 补齐 `GET /agents/{id}/config` 真实 revision、SubAgent 表 list-all、routes_webhooks + EventBus 订阅 + 告警推送激活、MCP Server 生产启动点 + 5 工具补齐。
   - **目标**：修掉 J3 WebUI 与 G2/G3 控制面里"看起来完成但实为占位"的断点,并给自动化场景补上生产启动点。
   - **验收**：Extensions 插件页改接真实 `/agents/{id}/plugins` API;SubAgent 任务表改正确 `agent_id` 参数(而非硬编码 `_`);新增 `GET /agents/{id}/config` 返回全量配置 + 真实 `revision`,WebUI `loadConfigForEdit` 改用它(乐观锁真实生效);WebUI 消费 `/events/stream` SSE(`EventSource`);Usage 明细表按实际 API 返回结构(裸数组)解析,不再读 `events?.events`;补 `routes_webhooks`(subscribe/unsubscribe/list + `/automation/trigger`)并在 `main.py` 构造 `WebhookManager` 订阅 `EventBus` 事件;`isac/control/mcp_server.py` 补生产启动点(独立进程或桥接到 Admin API)并补齐 5 个声明但未实现的工具;密钥管理策略文档化为"配置文件 + env 覆盖"(`ISAC_API_TOKEN` 已支持,Provider `api_key` 同理补 env 映射),`SecretStore` 接线留 MVP 之后。
   - **产出**：WebUI 断点修复、`GET /agents/{id}/config` 端点、SSE 前端消费、Webhook 路由与事件源接线、MCP Server 启动点、密钥管理文档、集成测试。
   - **依赖**：J3(WebUI v2)、G2(MCP Server)、G3(Webhooks)。
   - **当前**：**部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)**。Extensions 页已接真实 `/plugins/loaded` (`app.js:481`)、SSE `EventSource('/events/stream')` 已消费 (`app.js:292` + `routes_events.py` scope 过滤/断线恢复/连接上限)、Usage 明细表按正确结构解析。**剩余**: ① `GET /agents/{id}/config` 端点缺失 → 前端 `loadConfigForEdit` 伪造 `revision=1`, 乐观锁未真实生效; ② SubAgent 任务表调 `GET /agents/_/subagent-runs` (`app.js:495` 硬编码 `_`) → 恒空 (后端 `/{agent_id}/subagent-runs` 未被正确调用); ③ `WebhookManager`/`ISACMCPServer` 无生产启动点与路由挂载 (`main.py` 未实例化, `server.py` 未 include)。接线后升级 `[x]`。
 
-- [~] **Q6 SubAgent 用量与安全补漏**(依赖 J4,已实现)
+- [x] **Q6 SubAgent 用量与安全补漏**(依赖 J4,已实现)
+  - **结论**：**已完成 (R2, 2026-08-16 收敛)** —— usage/evidence 保留 + 并发信号量 + `delegate_task` restricted deny 此前已完成 (dbb58eb);R2 补齐背景摘要经 `ContextEnvelopeBuilder` 传子 Agent + `evidence_refs` 真实生成。
   - **目标**：让 J4 SubAgent 的用量/证据数据真实可信,并补上两个安全口子。
   - **验收**：`supervisor` 保存 `result.usage`/`evidence_refs` 到 `run.tokens_used`/`tool_calls_used`/journal(而非只留 `summary`);`delegate_task` 收集的背景摘要经 `ContextEnvelopeBuilder` 真正传给子 Agent;`SubAgentPolicy`/`supervisor` 加并发上限(信号量或计数器);`control/defaults.py` 的 `RESTRICTED_TOOLS_POLICY` 补 `deny` `delegate_task`。
   - **产出**：supervisor 用量/证据保存、summary 传递接线、并发信号量、受限策略修正、集成测试。
@@ -970,9 +1024,10 @@
   - **依赖**：FE0。
   - **当前**：已完成 (2026-08-16)。`CorsConfig` (origins 默认空 + allow_credentials) 加入 `ControlConfig` (`config_schema.py`); `server._configure_cors` helper: origins 非空时加 `CORSMiddleware` (allow_credentials + 全方法/头), 默认空不加零行为变化; `routes_auth.build_router` 加 `samesite` 参数, 分离 origin (origins 非空) 降 `SameSite=Lax` 跨源可带, 同源保持 `Strict`; 写操作 Bearer Token 双轨保留 (CSRF middleware 只对会话 Cookie 写请求生效)。`control/webui/__init__.py` docstring 标 DEPRECATED (迁移期保留, F2 后移除, 新功能去独立前端)。SSE 契约 (`/api/v1/events/stream`、`/api/v1/logs/tail`) 未动维持。`config.sample.jsonc` 加 `control.cors` 示例 (注释生产推荐同源反代)。`tests/unit/test_fe1_cors.py` (5 例): 默认不放开 / 配置 origin 预检放行 / 未列 origin 拒绝 / samesite strict 默认 / samesite lax 跨源。
 
-- [ ] **T3-backend 控制面开箱后端支撑** (T3 后端段)
+- [x] **T3-backend 控制面开箱后端支撑** (T3 后端段)
   - **验收**：`control.enabled` 默认 true 且仅绑 `127.0.0.1`; 首登强制设密码后端支撑 (setup 状态机 + `password_change_required` + `/setup` API, 禁止硬编码默认密码); CLI `isac password reset` 兜底; 配置 Schema 暴露 (JSON Schema 端点, 前端表单驱动前提); 真机验收 (干净目录启动 → 控制面可达 → setup 流程走通)。
   - **依赖**：FE1。
+  - **当前**：**已完成 (2026-08-16, 1c0e639)** —— `DEFAULT_CONFIG` control 默认开 (仅 127.0.0.1); `SetupManager` (PBKDF2 + 428 SETUP_REQUIRED gate + `/setup` API); CLI `isac password reset`; `/api/v1/config/schema` JSON Schema 端点; `scripts/smoke_control_setup.py` 真机验收 exit=0。
 
 - [ ] **F1 前端项目初始化 + 登录/setup 向导** (前端轨道)
   - **验收**：独立项目/目录 (技术栈开工前决策); 消费 `/api/v1` + SSE; 登录页 + 首登强制设密码向导页; 与后端 T3-backend 联调通过。
