@@ -80,8 +80,9 @@ def build_router(
 
     @router.delete("/{agent_id}", dependencies=write_deps)
     async def destroy_agent(agent_id: str, keep_memory: bool = True) -> dict:
-        await _require_agent(agent_manager, agent_id, "destroy")
-        await agent_manager.destroy(agent_id, keep_memory=keep_memory)
+        # N5b 批次G: DELETE 不存在 agent 经 _require_agent 统一转 404 (此前 destroy
+        # 内部 _require 抛 AgentNotFoundError 未捕获 → 500 泄露内部异常)。
+        await _require_agent(agent_manager, agent_id, "destroy", keep_memory=keep_memory)
         await _audit(
             audit_log, "DELETE", f"/api/v1/agents/{agent_id}", "destroy_agent",
             agent_id, detail=f"keep_memory={keep_memory}",
@@ -232,8 +233,19 @@ async def _get_agent_config(agent_manager: AgentManager, agent_id: str) -> dict:
     return asdict(instance.config)
 
 
-async def _require_agent(agent_manager: AgentManager, agent_id: str, action: str) -> None:
-    """执行需要 Agent 存在的操作 (start/stop/destroy); 不存在抛 404。"""
+async def _require_agent(
+    agent_manager: AgentManager,
+    agent_id: str,
+    action: str,
+    *,
+    keep_memory: bool = True,
+) -> None:
+    """执行需要 Agent 存在的操作 (start/stop/destroy); 不存在抛 404。
+
+    N5b 批次G: destroy 分支此前是 placeholder return (不检查存在性, destroy_agent
+    路由自己 try/except 导致 build_router 圈复杂度超限); 现统一在此处执行 destroy
+    并捕获 AgentNotFoundError → 404, 路由层零异常处理。
+    """
     from fastapi import HTTPException
 
     from isac.core.exceptions import AgentNotFoundError
@@ -243,8 +255,7 @@ async def _require_agent(agent_manager: AgentManager, agent_id: str, action: str
         elif action == "stop":
             await agent_manager.stop(agent_id)
         elif action == "destroy":
-            # destroy 内部会自己 _require, 这里只是 placeholder 保持接口一致
-            return
+            await agent_manager.destroy(agent_id, keep_memory=keep_memory)
     except AgentNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
 
