@@ -65,16 +65,22 @@ def build_router(
     event_bus: EventBus,
     auth_dependency: Any = None,
     tokens: list[TokenScope] | None = None,
+    session_secret: bytes | None = None,
     max_connections: int = _DEFAULT_MAX_CONNECTIONS,
 ) -> Any:
     """构造 Events SSE Control API 路由。
 
     tokens: Fix-12 的 control.tokens[] 解析结果; None (未配置 scope 模型) 时
     事件流不做任何按 scope 过滤, 向后兼容。
+    session_secret: Fix-45 —— 浏览器 EventSource 无法发自定义 Header, 靠会话
+    Cookie 认证的 WebUI 此前拿不到任何 scope (空集 → 全部事件被过滤, SSE 功能性
+    失效); 传入 session_secret 后按 Cookie 解出 token 再匹配 scope。
     max_connections: Fix-14 同时在线的 SSE 连接数上限; 超过时新连接返回 429。
     """
-    from fastapi import APIRouter, Depends, Header, HTTPException
+    from fastapi import APIRouter, Cookie, Depends, Header, HTTPException
     from fastapi.responses import StreamingResponse
+
+    from isac.control.auth import SESSION_COOKIE_NAME
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["events"], dependencies=deps)
@@ -89,12 +95,13 @@ def build_router(
         max_chunks: int | None = None,
         last_event_id_header: str | None = Header(default=None, alias="Last-Event-ID"),
         authorization: str | None = Header(default=None),
+        session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ) -> Any:
         # Fix-11: 真实浏览器 EventSource 断线重连时按 SSE 规范发 Last-Event-ID
         # 请求头 (不是 query 参数); Header 优先, 缺失时回退 query (手动/测试场景)。
         header_id = _safe_int(last_event_id_header) if last_event_id_header is not None else _safe_int(last_event_id)
         heartbeat = max(0.1, heartbeat_seconds if heartbeat_seconds is not None else _DEFAULT_HEARTBEAT_SECONDS)
-        caller_scopes = _resolve_caller_scopes(tokens, authorization)
+        caller_scopes = _resolve_caller_scopes(tokens, authorization, session_cookie, session_secret)
 
         if not state.acquire_connection():
             raise HTTPException(
@@ -118,13 +125,23 @@ def build_router(
     return router
 
 
-def _resolve_caller_scopes(tokens: list[TokenScope] | None, authorization: str | None) -> frozenset[str] | None:
-    """解析调用方 scope 集合; tokens 未配置返回 None (表示不过滤)。"""
+def _resolve_caller_scopes(
+    tokens: list[TokenScope] | None,
+    authorization: str | None,
+    session_cookie: str | None = None,
+    session_secret: bytes | None = None,
+) -> frozenset[str] | None:
+    """解析调用方 scope 集合; tokens 未配置返回 None (表示不过滤)。
+
+    Fix-45: token 解析与 auth 依赖同口径 —— Authorization Header 优先, 缺失时
+    回退会话 Cookie (EventSource 无法发自定义 Header, WebUI 只靠 Cookie 认证)。
+    此前只看 Header, Cookie 客户端拿到空 scope 集 → 全部事件被过滤, SSE 失效。
+    """
     if not tokens:
         return None
-    from isac.control.auth import _find_matching_token, extract_bearer
+    from isac.control.auth import _find_matching_token, _resolve_token
 
-    token = extract_bearer(authorization)
+    token = _resolve_token(authorization, session_cookie, session_secret)
     matched = _find_matching_token(tokens, token)
     return matched.scopes if matched is not None else frozenset()
 

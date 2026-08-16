@@ -9,8 +9,9 @@ ISACMessage 无 attachments 字段, MediaNormalizer 显式拒绝 URL 输入, 入
 ``ArtifactStore(root_dir="data/uploads").put(...)`` 落盘 → 回填 segment
 ``data["media_uri"]`` (供工具经 MediaNormalizer 读, 白名单含 data/uploads)。
 
-安全: SSRF 校验 (复用 isac.utils.safe_install.is_safe_url) + 异常隔离 (单个
-segment 失败不阻塞消息)。无 url 的 segment (如本地 file 路径) 跳过。
+安全: SSRF 校验 (复用 isac.utils.safe_install.is_safe_url / safe_download_bytes,
+后者对重定向逐跳复校验 + 流式体积上限, Fix-39) + 异常隔离 (单个 segment
+失败不阻塞消息)。无 url 的 segment (如本地 file 路径) 跳过。
 """
 
 from __future__ import annotations
@@ -18,9 +19,12 @@ from __future__ import annotations
 from typing import Any
 
 from isac.utils.logger import get_logger
-from isac.utils.safe_install import is_safe_url
+from isac.utils.safe_install import is_safe_url, safe_download_bytes
 
 logger = get_logger(__name__)
+
+# 入站媒体单文件体积上限 (防超大响应 OOM; 与 MediaNormalizer 的 image 25MB 上限同量级)
+MAX_INBOUND_MEDIA_BYTES = 50 * 1024 * 1024
 
 # 入站 segment type → ArtifactStore kind 映射
 _SEGMENT_KIND: dict[str, str] = {
@@ -73,15 +77,15 @@ async def download_inbound_media(
 
 
 async def _download_bytes(url: str, http_client: Any) -> bytes | None:
-    """HTTP 下载为 bytes。http_client 注入时直接用; 否则用 httpx.AsyncClient。"""
+    """HTTP 下载为 bytes。http_client 注入时直接用; 否则走 safe_download_bytes。
+
+    Fix-39: 生产路径改用 safe_download_bytes —— 重定向逐跳复跑 is_safe_url
+    (此前 follow_redirects=True 不校验重定向目标 → SSRF 绕过), 且流式累计
+    超过 MAX_INBOUND_MEDIA_BYTES 中止 (此前 resp.content 全量缓冲无上限 → OOM)。
+    """
     if http_client is not None:
         return await http_client.get_bytes(url)
-    import httpx
-
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, max_redirects=3) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.content
+    return await safe_download_bytes(url, timeout_seconds=30.0, max_bytes=MAX_INBOUND_MEDIA_BYTES)
 
 
 def _infer_mime(kind: str, url: str) -> str:

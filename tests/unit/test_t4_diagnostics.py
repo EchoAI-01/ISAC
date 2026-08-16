@@ -158,6 +158,49 @@ class TestLogsTailSSE:
         assert get_log_buffer() is None
         assert routes_logs.build_router() is None
 
+    def test_logs_tail_scope_gated_when_tokens_configured(self) -> None:
+        """Fix-46: tokens[] scope 模型生效时, 日志流要求 "*" 通配 scope ——
+        系统日志含聊天原文/错误堆栈, 属最敏感数据面; 窄 scope token (如
+        usage:read) 必须被拒 (403), 通配 token 放行。"""
+        from fastapi import FastAPI
+
+        from isac.control.auth import (
+            make_scope_dependency_factory,
+            make_token_only_dependency,
+            parse_token_scopes,
+        )
+
+        reset_log_buffer()
+        buf = enable_log_buffer()
+        buf.append({"level": "info", "event": "secret-log", "logger": "test"})
+        parsed = parse_token_scopes({"tokens": [
+            {"token": "narrow", "scopes": ["usage:read"]},
+            {"token": "admin", "scopes": ["*"]},
+        ]})
+        assert parsed is not None
+        app = FastAPI()
+        router = routes_logs.build_router(
+            auth_dependency=make_token_only_dependency(parsed),
+            scope_dependency=make_scope_dependency_factory(parsed),
+        )
+        assert router is not None
+        app.include_router(router, prefix="/api/v1")
+        client = TestClient(app)
+        # 窄 scope token → 403 SCOPE_FORBIDDEN
+        r = client.get(
+            "/api/v1/logs/tail?heartbeat_seconds=0.05&max_chunks=1",
+            headers={"Authorization": "Bearer narrow"},
+        )
+        assert r.status_code == 403
+        # 通配 token → 200 可读
+        with client.stream(
+            "GET", "/api/v1/logs/tail?heartbeat_seconds=0.05&max_chunks=1",
+            headers={"Authorization": "Bearer admin"},
+        ) as resp:
+            assert resp.status_code == 200
+            joined = "".join(resp.iter_text())
+            assert "secret-log" in joined
+
 
 class TestLLMErrorMapping:
     """T4: LLM 错误映射成引用真实配置路径的中文可操作提示。"""

@@ -58,6 +58,10 @@ class OpenAICompatImageGenProvider(ImageGenerationProvider):
         self.timeout = timeout
         self.extra = kwargs
         self._client: Any = None  # httpx.AsyncClient 惰性创建
+        # Fix-38: 下载生成图片用独立 client。self._get_client() 带 client 级
+        # Authorization: Bearer <api_key>, 而下载 URL 来自 Provider 响应 (可能是任意
+        # 第三方 CDN 主机), client 级 header 不分 host 会把 api_key 外泄到该主机。
+        self._download_client: Any = None
 
     def _get_client(self) -> Any:
         """惰性创建 httpx.AsyncClient; 已创建则复用 (连接池)。"""
@@ -177,7 +181,11 @@ class OpenAICompatImageGenProvider(ImageGenerationProvider):
             request_url, extra_headers = pin_validated_url(url, allow_local=False)
         except SSRFBlockedError as exc:
             raise LLMError(f"图片下载 URL 被 SSRF 校验拒绝: {exc}", retriable=False) from exc
-        client = self._get_client()
+        # Fix-38: 用无 Authorization 头的独立下载 client (self._get_client() 带
+        # Bearer api_key 会把它外泄到响应的任意第三方 CDN 主机)。
+        if self._download_client is None:
+            self._download_client = httpx.AsyncClient(timeout=self.timeout)
+        client = self._download_client
         try:
             response = await client.get(request_url, headers=extra_headers or None)
         except httpx.TimeoutException as exc:
@@ -198,3 +206,6 @@ class OpenAICompatImageGenProvider(ImageGenerationProvider):
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        if self._download_client is not None:
+            await self._download_client.aclose()
+            self._download_client = None

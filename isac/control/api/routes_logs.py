@@ -37,9 +37,16 @@ _LEVEL_ORDER: dict[str, int] = {
 
 def build_router(
     auth_dependency: Any = None,
+    scope_dependency: Any = None,
     max_connections: int = _DEFAULT_MAX_CONNECTIONS,
 ) -> Any:
-    """构造日志 SSE 路由。LogBuffer 未启用 (get_log_buffer() is None) 时返回 None 不挂载。"""
+    """构造日志 SSE 路由。LogBuffer 未启用 (get_log_buffer() is None) 时返回 None 不挂载。
+
+    Fix-46: tokens[] scope 模型生效时, 日志流要求 "*" 通配 scope —— 系统日志含聊天
+    原文/错误堆栈/审计明细, 属最敏感数据面; 此前只挂基线认证, 窄 scope token (如
+    usage:read) 可读全量日志, 与 /events/stream 的 scope 收窄标准不一致。
+    scope_dependency 为 None (未配置 tokens[]) 时行为不变 (仅基线认证)。
+    """
     if get_log_buffer() is None:
         return None
 
@@ -47,6 +54,8 @@ def build_router(
     from fastapi.responses import StreamingResponse
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
+    if scope_dependency:
+        deps.append(Depends(scope_dependency("*")))
     router = APIRouter(tags=["logs"], dependencies=deps)
 
     # 连接计数 (同步, 无 await, 同 routes_events._EventStreamState)

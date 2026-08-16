@@ -128,3 +128,119 @@ class TestValidatePluginArchive:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             with pytest.raises(ValueError, match="不是合法插件"):
                 validate_plugin_archive(zf)
+
+
+# ── safe_download_bytes (Fix-39): 重定向逐跳 SSRF 复校验 + 流式体积上限 ──
+
+
+class _FakeStreamResponse:
+    """模拟 httpx stream 响应 (status/headers/chunks)。"""
+
+    def __init__(self, status_code: int, headers: dict[str, str] | None = None,
+                 chunks: list[bytes] | None = None) -> None:
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._chunks = chunks or []
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    async def aiter_bytes(self):
+        for chunk in self._chunks:
+            yield chunk
+
+    async def __aenter__(self) -> _FakeStreamResponse:
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+class _FakeAsyncClient:
+    """按 URL 路由响应的假 AsyncClient (替换 httpx.AsyncClient)。"""
+
+    routes: dict[str, _FakeStreamResponse] = {}
+
+    def __init__(self, timeout: float = 30.0, follow_redirects: bool = False) -> None:
+        # Fix-39 的实现必须不自动跟随重定向 (逐跳手动校验)
+        assert follow_redirects is False
+
+    def stream(self, method: str, url: str) -> _FakeStreamResponse:
+        resp = self.routes.get(url)
+        assert resp is not None, f"未预期的请求 URL: {url}"
+        return resp
+
+    async def __aenter__(self) -> _FakeAsyncClient:
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+@pytest.fixture()
+def fake_httpx(monkeypatch: pytest.MonkeyPatch):
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+    _FakeAsyncClient.routes = {}
+    return _FakeAsyncClient
+
+
+class TestSafeDownloadBytes:
+    @pytest.mark.asyncio
+    async def test_redirect_to_private_ip_rejected(self, fake_httpx) -> None:
+        """Fix-39 核心: 初始 URL 安全, 302 重定向到云元数据地址必须被拒。"""
+        from isac.utils.safe_install import safe_download_bytes
+
+        fake_httpx.routes = {
+            "https://93.184.216.34/a.png": _FakeStreamResponse(
+                302, {"location": "http://169.254.169.254/latest/meta-data/"}
+            ),
+        }
+        with pytest.raises(ValueError, match="SSRF"):
+            await safe_download_bytes("https://93.184.216.34/a.png")
+
+    @pytest.mark.asyncio
+    async def test_redirect_to_safe_target_followed(self, fake_httpx) -> None:
+        from isac.utils.safe_install import safe_download_bytes
+
+        fake_httpx.routes = {
+            "https://93.184.216.34/a.png": _FakeStreamResponse(
+                302, {"location": "https://93.184.216.34/final.png"}
+            ),
+            "https://93.184.216.34/final.png": _FakeStreamResponse(200, chunks=[b"PNGDATA"]),
+        }
+        got = await safe_download_bytes("https://93.184.216.34/a.png")
+        assert got == b"PNGDATA"
+
+    @pytest.mark.asyncio
+    async def test_size_limit_aborts(self, fake_httpx) -> None:
+        from isac.utils.safe_install import safe_download_bytes
+
+        fake_httpx.routes = {
+            "https://93.184.216.34/big.bin": _FakeStreamResponse(
+                200, chunks=[b"x" * 100, b"y" * 100]
+            ),
+        }
+        with pytest.raises(ValueError, match="大小上限"):
+            await safe_download_bytes("https://93.184.216.34/big.bin", max_bytes=150)
+
+    @pytest.mark.asyncio
+    async def test_redirect_loop_capped(self, fake_httpx) -> None:
+        from isac.utils.safe_install import safe_download_bytes
+
+        fake_httpx.routes = {
+            "https://93.184.216.34/loop": _FakeStreamResponse(
+                302, {"location": "https://93.184.216.34/loop"}
+            ),
+        }
+        with pytest.raises(ValueError, match="重定向"):
+            await safe_download_bytes("https://93.184.216.34/loop", max_redirects=2)
+
+    @pytest.mark.asyncio
+    async def test_initial_unsafe_url_rejected(self, fake_httpx) -> None:
+        from isac.utils.safe_install import safe_download_bytes
+
+        with pytest.raises(ValueError, match="SSRF"):
+            await safe_download_bytes("http://127.0.0.1:8765/api/v1/agents")

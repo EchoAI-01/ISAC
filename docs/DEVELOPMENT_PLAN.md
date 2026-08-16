@@ -67,13 +67,31 @@
 
 ## 三之三、下一步行动计划 (2026-08-16 制定, 取代 §三之二 推进顺序的未完成部分)
 
-**背景**: 后端代码工作已基本收尾 —— 阶段 0 / FE0 / FE1 / T3-backend / T1-T2/T4 / T6 / R1-R6 全部完成, R7 代码部分 (P3/P4/P5 集成测试 + hook 真实触发测试 + ConfigMigrator 测试 + QUICKSTART) 完成; 全量 1739 测试、ruff/mypy 全绿。**剩余项几乎全部是环境/凭据依赖与前端轨道**, 不再有纯后端代码缺口。本计划按"解除阻塞的先后"排列。
+**背景**: 后端代码工作已基本收尾 —— 阶段 0 / FE0 / FE1 / T3-backend / T1-T2/T4 / T6 / R1-R6 全部完成, R7 代码部分 (P3/P4/P5 集成测试 + hook 真实触发测试 + ConfigMigrator 测试 + QUICKSTART) 完成; 全量 1739 测试、ruff/mypy 全绿。**剩余项几乎全部是环境/凭据依赖与前端轨道**。本计划按"解除阻塞的先后"排列。**2026-08-16 补记**: 本轮全量代码审查 (见下方 N1b) 发现"接线层"仍有一批 Critical/Major 缺陷 —— "无纯后端代码缺口"的结论以 N1b/N5b 清偿完毕为准。
 
 ### N1 文档与标记收敛 (立即, ~0.5 轮) — **进行中**
 
 - [x] 三态标记漂移修复: T3-backend `[ ]`→`[x]`; Q4/Q5/Q6/P3/P4/P5 已被 R 节点收敛, 由 `[~]` 升 `[x]` 并补"结论"行 (2026-08-16)。
 - [ ] PROGRESS.md 节点总览表 N/O/Q 行同步收敛口径; T7 `[~]` 与 R7 `[~]` 的剩余项逐一挂到 `RELEASE_AUDIT.md` 第三节环境项。
 - [ ] README 状态表与 AGENTS.md 剩余工作同步 (T6/R1-R6 完成态)。
+
+### N1b 全量代码审查修复轮 (2026-08-16, Fix-37~Fix-48) — **"立即"层已完成, 专项批次见 N5b**
+
+**方法**: 5 路并行全量审查 (isac/ 全部 260+ 源文件, 重点盯 T6/R1-R6 新增接线) → 主审对全部 Critical 逐条读码复核。发现 7 Critical + 44 Major + 68 Minor。
+
+**已完成 (Critical 7 项 + 批次 A 安全一致性 4 项, 新增 15 例回归测试, 全量 1752 通过)**:
+
+- [x] **Fix-37** 企微 AES 明文布局与官方 WXBizMsgCrypt 协议颠倒 (真实回调必失败, 单测同错互证故全绿) → 官方布局切片 + receiveid==corpid 校验。
+- [x] **Fix-38** image_gen 下载第三方 CDN URL 泄露 Bearer api_key → 独立无 Authorization 下载 client。
+- [x] **Fix-39** 入站媒体/插件安装器重定向 SSRF 绕过 + 无体积上限 → `safe_download_bytes` (逐跳复校验 + 流式上限)。
+- [x] **Fix-40** 已配静态凭证时未认证 POST /setup 可接管控制面 → SetupManager static_credentials_configured 闸门。
+- [x] **Fix-42** MCP 接线补传 parsed_tokens (tokens[] 部署认证跳过)。
+- [x] **Fix-43** MCP 无凭证时 tools/call fail-closed。
+- [x] **Fix-44** MCP stdio 阻塞 readline → asyncio.to_thread (启用即冻结 Bot)。
+- [x] **Fix-45** /events/stream scope 解析支持会话 Cookie (WebUI SSE)。
+- [x] **Fix-46** /logs/tail scope 门禁 ("*")。
+- [x] **Fix-47** CSRF 豁免 POST /auth/session (带旧 Cookie 重新登录)。
+- [x] **Fix-48** PUT plugins 配置锁 + 列表参数健壮化。
 
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 
@@ -106,6 +124,16 @@
 - [ ] **Z2** `main.py` (1518 行) 拆 `isac/bootstrap/` 五模块。
 - [ ] 同步 IO 异步化 (audit/bus persist/routes_routing 写盘)。
 - [ ] `reload_config` 差量更新 (观察项, 不紧急)。
+
+### N5b 全量审查剩余批次 (2026-08-16 审查发现的 Major/Minor, 各立专项)
+
+> N1b 已清偿全部 Critical 与批次 A; 以下为剩余批次, 建议顺序 C → D → E → F/G。
+
+- [ ] **批次 C 插件生态专项** — 启动路径工具 source 追踪 (卸载/重载 deregister 对启动期插件失效); commands/injectors/hooks/EventBus 来源追踪 + deregister (只增不删); 隔离子进程崩溃后自动重载插件 + RLIMIT_CPU 可配 + 并发响应 correlation_id 匹配 + FD 泄漏; installer `name` 路径校验 (`^[A-Za-z0-9_-]+$` + resolve 子树检查)、update 原子交换回滚、解压体积上限; AstrBot import 沙箱接线 (官方语法插件当前加载失败); 插件名≠目录名生命周期映射; MCP 桥接工具名强制前缀 + 默认 restricted (防同名覆盖内置工具)。
+- [ ] **批次 D MCP Client 生命周期** — reload_config 断开旧实例 MCP 连接 (子进程泄漏); stop→start 重连; connect 后 list_tools 失败路径清理; initialize/initialized 握手 + list_tools error 显式 (对真实 MCP server 当前恒 0 工具); stdio reader 脏输出 continue 不退出。
+- [ ] **批次 E 记忆口径一致性** — person_profiles 键分裂 (consolidator 平台 user_id vs manager/注入器 master_id, S2 画像归纳默认部署即死功能); 租户/自定义 namespace 注入器读不到 + person_profiles/jargon 表补租户列; `latest_episode_id_for_session` 租户包裹 SQL 报错 (R4 压缩链路失效, 已实测复现); consolidator 软删同步 BM25/向量; embedding 维度错配部分提交误报; 去重桶加 user_id; 归纳产物防持久化 prompt injection。
+- [ ] **批次 F LLM 可控参数 clamp** — wait/delegate/task 秒数、bash timeout、ask_agent 超时 + hop 深度、generate_image n、/mute 时长 + 命令用户级鉴权。
+- [ ] **批次 G 适配器与零散** — 飞书 p2p 私聊当群聊 (chat_type 未读); Discord/Telegram 自身消息过滤; ChannelRegistry.start_all/stop_all 错误隔离; uploads_store 生命周期注册 (TTL sweep); DELETE 不存在 agent 500→404; PUT routing/rules 400; TenantManager.list_tenants 缓存; resolve_secret 扫描路径对齐; 及 Minor 批量 (详见审查记录)。
 
 ### 里程碑路径
 

@@ -45,6 +45,17 @@ def build_router(setup_manager: SetupManager) -> Any:
 
     @router.post("/setup")
     async def complete_setup(body: SetupRequest) -> dict:
+        # Fix-40: 已配静态凭证 (api_token/tokens) 时 setup 通道必须关闭 ——
+        # 本端点无认证, 若允许设密码, 攻击者可为自己创建被 auth 层接受的凭证
+        # 接管控制面 (即使 setup_state 因新数据目录/CLI reset 而缺失)。
+        if getattr(setup_manager, "has_static_credentials", False):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "SETUP_NOT_ALLOWED",
+                    "message": "已配置 api_token/tokens, 认证走静态凭证, setup 通道不可用",
+                },
+            )
         if not setup_manager.is_setup_required:
             raise HTTPException(
                 status_code=409,

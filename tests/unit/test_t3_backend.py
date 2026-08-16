@@ -163,3 +163,43 @@ def test_cli_password_reset(tmp_path: Path) -> None:
     assert _cmd_password_reset(state) == 0
     assert not Path(state).exists()
     assert SetupManager(state).is_setup_required is True
+
+
+# ── Fix-40: 已配静态凭证时 setup 通道关闭 (防未认证接管) ──
+
+
+def test_setup_manager_static_credentials_disables_setup(tmp_path: Path) -> None:
+    """Fix-40 单元: 已配 api_token/tokens 时 is_setup_required 恒 False 且
+    complete_setup 拒绝 (PermissionError)。"""
+    from isac.control.setup import SetupManager
+
+    mgr = SetupManager(str(tmp_path / "s.json"), static_credentials_configured=True)
+    assert mgr.has_static_credentials is True
+    assert mgr.is_setup_required is False
+    with pytest.raises(PermissionError):
+        mgr.complete_setup("good-password-123")
+    assert not (tmp_path / "s.json").exists()
+
+
+def test_setup_endpoint_rejected_when_api_token_configured(tmp_path: Path) -> None:
+    """Fix-40 端到端: 已配 api_token 但 setup_state 缺失 (新数据目录/CLI reset 后)
+    时, 未认证 POST /setup 必须被拒 —— 此前攻击者可经此设置自己的密码并被 auth 层
+    接受, 直接接管控制面。"""
+    from fastapi.testclient import TestClient
+
+    client = TestClient(_make_app(
+        config_extra={"api_token": "tok-static"},
+        state_path=str(tmp_path / "s.json"),
+    ))
+    r = client.post("/api/v1/setup", json={"password": "evil-password-123"})
+    assert r.status_code == 403
+    assert r.json()["detail"]["code"] == "SETUP_NOT_ALLOWED"
+    # GET /setup: 有静态凭证 → setup_required=False
+    assert client.get("/api/v1/setup").json()["setup_required"] is False
+    # 攻击者密码不是有效凭证; 静态 token 正常可用
+    assert client.get(
+        "/api/v1/audit", headers={"Authorization": "Bearer evil-password-123"}
+    ).status_code == 401
+    assert client.get(
+        "/api/v1/audit", headers={"Authorization": "Bearer tok-static"}
+    ).status_code == 200
