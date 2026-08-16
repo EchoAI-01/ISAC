@@ -95,5 +95,14 @@ class ToolPermission:
         self.policy = {**self.DEFAULT_POLICY, **(policy or {})}
 
     def check(self, tool_name: str) -> str:
-        """返回 "allow" | "restricted" | "deny" (未声明默认 allow)。"""
-        return self.policy.get(tool_name, "allow")
+        """返回 "allow" | "restricted" | "deny" (未声明默认 allow)。
+
+        N5b 批次C C9: MCP 桥接工具 (``mcp:`` 前缀) 未显式声明时默认 restricted,
+        需在 Agent tools_policy 显式开启 (如 {"mcp:server:tool": "allow"}) 才放行,
+        防任意外部 MCP 工具未经审批被 LLM 调用。
+        """
+        if tool_name in self.policy:
+            return self.policy[tool_name]
+        if tool_name.startswith("mcp:"):
+            return "restricted"
+        return "allow"

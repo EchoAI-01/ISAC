@@ -121,6 +121,7 @@ class MCPClient:
         return [
             MCPToolBridge(
                 client=self,
+                server_name=self.server_name,
                 name=tool.get("name", ""),
                 description=tool.get("description", ""),
                 parameters=tool.get("inputSchema", {"type": "object"}),
@@ -321,12 +322,17 @@ class MCPToolBridge(Tool):
     def __init__(
         self,
         client: MCPClient,
+        server_name: str,
         name: str,
         description: str,
         parameters: dict[str, Any],
     ):
         self._client = client
-        self._name = name
+        self._server_name = server_name
+        # N5b 批次C C9: 注册名加 mcp:{server}:{tool} 前缀, 防同名 MCP 工具顶替内置
+        # 工具 (如 MCP 的 bash/read_file 覆盖内置同名); 调 server 时用原名。
+        self._tool_name = name
+        self._name = f"mcp:{server_name}:{name}"
         self._description = description
         self._parameters = parameters
 
@@ -343,5 +349,5 @@ class MCPToolBridge(Tool):
         return self._parameters
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        """转发到 MCPClient.call_tool。"""
-        return await self._client.call_tool(self._name, dict(context.args))
+        """转发到 MCPClient.call_tool (用原名, 不带 mcp: 前缀)。"""
+        return await self._client.call_tool(self._tool_name, dict(context.args))
