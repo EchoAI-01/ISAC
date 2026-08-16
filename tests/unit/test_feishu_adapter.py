@@ -223,6 +223,81 @@ async def test_message_event_normalized_to_isac_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_p2p_message_with_chat_type_not_treated_as_group() -> None:
+    """N5b 批次G: 飞书 p2p 私聊事件也带 chat_id, 须按 chat_type=="group" 判定群聊。
+
+    此前一律 group_id=chat_id, p2p 私聊被误判群聊 (下游 @mention/群上下文误触发)。
+    """
+    adapter = _make_adapter(verification_token="tok")
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    payload = {
+        "schema": "2.0",
+        "header": {"event_type": "im.message.receive_v1", "token": "tok"},
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_p2p_user"}, "sender_type": "user"},
+            "message": {
+                "message_id": "om_p2p_msg",
+                "chat_id": "oc_p2p_chat",  # p2p 也带 chat_id (非空!)
+                "chat_type": "p2p",  # 关键: chat_type 标明是私聊
+                "message_type": "text",
+                "content": json.dumps({"text": "私聊你好"}),
+            },
+        },
+    }
+
+    class _Req:
+        async def json(self) -> Any:
+            return payload
+
+    resp = await adapter._handle_event(_Req())
+    assert resp == {}
+    assert len(received) == 1
+    msg = received[0]
+    assert msg.user_id == "ou_p2p_user"
+    assert msg.group_id is None  # p2p 私聊, chat_id 非空但按 chat_type 判定 group_id=None
+    assert msg.content == "私聊你好"
+
+
+@pytest.mark.asyncio
+async def test_group_message_with_chat_type_keeps_group_id() -> None:
+    """N5b 批次G: chat_type=="group" 时 chat_id 仍作 group_id (回归保护)。"""
+    adapter = _make_adapter(verification_token="tok")
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    payload = {
+        "schema": "2.0",
+        "header": {"event_type": "im.message.receive_v1", "token": "tok"},
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_g_user"}, "sender_type": "user"},
+            "message": {
+                "message_id": "om_g_msg",
+                "chat_id": "oc_group_real",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": json.dumps({"text": "群聊"}),
+            },
+        },
+    }
+
+    class _Req:
+        async def json(self) -> Any:
+            return payload
+
+    await adapter._handle_event(_Req())
+    assert len(received) == 1
+    assert received[0].group_id == "oc_group_real"
+
+
+@pytest.mark.asyncio
 async def test_message_event_encrypted_mode_decrypted_and_normalized() -> None:
     """加密模式事件 → 解密 + 规范化 ISACMessage。"""
     encrypt_key = "k-enc"

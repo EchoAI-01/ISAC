@@ -1323,6 +1323,14 @@ async def main() -> None:
     artifact_store = services["artifact_store"]
     runtime.register_lifecycle("artifact_store", artifact_store.start, artifact_store.stop)
 
+    # N5b 批次G: 入站媒体 uploads_store 同样需注册生命周期 (start_ttl_sweep 周期清理
+    # 7 天过期的下载媒体)。此前只注册了 artifact_store, uploads_store.start 从未被调用
+    # → sweep 任务不跑, 入站媒体文件 + DB 行无限堆积 (incoming_media.py 每次 put 写
+    # 7 天过期元数据但无人扫)。uploads_store 在 build_services 无条件构造并放入 services
+    # (同 artifact_store), 此处无条件注册。
+    uploads_store = services["uploads_store"]
+    runtime.register_lifecycle("uploads_store", uploads_store.start, uploads_store.stop)
+
     # J1: 用量存储生命周期 (仅启用计量时注册; stop 时先 flush 缓冲再关连接)。
     _register_usage_lifecycle(runtime, services)
     # J4: 子任务日志生命周期 (仅启用 subagent.enabled 时注册)。
