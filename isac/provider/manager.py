@@ -208,7 +208,8 @@ class ProviderManager:
         的 kwargs; trace_id 由调用方为这一次逻辑调用统一生成/传入 (含其所有重试与
         回退尝试), 用于聚合时按 trace_id 归并同一逻辑调用产生的多条 ModelUsageEvent。
 
-        TODO: 区分错误类型 (RateLimitError 退避更久)。
+        退避区分: RateLimitError (429 限流) 退避基数翻倍, 给服务端配额恢复更多时间;
+        其他可重试错误用标准指数退避 (SPECIFICATION.md 5.2)。
         """
         last_error: Exception | None = None
         for attempt in range(3):
@@ -219,7 +220,7 @@ class ProviderManager:
             except RateLimitError as exc:
                 last_error = exc
                 logger.warning("LLM 限流，退避重试", attempt=attempt + 1)
-                await self._retry_backoff(attempt)
+                await self._retry_backoff(attempt, rate_limited=True)
             except LLMError as exc:
                 last_error = exc
                 logger.warning("LLM 调用失败", attempt=attempt + 1, error=str(exc))
@@ -253,11 +254,17 @@ class ProviderManager:
         return LLMResponse(content=_degraded_reply_from_error(last_error))
 
     @staticmethod
-    async def _retry_backoff(attempt: int) -> None:
-        """最后一次重试后不再 sleep (没下一次尝试, 多等只会拖慢 fallback/降级)。"""
+    async def _retry_backoff(attempt: int, *, rate_limited: bool = False) -> None:
+        """指数退避; 最后一次重试后不再 sleep。
+
+        rate_limited (429) 时退避基数翻倍, 给服务端配额恢复更多时间。
+        """
         if attempt >= 2:
             return
-        await asyncio.sleep(2**attempt)
+        delay = 2 ** attempt
+        if rate_limited:
+            delay *= 2
+        await asyncio.sleep(delay)
 
     async def _call_and_record(
         self,
