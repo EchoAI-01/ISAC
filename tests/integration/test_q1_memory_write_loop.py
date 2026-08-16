@@ -129,7 +129,10 @@ async def test_chat_writes_episode_and_survives_restart(tmp_path: Path) -> None:
     fresh_pipeline = fresh_factory("a")
     loaded = await fresh_pipeline.warm_up_sparse_index()
     assert loaded == 1
-    hits = await fresh_pipeline.search("zephyr_hiking_plan", top_k=3, user_id="u1")
+    # N5b 批次E 项1: episode.user_id 现写归一 master_id (user_mapper 生成), 检索需用
+    # 同一 master_id (与生产 heuristic 注入器口径一致), 不再用平台 id "u1"。
+    profile = await um.resolve("fake", "u1")
+    hits = await fresh_pipeline.search("zephyr_hiking_plan", top_k=3, user_id=profile.user_id)
     assert hits and "zephyr_hiking_plan" in hits[0].content
 
 

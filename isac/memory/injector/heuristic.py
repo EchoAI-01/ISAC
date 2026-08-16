@@ -39,15 +39,21 @@ class HeuristicMemoryInjector(MemoryInjector):
         return 500
 
     async def build(self, context: InjectionContext) -> str:
-        """使用当前消息文本搜索相关长期记忆 (按 session 的 user_id/group_id 隔离)。"""
+        """使用当前消息文本搜索相关长期记忆 (按归一 user_id/group_id 隔离)。"""
         query = str(getattr(context.current_message, "content", "") or "").strip()
         if not query:
             return ""
         session = context.session
+        # N5b 批次E 项1: 检索 user_id 用归一 master_id (user_profile.user_id) 优先,
+        # 与 episode.user_id 口径一致 (manager._write_memory 已改写 master_id);
+        # 此前用 session.user_id (平台 id) 与 episode.user_id 口径分裂会漏召回。
+        user_id = str(getattr(getattr(context, "user_profile", None), "user_id", "") or "")
+        if not user_id:
+            user_id = str(getattr(session, "user_id", "") or "")
         return await self.search_and_format(
             query,
             top_k=3,
             header="【启发式记忆-内部参考】",
-            user_id=str(getattr(session, "user_id", "") or ""),
+            user_id=user_id,
             group_id=str(getattr(session, "group_id", "") or ""),
         )
