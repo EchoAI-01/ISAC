@@ -468,6 +468,11 @@ class AgentManager:
         result = await self._run_loop_with_conversation(instance, conv_runtime, messages, agent_context)
         if result.interrupted:
             logger.info("本轮被新消息打断, 旧回复已抑制", agent_id=agent_id)
+            # Fix-57: 回拨本回合输入的 drain 指针。打断后回复被抑制、不写记忆,
+            # 若指针已越过本回合 burst, 接替回合 drain 取不到 → 用户输入三方皆失。
+            # 回拨后接替回合 (即触发打断的新消息的回合) 会重新 drain 并合并处理。
+            if conv_runtime is not None and pending:
+                conv_runtime.rewind_processed(len(pending))
             return None
         if result.content:
             # 话轮调度: 记录本轮回复, 更新滑窗频率与存在感数据。

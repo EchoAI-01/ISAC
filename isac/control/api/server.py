@@ -99,11 +99,17 @@ def _build_setup_manager(config: dict[str, Any]) -> Any:
     """
     if not config.get("setup_enabled", False):
         return None
+    from isac.control.auth import parse_token_scopes
     from isac.control.setup import SetupManager
 
+    # Fix-61: 与 auth 层实际判定对齐 —— parse_token_scopes 对"tokens 非空但
+    # 全部缺 token 字段"返回 None (合法回退态, 视为未配置)。此前标志用原始
+    # 真值 bool(config.get("tokens")), 该误配下 POST /setup 被 403 拒绝而
+    # auth 又走"无凭证"分支全端点 401 且无 428 引导 → 控制面完全锁死。
+    has_static = bool(config.get("api_token")) or parse_token_scopes(config) is not None
     return SetupManager(
         config.get("setup_state_path", "data/control/setup_state.json"),
-        static_credentials_configured=bool(config.get("api_token") or config.get("tokens")),
+        static_credentials_configured=has_static,
     )
 
 

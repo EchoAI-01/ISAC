@@ -82,6 +82,7 @@ class ISACMCPServer:
         bus: InterAgentBus | None = None,
         plugin_manager: PluginManager | None = None,
         parsed_tokens: list[Any] | None = None,
+        agents_dir: str = "data/agents",
     ):
         self.services = services
         self.api_token = api_token
@@ -89,6 +90,10 @@ class ISACMCPServer:
         self._router = router or services.get("router")
         self._bus = bus or services.get("bus")
         self._plugin_manager = plugin_manager or services.get("plugin_manager")
+        # Fix-58: agents_dir 由接线方注入 (与 HTTP 控制面 config["agents_dir"]
+        # 同源) —— 此前工具实现硬编码 Path("data/agents"), 自定义 agents_dir 的
+        # 部署中 MCP 写配置会与真实持久化目录分叉。
+        self._agents_dir = agents_dir
         # C2: parsed_tokens 为 None (未配置 tokens[]) 时回退到扁平 api_token,
         # 与 HTTP 端点行为一致 (向后兼容默认行为不变); 非 None 时按 scope 校验。
         self._parsed_tokens = parsed_tokens
@@ -127,26 +132,37 @@ class ISACMCPServer:
         Fix-44: readline 是同步阻塞调用, 直接在协程里执行会阻塞整个事件循环
         (stdin 无即时数据时第一次 readline 即无限期卡死主 loop, 所有平台消息
         处理停摆)。改用 asyncio.to_thread 卸载到线程池。
+
+        Fix-60: 整个循环包 try/except —— MCP 客户端异常断开时 stdout 写会抛
+        BrokenPipeError、stdin 关闭后 readline 抛 ValueError/OSError; 若任其冒泡,
+        spawn 所在的共享 TaskGroup 语义会 cancel 所有兄弟任务 (uvicorn/各 channel
+        adapter), 而 serve_forever 仍阻塞在 stop_event → 数据面全停但进程不退出。
+        MCP 任务故障必须就地隔离 (记日志 + 退出本循环)。
         """
-        while True:
-            line = await asyncio.to_thread(sys.stdin.buffer.readline)
-            if not line:
-                break
-            try:
-                request = json.loads(line.decode("utf-8"))
-            except json.JSONDecodeError as exc:
-                err = self._error_response(None, -32700, f"Parse error: {exc}")
-                sys.stdout.buffer.write(
-                    (json.dumps(err, ensure_ascii=False) + "\n").encode("utf-8")
-                )
-                sys.stdout.buffer.flush()
-                continue
-            response = await self._handle_request(request)
-            if response is not None:
-                sys.stdout.buffer.write(
-                    (json.dumps(response, ensure_ascii=False) + "\n").encode("utf-8")
-                )
-                sys.stdout.buffer.flush()
+        try:
+            while True:
+                line = await asyncio.to_thread(sys.stdin.buffer.readline)
+                if not line:
+                    break
+                try:
+                    request = json.loads(line.decode("utf-8"))
+                except json.JSONDecodeError as exc:
+                    err = self._error_response(None, -32700, f"Parse error: {exc}")
+                    sys.stdout.buffer.write(
+                        (json.dumps(err, ensure_ascii=False) + "\n").encode("utf-8")
+                    )
+                    sys.stdout.buffer.flush()
+                    continue
+                response = await self._handle_request(request)
+                if response is not None:
+                    sys.stdout.buffer.write(
+                        (json.dumps(response, ensure_ascii=False) + "\n").encode("utf-8")
+                    )
+                    sys.stdout.buffer.flush()
+        except (BrokenPipeError, ValueError, OSError) as exc:
+            logger.warning("MCP stdio 连接异常, 服务退出 (已隔离, 不影响主进程)", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 兜底隔离: 任何异常都不得拖垮 TaskGroup 兄弟任务
+            logger.error("MCP stdio 服务意外异常退出", error=str(exc), exc_info=True)
 
     async def _handle_request(self, request: dict[str, Any]) -> dict[str, Any] | None:
         """JSON-RPC 2.0 分发: 返回 response 或 None (通知不响应)。"""
@@ -351,21 +367,27 @@ async def _call_r2_tools(name: str, args: dict[str, Any], server: Any) -> dict[s
 
         result = await _do_patch_agent(
             server._agent_manager, args.get("agent_id", ""),
-            args.get("config", {}), args.get("if_match"), None, Path("data/agents"),
+            args.get("config", {}), args.get("if_match"), None, Path(server._agents_dir),
         )
         return _text_result(result)
     if name == "plugin_set_enabled" and server._agent_manager is not None:
         from pathlib import Path
 
+        from isac.control.api.routes_plugins import _as_str_list
         from isac.runtime.config import save_agent_config
 
         agent_id = args.get("agent_id", "")
-        instance = await server._agent_manager.get(agent_id)
-        if instance is None:
-            raise MCPError(-32602, f"agent not found: {agent_id}")
-        instance.config.plugins_allow = list(args.get("plugins_allow", ["*"]))
-        instance.config.plugins_deny = list(args.get("plugins_deny", []))
-        save_agent_config(Path("data/agents") / agent_id / "config.jsonc", instance.config)
+        # Fix-58: 与 HTTP PUT /agents/{id}/plugins (Fix-48) 同一套原语 ——
+        # ① _as_str_list 规范化 (此前 list(str) 逐字符拆分, 传字符串 deny 失效
+        # fail-open); ② 同一把按 agent_id 配置锁 (此前与 PATCH 并发丢更新);
+        # ③ get 在锁内 (此前锁外取实例, reload_config 替换实例后陈旧引用写盘)。
+        async with server._agent_manager.acquire_config_lock(agent_id):
+            instance = await server._agent_manager.get(agent_id)
+            if instance is None:
+                raise MCPError(-32602, f"agent not found: {agent_id}")
+            instance.config.plugins_allow = _as_str_list(args.get("plugins_allow", ["*"]))
+            instance.config.plugins_deny = _as_str_list(args.get("plugins_deny", []))
+            save_agent_config(Path(server._agents_dir) / agent_id / "config.jsonc", instance.config)
         return _text_result({"status": "updated", "agent_id": agent_id})
     if name == "message_send" and server._agent_manager is not None:
         import time

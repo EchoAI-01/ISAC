@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from isac.utils.logger import get_logger
-from isac.utils.safe_install import is_safe_url, safe_download_bytes
+from isac.utils.safe_install import safe_download_bytes
 
 logger = get_logger(__name__)
 
@@ -59,9 +59,9 @@ async def download_inbound_media(
         url = data.get("url") or data.get("file")
         if not url or not isinstance(url, str) or not url.startswith(("http://", "https://")):
             continue  # 非 HTTP URL (本地路径等) 跳过
-        if not is_safe_url(url):
-            logger.warning("入站媒体 URL 不安全 (SSRF 拒绝), 跳过", url=url)
-            continue
+        # Fix-62: 首跳 SSRF 校验由 safe_download_bytes 内部完成 (含逐跳复校验),
+        # 此处不再重复预校验 —— is_safe_url 的同步 DNS 在消息主链路上是阻塞点,
+        # 重复一次 = 每 segment 多一次事件循环停摆窗口。
         try:
             content = await _download_bytes(url, http_client)
             if content is None:

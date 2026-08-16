@@ -386,16 +386,7 @@ class QQOfficialAdapter(PlatformAdapter):
             return False
         if resp is None:
             return False
-        # NOTE: 用 `code_raw is None` 判定而非 `or` —— 0 在 Python 是 falsy,
-        # `None or 0 == 0` 会把 code=None (QQ 网关异常返回) 误判为成功。
-        # 与 FeishuAdapter.send() 和同文件 _handle_callback op 判定保持
-        # 一致的 fail-closed 语义 (缺失/None → -1 → 视为失败)。
-        code_raw = resp.get("code")
-        code = -1 if code_raw is None else int(code_raw)
-        if code != 0:
-            logger.warning("QQ 官方 send 返回非 0 code", code=code, msg=resp.get("message", ""))
-            return False
-        return True
+        return _send_response_ok(resp)
 
     async def _get_access_token(self) -> str | None:
         """获取 access_token (缓存 + 提前 60s 刷新)。"""
@@ -439,6 +430,31 @@ class QQOfficialAdapter(PlatformAdapter):
     def set_http_transport(self, transport: Any) -> None:
         """供测试注入 httpx.MockTransport (生产不调用)。"""
         self._http_transport = transport
+
+
+def _send_response_ok(resp: dict) -> bool:
+    """Fix-56: QQ 开放平台 OpenAPI 契约 (bot.q.qq.com) 的成功判定。
+
+    成功时 HTTP 2xx 直接返回业务数据 (群/C2C: {"id", "timestamp"} 消息对象;
+    频道: Message 对象), 响应体**不含** code 字段; 失败时返回非 2xx 状态 +
+    code/message (_http_post 对非 2xx 已返回 None)。此前实现按 `code == 0`
+    判成功 —— 成功响应必然无 code → None → -1 → 所有真实成功发送被判失败;
+    单测用虚构 {"code":0} 响应与实现互相印证 (与 Fix-37 企微 AES 布局错误同构)。
+    现: 2xx + 无错误字段 → 成功; 若带 err_code/code 且非 0 → fail-closed
+    (网关异常透传等未文档化形态保守拒绝)。
+    """
+    err_raw = resp.get("err_code")
+    if err_raw is None:
+        err_raw = resp.get("code")
+    if err_raw is not None:
+        try:
+            err = int(err_raw)
+        except (TypeError, ValueError):
+            err = -1
+        if err != 0:
+            logger.warning("QQ 官方 send 返回错误码", code=err, msg=str(resp.get("message", "")))
+            return False
+    return True
 
 
 def _derive_seed(secret: str) -> bytes:

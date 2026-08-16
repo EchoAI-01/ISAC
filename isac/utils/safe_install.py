@@ -93,12 +93,18 @@ async def safe_download_bytes(
     ``max_bytes`` 立即中止并 raise ValueError。不安全/超限均 raise ValueError
     (调用方按业务降级)。DNS rebinding TOCTOU 仍受 is_safe_url 固有限制 (模块
     docstring 已述), 但重定向绕过与体积攻击两个确定性漏洞在此关闭。
+
+    Fix-62: is_safe_url 内的 socket.getaddrinfo 是同步阻塞调用, 直接跑会停摆
+    事件循环 (入站媒体在主链路逐 segment 串行, 慢 DNS 时放大为全 bot 卡死);
+    经 asyncio.to_thread 卸载。
     """
+    import asyncio
+
     import httpx
 
     current = url
     for _ in range(max_redirects + 1):
-        if not is_safe_url(current, allow_loopback=allow_loopback):
+        if not await asyncio.to_thread(is_safe_url, current, allow_loopback=allow_loopback):
             raise ValueError(f"URL 不安全 (SSRF 拒绝): {current}")
         async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=False) as client:
             async with client.stream("GET", current) as resp:

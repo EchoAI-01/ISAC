@@ -50,12 +50,15 @@ def build_router(
 
     @router.put("", dependencies=write_deps)
     async def put_matrix(agent_id: str, body: dict) -> dict:
-        instance = await agent_manager.get(agent_id)
-        if instance is None:
-            raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
-        # Fix-48: 与 PATCH /agents/{id} 同一把按 agent_id 的配置锁 —— 此前无锁,
-        # 与并发 PATCH 的"读 revision → 合并 → 持久化 → reload"交错会丢更新。
+        # Fix-59: get + 404 判断挪进配置锁内 —— 此前锁外取 instance, 而
+        # reload_config 会整体替换 _agents[agent_id] 的实例对象: 锁外取到旧
+        # 实例 → 并发 PATCH 先完成 (live 换新实例, revision+1) → 本端点进锁改
+        # 旧实例并以其 config 写盘 → 矩阵改动落不到 live 实例 + 盘上其他字段
+        # 被陈旧值覆盖 (与 _do_patch_agent 的"先进锁后 get"不对称)。
         async with agent_manager.acquire_config_lock(agent_id):
+            instance = await agent_manager.get(agent_id)
+            if instance is None:
+                raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
             instance.config.plugins_allow = _as_str_list(body.get("plugins_allow", ["*"]))
             instance.config.plugins_deny = _as_str_list(body.get("plugins_deny", []))
             # 持久化到 data/agents/<id>/config.jsonc

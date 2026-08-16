@@ -120,3 +120,31 @@ class TestTrigger:
 
         assert result["https://example.com/hook"] == "ok"
         assert len(http.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_setup_webhooks_dispatch_does_not_block_event_bus() -> None:
+    """Fix-55: 死/慢订阅的推送不得卡住 fire_async —— 它在会话锁内的
+    process_message 末尾被 await, 阻塞 = 该会话每条消息等待推送重试退避。
+    改为后台任务推送后, fire_async 应立即返回。"""
+    import asyncio
+
+    from isac.core.events import EventType
+    from isac.gateway.event_bus import EventBus
+    from isac.main import _setup_webhooks
+
+    event_bus = EventBus()
+    manager = _setup_webhooks(event_bus)
+
+    async def _slow_dispatch(event: str, payload: dict) -> None:
+        await asyncio.sleep(1.0)  # 模拟死订阅的重试退避耗时
+
+    manager.dispatch = _slow_dispatch  # type: ignore[method-assign]
+    loop = asyncio.get_event_loop()
+    start = loop.time()
+    await asyncio.wait_for(
+        event_bus.fire_async(EventType.POST_MESSAGE, {"x": 1}), timeout=2.0
+    )
+    elapsed = loop.time() - start
+    assert elapsed < 0.5  # 立即返回, 不等后台推送
+    await asyncio.sleep(1.2)  # 让后台推送任务跑完, 避免悬挂 task 警告
