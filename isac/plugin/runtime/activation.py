@@ -80,21 +80,51 @@ async def activate_plugin(
             commands=shared_commands,
             prompt_builder=shared_prompt,
         )
-        shared_tools.set_current_source(name)
-        loaded = plugin_manager.get(name) if hasattr(plugin_manager, "get") else None
-        is_compat = loaded is not None and (
-            getattr(loaded, "is_astrbot", lambda: False)()
-            or getattr(loaded, "is_maibot", lambda: False)()
-        )
-        if is_compat:
-            status = await plugin_manager.adapt_one(name, shared_tools, shared_commands)
-        else:
-            status = await plugin_manager.call_on_load_one(name, context)
-        shared_tools.set_current_source(None)
+        # C2: 对全部 source-aware registry 统一设 source=name (非仅 tools), 让插件注册的
+        # 命令/注入器/钩子/事件订阅也标来源, 卸载时精确 deregister。直接用 ensure_shared_registries
+        # 返回的变量 + event_bus (不依赖 PluginContext 属性名, 与 call_on_load 批量路径同效)。
+        registries = [
+            r for r in (shared_tools, shared_commands, shared_prompt, plugin_agent_hooks, event_bus)
+            if r is not None and hasattr(r, "set_current_source")
+        ]
+        for r in registries:
+            r.set_current_source(name)
+        try:
+            loaded = plugin_manager.get(name) if hasattr(plugin_manager, "get") else None
+            is_compat = loaded is not None and (
+                getattr(loaded, "is_astrbot", lambda: False)()
+                or getattr(loaded, "is_maibot", lambda: False)()
+            )
+            if is_compat:
+                status = await plugin_manager.adapt_one(name, shared_tools, shared_commands)
+            else:
+                status = await plugin_manager.call_on_load_one(name, context)
+        finally:
+            for r in registries:
+                r.set_current_source(None)
         return status
     except Exception as exc:  # noqa: BLE001
         logger.warning("插件激活失败", plugin=name, error=str(exc), exc_info=True)
         return f"failed: {exc}"
+
+
+def _sync_sourced(target: Any, shared: Any, plugin_name: str | None) -> None:
+    """C2 通用按来源同步: 精确模式 deregister_by_source + get_by_source re-register;
+    全量模式 deregister_plugin_sourced + 全量 re-register (带 source)。
+
+    target/shared 需实现 deregister_by_source / get_by_source / deregister_plugin_sourced /
+    register(item, source=) + (全量模式) 迭代 items + _source 映射。commands/injectors 共用。
+    """
+    if target is None or shared is None:
+        return
+    if plugin_name is not None:
+        target.deregister_by_source(plugin_name)
+        for item in shared.get_by_source(plugin_name):
+            target.register(item, source=plugin_name)
+        return
+    target.deregister_plugin_sourced()
+    for item, src in shared.items_with_source():  # type: ignore[attr-defined]
+        target.register(item, source=src)
 
 
 def _sync_one_instance(
@@ -117,16 +147,10 @@ def _sync_one_instance(
         for tool_name, tool in shared_tools._tools.items():  # noqa: SLF001
             source = shared_tools._source.get(tool_name, "builtin")  # noqa: SLF001
             tools.register(tool, source=source)
-    # commands: 幂等 re-register (加法语义)
-    cmds = getattr(instance, "commands", None)
-    if shared_commands is not None and cmds is not None:
-        for cmd in shared_commands._commands.values():  # noqa: SLF001
-            cmds.register(cmd)
-    # injectors: 幂等 re-register (加法语义)
-    prompt_builder = getattr(instance, "prompt_builder", None)
-    if shared_prompt is not None and prompt_builder is not None:
-        for inj in shared_prompt._injectors:  # noqa: SLF001
-            prompt_builder.register(inj)
+    # C2: commands/injectors 精确同步 (此前全量 re-register 加法语义, 旧的不同名残留;
+    # 改为按来源 deregister + re-register, 与 tools 同款)。
+    _sync_sourced(getattr(instance, "commands", None), shared_commands, plugin_name)
+    _sync_sourced(getattr(instance, "prompt_builder", None), shared_prompt, plugin_name)
     return removed
 
 
@@ -142,9 +166,10 @@ async def sync_plugin_tools_to_agents(
     全量模式 (plugin_name=None): ``deregister_plugin_sourced()`` + 重新合并共享表全部
     工具 (带 source 追踪)。
 
-    commands/injectors 幂等 re-register (加法语义: 同名覆盖, 旧的不同名残留 —— 已知
-    限制, 仅 tools 做了精确 deregister; 后续可给 SystemPromptBuilder/CommandRegistry
-    加来源追踪)。
+    commands/injectors 同样按来源精确 deregister + re-register (C2: 此前是加法语义
+    re-register, 旧的不同名残留; 现 CommandRegistry/SystemPromptBuilder 已加来源追踪,
+    sync 对 commands/injectors 与 tools 同款按 source 精确同步)。hooks/event_bus 共享
+    表的卸载清理在 routes_plugins._deregister_shared_by_source 处理。
 
     返回 ``{agent_id: [被移除的工具名]}`` 供审计/日志。
     """

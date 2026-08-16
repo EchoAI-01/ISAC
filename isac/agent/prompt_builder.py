@@ -29,14 +29,47 @@ class SystemPromptBuilder:
 
     def __init__(self) -> None:
         self._injectors: list[PromptInjector] = []
+        # N5b 批次C C2: 与 _injectors 同索引的来源列表 ("builtin" 或插件名), 供按来源 deregister。
+        self._sources: list[str] = []
+        # on_load 期间设置的默认来源 (激活模块 set_current_source(plugin_name))。
+        self._current_source: str | None = None
         # session_id -> {injector.key -> 上次触发时间 (monotonic)}
         self._last_trigger_at: dict[str, dict[str, float]] = {}
         # session_id -> {injector.key -> 距上次触发的新消息数}
         self._messages_since_trigger: dict[str, dict[str, int]] = {}
 
-    def register(self, injector: PromptInjector) -> None:
+    def register(self, injector: PromptInjector, *, source: str | None = None) -> None:
         """注册注入器。"""
         self._injectors.append(injector)
+        self._sources.append(source or self._current_source or "builtin")
+
+    def set_current_source(self, source: str | None) -> None:
+        """设置后续 register() 的默认来源 (on_load 期间设为插件名, 结束后置 None)。"""
+        self._current_source = source
+
+    def deregister_by_source(self, source: str) -> int:
+        """移除指定来源的全部注入器, 返回被移除数量 (C2 热重载同步)。"""
+        keep = [(inj, src) for inj, src in zip(self._injectors, self._sources) if src != source]
+        removed = len(self._injectors) - len(keep)
+        self._injectors = [inj for inj, _ in keep]
+        self._sources = [src for _, src in keep]
+        return removed
+
+    def get_by_source(self, source: str) -> list[PromptInjector]:
+        """返回指定来源的全部注入器 (C2 热重载同步)。"""
+        return [inj for inj, src in zip(self._injectors, self._sources) if src == source]
+
+    def deregister_plugin_sourced(self) -> int:
+        """移除全部插件来源注入器 (source != "builtin"), 返回被移除数量 (C2)。"""
+        keep = [(inj, src) for inj, src in zip(self._injectors, self._sources) if src == "builtin"]
+        removed = len(self._injectors) - len(keep)
+        self._injectors = [inj for inj, _ in keep]
+        self._sources = [src for _, src in keep]
+        return removed
+
+    def items_with_source(self) -> list[tuple[PromptInjector, str]]:
+        """返回 (injector, source) 列表 (C2: 全量同步模式用)。"""
+        return list(zip(self._injectors, self._sources))
 
     async def build(self, context: InjectionContext) -> str:
         """按优先级组装各注入器的 Prompt 块。"""

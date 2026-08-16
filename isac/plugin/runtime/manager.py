@@ -32,6 +32,20 @@ except ImportError:  # pragma: no cover
 logger = get_logger(__name__)
 
 
+def _context_source_registries(context: Any) -> list[Any]:
+    """收集 PluginContext 上所有支持来源追踪的 registry (C2)。
+
+    on_load/adapt 期间对这些 registry 统一 set_current_source(plugin_name),
+    让插件注册的工具/命令/注入器/钩子/事件订阅都标 source=name, 卸载时精确 deregister。
+    """
+    registries: list[Any] = []
+    for attr in ("tools", "commands", "prompt_builder", "agent_hooks", "event_bus"):
+        obj = getattr(context, attr, None)
+        if obj is not None and hasattr(obj, "set_current_source"):
+            registries.append(obj)
+    return registries
+
+
 class PluginManager:
     """插件管理器。
 
@@ -246,15 +260,31 @@ class PluginManager:
         """对每个已加载的 Native 插件调用 on_load (传入 PluginContext)。
 
         AstrBot/MaiBot 兼容层由适配器单独处理, 不在此调用。
+
+        N5b 批次C C1: 按插件名设 ToolRegistry.current_source, 让 on_load 期间
+        register_tool 写入的工具标 source=name; 否则 source 退化为 "builtin",
+        卸载/热重载 deregister_by_source(plugin_name) 找不到 → 启动期注册的插件
+        工具永远清不掉 (running Agent 残留死工具)。与 activation.call_on_load_one
+        单插件路径同构 (activation.py:83-93)。commands/injectors 的来源追踪见 C2。
         """
         report: dict[str, str] = {}
+        # C2: 收集 context 上所有支持来源追踪的 registry (tools/commands/prompt_builder/
+        # agent_hooks/event_bus), on_load 期间统一按插件名设 current_source, 让插件
+        # 注册的工具/命令/注入器/钩子/事件订阅都标 source=name, 卸载时精确 deregister。
+        registries = _context_source_registries(context)
         for name, loaded in list(self._loaded.items()):
             if not loaded.is_native():
                 continue
             try:
-                if hasattr(loaded.instance, "on_load"):
-                    await loaded.instance.on_load(context)
-                report[name] = "on_load ok"
+                for r in registries:
+                    r.set_current_source(name)
+                try:
+                    if hasattr(loaded.instance, "on_load"):
+                        await loaded.instance.on_load(context)
+                    report[name] = "on_load ok"
+                finally:
+                    for r in registries:
+                        r.set_current_source(None)
             except Exception as exc:  # noqa: BLE001 错误隔离
                 logger.warning("插件 on_load 失败", name=name, error=str(exc))
                 report[name] = f"failed: {exc}"
