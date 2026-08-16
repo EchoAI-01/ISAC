@@ -2,6 +2,8 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-16 —— Phase 1 N2-2 browser CI 本地真跑通 (本沙箱可做项)**。本地装 pytest-playwright + chromium, 首次真跑 `tests/browser/` 两条黄金路径 (此前 CI 配置对了但本地从未真跑过, importorskip 跳过)。暴露并修复两处隐藏问题: ① **refreshUsage 产品 bug** —— 用量计量未启用 (usage_store 为 None) 时 `/usage/models/*` 路由不挂载, apiCall 404 返回 null, refreshUsage 此前 `if (summary === null) return` 直接退出不渲染任何行 → usage 表 tbody 永远空、页面无反馈 (既无数据也无空状态提示); 改为 null 时渲染 "(计量未启用)" 空状态行 (与 audit 空状态一致)。② **test_golden_path_agent_crud 测试 bug** —— `page.on("dialog")` 在 click 删除之后注册, playwright 默认 dismiss confirm dialog → 删除被取消、destroy_agent 审计不记录; 改为 click 前注册 + 删除后等 toast + logs 页等具体审计动作文本 (create/start/destroy_agent) 而非任意 td (避免匹配空状态行误判)。独立脚本验证后端 audit/usage 接口正常 (audit 完整流程返回 3 条记录)。**两条黄金路径本地真跑通 (2 passed)**。Phase 1 剩余项依赖外部环境/凭据 (line 259): N2-1 Docker 冒烟 (docker daemon)、N2-4 24h soak + LLM 兼容性矩阵 (真实 LLM key), 按"遇阻先跳过"留待环境就绪。
+>
 > ⚠️ **最近更新: 2026-08-16 —— Phase 0 代码清偿批次 C-G 全部完成 (N5b 清偿完毕)**。继 N1b/Fix-37~48 + 批次 A 后, 本轮按"解除阻塞先后"清偿 N5b 全部剩余批次:
 > **批次E (记忆口径, 含真 bug)**: person_profiles 键分裂统一 episode.user_id=master_id (consolidator/注入器/manager 口径一致, S2 画像归纳默认部署即死已修)、`latest_episode_id_for_session` 租户包裹 SQL 报错修复 (R4 压缩链路恢复)、consolidator 软删同步 BM25/向量、去重桶 scope 加 user_id、`_sanitize_llm_induction` 防 prompt injection (整行正则删)、注入器注入 sparse/vector resolver、metadata latest/get/update_episode_summary 租户隔离。
 > **批次F (LLM 参数 clamp)**: bash MAX_TIMEOUT_SECONDS=300、wait 上限 600s、task _MAX_BUDGET_TOKENS=32000/_MAX_WAIT_TIMEOUT=300。
