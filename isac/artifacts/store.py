@@ -117,6 +117,10 @@ class ArtifactStore:
         self.ttl_days = ttl_days
         self._db_path = str(Path(root_dir) / "meta.db")
         self._initialized = False
+        # Fix-84: schema 初始化双重检查锁 —— 并发 put 同内容时多个协程同时看到
+        # _initialized=False, 各自开连接跑 executescript + PRAGMA journal_mode=WAL
+        # (切 WAL 要求无并发写事务), 与旁路 put 的写事务互撞触发 database is locked。
+        self._schema_lock = asyncio.Lock()
         self._ttl_task: asyncio.Task[Any] | None = None
         self._running = False
 
@@ -125,19 +129,22 @@ class ArtifactStore:
         await asyncio.to_thread(_ensure_dir_sync, Path(self.root_dir))
         if self._initialized:
             return
-        async with aiosqlite.connect(self._db_path) as db:
-            # Fix-28: metadata/vector/graph/usage 四处存储都设了 WAL, 本store 是
-            # 唯一遗漏的一个——journal_mode 是数据库文件级持久属性 (不像
-            # busy_timeout 是连接级, 只设一次即对该文件之后的所有连接生效),
-            # 这里只需在 schema 初始化这一次性代码路径设置。put/get/sweep_expired
-            # 各自开短连接, 不设 WAL 时默认走 rollback-journal, 写事务互斥更容易
-            # 在多模态制品并发写入量大时触发 database is locked。busy_timeout 不用
-            # 显式设置: aiosqlite.connect 透传 stdlib sqlite3 默认 timeout=5.0s,
-            # 与其它 store 显式设置的 busy_timeout=5000 等价。
-            await db.execute("PRAGMA journal_mode=WAL")
-            await db.executescript(SCHEMA_SQL)
-            await db.commit()
-        self._initialized = True
+        async with self._schema_lock:
+            if self._initialized:
+                return
+            async with aiosqlite.connect(self._db_path) as db:
+                # Fix-28: metadata/vector/graph/usage 四处存储都设了 WAL, 本store 是
+                # 唯一遗漏的一个——journal_mode 是数据库文件级持久属性 (不像
+                # busy_timeout 是连接级, 只设一次即对该文件之后的所有连接生效),
+                # 这里只需在 schema 初始化这一次性代码路径设置。put/get/sweep_expired
+                # 各自开短连接, 不设 WAL 时默认走 rollback-journal, 写事务互斥更容易
+                # 在多模态制品并发写入量大时触发 database is locked。busy_timeout 不用
+                # 显式设置: aiosqlite.connect 透传 stdlib sqlite3 默认 timeout=5.0s,
+                # 与其它 store 显式设置的 busy_timeout=5000 等价。
+                await db.execute("PRAGMA journal_mode=WAL")
+                await db.executescript(SCHEMA_SQL)
+                await db.commit()
+            self._initialized = True
 
     @staticmethod
     def _compute_artifact_id(data: bytes) -> str:

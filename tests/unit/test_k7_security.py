@@ -203,6 +203,94 @@ async def test_session_get_uses_index_not_scan() -> None:
     assert await mgr.get("nonexistent") is None
 
 
+@pytest.mark.asyncio
+async def test_session_concurrent_create_different_sessions_not_serialized() -> None:
+    """Fix-78: 不同会话的首次创建互不阻塞 —— per-key 锁只串行同一会话的
+    check-create (此前单一全局锁把所有会话连同 DB I/O 串成一条队列)。"""
+    from isac.gateway.session import SessionManager
+
+    mgr = SessionManager()
+
+    async def _create(uid: str) -> str:
+        msg = ISACMessage(
+            msg_id=f"m-{uid}", platform="fake", timestamp=int(time.time()),
+            user_id=uid, user_name=uid, group_id=None, content="hi",
+        )
+        s = await mgr.get_or_create(msg, agent_id="a")
+        return s.session_id
+
+    ids = await asyncio.gather(*[_create(f"u{i}") for i in range(30)])
+    assert len(set(ids)) == 30  # 每个会话独立 session_id
+
+    # 同一会话并发首触仍只创建一个 (per-key 锁保证)
+    same = await asyncio.gather(*[
+        mgr.get_or_create(
+            ISACMessage(
+                msg_id=f"s{i}", platform="fake", timestamp=int(time.time()),
+                user_id="shared", user_name="shared", group_id=None, content="hi",
+            ),
+            agent_id="a",
+        ) for i in range(8)
+    ])
+    assert len({s.session_id for s in same}) == 1
+
+
+@pytest.mark.asyncio
+async def test_session_persistence_roundtrips_platform_session_id_and_user_ids(tmp_path: Path) -> None:
+    """Fix-79: platform_session_id/user_ids 写穿并随重启 hydrate 恢复 ——
+    此前 schema 缺这两列, 重启后出站主动消息丢失平台路由键。"""
+    from isac.gateway.session import SessionManager
+
+    db = str(tmp_path / "sessions.db")
+    mgr = SessionManager({}, db_path=db)
+    msg = ISACMessage(
+        msg_id="m1", platform="webchat", timestamp=int(time.time()),
+        user_id="u1", user_name="u1", group_id=None, content="hi",
+        session_id="client-side-sess",
+    )
+    session = await mgr.get_or_create(msg, agent_id="a")
+    session.platform_session_id = "client-side-sess"
+    session.user_ids = {"webchat": "u1", "qq": "10001"}
+    key = mgr.make_session_key("a", "webchat", "u1", None)
+    await mgr._persist(session, key)  # noqa: SLF001
+
+    # 模拟重启: 新 manager 从库 hydrate
+    mgr2 = SessionManager({}, db_path=db)
+    restored = await mgr2._load_from_db(key)  # noqa: SLF001
+    assert restored is not None
+    assert restored.session_id == session.session_id
+    assert restored.platform_session_id == "client-side-sess"
+    assert restored.user_ids == {"webchat": "u1", "qq": "10001"}
+
+
+@pytest.mark.asyncio
+async def test_session_schema_migration_adds_columns_to_legacy_db(tmp_path: Path) -> None:
+    """Fix-79: 旧 schema 建的库 (无新列) 打开时自动 ALTER 补列, 不报错。"""
+    import aiosqlite
+
+    from isac.gateway.session import SessionManager
+
+    db = str(tmp_path / "legacy.db")
+    async with aiosqlite.connect(db) as raw:
+        await raw.execute(
+            "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, session_key TEXT NOT NULL, "
+            "user_id TEXT, agent_id TEXT, platform TEXT, group_id TEXT, is_group INTEGER, "
+            "created_at INTEGER, last_active INTEGER, state TEXT)"
+        )
+        await raw.commit()
+
+    mgr = SessionManager({}, db_path=db)
+    msg = ISACMessage(
+        msg_id="m1", platform="fake", timestamp=int(time.time()),
+        user_id="u1", user_name="u1", group_id=None, content="hi",
+    )
+    session = await mgr.get_or_create(msg, agent_id="a")  # 触发建表/迁移 + 写穿
+    assert session.session_id
+    # 再开一次验证迁移幂等 (duplicate column 静默跳过)
+    mgr2 = SessionManager({}, db_path=db)
+    assert await mgr2.get_or_create(msg, agent_id="a") is not None
+
+
 # ── SessionLockManager 引用计数回收 ─────────────────────
 
 
@@ -277,6 +365,40 @@ async def test_webchat_pending_replies_bounded() -> None:
     assert len(replies) == 3
     assert replies[0]["content"] == "reply-2"
     assert replies[2]["content"] == "reply-4"
+
+
+@pytest.mark.asyncio
+async def test_webchat_session_count_bounded() -> None:
+    """Fix-75: 会话**个数**也有上限 —— 海量随机 session_id 从不 poll 时,
+    字典不再无限增长 (先清过期, 仍超限逐出最久未回复的会话)。"""
+    from isac.channel.adapters.webchat.adapter import WebChatAdapter
+
+    adapter = WebChatAdapter({"max_sessions": 5, "max_message_age_seconds": 300})
+    for i in range(20):
+        await adapter.send(ISACMessage(
+            msg_id=f"m{i}", platform="webchat", timestamp=0,
+            user_id=f"u{i}", user_name=f"u{i}", group_id=None,
+            content=f"reply-{i}", session_id=f"sess-{i}",
+        ))
+    assert len(adapter._pending_replies) <= 5  # noqa: SLF001
+    # 最新的会话仍在 (逐出的是最旧的)
+    replies = await adapter.poll_replies("sess-19")
+    assert len(replies) == 1 and replies[0]["content"] == "reply-19"
+
+
+@pytest.mark.asyncio
+async def test_webchat_poll_removes_session_entry() -> None:
+    """Fix-75: poll 后条目删除而非置空列表 —— abandon 会话不以空列表永久驻留。"""
+    from isac.channel.adapters.webchat.adapter import WebChatAdapter
+
+    adapter = WebChatAdapter({})
+    await adapter.send(ISACMessage(
+        msg_id="m1", platform="webchat", timestamp=0,
+        user_id="u1", user_name="u1", group_id=None,
+        content="hi", session_id="sess-a",
+    ))
+    await adapter.poll_replies("sess-a")
+    assert "sess-a" not in adapter._pending_replies  # noqa: SLF001
 
 
 # ── bash kill 后 await proc.wait ─────────────────────────

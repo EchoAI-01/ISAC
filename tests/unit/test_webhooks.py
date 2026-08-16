@@ -148,3 +148,26 @@ async def test_setup_webhooks_dispatch_does_not_block_event_bus() -> None:
     elapsed = loop.time() - start
     assert elapsed < 0.5  # 立即返回, 不等后台推送
     await asyncio.sleep(1.2)  # 让后台推送任务跑完, 避免悬挂 task 警告
+
+
+@pytest.mark.asyncio
+async def test_legacy_event_names_normalize_to_spec_catalog() -> None:
+    """Fix-80: 事件名以 CONTROL_PLANE_SPEC §5.1 目录为准 —— 旧名 (post_message/
+    post_send) 订阅与规范名 (message.*) 派发互通, 此前按文档订阅 message.* 永远
+    收不到以 EventBus 枚举值派发的事件。"""
+    http = _MockHTTPClient()
+    mgr = WebhookManager(http_client=http)
+
+    # 按规范目录名订阅, 旧名派发必须送达
+    mgr.subscribe("message.responded", "https://a.com/hook")
+    result = await mgr.dispatch("post_message", {"x": 1})
+    assert result == {"https://a.com/hook": "ok"}
+
+    # 旧名订阅, 规范名派发也必须送达 (订阅清单按规范名归一)
+    mgr.subscribe("post_send", "https://b.com/hook")
+    assert "message.sent" in mgr.list_subscriptions()
+    result = await mgr.dispatch("message.sent", {"y": 2})
+    assert result == {"https://b.com/hook": "ok"}
+
+    events = [json.loads(payload)["event"] for _url, payload in http.calls]
+    assert events == ["message.responded", "message.sent"]  # 推送体用规范名

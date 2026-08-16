@@ -44,6 +44,7 @@ from fastapi.responses import PlainTextResponse
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage
+from isac.channel.webhook_guard import DEFAULT_MAX_WEBHOOK_BODY_BYTES, read_body_limited
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -77,6 +78,8 @@ class WeComAdapter(PlatformAdapter):
         self._webhook_host = str(config.get("webhook_host", _DEFAULT_WEBHOOK_HOST) or _DEFAULT_WEBHOOK_HOST)
         self._webhook_port = int(config.get("webhook_port", _DEFAULT_WEBHOOK_PORT) or _DEFAULT_WEBHOOK_PORT)
         self._webhook_path = str(config.get("webhook_path", _DEFAULT_WEBHOOK_PATH) or _DEFAULT_WEBHOOK_PATH)
+        # Fix-76: webhook 请求体体积上限 (验签前先限流读取, 防超大 body 打爆内存)
+        self._max_body_bytes = int(config.get("max_body_bytes", DEFAULT_MAX_WEBHOOK_BODY_BYTES))
         self._running = False
         self._server: Any = None  # uvicorn.Server
         self._serve_task: asyncio.Task[Any] | None = None
@@ -172,7 +175,13 @@ class WeComAdapter(PlatformAdapter):
 
     async def _handle_message_callback(self, request: Request) -> Any:
         """POST 回调: 校验 msg_signature, 解密 Encrypt, 解析 XML, 规范化为 ISACMessage。"""
-        body = await request.body()
+        # Fix-76: 限流读取 —— request.body() 全量读入内存且无上限, 而验签在读取
+        # 之后, 超大 body (含 chunked) 在签名校验之前即可打爆内存; 超限按本文件
+        # 既有拒绝惯例回 "success" (避免平台对同一超大请求反复重试)。
+        body = await read_body_limited(request, self._max_body_bytes)
+        if body is None:
+            logger.warning("企业微信消息回调请求体超限, 拒绝", limit=self._max_body_bytes)
+            return PlainTextResponse("success")
         msg_signature = str(request.query_params.get("msg_signature", "") or "")
         timestamp = str(request.query_params.get("timestamp", "") or "")
         nonce = str(request.query_params.get("nonce", "") or "")

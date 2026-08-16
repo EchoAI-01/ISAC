@@ -126,7 +126,11 @@ def _make_webhook_app(wm: WebhookManager) -> Any:
 
 
 def test_webhook_subscribe_and_list() -> None:
-    """R2-③: POST /webhooks 订阅 (带 SSRF 校验, 测试用 mock http_client 跳过 DNS)。"""
+    """R2-③: POST /webhooks 订阅 (带 SSRF 校验, 测试用 mock http_client 跳过 DNS)。
+
+    Fix-80: 旧事件名订阅按 CONTROL_PLANE_SPEC §5.1 目录归一 (post_message →
+    message.responded), 清单以规范名呈现。
+    """
     import httpx
 
     # 注入 mock http_client 跳过 DNS 解析 (允许测试域名)
@@ -138,10 +142,10 @@ def test_webhook_subscribe_and_list() -> None:
                        headers={"Authorization": "Bearer t"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "subscribed"
-    # list
+    # list (规范名呈现)
     resp = client.get("/api/v1/webhooks", headers={"Authorization": "Bearer t"})
     assert resp.status_code == 200
-    assert "post_message" in resp.json()
+    assert resp.json()["message.responded"] == ["https://example.com/hook"]
 
 
 def test_webhook_subscribe_invalid_url_rejected() -> None:
