@@ -93,6 +93,34 @@
 - [x] **Fix-47** CSRF 豁免 POST /auth/session (带旧 Cookie 重新登录)。
 - [x] **Fix-48** PUT plugins 配置锁 + 列表参数健壮化。
 
+### N1c 第二轮全量代码审查修复轮 (2026-08-16/17, Fix-55~Fix-71) — **批 1 + 批 2 已完成 (全量 1813 通过), 批 3 待清偿**
+
+**方法**: 与 N1b 同规格 5 路并行全量审查, 目标"复核 N1b/N5b 修复质量 + 查漏"。确认 3 项新 Critical + 5 项修复回归 + 一批 Medium/Minor。
+
+**批 1 已完成 (3 Critical + 回归, Fix-55~62)**:
+
+- [x] **Fix-55** webhook dispatch 在会话锁内同步 await (单个慢 endpoint 阻塞该会话消息链 ~32s) → 后台任务派发。
+- [x] **Fix-56** QQ 官方 send() 只看 HTTP 2xx 不看 body 错误字段 (平台级失败静默吞掉) → 非零错误码 fail-closed。
+- [x] **Fix-57** 打断后 pending 消息丢失 (interrupted 分支未回退消费游标) → `rewind_processed`。
+- [x] **Fix-58~62** MCP server agents_dir 未接线; PUT plugins matrix 404 移入 config 锁; stdio serve 异常隔离; 静态凭证判定补 token_scopes 分支; `is_safe_url` 同步 DNS 解析 to_thread 化。
+
+**批 2 已完成 (协议契约 + 认证一致性 + 记忆/制品, Fix-63~71)**:
+
+- [x] **Fix-63** MediaResolver 平台键与 OneBot adapter `platform_name="qq"` 不匹配。
+- [x] **Fix-64** rerank 响应字段协议错认 (单数 "result" → 官方 "results", 单数保留为 fallback)。
+- [x] **Fix-65** reranker 非数字 score 排序崩溃 → float 强转回退。
+- [x] **Fix-50/52** setup 已配静态凭证后 `is_password_valid` 仍 True + PBKDF2 校验滑动窗限速。
+- [x] **Fix-66** PATCH agent payload 可携带 revision 覆盖 (乐观锁 ABA) → 剥离。
+- [x] **Fix-67** consolidator episode 元数据 IN 查询分块 (500/批)。
+- [x] **Fix-68** task/delegate_task 深度键读错容器恒 0 (递归守卫失效) → 改读 AgentContext.services。
+- [x] **Fix-69** ArtifactStore 同内容制品 `INSERT OR REPLACE` 互改元数据/TTL → `INSERT OR IGNORE` + 首次登记为准。
+- [x] **Fix-70** handoff 无存活校验 (死 Agent 劫持会话至 TTL) → 工具登记前拒绝 + route() 自愈回落。
+- [x] **Fix-71** Telegram entity offset 按 code point 切片错位 → UTF-16 code unit 切片。
+
+**批 3 待清偿 (Medium, 按域分批)**:
+
+- [ ] consolidator profile 读改写竞态; webchat session dict 无界增长; webhook adapter 先限 body 体积再验签; 隔离插件 IPC recv 无超时; forced-turn cancel 路径状态破坏; forced-turn 不可被打断; restore_interrupted 竞态; AgentManager.create check-then-act 竞态; SessionManager 锁粒度过粗; Session schema 缺 platform_session_id/user_ids/muted_until; webhook 事件名文档与 dispatch 不一致; LogBuffer.append 线程安全; 及 ~40 项 Minor。
+
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 
 > 对应 `docs/RELEASE_AUDIT.md` 第三节。验收铁律适用: 每项附真实输出。
@@ -163,7 +191,7 @@ M-T2 可部署可管理 = N1 + N4-F1/F2 (前端落地即达成, 后端段已完�
 | 维度 | 现状 | 缺口 | 收敛位置 |
 |---|---|---|---|
 | **1. 功能完整性** | R1-R6 全部完成; REQUIREMENTS 十二条 8✅4⚠️ | 剩余 ⚠️ 项均属 GA 后 (V1-V4/X3/X4), 不阻塞 v1.0 | §四 GA 后计划 |
-| **2. 正确性** | N1b 已修 7 Critical + 批次 A | **N5b 批次 C-G (44 Major + 68 Minor) 待修**; 批次 E 有真 bug (记忆口径 person_profiles 键分裂 → S2 画像归纳默认部署即死; R4 压缩租户 SQL 报错已实测复现) | Phase 0 |
+| **2. 正确性** | N1b 7 Critical + 批次 A; N5b 批次 C-G; N1c 第二轮审查批 1-2 (Fix-55~71: 3 新 Critical + 回归 + 协议契约) 全部清偿 | N1c 批 3 (12 Medium + ~40 Minor) 待修 | Phase 0 |
 | **3. 开箱体验** | T1/T2/T3-backend/T4 已完成 (后端) | 前端 F1-F4 未启动 (登录向导/十域/实时/插件市场); 内置 `control/webui/` 静态托管待 F2 完成后移除 | Phase 3 |
 | **4. 真实环境验证** | 从未在真实环境验证 | Docker 冒烟 (N2-1)、browser CI (N2-2)、24h soak (N2-4) 全部待环境; 真实 IM 联调 (N3) 待凭据 | Phase 1/2 |
 | **5. 可部署性** | Dockerfile/compose/export 脚本已存在 | **未经真机构建验证** (N2-1); pip/uv 单包 3 步安装未验证; 配置版本迁移 (ConfigMigrator) 已有测试但缺真实升级链验证 | Phase 1/4 |
