@@ -473,6 +473,58 @@ class MetadataStore:
             )
         return [dict(row) for row in rows]
 
+    async def update_episode_summary(self, agent_id: str, episode_id: str, summary: str) -> bool:
+        """更新某 episode 的 summary 列 (R4-② 中期记忆压缩落盘)。
+
+        episodes_fts_au 触发器会自动同步倒排索引; 只更新未软删条目。
+        返回是否实际命中并更新了一行。
+        """
+        clean_id = str(episode_id or "").strip()
+        if not clean_id:
+            return False
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "UPDATE episodes SET summary = ? WHERE agent_id = ? AND id = ? AND deleted = 0",
+                (str(summary or ""), agent_id, clean_id),
+            )
+            await db.commit()
+            return (cursor.rowcount or 0) > 0
+
+    async def get_episode_summary(self, agent_id: str, episode_id: str) -> str:
+        """读取某 episode 的 summary 列 (无则返回空串)。"""
+        clean_id = str(episode_id or "").strip()
+        if not clean_id:
+            return ""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT summary FROM episodes WHERE agent_id = ? AND id = ?",
+                (agent_id, clean_id),
+            )
+            row = await cursor.fetchone()
+        if not row:
+            return ""
+        return str(row[0] or "")
+
+    async def latest_episode_id_for_session(self, agent_id: str, session_id: str) -> str:
+        """读取某会话最近一次落盘的 episode id (R4-② 压缩写回定位用)。
+
+        按 created_at 降序取首条未软删; 无则返回空串。
+        """
+        clean_sid = str(session_id or "").strip()
+        if not clean_sid:
+            return ""
+        query, params = self._tenant_scope(
+            "SELECT id FROM episodes WHERE agent_id = ? AND session_id = ? AND deleted = 0 "
+            "ORDER BY created_at DESC, id DESC LIMIT 1",
+            [agent_id, clean_sid],
+        )
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(query, params)
+            row = await cursor.fetchone()
+        if not row:
+            return ""
+        return str(row[0] or "")
+
     @staticmethod
     def _json_text(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False)

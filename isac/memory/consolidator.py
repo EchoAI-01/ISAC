@@ -44,6 +44,14 @@ DEFAULT_PRUNE_IMPORTANCE_BELOW: float = 0.2
 DEFAULT_PROFILE_SAMPLE_EPISODES: int = 8
 # 画像归纳 prompt 最大输入字符数 (episode 内容截断, 防止 LLM 输入爆炸)。
 DEFAULT_PROFILE_INPUT_MAX_CHARS: int = 4000
+# R4-①: 每个群聊每次行话学习处理的最大候选词数 (防止单次整合过久)。
+DEFAULT_JARGON_CANDIDATES_PER_GROUP: int = 5
+# R4-①: 高频候选词最低出现次数 (低于此不计入候选, 过滤噪声)。
+DEFAULT_JARGON_MIN_FREQ: int = 3
+# R4-①: 候选词最大长度 (过长的连续片段不像行话, 排除)。
+DEFAULT_JARGON_MAX_LEN: int = 12
+# R4-②: 单次会话摘要 prompt 最大输入字符数 (transcript 截断)。
+DEFAULT_COMPRESS_INPUT_MAX_CHARS: int = 4000
 
 
 @dataclass
@@ -53,6 +61,10 @@ class ConsolidationResult:
     merged_episodes: int = 0
     pruned_episodes: int = 0
     updated_profiles: int = 0
+    # R4-①: 行话学习写入数 (高频词经 LLM 释义后 upsert_jargon)
+    jargon_extracted: int = 0
+    # R4-②: 中期记忆压缩摘要数 (COMPRESS 入队的会话经 LLM 摘要落盘)
+    compressed_summaries: int = 0
 
 
 class MemoryConsolidator:
@@ -83,6 +95,10 @@ class MemoryConsolidator:
         self._prune_after_seconds = max(0, int(prune_after_days) * 86400)
         self._prune_importance_below = max(0.0, float(prune_importance_below))
         self._loop_task: asyncio.Task[Any] | None = None
+        # R4-②: 待压缩会话队列 (COMPRESS hook 回调入队, _compress_step 后台消费)。
+        # 入队元素: {"episode_id": str, "messages": list[str], "context": str}
+        self._compress_queue: list[dict[str, Any]] = []
+        self._compress_lock = asyncio.Lock()
 
     async def run_once(self) -> ConsolidationResult:
         """执行一次整合并返回产出计数。各步骤独立隔离异常。"""
@@ -109,11 +125,22 @@ class MemoryConsolidator:
                 result.updated_profiles = await self._summarize_profiles_step(episodes, metadata)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("记忆整合: 画像归纳步骤失败, 已跳过", agent_id=self._agent_id, error=str(exc))
+            # Step 4: 行话学习 (画像归纳同级, 复用 self._llm 释义)
+            try:
+                result.jargon_extracted = await self._extract_jargon_step(episodes, metadata)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("记忆整合: 行话学习步骤失败, 已跳过", agent_id=self._agent_id, error=str(exc))
+            # Step 5: 中期记忆压缩 (R4-②, 处理待压缩队列)
+            try:
+                result.compressed_summaries = await self._compress_step(metadata)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("记忆整合: 中期记忆压缩步骤失败, 已跳过", agent_id=self._agent_id, error=str(exc))
         logger.info(
             "记忆整合 run_once 完成",
             agent_id=self._agent_id, namespace=self._namespace,
             merged=result.merged_episodes, pruned=result.pruned_episodes,
             profiles=result.updated_profiles,
+            jargon=result.jargon_extracted, compressed=result.compressed_summaries,
         )
         return result
 
@@ -338,6 +365,184 @@ class MemoryConsolidator:
         await metadata.upsert_person_profile(self._namespace, merged_profile)
         return True
 
+    async def _extract_jargon_step(
+        self, episodes: list[dict[str, Any]], metadata: MetadataStore
+    ) -> int:
+        """行话学习: 群聊 episode 高频词经 LLM 释义后写入 jargon 表 (R4-①)。
+
+        仅取有 group_id 的群聊会话语料 (行话通常在群体语境涌现); 高频候选词经
+        停用词/单字/既有 jargon 过滤后, 限 N 个逐个让 LLM 生成 meaning+context
+        写回 ``upsert_jargon``; LLM 调用失败仅跳过该词, 不影响其余。
+        """
+        # 按群聚合 content (非群聊跳过, 行话需群体语境)
+        texts_by_group: dict[str, list[str]] = {}
+        for ep in episodes:
+            gid = str(ep.get("group_id", "") or "")
+            if not gid:
+                continue
+            content = str(ep.get("content", "") or "").strip()
+            if content:
+                texts_by_group.setdefault(gid, []).append(content)
+        if not texts_by_group:
+            return 0
+        # 取既存 jargon 词集 (避免重复释义)
+        try:
+            existing = await metadata.list_jargon(self._namespace)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("行话学习: 读取既存词表失败, 以空集继续", agent_id=self._agent_id, error=str(exc))
+            existing = []
+        existing_words = {str(r.get("word", "")) for r in existing if r.get("word")}
+        extracted = 0
+        # 每群限处理一批候选词, 防止单次整合过久
+        for gid in list(texts_by_group.keys())[:5]:
+            candidates = _top_candidate_words(texts_by_group[gid], existing_words)
+            for word in candidates[:DEFAULT_JARGON_CANDIDATES_PER_GROUP]:
+                ok = await self._define_one_jargon(word, gid, metadata, existing_words)
+                if ok:
+                    extracted += 1
+        return extracted
+
+    async def _define_one_jargon(
+        self, word: str, group_id: str, metadata: MetadataStore, existing: set[str]
+    ) -> bool:
+        """对单个候选词调 LLM 生成 meaning + context, 写回 upsert_jargon。"""
+        prompt = (
+            f"术语「{word}」出现在某个群聊中, 可能是该群体的行话/缩写/专有名词。"
+            "请用一句中文给出它的含义释义, 并用一句中文给出一个典型使用语境。"
+            "若无法判断真实含义, 直接回复「未知」。\n"
+            "输出格式 (严格两行, 不要 markdown):\n"
+            "MEANING: <释义>\n"
+            "CONTEXT: <使用语境>"
+        )
+        try:
+            response = await self._llm.chat(
+                system="",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=200,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("行话学习: LLM 释义失败, 跳过该词", agent_id=self._agent_id, word=word, error=str(exc))
+            return False
+        meaning, context = _parse_jargon_response(response.content)
+        if not meaning or meaning == "未知":
+            return False
+        try:
+            await metadata.upsert_jargon(self._namespace, word, meaning, context or group_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("行话学习: 写入 jargon 失败, 跳过该词", agent_id=self._agent_id, word=word, error=str(exc))
+            return False
+        existing.add(word)
+        return True
+
+    async def _compress_step(self, metadata: MetadataStore) -> int:
+        """中期记忆压缩 (R4-②): 消费待压缩队列, LLM 摘要落 episodes.summary。
+
+        COMPRESS hook 回调仅入队 session_id+messages 快照 (不调 LLM, 守护 hook
+        规范); 本 step 在后台低频消费队列, 对每个待压缩会话解析其最近 episode
+        → 生成摘要写回其 summary 列。摘要素材为入队快照 messages。
+        """
+        async with self._compress_lock:
+            if not self._compress_queue:
+                return 0
+            batch = self._compress_queue[:]
+            self._compress_queue.clear()
+        compressed = 0
+        for item in batch:
+            session_id = str(item.get("session_id", "") or "")
+            messages = item.get("messages") or []
+            if not session_id or not messages:
+                continue
+            summary = await self._summarize_one_session(messages, item.get("context", ""))
+            if not summary:
+                continue
+            try:
+                episode_id = await metadata.latest_episode_id_for_session(
+                    self._namespace, session_id
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "中期记忆压缩: 解析 episode 失败, 跳过",
+                    agent_id=self._agent_id, session_id=session_id, error=str(exc),
+                )
+                continue
+            if not episode_id:
+                continue  # 本会话尚无落盘 episode, 无处写回
+            try:
+                await metadata.update_episode_summary(self._namespace, episode_id, summary)
+                compressed += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "中期记忆压缩: 写回 summary 失败, 跳过",
+                    agent_id=self._agent_id, episode_id=episode_id, error=str(exc),
+                )
+        return compressed
+
+    async def _summarize_one_session(self, messages: list[Any], context: str) -> str:
+        """对单次会话 messages 用 LLM 生成中文摘要 (失败返回空串)。"""
+        transcript = _format_session_transcript(messages, DEFAULT_COMPRESS_INPUT_MAX_CHARS)
+        if not transcript:
+            return ""
+        prompt = (
+            "请将以下会话片段压缩为一段简洁中文摘要 (保留关键事实/结论/待办, 省略寒暄), "
+            "不超过 3 句话, 不要 markdown 标记:"
+            f"\n\n语境: {context or '(无)'}"
+            f"\n\n会话片段:\n{transcript}"
+        )
+        try:
+            response = await self._llm.chat(
+                system="",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=300,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("中期记忆压缩: LLM 摘要失败, 跳过", agent_id=self._agent_id, error=str(exc))
+            return ""
+        return _clean_llm_output(response.content)
+
+    async def enqueue_compression(
+        self, session_id: str, messages: list[Any], context: str = ""
+    ) -> None:
+        """COMPRESS hook 回调入口: 仅入队待压缩会话, 不调 LLM (守护 hook 规范)。
+
+        由 assembly 注册的 COMPRESS listener 调用, 把会话快照存入后台队列,
+        实际摘要在下一个 ``run_once`` 的 _compress_step 中低频完成。入队键为
+        session_id (COMPRESS 回调拿不到 episode_id, 由 _compress_step 解析)。
+        """
+        if not session_id or not messages:
+            return
+        async with self._compress_lock:
+            # 防重复入队同一会话 (未消费时覆盖其最新快照)
+            self._compress_queue = [
+                x for x in self._compress_queue if x.get("session_id") != session_id
+            ]
+            self._compress_queue.append({
+                "session_id": session_id,
+                "messages": list(messages),
+                "context": str(context or ""),
+            })
+
+    async def latest_summary_for_session(self, metadata: MetadataStore, session_id: str) -> str:
+        """读取本会话最近 episode 的已落盘 summary (供 MidTermMemoryInjector 注入)。
+
+        无 summary 或无 episode 时返回空串 (注入器据此降级为不注入)。
+        """
+        if not session_id:
+            return ""
+        try:
+            episode_id = await metadata.latest_episode_id_for_session(
+                self._namespace, session_id
+            )
+        except Exception:  # noqa: BLE001
+            return ""
+        if not episode_id:
+            return ""
+        try:
+            return await metadata.get_episode_summary(self._namespace, episode_id)
+        except Exception:  # noqa: BLE001
+            return ""
+
     async def start(self) -> None:
         """启动后台整合循环 (重复 start 不重启, 保留首个循环)。"""
         if self._loop_task is not None and not self._loop_task.done():
@@ -417,6 +622,127 @@ def _clean_llm_output(text: Any) -> str:
             lines = lines[:-1]
         out = "\n".join(lines).strip()
     return out
+
+
+# R4-①: 内置中文停用词小表 (常见虚词/语气词, 不引入 jieba 依赖)。
+_JARGON_STOPWORDS: frozenset[str] = frozenset({
+    "的", "了", "是", "在", "我", "你", "他", "她", "它", "们", "和", "与", "或",
+    "这", "那", "这个", "那个", "什么", "怎么", "为什么", "哪里", "一个", "一些",
+    "不", "没", "没有", "也", "都", "就", "还", "又", "把", "被", "让", "给",
+    "可以", "可能", "应该", "需要", "现在", "今天", "明天", "昨天", "觉得",
+    "知道", "觉得", "然后", "因为", "所以", "但是", "如果", "虽然", "不过",
+    "请问", "谢谢", "好的", "好吧", "嗯", "啊", "吧", "呢", "哦", "哈", "诶",
+})
+
+
+def _tokenize_cjk(text: str) -> list[str]:
+    """简易中文分词: 取连续 CJK 汉字片段 + 2-gram 滑窗 (无 jieba 依赖)。
+
+    对每个连续汉字片段, 用 2 字滑窗产生 bigram 作为候选行话单元 (中文行话多为
+    2-4 字); 英文/数字片段按空白与标点切分为整词。长度 1 的单字排除 (噪声大)。
+    """
+    out: list[str] = []
+    buf: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if "一" <= ch <= "鿿":
+            buf.append(ch)
+            i += 1
+            continue
+        if buf:
+            _flush_cjk_buf(buf, out)
+            buf = []
+        # 非汉字: 收集连续字母数字下划线作英文整词
+        if ch.isalnum() or ch == "_":
+            wbuf = ch
+            while i + 1 < len(text) and (text[i + 1].isalnum() or text[i + 1] == "_"):
+                i += 1
+                wbuf += text[i]
+            if len(wbuf) >= 2:
+                out.append(wbuf.lower())
+        i += 1
+    if buf:
+        _flush_cjk_buf(buf, out)
+    return out
+
+
+def _flush_cjk_buf(buf: list[str], out: list[str]) -> None:
+    """把连续汉字缓冲区切成 2-gram 滑窗候选词。"""
+    n = len(buf)
+    if n == 1:
+        return  # 单字噪声大, 排除
+    for start in range(n - 1):
+        out.append("".join(buf[start : start + 2]))
+
+
+def _top_candidate_words(texts: list[str], existing: set[str]) -> list[str]:
+    """从一批群聊文本统计高频候选行话词 (去停用词/单字/既有 jargon)。
+
+    无外部分词依赖, 用 2-gram bigram 粗统计; 过滤停用词、过长片段、既存词;
+    返回按频次降序、≥ DEFAULT_JARGON_MIN_FREQ 的候选词列表。
+    """
+    from collections import Counter
+
+    counter: Counter[str] = Counter()
+    for raw in texts:
+        text = str(raw or "")
+        for tok in _tokenize_cjk(text):
+            if len(tok) < 2 or len(tok) > DEFAULT_JARGON_MAX_LEN:
+                continue
+            if tok in _JARGON_STOPWORDS:
+                continue
+            if tok in existing:
+                continue
+            counter[tok] += 1
+    return [
+        w for w, c in counter.most_common(50)
+        if c >= DEFAULT_JARGON_MIN_FREQ
+    ]
+
+
+def _parse_jargon_response(text: Any) -> tuple[str, str]:
+    """解析行话释义 LLM 输出 (MEANING: / CONTEXT: 两行), 返回 (meaning, context)。"""
+    raw = _clean_llm_output(text)
+    if not raw:
+        return "", ""
+    meaning = ""
+    context = ""
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        low = line.lower()
+        if low.startswith("meaning:") or low.startswith("含义") or low.startswith("释义"):
+            meaning = line.split(":", 1)[-1].strip() if ":" in line else line
+        elif low.startswith("context:") or low.startswith("语境") or low.startswith("使用"):
+            context = line.split(":", 1)[-1].strip() if ":" in line else line
+    return meaning, context
+
+
+def _format_session_transcript(messages: list[Any], max_chars: int) -> str:
+    """把会话 messages 列表格式化为截断的 transcript 文本 (供摘要 prompt)。"""
+    parts: list[str] = []
+    total = 0
+    for msg in messages:
+        if isinstance(msg, str):
+            text = msg
+        elif isinstance(msg, dict):
+            role = str(msg.get("role", "") or "").strip()
+            content = str(msg.get("content", "") or "").strip()
+            text = f"[{role}] {content}" if role else content
+        else:
+            text = str(msg or "")
+        text = text.strip()
+        if not text:
+            continue
+        if total + len(text) > max_chars:
+            text = text[: max(0, max_chars - total)]
+        parts.append(text)
+        total += len(text)
+        if total >= max_chars:
+            break
+    return "\n".join(parts)
 
 
 # 避免 json 未使用 import 警告 (保留供后续扩展, 如审计细节序列化)

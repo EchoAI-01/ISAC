@@ -58,6 +58,7 @@ from isac.commands.builtin.agents import AgentsCommand
 from isac.commands.builtin.focus import FocusCommand
 from isac.commands.builtin.mute import MuteCommand, UnmuteCommand
 from isac.commands.registry import CommandRegistry
+from isac.core.events import AgentHookPoint
 from isac.core.policy import EnableMatrix
 from isac.gating.system import GatingSystem
 from isac.memory.consolidator import MemoryConsolidator
@@ -164,6 +165,28 @@ def _build_memory_consolidator(
             consolidation_cfg.get("prune_importance_below", 0.2) or 0.2
         ),
     )
+
+
+def _register_compress_listener(hooks: AgentHooks, consolidator: MemoryConsolidator) -> None:
+    """R4-②: 把 COMPRESS hook 回调注册进本 Agent 私有 hooks。
+
+    回调仅做"入队" (session_id + messages 快照 → consolidator.enqueue_compression),
+    不调 LLM (守护 hooks.py hook 内禁直接调 LLM 规范); 真实摘要在 consolidator
+    后台 ``_compress_step`` 低频完成。失败由 AgentHooks.fire 的 try-except 兜底。
+    """
+
+    async def _on_compress(messages: Any, context: Any) -> None:
+        session = getattr(context, "session", None)
+        session_id = str(getattr(session, "session_id", "") or "") if session else ""
+        if not session_id or not messages:
+            return
+        label = (
+            f"agent={getattr(session, 'agent_id', '')};platform={getattr(session, 'platform', '')}"
+            if session else ""
+        )
+        await consolidator.enqueue_compression(session_id, list(messages), context=label)
+
+    hooks.register(AgentHookPoint.COMPRESS, _on_compress)
 
 
 async def _setup_conversation_runtime(
@@ -468,6 +491,10 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     consolidator = _build_memory_consolidator(config, global_config, memory, llm=llm)
     if consolidator is not None:
         agent_services["memory_consolidator"] = consolidator
+        # R4-②: 注册 COMPRESS hook listener —— 仅入队待压缩会话快照到 consolidator
+        # (不调 LLM, 守护 hooks.py "hook 内禁直接调 LLM" 规范); 真实摘要由 consolidator
+        # 后台 _compress_step 低频完成。入队键为 session_id (回调拿不到 episode_id)。
+        _register_compress_listener(hooks, consolidator)
 
     # D9 进度报告: 注入工厂 (默认无 sender → 惰性关闭, 主链路热路径零变化)。
     # 消息处理时用它构造 per-session Reporter 并绑定 Channel sender; persona_rendering
