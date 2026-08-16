@@ -108,3 +108,49 @@ async def test_retry_success(tmp_path: Path) -> None:
     status = await pm.retry("retryplug")
     assert "loaded" in status
     assert "retryplug" not in pm.list_failures()
+
+
+def _make_native_plugin_name_ne_dir(parent: Path, dir_name: str, manifest_name: str) -> Path:
+    """目录名 dir_name 但 manifest.name=manifest_name (≠目录名), 驱动 C8 路径。"""
+    pdir = parent / dir_name
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "manifest.jsonc").write_text(f'{{"name":"{manifest_name}","entry":"plugin.py"}}')
+    (pdir / "plugin.py").write_text(
+        "from isac.plugin.native.plugin import ISACPlugin\n"
+        f"class {manifest_name.capitalize()}(ISACPlugin):\n"
+        "    pass\n"
+    )
+    return pdir
+
+
+@pytest.mark.asyncio
+async def test_reload_uses_loaded_path_when_manifest_name_differs_from_dir(tmp_path: Path) -> None:
+    """N5b 批次C C8: manifest.name≠目录名时 reload 用 loaded.path 定位真实目录。
+
+    修复前 entry = plugins_dir / name (name=manifest_name) 指向不存在目录 → not_found;
+    修复后 entry = loaded.path (真实目录 actual_dir)。
+    """
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+    _make_native_plugin_name_ne_dir(plugins_dir, "actual_dir", "manifest_name")
+    pm = PluginManager({})
+    await pm.load_all(plugins_dir)
+    assert "manifest_name" in pm.list_loaded()
+    # plugins_dir/manifest_name 不存在; 修复前 reload 会 not_found
+    status = await pm.reload("manifest_name")
+    assert "loaded" in status
+    assert "manifest_name" in pm.list_loaded()
+
+
+@pytest.mark.asyncio
+async def test_uninstall_uses_loaded_path_when_manifest_name_differs_from_dir(tmp_path: Path) -> None:
+    """N5b 批次C C8: uninstall 同样用 loaded.path 删真实目录 (而非 plugins_dir/name)。"""
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir()
+    pdir = _make_native_plugin_name_ne_dir(plugins_dir, "actual_dir", "manifest_name")
+    pm = PluginManager({})
+    await pm.load_all(plugins_dir)
+    status = await pm.uninstall("manifest_name")
+    assert status == "uninstalled"
+    assert not pdir.exists()  # 真实目录 (actual_dir) 被删
+    assert "manifest_name" not in pm.list_loaded()

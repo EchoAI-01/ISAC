@@ -307,10 +307,14 @@ class PluginManager:
         """
         if name not in self.list_loaded():
             return "not_loaded"
+        # N5b 批次C C8: manifest.name 可能≠目录名, 在 unload 删除前缓存真实路径
+        # (loaded.path), 否则 self._plugins_dir / name 指向不存在目录 → reload 误报 not_found。
+        loaded = self._loaded.get(name)
+        cached_path = Path(loaded.path) if (loaded is not None and loaded.path is not None) else None
         await self.unload(name)
         if self._plugins_dir is None:
             raise RuntimeError("plugins_dir 未设置, 无法 reload")
-        entry = self._plugins_dir / name
+        entry = cached_path if cached_path is not None else self._plugins_dir / name
         if not entry.exists():
             self._failures[name] = "插件目录不存在"
             return "not_found"
@@ -323,11 +327,15 @@ class PluginManager:
 
     async def uninstall(self, name: str) -> str:
         """T6: 卸载 (unload) + 删目录。返回状态字符串。"""
+        # N5b 批次C C8: 在 unload 删除前缓存真实路径 (loaded.path), manifest.name
+        # 可能≠目录名, 否则删错目录或 not_found。
+        loaded = self._loaded.get(name)
+        cached_path = Path(loaded.path) if (loaded is not None and loaded.path is not None) else None
         if name in self.list_loaded():
             await self.unload(name)
         if self._plugins_dir is None:
             return "no_plugins_dir"
-        entry = self._plugins_dir / name
+        entry = cached_path if cached_path is not None else self._plugins_dir / name
         if not entry.exists():
             return "not_found"
         import shutil
