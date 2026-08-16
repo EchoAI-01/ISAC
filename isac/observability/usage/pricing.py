@@ -52,6 +52,54 @@ class PricingCatalog:
         """登记一条价格快照。"""
         self._by_key[(snapshot.provider, snapshot.model, snapshot.modality)] = snapshot
 
+    @classmethod
+    def load(cls, path: str | object) -> PricingCatalog:
+        """R1-④: 从 jsonc 加载价目表 (provider/model/modality → PriceSnapshot)。
+
+        文件不存在或解析失败返回空 catalog (不 raise, estimated_cost 恒 None,
+        向后兼容)。jsonc 用 json5 解析 (降级 json)。
+        """
+        from pathlib import Path
+
+        try:
+            import json5
+
+            _loads = json5.loads
+        except ImportError:  # pragma: no cover
+            import json
+
+            _loads = json.loads
+        p = Path(path)  # type: ignore[arg-type]
+        if not p.exists():
+            return cls()
+        try:
+            data = _loads(p.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).warning("价目表加载失败, 用空目录: %s (%s)", p, exc)
+            return cls()
+        snapshots: list[PriceSnapshot] = []
+        version = str(data.get("version", "")) if isinstance(data, dict) else ""
+        for entry in (data.get("snapshots", []) if isinstance(data, dict) else []):
+            if not isinstance(entry, dict):
+                continue
+            snapshots.append(PriceSnapshot(
+                provider=str(entry.get("provider", "")),
+                model=str(entry.get("model", "")),
+                modality=str(entry.get("modality", "text")),
+                pricing_version=str(entry.get("pricing_version", version or "v1")),
+                input_price_per_unit=str(entry.get("input_price_per_unit", "0")),
+                output_price_per_unit=str(entry.get("output_price_per_unit", "0")),
+                cache_read_price_per_unit=entry.get("cache_read_price_per_unit"),
+                cache_write_price_per_unit=entry.get("cache_write_price_per_unit"),
+                audio_input_price_per_unit=entry.get("audio_input_price_per_unit"),
+                audio_output_price_per_unit=entry.get("audio_output_price_per_unit"),
+                unit_name=str(entry.get("unit_name", "token")),
+                currency=str(entry.get("currency", "USD")),
+            ))
+        return cls(snapshots, version=version)
+
     def lookup(self, provider: str, model: str, modality: str) -> PriceSnapshot | None:
         """查询价格快照; 未登记返回 None。"""
         return self._by_key.get((provider, model, modality))
