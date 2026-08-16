@@ -105,6 +105,18 @@ class AgentManager:
         consolidator = instance.services.get("memory_consolidator")
         if consolidator is not None:
             await consolidator.start()
+        # N5b 批次D 项2: stop→start 重连 MCP。stop 时 _disconnect_mcp_clients 断开,
+        # start 时对已 disconnect 的 client 重 connect (bridge 持同一 client 引用,
+        # 重连后 call_tool 可用, 无需 deregister/re-register 工具)。失败不阻塞启动。
+        for client in (instance.services.get("mcp_clients") or []):
+            if not getattr(client, "_connected", False):
+                try:
+                    await client.connect()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "MCP start 重连失败, 工具调用将降级",
+                        agent_id=agent_id, server=getattr(client, "server_name", ""), error=str(exc),
+                    )
         self._inc_metric("isac_agent_starts_total")
         self._update_active_gauge()
         logger.info("Agent 已启动", agent_id=agent_id)
@@ -298,6 +310,10 @@ class AgentManager:
             await old_consolidator.stop()
         # Q0: 失效独立 Provider 缓存, PATCH 修改 llm 后 for_agent 才会按新配置重建
         await self._invalidate_agent_provider(agent_id)
+        # N5b 批次D 项1: reload_config 是三个生命周期方法中唯一漏掉 MCP disconnect 的,
+        # 旧实例 stdio 子进程/HTTP 连接被丢弃引用但不显式 disconnect → 孤儿进程/连接泄漏。
+        # 与 stop/destroy 对齐, 在 assemble 新实例前断开旧实例 MCP 连接。
+        await self._disconnect_mcp_clients(old_instance)
         instance = await assemble_agent(config, self._services)
         instance.status = "running" if was_running else "stopped"
         self._agents[agent_id] = instance

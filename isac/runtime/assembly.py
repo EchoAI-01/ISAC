@@ -346,6 +346,13 @@ async def _wire_mcp_clients(
                 server=_srv_name, agent_id=config.agent_id, tools=len(_bridges),
             )
         except Exception as exc:  # noqa: BLE001
+            # N5b 批次D 项3: connect 成功但 list_tools 失败时, client 未进 mcp_clients
+            # 列表 (append 在 list_tools 之后) → stop/destroy 的 disconnect 拿不到它
+            # → 子进程/HTTP 连接泄漏。connect 成功必须配对 disconnect。
+            try:
+                await _client.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
             logger.warning(
                 "MCP server 接入失败, 不阻塞 Agent",
                 server=_srv_name, agent_id=config.agent_id,
