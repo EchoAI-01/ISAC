@@ -407,6 +407,40 @@ async def test_handoff_to_self_revokes_ownership() -> None:
     assert router.get_handoff("fake", None, "u1") is None
 
 
+@pytest.mark.asyncio
+async def test_handoff_to_non_running_target_rejected() -> None:
+    """Fix-70: 目标 Agent 不可路由时拒绝移交 —— 不发摘要、不登记 handoff
+    (此前移交给死 Agent 会劫持会话路由直到 TTL 到期)。"""
+    from isac.agent.tools.social.handoff_conversation import HandoffConversationTool
+    from isac.core.types import AgentContext
+    from isac.gateway.models import Session
+    from isac.runtime.mesh.actions import MeshActionBroker
+
+    bus = InterAgentBus()
+    bus.add_link(InterAgentLink(from_agent="a", to_agent="ghost", permissions=["handoff"]))
+    delivered: list[str] = []
+
+    async def _deliver(agent: str, _m: InterAgentMessage) -> str:
+        delivered.append(agent)
+        return "ok"
+
+    bus.set_deliver(_deliver)
+    router = MessageRouter(RoutingRules(), agents_provider=lambda: [])  # ghost 不可路由
+    tool = HandoffConversationTool()
+    ctx = type("Ctx", (), {})()
+    ctx.args = {"target_agent": "ghost", "summary": "请接手"}
+    ctx.services = {"mesh_action_broker": MeshActionBroker(bus), "agent_id": "a", "router": router}
+    ctx.agent_context = AgentContext(
+        session=Session(session_id="s1", user_id="u1", agent_id="a", platform="fake"),
+        user_profile=None, current_message=None,
+    )
+    result = await tool.execute(ctx)
+    assert result.is_error is True
+    assert "未运行" in result.content
+    assert delivered == []  # 摘要未投递
+    assert router.get_handoff("fake", None, "u1") is None  # 未登记 handoff
+
+
 # ── medium: UserMapper 并发首次接触不产生身份分裂 ─────────────
 
 

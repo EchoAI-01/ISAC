@@ -48,9 +48,13 @@ def _make_provider(
 
 
 def _cohere_response(scores: list[tuple[int, float]]) -> bytes:
-    """构造 Cohere /rerank 响应体: {result: [{index, relevance_score}, ...]}."""
+    """构造 Cohere /rerank 响应体。
+
+    Fix-64: 官方 Cohere v1/v2 实际返回 "results" (复数), 与 Jina 一致;
+    此前 fixture 自造 "result" (单数) 与实现互相印证错误协议假设。
+    """
     return json.dumps({
-        "result": [{"index": idx, "relevance_score": score} for idx, score in scores],
+        "results": [{"index": idx, "relevance_score": score} for idx, score in scores],
     }).encode()
 
 
@@ -83,6 +87,22 @@ async def test_cohere_rerank_returns_scores_for_candidates() -> None:
         assert scores[0] == pytest.approx(0.9)
         assert scores[1] == pytest.approx(0.3)
         assert scores[2] == pytest.approx(0.6)
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_cohere_singular_result_field_still_accepted() -> None:
+    """Fix-64 兼容性: 部分自托管端点仍返回单数 "result" 字段, 保留回退解析。"""
+    legacy = json.dumps({
+        "result": [{"index": 0, "relevance_score": 0.8}, {"index": 1, "relevance_score": 0.2}],
+    }).encode()
+
+    provider = _make_provider(lambda r: httpx.Response(200, content=legacy), protocol="cohere")
+    try:
+        scores = await provider.rerank("q", ["a", "b"])
+        assert scores[0] == pytest.approx(0.8)
+        assert scores[1] == pytest.approx(0.2)
     finally:
         await provider.aclose()
 

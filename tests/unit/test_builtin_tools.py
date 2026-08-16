@@ -346,7 +346,10 @@ async def test_task_tool_blocks_recursion_at_max_depth() -> None:
     async def runner(task: str, *, budget: int, parent_context=None) -> ToolResult:
         return ToolResult(content="ok")
 
-    context = make_context({"task_runner": runner, "task_depth": 3, "task_max_depth": 3})
+    context = make_context({"task_runner": runner})
+    # Fix-68: task_depth/task_max_depth 由 runtime 写入 AgentContext.services
+    context.agent_context.services["task_depth"] = 3
+    context.agent_context.services["task_max_depth"] = 3
     context.args = {"task": "再委派一层"}
 
     result = await TaskTool().execute(context)

@@ -182,9 +182,18 @@ class ArtifactStore:
         exp = self._compute_expires_at(expires_at)
         meta_json = json.dumps(metadata or {}, ensure_ascii=False)
         async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            # Fix-69: 同内容制品 (sha256 相同) 保留**首次**登记的行 —— 此前
+            # INSERT OR REPLACE 让第二个 put (kind/mime/metadata/TTL 不同) 覆盖
+            # DB 行: ① 第一个 ArtifactRef 的 kind/mime/metadata/expires_at 被篡改;
+            # ② TTL sweep 按覆盖后的短 TTL 把共享文件删掉, 两个引用同时失效。
+            # 文件字节本就相同 (内容寻址), 元数据以首次登记为准。用 INSERT OR
+            # IGNORE 而非先 SELECT: 并发 put 同内容时两个连接都看到空行再双双
+            # INSERT 会撞 UNIQUE 约束, IGNORE + 写后回读天然竞态安全 (SQLite 写
+            # 串行, 先提交者赢), 且统一走"回读 DB 行构造 ref"一条路径。
             await db.execute(
                 """
-                INSERT OR REPLACE INTO artifacts (
+                INSERT OR IGNORE INTO artifacts (
                     artifact_id, kind, mime_type, size_bytes, duration_seconds,
                     created_at, expires_at, uri, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -195,16 +204,24 @@ class ArtifactStore:
                 ),
             )
             await db.commit()
+            cursor = await db.execute(
+                "SELECT artifact_id, kind, mime_type, size_bytes, duration_seconds, "
+                "created_at, expires_at, uri, metadata FROM artifacts WHERE artifact_id = ?",
+                (artifact_id,),
+            )
+            row = await cursor.fetchone()
+        if row is None:  # pragma: no cover - INSERT OR IGNORE 后必能回读到行
+            raise RuntimeError(f"ArtifactStore 写入后回读失败: {artifact_id}")
         return ArtifactRef(
-            artifact_id=artifact_id,
-            kind=kind,
-            mime_type=mime_type,
-            uri=str(file_path),
-            size_bytes=len(data),
-            duration_seconds=duration_seconds,
-            created_at=now,
-            expires_at=exp,
-            metadata=metadata or {},
+            artifact_id=str(row["artifact_id"]),
+            kind=str(row["kind"]),
+            mime_type=str(row["mime_type"] or ""),
+            uri=str(row["uri"]),
+            size_bytes=int(row["size_bytes"] or 0),
+            duration_seconds=float(row["duration_seconds"] or 0.0),
+            created_at=int(row["created_at"] or 0),
+            expires_at=int(row["expires_at"] or 0),
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
         )
 
     async def get(self, artifact_id: str) -> bytes | None:

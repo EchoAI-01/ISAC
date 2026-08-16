@@ -68,8 +68,10 @@ class DelegateTaskTool(_SupervisorToolBase):
             return ToolResult(content="缺少 objective, 无法派生子任务。", is_error=True)
 
         summary = str(context.args.get("summary", "") or "")
-        depth = int(context.services.get("task_depth", 0) or 0)
-        max_depth = int(context.services.get("task_max_depth", 1) or 1)
+        # Fix-68: task_depth 由 runner 写入 AgentContext.services, 此前从
+        # ToolContext.services (收窄后的 loop.services) 读恒 0 → 深度守卫失效。
+        depth = int(context.agent_context.services.get("task_depth", 0) or 0)
+        max_depth = int(context.agent_context.services.get("task_max_depth", 1) or 1)
         if depth >= max_depth:
             return ToolResult(
                 content=f"子任务递归深度已达上限 ({max_depth}), 拒绝继续委派。",

@@ -22,10 +22,17 @@ import hashlib
 import hmac
 import json
 import secrets
+import time
 from pathlib import Path
 
 MIN_PASSWORD_LENGTH = 8
 _PBKDF2_ITERATIONS = 200_000
+
+# Fix-52: PBKDF2 限速参数 —— 60 秒滑动窗口内最多允许的密码比对次数。
+# 20 万次迭代本机约 20ms/次; 上限 10 次/分钟 = 峰值 ~200ms CPU/分钟,
+# 足够合法用户登录, 又让并发暴力试探无法打满 CPU。
+_RATE_WINDOW_SECONDS = 60.0
+_MAX_PBKDF2_CHECKS_PER_WINDOW = 10
 
 
 class SetupManager:
@@ -46,6 +53,10 @@ class SetupManager:
         self.state_path = Path(state_path)
         self._hash: str | None = None
         self._has_static_credentials = static_credentials_configured
+        # Fix-52: PBKDF2 限速 —— 全局滑动窗口内的密码比对次数上限。未认证请求
+        # 只要带任意 Bearer 串就会触发 20 万次迭代 (本机 ~20ms/次), 无限速时
+        # 并发几十个请求即可打满 CPU。超限直接返回 False 不做计算。
+        self._check_timestamps: list[float] = []
         self._load()
 
     def _load(self) -> None:
@@ -69,9 +80,25 @@ class SetupManager:
         return self._hash is None and not self._has_static_credentials
 
     def is_password_valid(self, candidate: str | None) -> bool:
-        """恒定时间校验候选密码是否匹配已设置的 hash; 未设置或格式错返回 False。"""
+        """恒定时间校验候选密码是否匹配已设置的 hash; 未设置或格式错返回 False。
+
+        Fix-50: 已配静态凭证 (api_token/tokens[]) 时 setup 密码**自动失效** ——
+        此前 Fix-40 只挡住"新设密码"(complete_setup), 但配置静态凭证之前设置的
+        旧密码 hash 仍被认证层接受, 成为隐形第二 admin 凭证; tokens[] 模式下还
+        绕过全部未挂 scope 的端点。静态凭证出现即视为 setup 通道整体关闭。
+
+        Fix-52: PBKDF2 限速 (见 __init__ 注释), 防未认证 CPU 耗尽。
+        """
         if not candidate or not self._hash:
             return False
+        if self._has_static_credentials:
+            return False  # Fix-50: 静态凭证优先, setup 密码不再被接受
+        # Fix-52: 滑动窗口限速 (先于昂贵的 PBKDF2 计算)
+        now = time.monotonic()
+        self._check_timestamps = [t for t in self._check_timestamps if now - t < _RATE_WINDOW_SECONDS]
+        if len(self._check_timestamps) >= _MAX_PBKDF2_CHECKS_PER_WINDOW:
+            return False
+        self._check_timestamps.append(now)
         try:
             alg, salt_b64, hash_b64 = self._hash.split("$")
             salt = base64.b64decode(salt_b64)

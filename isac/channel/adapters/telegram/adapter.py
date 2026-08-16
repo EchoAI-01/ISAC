@@ -33,6 +33,21 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _utf16_slice(text: str, offset: int, length: int) -> str:
+    """Fix-71: 按 UTF-16 code unit 切片 (Telegram entity 的 offset/length 单位)。
+
+    Bot API 的 MessageEntity offset/length 以 UTF-16 code unit 计, 而 Python str
+    下标是 code point。实体之前或内部出现 BMP 外字符 (emoji 🎉 / CJK 扩展 B 等,
+    占 2 个 UTF-16 unit、1 个 code point) 时, 直接 content[offset:offset+length]
+    会整体错位: mention 截出的文本缺 @ 或截半个词, strip("@") 后得到带空格/残缺
+    的 user_id, @ 判定与后续按名寻人都失效。转 UTF-16 字节再切可精确对齐。
+    """
+    if offset < 0 or length <= 0:
+        return ""
+    units = text.encode("utf-16-le")
+    return units[offset * 2 : (offset + length) * 2].decode("utf-16-le", errors="replace")
+
+
 class TelegramAdapter(PlatformAdapter):
     """Telegram Bot API 适配器 (long polling 模式)。"""
 
@@ -150,7 +165,8 @@ class TelegramAdapter(PlatformAdapter):
             if etype == "mention":
                 offset = int(entity.get("offset", 0))
                 length = int(entity.get("length", 0))
-                mention_text = content[offset : offset + length]
+                # Fix-71: offset/length 是 UTF-16 code unit, 不能按 code point 直切
+                mention_text = _utf16_slice(content, offset, length)
                 segments.append(MessageSegment(type="at", data={"user_id": mention_text.strip("@")}))
         if not segments and content:
             segments.append(MessageSegment(type="text", data={"text": content}))
