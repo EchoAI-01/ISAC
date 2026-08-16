@@ -116,3 +116,35 @@ async def test_ipc_roundtrip_accepts_matching_correlation_id(monkeypatch: pytest
 
 async def _noop_async() -> None:
     pass
+
+
+@pytest.mark.asyncio
+async def test_ipc_roundtrip_timeout_treated_as_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fix-77: 子进程挂死不响应时 recv 不再永久阻塞 —— 超时按崩溃处理
+    (_on_crash 重启) 并抛 RuntimeError (此前 _lock 串行化让该插件后续所有
+    call 排队挂死)。"""
+    import time as _t
+
+    crashed: list[bool] = []
+
+    async def _fake_crash() -> None:
+        crashed.append(True)
+
+    host = PluginIsolationHost("p1", ipc_timeout=0.2)
+    host._alive = True  # noqa: SLF001
+
+    class _Conn:
+        def send(self, data: str) -> None:
+            pass
+
+        def recv(self) -> str:
+            _t.sleep(1.0)  # 模拟挂死: 远超超时
+            return "{}"
+
+    host._parent_conn = _Conn()  # noqa: SLF001
+    monkeypatch.setattr(host, "_on_crash", _fake_crash)
+    env = IPCEnvelope(kind="call", plugin_id="p1", payload={})
+    env.correlation_id = "corr-1"
+    with pytest.raises(RuntimeError, match="超时"):
+        await host._ipc_roundtrip(env)  # noqa: SLF001
+    assert crashed == [True]  # 已按崩溃触发重启

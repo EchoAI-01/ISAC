@@ -43,6 +43,7 @@ from fastapi import Request
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage
+from isac.channel.webhook_guard import DEFAULT_MAX_WEBHOOK_BODY_BYTES, read_body_limited
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -72,6 +73,8 @@ class FeishuAdapter(PlatformAdapter):
         self._webhook_host = str(config.get("webhook_host", _DEFAULT_WEBHOOK_HOST) or _DEFAULT_WEBHOOK_HOST)
         self._webhook_port = int(config.get("webhook_port", _DEFAULT_WEBHOOK_PORT) or _DEFAULT_WEBHOOK_PORT)
         self._webhook_path = str(config.get("webhook_path", _DEFAULT_WEBHOOK_PATH) or _DEFAULT_WEBHOOK_PATH)
+        # Fix-76: webhook 请求体体积上限 (验签/解密前先限流读取, 防超大 body 打爆内存)
+        self._max_body_bytes = int(config.get("max_body_bytes", DEFAULT_MAX_WEBHOOK_BODY_BYTES))
         self._running = False
         self._server: Any = None  # uvicorn.Server
         self._serve_task: asyncio.Task[Any] | None = None
@@ -128,16 +131,35 @@ class FeishuAdapter(PlatformAdapter):
                 self._serve_task.cancel()
             self._serve_task = None
 
+    async def _read_body(self, request: Request) -> Any:
+        """Fix-76: 限流读取请求体并解析 JSON; 超限/读取失败/非 JSON 返回 None。
+
+        (从 _handle_event 抽出, 避免其圈复杂度超限。)
+        """
+        try:
+            raw = await read_body_limited(request, self._max_body_bytes)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("飞书 webhook 读取请求体失败", error=str(exc))
+            return None
+        if raw is None:
+            logger.warning("飞书 webhook 请求体超限, 拒绝", limit=self._max_body_bytes)
+            return None
+        try:
+            return json.loads(raw.decode("utf-8")) if raw else {}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("飞书 webhook 收到非 JSON 请求体", error=str(exc))
+            return None
+
     async def _handle_event(self, request: Request) -> dict:
         """Webhook 入站主入口: 校验/解密 → 规范化 → on_message → 200 ``{}``。
 
         任何异常都吞掉并返回 200 ``{}`` (避免飞书重试; 失败的入站消息丢失在
         日志里, 不影响主链路)。所有处理都在 try/except 里, 保证不阻塞响应。
         """
-        try:
-            body = await request.json()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("飞书 webhook 收到非 JSON 请求体", error=str(exc))
+        # Fix-76: 限流读取 —— request.json() 全量读入内存且无上限, 超大
+        # body (含 chunked) 在解密/校验之前即可打爆内存; 超限直接拒绝。
+        body = await self._read_body(request)
+        if body is None:
             return {}
         try:
             payload = self._decode_payload(body)

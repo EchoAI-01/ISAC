@@ -229,7 +229,8 @@ MCP 工具返回必须包含：
 |------|------|
 | `message.received` | 收到消息 |
 | `message.routed` | 消息完成路由 |
-| `message.responded` | Agent 已回复 |
+| `message.responded` | Agent 已回复 (消息处理完成, 当前已接线) |
+| `message.sent` | 回复发送完成 (当前已接线) |
 | `agent.created` | Agent 创建 |
 | `agent.started` | Agent 启动 |
 | `agent.stopped` | Agent 停止 |
@@ -240,6 +241,8 @@ MCP 工具返回必须包含：
 | `model.usage_recorded` | 模型用量完成记录（Webhook 默认只发聚合摘要） |
 | `provider.health_changed` | Provider 健康状态变化 |
 | `control.audit` | 控制面操作审计 |
+
+> **接线状态 (2026-08-17, Fix-80)**: 当前实际派发的事件为 `message.responded` (对应 EventBus POST_MESSAGE) 与 `message.sent` (对应 POST_SEND); 其余目录事件为预留, 尚未接线。历史版本曾以 EventBus 枚举值 `post_message`/`post_send` 作为事件名派发, 与目录不一致 —— 现订阅/派发两侧统一按目录名归一, 旧名订阅自动映射到对应目录名 (`post_message`→`message.responded`, `post_send`→`message.sent`)。
 
 ### 5.2 推送格式
 

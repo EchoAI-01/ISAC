@@ -91,6 +91,50 @@ class TestLogBuffer:
 
         asyncio.run(_run())
 
+    def test_concurrent_append_from_threads_keeps_seq_unique(self) -> None:
+        """Fix-72: 日志可能来自非 event loop 线程 (asyncio.to_thread 等),
+        self._seq += 1 非原子 → 多线程并发 append 序号重复/丢失。"""
+        import threading
+
+        buf = LogBuffer(max_buffer=10000)
+        n_threads, per_thread = 8, 200
+
+        def _worker() -> None:
+            for i in range(per_thread):
+                buf.append({"event": f"e{i}"})
+
+        threads = [threading.Thread(target=_worker) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert buf.seq == n_threads * per_thread
+        seqs = [e["_seq"] for e in buf.snapshot_after(0)]
+        assert len(seqs) == len(set(seqs))  # 无重复序号
+
+    def test_append_from_other_thread_delivers_to_subscriber(self) -> None:
+        """Fix-72: 非 loop 线程的 append 经 call_soon_threadsafe 投递给消费者
+        (asyncio.Queue 非线程安全, 不能跨线程 put_nowait)。"""
+        import threading
+
+        async def _run() -> None:
+            buf = LogBuffer()
+            q = await buf.subscribe()
+            done = threading.Event()
+
+            def _worker() -> None:
+                buf.append({"level": "info", "event": "from-thread"})
+                done.set()
+
+            threading.Thread(target=_worker).start()
+            entry = await asyncio.wait_for(q.get(), timeout=2.0)
+            assert entry["event"] == "from-thread"
+            assert done.is_set()
+            await buf.unsubscribe(q)
+
+        asyncio.run(_run())
+
 
 class TestHealthEndpoint:
     def test_health_returns_aggregated_status(self) -> None:

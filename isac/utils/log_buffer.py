@@ -15,6 +15,7 @@ cache_logger_on_first_use 意味着必须在首次 get_logger 调用前 (main.se
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from collections import deque
 from typing import Any
@@ -36,6 +37,16 @@ class LogBuffer:
         self._seq: int = 0
         self._consumers: list[asyncio.Queue[dict[str, Any]]] = []
         self._lock = asyncio.Lock()
+        # Fix-72: append 由 structlog processor 同步调用, 而日志可能来自
+        # asyncio.to_thread / uvicorn 线程池等**非 event loop 线程** (如
+        # safe_download_bytes 的 to_thread 回调内打日志)。此时: ① self._seq += 1
+        # 非原子 (LOAD/ADD/STORE 间可被 GIL 切换) → 序号重复/丢失; ② 遍历
+        # _consumers 时 loop 线程的 subscribe/unsubscribe 并发增删 → RuntimeError;
+        # ③ asyncio.Queue 本身非线程安全, 跨线程 put_nowait 与 loop 的 get 竞争。
+        # 用 threading.Lock 保护序号/缓冲/消费者快照, 跨线程推送经
+        # call_soon_threadsafe 回到 loop 线程执行。
+        self._thread_lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def seq(self) -> int:
@@ -45,20 +56,49 @@ class LogBuffer:
         """structlog processor 调用: 把日志事件塞进 buffer + 推送所有消费者。
 
         同步函数 (structlog processor 契约), 不 await; 推送用 queue.put_nowait
-        (队列满时丢弃该条给该消费者, 不阻塞主链路)。
+        (队列满时丢弃该条给该消费者, 不阻塞主链路)。Fix-72: 调用方可能在非
+        event loop 线程 (见 _thread_lock 注释), 序号/缓冲/消费者快照在
+        threading.Lock 内完成, 跨线程投递经 call_soon_threadsafe 回 loop 线程。
         """
         # copy 防止后续 processor 改动 event_dict (structlog processor 链共享 dict)
         entry = dict(event_dict)
-        self._seq += 1
-        entry["_seq"] = self._seq
-        entry["_ts"] = time.time()
-        self._buffer.append(entry)
-        for q in self._consumers:
+        with self._thread_lock:
+            self._seq += 1
+            entry["_seq"] = self._seq
+            entry["_ts"] = time.time()
+            self._buffer.append(entry)
+            consumers = list(self._consumers)
+            loop = self._loop
+        for q in consumers:
+            self._deliver(q, entry, loop)
+
+    def _deliver(
+        self,
+        q: asyncio.Queue[dict[str, Any]],
+        entry: dict[str, Any],
+        loop: asyncio.AbstractEventLoop | None,
+    ) -> None:
+        """把条目推给单个消费者; 非 loop 线程时经 call_soon_threadsafe 投递。"""
+        if loop is not None:
             try:
-                q.put_nowait(entry)
-            except asyncio.QueueFull:
-                # 消费者跟不上 (SSE 客户端慢/断), 丢这条给它, 不阻塞其他消费者
-                pass
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is not loop:
+                try:
+                    loop.call_soon_threadsafe(self._push, q, entry)
+                except RuntimeError:  # loop 已关闭 (关停竞态): 丢这条, 不影响日志主链
+                    pass
+                return
+        self._push(q, entry)
+
+    @staticmethod
+    def _push(q: asyncio.Queue[dict[str, Any]], entry: dict[str, Any]) -> None:
+        try:
+            q.put_nowait(entry)
+        except asyncio.QueueFull:
+            # 消费者跟不上 (SSE 客户端慢/断), 丢这条给它, 不阻塞其他消费者
+            pass
 
     def snapshot_after(self, start_seq: int) -> list[dict[str, Any]]:
         """返回 seq > start_seq 的缓冲条目 (Last-Event-ID 断线恢复用)。"""
@@ -68,13 +108,19 @@ class LogBuffer:
         """注册一个消费者队列, 返回供 await 的 Queue。"""
         q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_MAX_BUFFER)
         async with self._lock:
-            self._consumers.append(q)
+            # Fix-72: 增删消费者同样在 threading.Lock 内, 与非 loop 线程的
+            # append 快照互斥; 首个消费者记录所属 loop (跨线程投递的目标)。
+            with self._thread_lock:
+                self._consumers.append(q)
+                if self._loop is None:
+                    self._loop = asyncio.get_running_loop()
         return q
 
     async def unsubscribe(self, q: asyncio.Queue[dict[str, Any]]) -> None:
         async with self._lock:
-            if q in self._consumers:
-                self._consumers.remove(q)
+            with self._thread_lock:
+                if q in self._consumers:
+                    self._consumers.remove(q)
 
 
 # 全局单例 (setup_logger 注入 processor 时持有; None 表示日志台未启用)

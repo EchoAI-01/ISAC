@@ -390,10 +390,15 @@ class MemoryConsolidator:
         new_text = _sanitize_llm_induction(_clean_llm_output(response.content))
         if not new_text or new_text == old_text:
             return False  # 空响应或与既有相同, 不写回
-        merged_profile = dict(existing)
+        # Fix-74: 写回前**重读**最新 profile 作为合并基线 —— 此前以 LLM 调用前
+        # 读到的 existing 为基线, 而 LLM await 期间其他写入方 (manager 的
+        # interaction_count/relationship_depth/last_seen 更新、并发 run_once)
+        # 可能已改这一行, 用过期基线整体 upsert 会静默回滚这些并发更新。
+        latest = await metadata.get_person_profile(self._namespace, person_id) or {}
+        merged_profile = dict(latest)
         merged_profile["person_id"] = person_id
         merged_profile["profile_text"] = new_text
-        merged_profile["name"] = str(existing.get("name", "") or person_id)
+        merged_profile["name"] = str(latest.get("name", "") or person_id)
         merged_profile.setdefault("first_seen", int(time.time()))
         merged_profile["last_seen"] = int(time.time())
         await metadata.upsert_person_profile(self._namespace, merged_profile)

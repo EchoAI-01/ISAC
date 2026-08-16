@@ -13,6 +13,7 @@ get_or_create 写穿 (best-effort, 持久化失败不阻塞消息流), 重启后
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from isac.channel.model import ISACMessage
@@ -35,10 +36,19 @@ CREATE TABLE IF NOT EXISTS sessions (
     is_group INTEGER,
     created_at INTEGER,
     last_active INTEGER,
-    state TEXT
+    state TEXT,
+    platform_session_id TEXT DEFAULT '',
+    user_ids TEXT DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_key ON sessions(session_key);
 """
+
+# Fix-79: 既有库 (旧 schema 建表) 补列迁移 —— CREATE TABLE IF NOT EXISTS 不会
+# 给已存在的表加列。muted_until 是 monotonic 运行时值, 重启后无意义, 不持久化。
+_SCHEMA_MIGRATIONS: tuple[str, ...] = (
+    "ALTER TABLE sessions ADD COLUMN platform_session_id TEXT DEFAULT ''",
+    "ALTER TABLE sessions ADD COLUMN user_ids TEXT DEFAULT '{}'",
+)
 
 
 class SessionManager:
@@ -58,7 +68,21 @@ class SessionManager:
         self._schema_ready = False
         # R5: get_or_create 的 "查缓存 → 查库 → 创建" 之间有 await (DB 读), 并发消息
         # 流下同一会话可能双创建 session_id。用锁串行 check-then-create (照 UserMapper)。
-        self._lock = asyncio.Lock()
+        # Fix-78: 锁细化为 per-session_key —— 此前单一全局锁把**所有会话**的
+        # check-create-写穿 (含两段 DB I/O await) 串成一条队列, 高并发多会话时
+        # 每条消息都要排队等别的会话落库。per-key 锁只串行同一会话的首次创建,
+        # 不同会话互不阻塞; _registry_lock 仅保护锁注册表本身 (临界区无 I/O)。
+        self._registry_lock = asyncio.Lock()
+        self._key_locks: dict[str, asyncio.Lock] = {}
+
+    async def _key_lock(self, key: str) -> asyncio.Lock:
+        """Fix-78: 取 (惰性创建) 某 session_key 的创建锁。"""
+        async with self._registry_lock:
+            lock = self._key_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._key_locks[key] = lock
+            return lock
 
     def make_session_key(self, agent_id: str, platform: str, user_id: str, group_id: str | None) -> str:
         """生成会话键: agent + 平台 + (群 或 用户)。"""
@@ -70,30 +94,37 @@ class SessionManager:
 
         R5: 缓存未命中时先查 SQLite (重启后恢复既有 session_id), 仍未命中才创建;
         每次 get_or_create 写穿 last_active (best-effort)。check-then-create 在
-        ``_lock`` 内串行, 消除并发双创建。
+        per-key 锁内串行, 消除并发双创建。
+
+        Fix-78: 缓存命中的热路径不再进任何锁 (此前每条消息都排全局锁); 未命中
+        时只取该 session_key 的锁, 不同会话并发创建互不阻塞。last_active 更新
+        与写穿移出锁 —— 同一会话并发写穿只是 last_active 后写覆盖 (同一 Session
+        对象, 值等价), 无需串行。
         """
         key = self.make_session_key(agent_id, message.platform, message.user_id, message.group_id)
-        async with self._lock:
-            session = self._sessions.get(key)
-            if session is None:
-                session = await self._load_from_db(key)
-            if session is None:
-                session = Session(
-                    session_id=new_id("sess"),
-                    user_id=message.user_id,
-                    agent_id=agent_id,
-                    platform=message.platform,
-                    group_id=message.group_id,
-                    is_group=message.group_id is not None,
-                    created_at=unix_now(),
-                )
-                self._sessions[key] = session
-                self._by_id[session.session_id] = key
-                logger.info("创建会话", session_id=session.session_id, key=key)
-            session.last_active = unix_now()
-            message.session_id = session.session_id
-            await self._persist(session, key)
-        # 惰性回收: 每次 get_or_create 顺便清理过期 session (锁外, 不阻塞当前会话)
+        session = self._sessions.get(key)
+        if session is None:
+            async with await self._key_lock(key):
+                session = self._sessions.get(key)
+                if session is None:
+                    session = await self._load_from_db(key)
+                if session is None:
+                    session = Session(
+                        session_id=new_id("sess"),
+                        user_id=message.user_id,
+                        agent_id=agent_id,
+                        platform=message.platform,
+                        group_id=message.group_id,
+                        is_group=message.group_id is not None,
+                        created_at=unix_now(),
+                    )
+                    self._sessions[key] = session
+                    self._by_id[session.session_id] = key
+                    logger.info("创建会话", session_id=session.session_id, key=key)
+        session.last_active = unix_now()
+        message.session_id = session.session_id
+        await self._persist(session, key)
+        # 惰性回收: 每次 get_or_create 顺便清理过期 session (不阻塞当前会话)
         self._gc_expired()
         return session
 
@@ -125,6 +156,8 @@ class SessionManager:
         """惰性清理 TTL 过期会话 (K7: 防止长期运行内存膨胀)。
 
         R5: 回收时同步删库行 (best-effort, 同步 SQLite 删用 to_thread 包装)。
+        Fix-78: 顺带回收不再使用的 per-key 锁 (会话已回收且锁空闲才删,
+        防止锁注册表随历史会话数无界增长)。
         """
         if self._ttl_seconds <= 0:
             return
@@ -138,6 +171,14 @@ class SessionManager:
                 # best-effort 删库行 (同步, 失败仅记日志; gc 是惰性清理不阻塞主流程)
                 if self._db_path is not None:
                     asyncio.ensure_future(self._delete_from_db(session.session_id))  # noqa: ISC003
+        # Fix-78: 清理无会话对应且空闲的 key 锁
+        if self._key_locks:
+            stale = [
+                k for k, lock in self._key_locks.items()
+                if k not in self._sessions and not lock.locked()
+            ]
+            for k in stale:
+                self._key_locks.pop(k, None)
 
     # ── SQLite 写穿持久化 (R5, 照 UserMapper 同构) ───────────────
 
@@ -151,6 +192,13 @@ class SessionManager:
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self._db_path) as db:
             await db.executescript(SCHEMA_SQL)
+            # Fix-79: 旧库补列 (新库列已存在, ALTER 报 duplicate column 静默跳过)
+            for stmt in _SCHEMA_MIGRATIONS:
+                try:
+                    await db.execute(stmt)
+                except Exception as exc:  # noqa: BLE001 - sqlite OperationalError (列已存在等)
+                    if "duplicate column" not in str(exc).lower():
+                        logger.warning("SessionManager schema 迁移跳过", stmt=stmt, error=str(exc))
             await db.commit()
         self._schema_ready = True
         logger.info("SessionManager 持久化已初始化", path=self._db_path)
@@ -166,15 +214,24 @@ class SessionManager:
             async with aiosqlite.connect(self._db_path) as db:
                 cursor = await db.execute(
                     "SELECT session_id, user_id, agent_id, platform, group_id, is_group, "
-                    "created_at, last_active, state FROM sessions WHERE session_key = ?",
+                    "created_at, last_active, state, platform_session_id, user_ids "
+                    "FROM sessions WHERE session_key = ?",
                     (session_key,),
                 )
                 row = await cursor.fetchone()
                 if row is None:
                     return None
+                # Fix-79: 恢复 platform_session_id / user_ids —— 此前 schema 缺这两列,
+                # 重启 hydrate 后出站主动消息丢失平台路由键, 只能等下一条入站消息
+                # 重新填充 (重启后到用户再说话之间的主动消息发不出去)。
+                try:
+                    user_ids = json.loads(row[10]) if row[10] else {}
+                except (ValueError, TypeError):
+                    user_ids = {}
                 session = Session(
                     session_id=str(row[0]),
                     user_id=str(row[1] or ""),
+                    user_ids={str(k): str(v) for k, v in user_ids.items()} if isinstance(user_ids, dict) else {},
                     agent_id=str(row[2] or ""),
                     platform=str(row[3] or ""),
                     group_id=str(row[4]) if row[4] else None,
@@ -182,6 +239,7 @@ class SessionManager:
                     created_at=int(row[6] or 0),
                     last_active=int(row[7] or 0),
                     state=str(row[8] or "active"),
+                    platform_session_id=str(row[9] or ""),
                 )
             self._sessions[session_key] = session
             self._by_id[session.session_id] = session_key
@@ -203,7 +261,8 @@ class SessionManager:
                 await db.execute(
                     "INSERT OR REPLACE INTO sessions "
                     "(session_id, session_key, user_id, agent_id, platform, group_id, "
-                    "is_group, created_at, last_active, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "is_group, created_at, last_active, state, platform_session_id, user_ids) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         session.session_id,
                         session_key,
@@ -215,6 +274,10 @@ class SessionManager:
                         session.created_at,
                         session.last_active,
                         session.state,
+                        # Fix-79: platform_session_id/user_ids 一并写穿 (muted_until
+                        # 是 monotonic 运行时值, 重启无意义, 不持久化)
+                        session.platform_session_id,
+                        json.dumps(session.user_ids or {}, ensure_ascii=False),
                     ),
                 )
                 await db.commit()

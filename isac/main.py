@@ -1405,8 +1405,12 @@ def _setup_webhooks(event_bus: EventBus) -> Any:
         _webhook_bg_tasks.add(task)
         task.add_done_callback(_webhook_bg_tasks.discard)
 
-    event_bus.on_async(EventType.POST_MESSAGE, lambda p: _dispatch_webhook(p, "post_message"))
-    event_bus.on_async(EventType.POST_SEND, lambda p: _dispatch_webhook(p, "post_send"))
+    # Fix-80: 事件名用 CONTROL_PLANE_SPEC.md §5.1 目录名 (message.*), 不再直发
+    # EventBus 枚举值 —— 此前发 "post_message"/"post_send", 按文档订阅
+    # message.responded 的接收方永远收不到推送 (WebhookManager.canonical_event
+    # 同时兼容旧名订阅)。
+    event_bus.on_async(EventType.POST_MESSAGE, lambda p: _dispatch_webhook(p, "message.responded"))
+    event_bus.on_async(EventType.POST_SEND, lambda p: _dispatch_webhook(p, "message.sent"))
     return webhook_manager
 
 

@@ -36,6 +36,10 @@ logger = get_logger(__name__)
 
 # 默认重启次数上限; 超过后放弃 (is_alive=False)
 DEFAULT_MAX_RESTART_ATTEMPTS = 3
+# Fix-77: IPC 响应等待超时 (秒)。子进程挂死 (插件代码死锁/死循环且不退出) 时
+# 无超时的 recv 永久阻塞, 且 call 经 _lock 串行化 → 该插件的后续所有调用全部
+# 排队挂死。超时按崩溃处理 (terminate + respawn)。
+DEFAULT_IPC_TIMEOUT_SECONDS = 30.0
 
 # 可 JSON 序列化的原生类型 (worker 方法返回值超出此集合时降级为 str)
 _JSON_SAFE_TYPES = (str, int, float, bool, type(None), list, dict)
@@ -174,9 +178,12 @@ class PluginIsolationHost:
         *,
         max_restart_attempts: int = DEFAULT_MAX_RESTART_ATTEMPTS,
         rlimits: dict[str, tuple[int, int]] | None = None,
+        ipc_timeout: float = DEFAULT_IPC_TIMEOUT_SECONDS,
     ) -> None:
         self.plugin_id = plugin_id
         self.max_restart_attempts = max(0, int(max_restart_attempts))
+        # Fix-77: IPC 响应等待超时 (见 DEFAULT_IPC_TIMEOUT_SECONDS 注释)
+        self._ipc_timeout = max(0.1, float(ipc_timeout))
         # N5b 批次C C3: 资源限额可配 (透传给子进程 _apply_rlimits), 默认 None 用内置默认。
         self._rlimits = rlimits
         # N5b 批次C C3: 缓存 plugin_path, 崩溃 respawn 后据此重新 load_plugin。
@@ -320,7 +327,23 @@ class PluginIsolationHost:
             raise RuntimeError(f"插件 {self.plugin_id} 子进程崩溃, 已触发重启") from exc
         # 等待响应 (同步 recv, 包在 to_thread 避免阻塞 event loop)
         try:
-            raw = await asyncio.to_thread(self._parent_conn.recv)
+            # Fix-77: 加超时 —— 子进程挂死 (插件死锁/死循环且不退出) 时 recv
+            # 永久阻塞, 且 _lock 串行化让该插件后续所有 call 排队挂死。超时按
+            # 崩溃处理: _on_crash terminate 挂死进程 (管道随之关闭, 被阻塞的
+            # recv 线程收到 EOF/OSError 自行退出 —— to_thread 任务无法取消,
+            # 但线程会随管道关闭而终结) + respawn 新子进程。
+            raw = await asyncio.wait_for(
+                asyncio.to_thread(self._parent_conn.recv), timeout=self._ipc_timeout
+            )
+        except TimeoutError as exc:
+            logger.warning(
+                "IPC 响应超时, 视为子进程挂死, 触发重启",
+                plugin_id=self.plugin_id, timeout=self._ipc_timeout,
+            )
+            await self._on_crash()
+            raise RuntimeError(
+                f"插件 {self.plugin_id} IPC 响应超时 ({self._ipc_timeout}s), 子进程已重启"
+            ) from exc
         except EOFError as exc:
             await self._on_crash()
             raise RuntimeError(f"插件 {self.plugin_id} 子进程已退出") from exc

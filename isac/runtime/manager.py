@@ -77,21 +77,28 @@ class AgentManager:
         assemble_agent 内部 memory_factory 返回 NoOpMemoryPipeline 或真实 MemoryRetrievalPipeline;
         真实 pipeline 有 warm_up_sparse_index 方法, 从 MetadataStore 重建 BM25 内存索引,
         让重启后 BM25 检索立即可用而不等下次写入 (K3, DEVELOPMENT_PLAN.md)。
+
+        Fix-73: "存在性检查 → 组装 → 入册" 整段包在 per-agent_id 配置锁内。此前
+        两个并发 create 同一 agent_id 都通过 `in self._agents` 检查 (检查与入册间
+        隔着 assemble_agent 的 await 点), 后完成者用新实例**覆盖**先入册实例:
+        被覆盖实例的 MCP client/记忆 pipeline 等资源无人 stop 成为孤儿, 其 Sparse
+        预热也可能白跑。创建是低频控制面操作, 锁粒度 per-agent 不影响其它 Agent。
         """
-        if config.agent_id in self._agents:
-            raise ValueError(f"Agent 已存在: {config.agent_id}")
-        instance = await assemble_agent(config, self._services)
-        self._agents[config.agent_id] = instance
-        # K3: 预热 Sparse 索引 (NoOpMemoryPipeline 没有此方法, 静默跳过)
-        warm = getattr(instance.memory, "warm_up_sparse_index", None)
-        if warm is not None:
-            try:
-                await warm()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Sparse 索引预热失败, 不阻塞 Agent 创建", agent_id=config.agent_id, error=str(exc))
-        self._inc_metric("isac_agent_creates_total")
-        logger.info("Agent 已创建", agent_id=config.agent_id)
-        return instance
+        async with self.acquire_config_lock(config.agent_id):
+            if config.agent_id in self._agents:
+                raise ValueError(f"Agent 已存在: {config.agent_id}")
+            instance = await assemble_agent(config, self._services)
+            self._agents[config.agent_id] = instance
+            # K3: 预热 Sparse 索引 (NoOpMemoryPipeline 没有此方法, 静默跳过)
+            warm = getattr(instance.memory, "warm_up_sparse_index", None)
+            if warm is not None:
+                try:
+                    await warm()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Sparse 索引预热失败, 不阻塞 Agent 创建", agent_id=config.agent_id, error=str(exc))
+            self._inc_metric("isac_agent_creates_total")
+            logger.info("Agent 已创建", agent_id=config.agent_id)
+            return instance
 
     async def start(self, agent_id: str) -> None:
         instance = self._require(agent_id)
@@ -749,6 +756,18 @@ class AgentManager:
         `await lock.acquire()` 处被取消 (scheduler.stop 取消调度循环时会传播到
         这里), finally 看到 `locked()` 为真 (那是并发消息任务持有的) 就会释放
         别人的锁, 单会话串行被破坏 (两条消息同时进入 Loop)。
+
+        Fix-81 (M3): finally 的状态复位限定为"本协程确实设置过"(`turn_owns_state`)。
+        此前在等待会话锁期间被取消时, finally 仍无条件清 forced_turn 并把 THINKING
+        拨回 IDLE —— 而此刻持有锁的并发回合 (消息回合/另一强制话轮) 正处于
+        THINKING, 状态机被一个从未设置过它的协程破坏 (接手方强制话轮的
+        forced_turn 被清、进行中的回合被误拨 IDLE)。
+        Fix-82 (M4): ① AgentContext.services 注入 conversation_runtime —— loop 的
+        打断判定 (_interrupt_seq) 经它读取, 不注入则强制话轮恒不可被打断;
+        ② 正常完成时清除 loop 结束后才到达的陈旧 interrupt_state (THINKING 直到
+        finally 才解除, notify_incoming 仍会 request_interrupt) —— 否则下一回合被
+        InterruptInjector 注入"上一轮被打断"的错误提示; loop 自身被打断
+        (interrupted=True) 时保留, 交由接替回合的 Injector 正常消费。
         """
         import time as _time
 
@@ -756,6 +775,7 @@ class AgentManager:
         lock_key = f"{session.platform}:{session.user_id or 'unknown'}:{session.group_id or 'private'}"
         lock = await lock_mgr.acquire(lock_key) if lock_mgr is not None else None
         acquired = False
+        turn_owns_state = False  # Fix-81: 仅当本协程设置过 forced_turn/THINKING 才复位
         try:
             if lock is not None:
                 await lock.acquire()
@@ -765,47 +785,86 @@ class AgentManager:
                     source="proactive", reason=task.reason, created_at=_time.time()
                 )
                 runtime.transition_to(ConversationState.THINKING)
-            from isac.channel.model import ISACMessage as _ISACMessage
-            from isac.core.types import AgentContext
-
+                turn_owns_state = True
             # L3: 主动发言必带 source/intent/reason —— 经合成用户消息注入本轮上下文
-            content = (
-                f"[主动任务] 来源: {task.source}; 意图: {task.intent}; 原因: {task.reason}。"
-                "请据此主动向用户发起一条自然、简短的消息。"
-            )
-            synthetic = _ISACMessage(
-                msg_id=f"proactive-{task.task_id}",
-                platform=session.platform,
-                timestamp=int(_time.time()),
-                user_id=session.user_id,
-                user_name="",
-                group_id=session.group_id,
-                session_id=session.session_id,
-                content=content,
-            )
-            agent_context = AgentContext(
-                session=session,
-                user_profile=None,
-                current_message=synthetic,
-                services={"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id},
-            )
+            content, agent_context = self._forced_turn_context(instance, session, task, runtime)
             result = await instance.loop.run([{"role": "user", "content": content}], agent_context)
-            if result.content:
-                instance.gating.get_turn_scheduler(session.session_id).record_reply()
-                await self._send_proactive_reply(instance, session, result.content)
+            if not getattr(result, "interrupted", False):
+                # Fix-82: 正常完成 → 清除 loop 结束后到达的陈旧打断信号
+                if runtime is not None:
+                    runtime.clear_interrupt()
+                if result.content:
+                    instance.gating.get_turn_scheduler(session.session_id).record_reply()
+                    await self._send_proactive_reply(instance, session, result.content)
         except Exception:  # noqa: BLE001
             logger.error("强制话轮执行异常", task_id=task.task_id, exc_info=True)
         finally:
-            if runtime is not None:
-                runtime.forced_turn = None
-                if runtime.state is ConversationState.THINKING:
-                    runtime.transition_to(ConversationState.IDLE)
-            # 只释放**本协程真正获取到**的锁 (acquired 标志), 不看共享锁的
-            # locked() 状态 —— 否则取消场景下会释放并发消息持有的同一把锁。
-            if lock is not None and acquired:
-                lock.release()
-            if lock_mgr is not None:
-                lock_mgr.release(lock_key)
+            self._finish_forced_turn(runtime, turn_owns_state, lock_mgr, lock_key, lock, acquired)
+
+    @staticmethod
+    def _finish_forced_turn(
+        runtime: ConversationRuntime | None,
+        turn_owns_state: bool,
+        lock_mgr: Any,
+        lock_key: str,
+        lock: Any,
+        acquired: bool,
+    ) -> None:
+        """Fix-81 (从 _run_forced_turn 抽出, 降圈复杂度): 强制话轮收尾。
+
+        只复位本协程设置过的状态 (turn_owns_state), 只释放本协程获取到的锁
+        (acquired) —— 取消在等锁阶段时不得动并发回合的状态机或别人的锁。
+        """
+        if runtime is not None and turn_owns_state:
+            runtime.forced_turn = None
+            if runtime.state is ConversationState.THINKING:
+                runtime.transition_to(ConversationState.IDLE)
+        if lock is not None and acquired:
+            lock.release()
+        if lock_mgr is not None:
+            lock_mgr.release(lock_key)
+
+    @staticmethod
+    def _forced_turn_context(
+        instance: AgentInstance,
+        session: Session,
+        task: ProactiveTask,
+        runtime: ConversationRuntime | None,
+    ) -> tuple[str, Any]:
+        """Fix-82 (从 _run_forced_turn 抽出, 降圈复杂度): 合成强制话轮上下文。
+
+        返回 (合成消息文本, AgentContext); conversation_runtime 经 services 注入,
+        让 loop 的打断判定 (_interrupt_seq) 能感知本回合期间到达的新消息。
+        """
+        import time as _time
+
+        from isac.channel.model import ISACMessage as _ISACMessage
+        from isac.core.types import AgentContext
+
+        content = (
+            f"[主动任务] 来源: {task.source}; 意图: {task.intent}; 原因: {task.reason}。"
+            "请据此主动向用户发起一条自然、简短的消息。"
+        )
+        synthetic = _ISACMessage(
+            msg_id=f"proactive-{task.task_id}",
+            platform=session.platform,
+            timestamp=int(_time.time()),
+            user_id=session.user_id,
+            user_name="",
+            group_id=session.group_id,
+            session_id=session.session_id,
+            content=content,
+        )
+        turn_services: dict[str, Any] = {"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id}
+        if runtime is not None:
+            turn_services["conversation_runtime"] = runtime
+        agent_context = AgentContext(
+            session=session,
+            user_profile=None,
+            current_message=synthetic,
+            services=turn_services,
+        )
+        return content, agent_context
 
     async def _send_proactive_reply(self, instance: AgentInstance, session: Session, content: str) -> None:
         """把主动话轮的回复经原 Channel 发送 (platform_session_id 保证 WebChat 可达)。"""

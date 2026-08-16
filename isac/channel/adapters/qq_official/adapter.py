@@ -42,6 +42,7 @@ import httpx
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage
+from isac.channel.webhook_guard import DEFAULT_MAX_WEBHOOK_BODY_BYTES, read_body_limited
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -80,6 +81,8 @@ class QQOfficialAdapter(PlatformAdapter):
         self._webhook_host = str(config.get("webhook_host", _DEFAULT_WEBHOOK_HOST) or _DEFAULT_WEBHOOK_HOST)
         self._webhook_port = int(config.get("webhook_port", _DEFAULT_WEBHOOK_PORT) or _DEFAULT_WEBHOOK_PORT)
         self._webhook_path = str(config.get("webhook_path", _DEFAULT_WEBHOOK_PATH) or _DEFAULT_WEBHOOK_PATH)
+        # Fix-76: webhook 请求体体积上限 (验签前先限流读取, 防超大 body 打爆内存)
+        self._max_body_bytes = int(config.get("max_body_bytes", DEFAULT_MAX_WEBHOOK_BODY_BYTES))
         self._running = False
         self._server: Any = None
         self._serve_task: asyncio.Task[Any] | None = None
@@ -152,9 +155,14 @@ class QQOfficialAdapter(PlatformAdapter):
         """
         # 取 raw body (验签需要原始字节, 不能 json 后再序列化)
         try:
-            raw_body = await request.body()
+            # Fix-76: 限流读取 —— request.body() 全量读入内存且无上限, 而验签在
+            # 读取之后, 超大 body (含 chunked) 在签名校验之前即可打爆内存。
+            raw_body = await read_body_limited(request, self._max_body_bytes)
         except Exception as exc:  # noqa: BLE001
             logger.warning("QQ 官方 webhook 取 body 失败", error=str(exc))
+            return {}
+        if raw_body is None:
+            logger.warning("QQ 官方 webhook 请求体超限, 拒绝", limit=self._max_body_bytes)
             return {}
         try:
             payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}

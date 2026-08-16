@@ -333,9 +333,11 @@ class SubAgentSupervisor:
         now = int(time.time())
         marked = 0
         for run in persisted:
-            # 重建内存索引 (重启后 _runs 是空的)
-            self._runs[run.task_id] = run
             # running/queued 视为中断, 标记 cancelled
+            # Fix-83: **先改状态落库, 再登记内存索引** —— 此前先 `_runs[...] = run`
+            # 再改状态, 两步之间有 await (upsert_run), 并发 get_status/list_runs
+            # 会看到"重启前已死的任务仍是 running"的幻影中间态 (调用方可能据此
+            # 等待/查询一个永远不会终结的任务)。
             if run.status in ("running", "queued", "waiting_tool"):
                 run.status = "cancelled"
                 run.updated_at = now
@@ -344,6 +346,7 @@ class SubAgentSupervisor:
                 run.error_summary = "进程重启, 任务中断"
                 marked += 1
                 await self._journal.upsert_run(run)
+            self._runs[run.task_id] = run
         if marked > 0:
             logger.info("SubAgent 重启恢复完成", marked_cancelled=marked, total=len(persisted))
         return marked

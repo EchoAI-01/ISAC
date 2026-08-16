@@ -69,6 +69,8 @@ async def test_url_verification_plaintext_returns_challenge() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"challenge": challenge, "token": "tok-123", "type": "url_verification"}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {"challenge": challenge}
@@ -82,6 +84,8 @@ async def test_url_verification_token_mismatch_rejected() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"challenge": "cj", "token": "wrong", "type": "url_verification"}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     # 异常被吞, 不回 challenge (返回空 dict)
@@ -102,6 +106,8 @@ async def test_token_mismatch_uses_constant_time_compare() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"challenge": "cj", "token": "wrong-token-value", "type": "url_verification"}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     # _handle_event 吞掉 ValueError 返回空 dict (与原行为一致)
     resp = await adapter._handle_event(_Req())
@@ -126,6 +132,8 @@ async def test_url_verification_encrypted_mode_decrypts_challenge() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"encrypt": encrypted}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {"challenge": challenge}
@@ -160,6 +168,8 @@ async def test_plaintext_body_rejected_when_encrypt_key_configured() -> None:
     class _Req:
         async def json(self) -> Any:
             return forged_plaintext
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {}
@@ -175,6 +185,8 @@ async def test_plaintext_url_verification_rejected_when_encrypt_key_configured()
     class _Req:
         async def json(self) -> Any:
             return {"challenge": "cj-plaintext", "token": "tok-123", "type": "url_verification"}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {}  # 不回 challenge
@@ -210,6 +222,8 @@ async def test_message_event_normalized_to_isac_message() -> None:
     class _Req:
         async def json(self) -> Any:
             return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {}  # 常规事件回空 dict
@@ -253,6 +267,8 @@ async def test_p2p_message_with_chat_type_not_treated_as_group() -> None:
     class _Req:
         async def json(self) -> Any:
             return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {}
@@ -291,6 +307,8 @@ async def test_group_message_with_chat_type_keeps_group_id() -> None:
     class _Req:
         async def json(self) -> Any:
             return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     await adapter._handle_event(_Req())
     assert len(received) == 1
@@ -326,6 +344,8 @@ async def test_message_event_encrypted_mode_decrypted_and_normalized() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"encrypt": encrypted}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     await adapter._handle_event(_Req())
     assert len(received) == 1
@@ -348,6 +368,8 @@ async def test_non_message_event_ignored() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"header": {"event_type": "contact.user.updated_v3"}, "event": {}}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     await adapter._handle_event(_Req())
     assert called == []
@@ -374,6 +396,8 @@ async def test_on_message_exception_does_not_break_response() -> None:
     class _Req:
         async def json(self) -> Any:
             return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())  # 不抛异常
     assert resp == {}
@@ -589,4 +613,26 @@ async def test_webhook_rejects_when_verification_token_missing() -> None:
 
     assert resp.status_code == 200
     assert resp.json() == {}
+    assert received == []
+
+
+@pytest.mark.asyncio
+async def test_oversized_body_rejected_before_processing() -> None:
+    """Fix-76: 超限请求体在进入解密/校验之前即被拒绝 (流式累计, chunked 同样生效)。"""
+    adapter = _make_adapter(verification_token="tok")
+    adapter._max_body_bytes = 1024  # noqa: SLF001
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+
+    class _Req:
+        async def stream(self) -> Any:
+            yield b"x" * 600
+            yield b"y" * 600  # 累计 1200 > 1024
+
+    resp = await adapter._handle_event(_Req())
+    assert resp == {}
     assert received == []

@@ -37,6 +37,10 @@ DEFAULT_READ_TIMEOUT_SECONDS = 10.0
 DEFAULT_MAX_CONNECTIONS = 200
 # K7: 待消费回复队列上限, 防止客户端不 poll 时内存无限增长
 DEFAULT_MAX_PENDING_REPLIES = 100
+# Fix-75: 会话条数上限 —— K7 只限了**每会话**队列长度, 会话**个数**仍无界:
+# 攻击/异常客户端用海量随机 session_id 发 send, 每个都建字典条目且从不 poll,
+# 条目只在 poll 时惰性清理 → 字典随 session_id 基数无限增长。
+DEFAULT_MAX_SESSIONS = 1000
 
 
 class _RequestTooLarge(Exception):
@@ -63,6 +67,8 @@ class WebChatAdapter(PlatformAdapter):
         self._connection_semaphore = asyncio.Semaphore(self._max_connections)
         # K7: 每个 session 的待消费回复队列上限; 超出时丢弃最旧的 (FIFO), 不让内存无限增长
         self._max_pending_replies = int(config.get("max_pending_replies", DEFAULT_MAX_PENDING_REPLIES))
+        # Fix-75: 会话条数上限 (见 DEFAULT_MAX_SESSIONS 注释)
+        self._max_sessions = int(config.get("max_sessions", DEFAULT_MAX_SESSIONS))
         self._running = False
         # session_id -> 待消费的回复列表 [(timestamp, content, frame_extra)];
         # frame_extra 至少含 "kind" ("message" | "progress"), D9 progress 帧额外带
@@ -118,7 +124,25 @@ class WebChatAdapter(PlatformAdapter):
             # 超出上限时丢弃最旧的
             while len(queue) > self._max_pending_replies:
                 queue.pop(0)
+            # Fix-75: 会话条数上限 (先清过期, 仍超限则逐出最久未回复的会话)
+            if len(self._pending_replies) > self._max_sessions:
+                self._evict_sessions_locked()
         return True
+
+    def _evict_sessions_locked(self) -> None:
+        """Fix-75: 持锁内收敛会话条数 —— 先删空队列/最新回复已过期的会话,
+        仍超上限则逐出"最新回复时间戳最旧"的会话 (最可能是被 abandon 的)。"""
+        now = time.time()
+        expired = [
+            sid
+            for sid, q in self._pending_replies.items()
+            if not q or now - q[-1][0] >= self._max_age
+        ]
+        for sid in expired:
+            del self._pending_replies[sid]
+        while len(self._pending_replies) > self._max_sessions:
+            oldest_sid = min(self._pending_replies, key=lambda sid: self._pending_replies[sid][-1][0])
+            del self._pending_replies[oldest_sid]
 
     @staticmethod
     def _render_content_with_segments(message: ISACMessage) -> str:
@@ -173,10 +197,10 @@ class WebChatAdapter(PlatformAdapter):
         """HTTP /webchat/poll 调用: 拉取并清空该 session 的待消费回复。"""
         now = time.time()
         async with self._lock:
-            queue = self._pending_replies.get(session_id, [])
-            # 过滤掉超时的
+            queue = self._pending_replies.pop(session_id, [])
+            # 过滤掉超时的 (Fix-75: pop 代替置空 —— 被 abandon 的会话条目不再
+            # 以空列表形式永久驻留字典)
             valid = [(ts, content, extra) for ts, content, extra in queue if now - ts < self._max_age]
-            self._pending_replies[session_id] = []
         return [{"timestamp": ts, "content": content, **extra} for ts, content, extra in valid]
 
     async def _handle_connection(
