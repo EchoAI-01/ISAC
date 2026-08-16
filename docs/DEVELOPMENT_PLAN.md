@@ -403,7 +403,7 @@
   - **当前**：已完成 (2026-07-25)。通用多模态 Provider 框架落地: 所有 Provider (image_gen/stt/tts/embed/vision) 接受用户配置的 `api_base + api_key + model`, 可接任意 OpenAI 兼容端点; 测试用 httpx.MockTransport 不依赖真实 Key。
     - **ModelRouter 打分排序** (`isac/provider/router.py`): 过滤链 operation→modalities→authorization→cost_ceiling→latency_target→health; 综合分 `score = (4-cost_rank)*2.0 + (2-latency_rank)*1.0 + health*1.5 + pref*0.5`; `record_health()` 上报 provider 健康状态, `set_preference()` 用户偏好加权; `ModelSelection.reason` 输出各因子明细。
     - **ArtifactStore 本地 FS + TTL** (`isac/artifacts/store.py`): 路径 `data/artifacts/<sha256[:2]>/<sha256>.bin` (分桶避免单目录文件过多); SQLite 元数据 `meta.db` (artifact_id PK + expires_at 索引); `put` 写盘幂等 (sha256 决定性, 重复 put 不覆盖); `get` 探测过期则删文件+DB 行并返回 None; `sweep_expired()` 周期扫描; `start_ttl_sweep()/stop()` 生命周期对齐 ApplicationRuntime; `ArtifactRef` 新增 `expires_at` 字段, 默认 7 天 TTL 可配。
-    - **MediaNormalizer** (`isac/utils/media.py`): MIME 推断 (mimetypes.guess_type) + 路径白名单 (默认 data/artifacts/, 可配置多个 allowed_dirs) + 大小上限 (image 25MB / audio 50MB / video 200MB / file 50MB) + expected_kind 校验 + URL 输入拒绝 (J2 不做入站 HTTP 下载); magic-byte 校验留 TODO(J3+)。
+    - **MediaNormalizer** (`isac/utils/media.py`): MIME 推断 (mimetypes.guess_type) + 路径白名单 (默认 data/artifacts/, 可配置多个 allowed_dirs) + 大小上限 (image 25MB / audio 50MB / video 200MB / file 50MB) + expected_kind 校验 + URL 输入拒绝 (J2 不做入站 HTTP 下载) + magic-byte 头部签名校验 (2026-08-16 清偿架构债: png/jpeg/gif/mp3/wav/ogg/flac/mp4/webm 防扩展名伪造, 未登记 MIME 跳过)。
     - **多模态 Provider 真实实现**:
       * `OpenAICompatImageGenProvider` (`isac/provider/image_gen/openai_compat.py`): POST /images/generations, b64_json/url 两种响应格式都支持, 生成图片写入 ArtifactStore 返回 ArtifactRef 列表。
       * `OpenAICompatSTTProvider` + `OpenAICompatTTSProvider` (`isac/provider/stt_tts/openai_compat.py`): STT multipart 上传 /audio/transcriptions 返回 TranscriptionResult; TTS POST /audio/speech 返回音频 bytes 存 ArtifactStore 返回 ArtifactRef。
@@ -1005,7 +1005,7 @@
 | 同步 IO | `audit.py` 同步 `open("a")`、`bus._trigger_persist` 同步 fsync、`routes_routing` 同步写盘 | 任意空档顺手清 |
 | Provider 测试端点假连接 | `POST /providers/{id}/test` 不发真实连接即返回 ok, 且访问私有属性 | R1 顺手做真实 ping |
 | 检索结构化过滤 | `pipeline.search()` 丢弃 `filters`/`agent_id` (topics/时间范围未实现) | R4 检索调优顺手做 |
-| 媒体 magic-byte 校验 | `utils/media.py` 仅扩展名推断 MIME, 无头部签名校验 | R1 顺手做 |
+| ~~媒体 magic-byte 校验~~ | ✅ 已清偿 (2026-08-16): `_check_magic_bytes` 读头部签名校验 png/jpeg/gif/mp3/wav/ogg/flac/mp4/webm, 扩展名伪造拒, 未登记 MIME 跳过向后兼容 | — |
 | 通用实体关系图抽取层 | R4-③ 跳过: 写边层 `GraphStore.add_edge`(通用三元组 relation 任意字符串)已就绪, 但抽取层从零(需 LLM + NER + 人物-人物/人物-话题关系抽取 prompt 工程 + 解析归一, ~150+ 行); 现 `mentioned_in` 提及图已满足 S3 召回, 语义关系图留 Y1 长期记忆深化承接 | Y1 (GA 后) |
 | 429 退避区分 | `provider/manager.py` 重试不区分 RateLimitError 退避时长 | R1/T5 顺手做 |
 | `reload_config` 差量更新 | 现整实例重建, 应差量更新 gating/persona/权限 | 观察, 不紧急 |

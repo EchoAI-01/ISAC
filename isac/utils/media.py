@@ -8,7 +8,8 @@
 
 URL 输入当前不做 HTTP 下载 (J2 范围内只做出站, 入站留 J3), 直接拒绝。
 
-magic-byte 校验留 TODO (J3+): 当前依赖 mimetypes.guess_type 推断扩展名。
+magic-byte 校验: 对已登记签名的 MIME (png/jpeg/gif/mp3/wav/ogg/flac/mp4/webm)
+读文件头部校验, 扩展名伪造 (如 .png 实为脚本) 拒绝; 未登记 MIME 跳过 (向后兼容)。
 """
 
 from __future__ import annotations
@@ -31,16 +32,44 @@ _DEFAULT_SIZE_LIMITS: dict[str, int] = {
     "file": 50 * 1024 * 1024,
 }
 
-# 简化的 magic-byte 签名: 仅用作辅助校验, 不强制 (留 J3+ 完整实现)
-# 当前 mimetypes.guess_type 已能从扩展名推断, magic-byte 校验为 TODO。
+# magic-byte 签名表: 按推断 MIME 校验文件头部, 防扩展名伪造。
+# 偏移 0 的签名用 startswith; mp4 的 "ftyp" 在偏移 4 (header[4:8])。
 _MAGIC_BYTES: dict[str, list[bytes]] = {
     "image/png": [b"\x89PNG\r\n\x1a\n"],
     "image/jpeg": [b"\xff\xd8\xff"],
+    "image/gif": [b"GIF87a", b"GIF89a"],
     "audio/mpeg": [b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xfa"],
     "audio/wav": [b"RIFF"],  # RIFF....WAVE
     "audio/x-wav": [b"RIFF"],
+    "audio/ogg": [b"OggS"],
+    "audio/flac": [b"fLaC"],
     "video/mp4": [b"ftyp"],  # 偏移 4
+    "video/webm": [b"\x1a\x45\xdf\xa3"],
 }
+
+
+def _check_magic_bytes(path: Path, mime_type: str) -> bool:
+    """读文件头部字节校验与推断 MIME 一致 (防扩展名伪造)。
+
+    未登记签名的 MIME 跳过校验 (向后兼容, 不引入新拒); 读失败跳过 (大小校验已保证可访问)。
+    返回 True 表示通过/跳过, False 表示头部签名不符 (扩展名可能被伪造)。
+    """
+    candidates = _MAGIC_BYTES.get(mime_type)
+    if not candidates:
+        return True
+    try:
+        with path.open("rb") as fh:
+            header = fh.read(16)
+    except OSError as exc:
+        logger.debug("magic-byte 校验读文件失败, 跳过", path=str(path), error=str(exc))
+        return True
+    for sig in candidates:
+        if sig == b"ftyp":
+            if header[4:8] == b"ftyp":
+                return True
+        elif header.startswith(sig):
+            return True
+    return False
 
 
 class MediaNormalizer:
@@ -100,28 +129,8 @@ class MediaNormalizer:
                 context={"uri": uri, "resolved": str(resolved)},
             )
 
-        # 6. MIME 推断 (mimetypes.guess_type)
-        mime_type, _ = mimetypes.guess_type(str(resolved))
-        if not mime_type:
-            raise MediaValidationError(
-                f"无法推断 MIME 类型 (未知扩展名): {uri}",
-                context={"uri": uri},
-            )
-
-        # 7. kind 推断 (image|audio|video; 其他 MIME 拒)
-        kind = self._infer_kind(mime_type)
-        if not kind:
-            raise MediaValidationError(
-                f"未知 MIME 类型 (非 image/audio/video): {mime_type}",
-                context={"uri": uri, "mime_type": mime_type},
-            )
-
-        # 8. expected_kind 校验
-        if expected_kind is not None and kind != expected_kind:
-            raise MediaValidationError(
-                f"期望 {expected_kind} 但实际是 {kind} (mime={mime_type})",
-                context={"uri": uri, "expected": expected_kind, "actual": kind},
-            )
+        # 6-8. MIME 推断 + kind + expected_kind 校验 (抽 helper 降 normalize 复杂度)
+        mime_type, kind = self._resolve_mime_kind(resolved, uri, expected_kind)
 
         # 9. 大小上限
         size = resolved.stat().st_size
@@ -132,8 +141,12 @@ class MediaNormalizer:
                 context={"uri": uri, "size": size, "limit": limit, "kind": kind},
             )
 
-        # TODO(J3+): magic-byte 校验 (PNG/JPG/WEBP/MP3/WAV/MP4 头部签名)
-        # 当前依赖 mimetypes.guess_type, 扩展名伪造会绕过; 留 J3 完整实现。
+        # 10. magic-byte 校验 (防扩展名伪造: 头部签名与推断 MIME 不符则拒)
+        if not _check_magic_bytes(resolved, mime_type):
+            raise MediaValidationError(
+                f"文件头部签名与 {mime_type} 不符 (扩展名可能被伪造): {uri}",
+                context={"uri": uri, "mime_type": mime_type},
+            )
 
         return MediaInput(
             kind=kind,
@@ -157,3 +170,26 @@ class MediaNormalizer:
         if mime_type.startswith("video/"):
             return "video"
         return None
+
+    def _resolve_mime_kind(
+        self, resolved: Path, uri: str, expected_kind: str | None
+    ) -> tuple[str, str]:
+        """MIME 推断 + kind 推断 + expected_kind 校验 (抽离降 normalize 复杂度)。"""
+        mime_type, _ = mimetypes.guess_type(str(resolved))
+        if not mime_type:
+            raise MediaValidationError(
+                f"无法推断 MIME 类型 (未知扩展名): {uri}",
+                context={"uri": uri},
+            )
+        kind = self._infer_kind(mime_type)
+        if not kind:
+            raise MediaValidationError(
+                f"未知 MIME 类型 (非 image/audio/video): {mime_type}",
+                context={"uri": uri, "mime_type": mime_type},
+            )
+        if expected_kind is not None and kind != expected_kind:
+            raise MediaValidationError(
+                f"期望 {expected_kind} 但实际是 {kind} (mime={mime_type})",
+                context={"uri": uri, "expected": expected_kind, "actual": kind},
+            )
+        return mime_type, kind
