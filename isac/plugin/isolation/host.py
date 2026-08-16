@@ -41,17 +41,30 @@ DEFAULT_MAX_RESTART_ATTEMPTS = 3
 _JSON_SAFE_TYPES = (str, int, float, bool, type(None), list, dict)
 
 
-def _apply_rlimits() -> None:
-    """子进程资源限额: CPU 1 秒 / NOFILE 64 / 地址空间 256MB (POSIX; Windows 跳过)。"""
+# 默认资源限额 (POSIX; 可经 PluginIsolationHost(rlimits=...) 覆盖)
+_DEFAULT_RLIMITS: dict[str, tuple[int, int]] = {
+    "cpu": (1, 1),
+    "nofile": (64, 64),
+    "as": (256 * 1024 * 1024, 256 * 1024 * 1024),
+}
+
+
+def _apply_rlimits(rlimits: dict[str, tuple[int, int]] | None = None) -> None:
+    """子进程资源限额 (POSIX; Windows 跳过)。
+
+    N5b 批次C C3: rlimits 可配 (此前 RLIMIT_CPU (1,1) 硬编码, 长任务插件直接
+    SIGXCPU 被杀且不可调)。默认仍 (1,1)/64/256MB 向后兼容。
+    """
     if resource is None:
         return
+    cfg = rlimits or _DEFAULT_RLIMITS
     try:
         if hasattr(resource, "RLIMIT_CPU"):
-            resource.setrlimit(resource.RLIMIT_CPU, (1, 1))  # 1 秒 CPU 软/硬上限
+            resource.setrlimit(resource.RLIMIT_CPU, cfg.get("cpu", _DEFAULT_RLIMITS["cpu"]))
         if hasattr(resource, "RLIMIT_NOFILE"):
-            resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+            resource.setrlimit(resource.RLIMIT_NOFILE, cfg.get("nofile", _DEFAULT_RLIMITS["nofile"]))
         if hasattr(resource, "RLIMIT_AS"):
-            resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+            resource.setrlimit(resource.RLIMIT_AS, cfg.get("as", _DEFAULT_RLIMITS["as"]))
     except (ValueError, OSError, PermissionError):
         pass  # 权限不足或平台不支持时跳过
 
@@ -96,13 +109,13 @@ def _worker_call(state: dict[str, Any], payload: dict[str, Any]) -> dict[str, An
     return {"result": result}
 
 
-def _plugin_worker(plugin_id: str, pipe_conn: Any) -> None:
+def _plugin_worker(plugin_id: str, pipe_conn: Any, rlimits: dict[str, tuple[int, int]] | None = None) -> None:
     """子进程入口: 循环处理 load/call 请求 (CR3-H2: 真实加载插件, echo 兼容)。
 
     读管道一条 JSON → 处理 → 写回一条 JSON。业务异常回 kind=error 不崩溃;
-    管道断开 (EOFError) 退出。资源限额见 _apply_rlimits (POSIX only)。
+    管道断开 (EOFError) 退出。资源限额见 _apply_rlimits (POSIX only, C3 可配)。
     """
-    _apply_rlimits()
+    _apply_rlimits(rlimits)
     state: dict[str, Any] = {}
     while True:
         correlation_id = ""
@@ -160,9 +173,14 @@ class PluginIsolationHost:
         plugin_id: str,
         *,
         max_restart_attempts: int = DEFAULT_MAX_RESTART_ATTEMPTS,
+        rlimits: dict[str, tuple[int, int]] | None = None,
     ) -> None:
         self.plugin_id = plugin_id
         self.max_restart_attempts = max(0, int(max_restart_attempts))
+        # N5b 批次C C3: 资源限额可配 (透传给子进程 _apply_rlimits), 默认 None 用内置默认。
+        self._rlimits = rlimits
+        # N5b 批次C C3: 缓存 plugin_path, 崩溃 respawn 后据此重新 load_plugin。
+        self._plugin_path: str | None = None
         self._alive = False
         self._process: mp.process.BaseProcess | None = None
         self._parent_conn: Any = None
@@ -170,6 +188,12 @@ class PluginIsolationHost:
         self._restart_count = 0
         self._correlation_counter = 0
         self._ctx: Any = None
+        # N5b 批次C C4: call 串行化锁 —— 并发 call 共享同一 _parent_conn, 无锁则
+        # send/recv 竞争致响应错配 (correlation_id 不匹配)。asyncio.Lock 串行化 IPC。
+        self._lock: Any = None  # 延迟创建 (需事件循环)
+        # N5b 批次C C3: 崩溃 respawn 后 worker state 已重置, 需重新 load_plugin;
+        # 标记位让下次 call 在拿锁前重载 (避免在持锁的 call 内重入 load_plugin→call 死锁)。
+        self._needs_reload: bool = False
 
     async def spawn(self) -> None:
         """启动隔离子进程 (multiprocessing.Process + Pipe + 资源限额)."""
@@ -184,7 +208,7 @@ class PluginIsolationHost:
         self._parent_conn, self._child_conn = self._ctx.Pipe()
         self._process = self._ctx.Process(
             target=_plugin_worker,
-            args=(self.plugin_id, self._child_conn),
+            args=(self.plugin_id, self._child_conn, self._rlimits),
             daemon=True,
         )
         self._process.start()
@@ -240,7 +264,11 @@ class PluginIsolationHost:
         插件入口文件的顶层代码在子进程内执行 —— 恶意/异常插件影响的是资源受限
         的 worker 进程, 不是宿主。返回 kind=result (payload.loaded=插件名) 或
         kind=error (payload.error=失败原因)。
+
+        N5b 批次C C3: 缓存 plugin_path, 子进程崩溃 respawn 后据此重新 load_plugin
+        (此前 _on_crash 只 spawn 空 worker 不重新加载, 崩溃恢复名存实亡)。
         """
+        self._plugin_path = str(plugin_path)
         return await self.call(
             IPCEnvelope(kind="load", plugin_id=self.plugin_id, payload={"path": str(plugin_path)})
         )
@@ -250,11 +278,34 @@ class PluginIsolationHost:
 
         编码 envelope → JSON → 管道发送 → 等待 result/error → 解码。
         子进程崩溃时自动重启 (最多 max_restart_attempts 次)。
+
+        N5b 批次C C4: async with _lock 串行化 send+recv (此前并发 call 共享同一
+        _parent_conn 无锁, 响应错配); _ipc_roundtrip 校验响应 correlation_id 匹配
+        (此前 FIFO recv, 残留/乱序响应会拿到别人的结果)。C3: 崩溃 respawn 后下次
+        call 开头重载 plugin (worker state 已重置)。
         """
         if not self._alive or self._parent_conn is None:
             raise RuntimeError(f"插件 {self.plugin_id} 未 spawn, 无法调用")
-        self._correlation_counter += 1
-        envelope.correlation_id = f"corr-{self._correlation_counter}"
+        # C3: 崩溃 respawn 后 worker state 已重置, 需重新 load_plugin (若有缓存路径);
+        # 在拿锁前重载, 避免在持锁的 call 内重入 load_plugin→call 死锁。
+        if self._needs_reload and self._plugin_path:
+            self._needs_reload = False
+            await self.load_plugin(self._plugin_path)
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            self._correlation_counter += 1
+            envelope.correlation_id = f"corr-{self._correlation_counter}"
+            data = await self._ipc_roundtrip(envelope)
+        return IPCEnvelope(
+            kind=data.get("kind", "result"),
+            plugin_id=data.get("plugin_id", self.plugin_id),
+            payload=data.get("payload", {}),
+            correlation_id=data.get("correlation_id", ""),
+        )
+
+    async def _ipc_roundtrip(self, envelope: IPCEnvelope) -> dict[str, Any]:
+        """C4: 串行化发送 + 接收 + 校验 correlation_id (须在 _lock 内调用)。"""
         try:
             self._parent_conn.send(json.dumps({
                 "kind": envelope.kind,
@@ -274,12 +325,16 @@ class PluginIsolationHost:
             await self._on_crash()
             raise RuntimeError(f"插件 {self.plugin_id} 子进程已退出") from exc
         data = json.loads(raw) if isinstance(raw, str) else raw
-        return IPCEnvelope(
-            kind=data.get("kind", "result"),
-            plugin_id=data.get("plugin_id", self.plugin_id),
-            payload=data.get("payload", {}),
-            correlation_id=data.get("correlation_id", ""),
-        )
+        # C4: 校验响应 correlation_id 匹配 (不匹配说明管道残留/并发错配, 视为崩溃重置)
+        resp_corr = data.get("correlation_id", "")
+        if resp_corr and resp_corr != envelope.correlation_id:
+            logger.warning(
+                "IPC 响应 correlation_id 不匹配", plugin_id=self.plugin_id,
+                expected=envelope.correlation_id, got=resp_corr,
+            )
+            await self._on_crash()
+            raise RuntimeError(f"插件 {self.plugin_id} IPC 响应错配 (correlation_id 不匹配)")
+        return data
 
     def _close_conns(self) -> None:
         """关闭父侧 pipe 两端 (幂等; 防 _child_conn FD 泄漏)。"""
@@ -328,7 +383,7 @@ class PluginIsolationHost:
         self._parent_conn, self._child_conn = self._ctx.Pipe()
         self._process = self._ctx.Process(
             target=_plugin_worker,
-            args=(self.plugin_id, self._child_conn),
+            args=(self.plugin_id, self._child_conn, self._rlimits),
             daemon=True,
         )
         self._process.start()
@@ -337,6 +392,10 @@ class PluginIsolationHost:
             self._child_conn.close()
         except Exception:  # noqa: BLE001
             pass
+        # C3: respawn 后 worker state 已重置 (空 plugin), 标记下次 call 重载插件
+        # (此前 respawn 空 worker 不 reload, 后续 call 报"插件尚未加载" → 崩溃恢复名存实亡)。
+        if self._plugin_path:
+            self._needs_reload = True
 
     @property
     def is_alive(self) -> bool:
