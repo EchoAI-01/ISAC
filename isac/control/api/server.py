@@ -234,6 +234,7 @@ def create_control_app(
     vector_resolver: Any = None,
     channel_registry: Any = None,
     webhook_manager: Any = None,
+    tenant_manager: Any = None,
     services: dict[str, Any] | None = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
@@ -352,7 +353,7 @@ def create_control_app(
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
         scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
         sparse_resolver, workflow_engine, identity_resolver, vector_resolver,
-        webhook_manager,
+        webhook_manager, tenant_manager,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -551,8 +552,9 @@ def _mount_optional_routers(
     identity_resolver: Any = None,
     vector_resolver: Any = None,
     webhook_manager: Any = None,
+    tenant_manager: Any = None,
 ) -> None:
-    """挂载可选路由 (usage/subagent/providers/config/sessions/memory/events/workflows/identity/webhooks)。"""
+    """挂载可选路由 (usage/subagent/providers/config/sessions/memory/events/workflows/identity/webhooks/tenants)。"""
     if usage_store is not None:
         from isac.control.api import routes_usage
 
@@ -647,6 +649,28 @@ def _mount_optional_routers(
         app, webhook_manager, auth_dependency=auth_dependency,
         scope_dependency=scope_dependency, audit_log=audit_log,
     )
+    # R6-①: 租户路由 (tenant_manager 注入时挂载)
+    _mount_tenant_router(
+        app, tenant_manager, auth_dependency=auth_dependency,
+        scope_dependency=scope_dependency, audit_log=audit_log,
+    )
+
+
+def _mount_tenant_router(
+    app: Any, tenant_manager: Any, *,
+    auth_dependency: Any, scope_dependency: Any, audit_log: Any,
+) -> None:
+    """R6-①: 挂载租户控制面路由 (tenant_manager 注入时; 仿 routes_workflows 无注入返回 None)。"""
+    if tenant_manager is None:
+        return
+    from isac.control.api import routes_tenants
+
+    router = routes_tenants.build_router(
+        tenant_manager, auth_dependency=auth_dependency,
+        scope_dependency=scope_dependency, audit_log=audit_log,
+    )
+    if router is not None:
+        app.include_router(router, prefix="/api/v1")
 
 
 def _mount_webhook_router(
