@@ -54,7 +54,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 3. **T5 真实 IM 接入验收** — 需用户凭据;OneBot/NapCat 先行, 飞书/QQ 官方/企业微信逐个真机联调 (此前只有单测)。
 4. **R3 插件与 MCP 生态激活 ✅ 已完成 (2026-08-16)** → **T6 插件市场与热重载 ✅ 已完成 (2026-08-16)**。
 5. **并行收尾 (Q3-Q6/P3-P5 剩余收敛于此)** — **R1 多模态闭环 ✅ 已完成 (2026-08-16)** · **R2 控制面与 SubAgent ✅ 已完成 (2026-08-16)** · **R4 记忆完整性 ✅ 已完成 (2026-08-16)** (①行话学习写入回路 consolidator `_extract_jargon_step` + ②中期记忆真实 COMPRESS 方案 A: hook 入队→consolidator 后台摘要落 `episodes.summary`→MidTermMemoryInjector 改读 summary 注入 + ③语义关系图跳过留架构债: 写边层已就绪待补 LLM 抽取层) · **R5 持久化与密钥 ✅ 已完成 (2026-08-16)** (Session 持久化 + SecretStore) · **R6 企业化激活 ✅ 已完成 (2026-08-16)** (routes_tenants + TenantManager + ②隔离已满足 + ③workflow 决策落地)。
-6. **R7 发布准入 + T7 分发运维 (最后)** — P3/P4/P5 集成测试补齐 (现全缺)、十二条需求逐条取证、release_checklist、docker compose 一键、24h soak → v1.0 GA。
+6. **R7 发布准入 + T7 分发运维 (最后)** — **P3/P4/P5 集成测试补齐 ✅ 已完成 (2026-08-16)** (新增 test_p3/p4/p5 三套 19 例, 现全缺→补齐)、十二条需求逐条取证、release_checklist、docker compose 一键、24h soak → v1.0 GA。环境准入项 (真机/Docker/soak/browser CI/十二条取证) 待环境。
 
 **里程碑**: M-T1 装上就能聊 (T1+T2, 代码已达成) → M-T2 可部署可管理 (T3/FE + T4) → M-T3 可接入真实 IM (T5) → M-T4 生态可扩展 (R3+T6) → **M-GA 正式版 (T7 + R1-R7)**。GA 后可选: S6 视频 Provider 端点 (暂缓)、微信 mp 公众号 (wecom 已实现)、Slack、主链路流式。
 

@@ -1,0 +1,258 @@
+"""P5 企业化激活集成测试 (R7-③)。
+
+端到端验证三大企业特性:
+1. 跨租户不可见: 两租户的 MemoryRetrievalPipeline 共享 DB 文件, TenantIsolationGuard
+   enabled 时, A 写入的 episode 经 B 的 pipeline.search 检索不可见 (pipeline 层端到端,
+   区别于 MetadataStore 层单元测试)。
+2. 插件进程隔离: PluginIsolationHost (spawn 子进程) 真实加载插件 + 调用方法 +
+   _on_crash 崩溃重启 (达 max 后放弃)。
+3. Workflow 声明式执行: load_workflows_from_dir 从 JSON 加载 → start 推进 →
+   SUCCEEDED + 持久化文件落地 (可观测); tool: 前缀 action 经 build_default_action_handler
+   真实经 agent_manager 取 ToolRegistry.execute 执行。
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from isac.agent.tools.base import Tool, ToolContext, ToolPermission, ToolResult
+from isac.agent.tools.registry import ToolRegistry
+from isac.memory.embedder import EmbeddingManager
+from isac.memory.pipeline import MemoryRetrievalPipeline
+from isac.memory.reranker import Reranker
+from isac.memory.storage.graph import GraphStore
+from isac.memory.storage.metadata import MetadataStore
+from isac.memory.storage.sparse import SparseBM25Index
+from isac.memory.storage.vector import VectorStore
+from isac.plugin.isolation.host import PluginIsolationHost
+from isac.plugin.isolation.protocol import IPCEnvelope
+from isac.runtime.tenancy.isolation import TenantIsolationGuard
+from isac.runtime.tenancy.models import TenantContext
+from isac.runtime.workflow.actions import build_default_action_handler
+from isac.runtime.workflow.engine import WorkflowEngine
+from isac.runtime.workflow.loader import load_workflows_from_dir
+from isac.runtime.workflow.models import WorkflowStatus
+
+NAMESPACE = "agent_p5"
+
+
+# ── 1. 跨租户不可见 (pipeline 层端到端) ─────────────────────────
+
+
+async def _make_tenanted_pipeline(
+    tmp_path: Path, tenant: TenantContext, guard: TenantIsolationGuard,
+) -> MemoryRetrievalPipeline:
+    """构造带租户隔离的 pipeline (同 DB 文件, 不同 tenant_context)。"""
+    metadata = MetadataStore(
+        str(tmp_path / "memory.db"), tenant_guard=guard, tenant_context=tenant,
+    )
+    await metadata.init_schema()
+    return MemoryRetrievalPipeline(
+        namespace=NAMESPACE,
+        metadata=metadata,
+        vector=VectorStore(str(tmp_path / "vectors.db"), dimension=3),
+        sparse=SparseBM25Index(),
+        graph=GraphStore(str(tmp_path / "graph.db")),
+        embedder=EmbeddingManager({}),
+        reranker=Reranker({}),
+        enable_graph_recall=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_search_isolated(tmp_path: Path) -> None:
+    """两租户 pipeline 共享 DB: A 写入的 episode 经 B 的 pipeline.search 不可见。"""
+    guard = TenantIsolationGuard(enabled=True)
+    tenant_a = TenantContext(organization_id="acme", tenant_id="t1")
+    tenant_b = TenantContext(organization_id="globex", tenant_id="t9")
+    pipe_a = await _make_tenanted_pipeline(tmp_path, tenant_a, guard)
+    pipe_b = await _make_tenanted_pipeline(tmp_path, tenant_b, guard)
+    try:
+        mid = await pipe_a.store_episode("租户A 的 机密 记忆", "s1", user_id="u1", agent_id=NAMESPACE)
+        assert mid
+        # B 的 pipeline 经 metadata.search_fts (租户谓词注入) 不可见
+        hits_b = await pipe_b.search("机密", top_k=10, user_id="u1", agent_id=NAMESPACE)
+        assert all(h.id != mid for h in hits_b), "租户 B 不应检索到租户 A 的记忆"
+        # A 自己可见
+        hits_a = await pipe_a.search("机密", top_k=10, user_id="u1", agent_id=NAMESPACE)
+        assert any(h.id == mid for h in hits_a), "租户 A 应能检索到自己的记忆"
+    finally:
+        await pipe_a.vector.close()
+        await pipe_a.graph.close()
+        await pipe_b.vector.close()
+        await pipe_b.graph.close()
+
+
+# ── 2. 插件进程隔离 (spawn → load → call → crash restart) ─────────
+
+
+def _write_echo_plugin(plugin_dir: Path) -> None:
+    """写一个最小 ISACPlugin (echo 桩) 供隔离子进程加载。"""
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "manifest.jsonc").write_text(
+        '{"name": "p5_echo", "version": "0.1.0", "entry": "plugin.py"}', encoding="utf-8"
+    )
+    (plugin_dir / "plugin.py").write_text(
+        "from isac.plugin.native.plugin import ISACPlugin\n"
+        "\n"
+        "class P5EchoPlugin(ISACPlugin):\n"
+        "    def ping(self):\n"
+        "        return 'pong'\n"
+        "\n"
+        "    async def greet(self, name):\n"
+        "        return f'hi {name}'\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.asyncio
+async def test_plugin_isolation_load_and_call(tmp_path: Path) -> None:
+    """隔离子进程真实加载插件 + 调用同步/异步方法 + 私有方法被拒。"""
+    plugin_dir = tmp_path / "p5_echo"
+    _write_echo_plugin(plugin_dir)
+    host = PluginIsolationHost("p5_echo")
+    await host.spawn()
+    try:
+        loaded = await host.load_plugin(str(plugin_dir))
+        assert loaded.kind == "result"
+        assert loaded.payload["loaded"] == "p5_echo"
+        # 同步方法
+        sync_res = await host.call(IPCEnvelope(kind="call", plugin_id="p5_echo", payload={"method": "ping"}))
+        assert sync_res.kind == "result"
+        assert sync_res.payload["result"] == "pong"
+        # 异步方法
+        async_res = await host.call(IPCEnvelope(
+            kind="call", plugin_id="p5_echo", payload={"method": "greet", "args": {"name": "isac"}}
+        ))
+        assert async_res.kind == "result"
+        assert async_res.payload["result"] == "hi isac"
+        # 私有方法被拒
+        denied = await host.call(IPCEnvelope(kind="call", plugin_id="p5_echo", payload={"method": "_secret"}))
+        assert denied.kind == "error"
+    finally:
+        await host.kill()
+
+
+@pytest.mark.asyncio
+async def test_plugin_isolation_crash_restart_and_give_up() -> None:
+    """_on_crash 崩溃重启: max_restart_attempts 内 respawn, 超限后放弃 (is_alive=False)。
+
+    _on_crash 语义: 先判 ``_restart_count >= max`` → 放弃 (不递增); 否则递增并 respawn。
+    max=1: 第 1 次崩溃 count 0<1 → respawn(count=1, alive); 第 2 次崩溃 count 1>=1 → 放弃(count 不变, is_alive=False)。
+    """
+    host = PluginIsolationHost("p5_crash", max_restart_attempts=1)
+    await host.spawn()
+    try:
+        assert host.is_alive
+        # 第一次崩溃: 未达 max → respawn, 仍 alive
+        await host._on_crash()  # noqa: SLF001 — 注入崩溃, 验证重启逻辑
+        assert host._restart_count == 1  # noqa: SLF001
+        assert host.is_alive, "未超 max 应 respawn 仍 alive"
+        # 第二次崩溃: 已达 max → 放弃 (不递增, is_alive=False)
+        await host._on_crash()  # noqa: SLF001
+        assert host._restart_count == 1  # noqa: SLF001 — 放弃路径不递增
+        assert host.is_alive is False, "超过 max_restart_attempts 后应放弃 (is_alive=False)"
+    finally:
+        if host.is_alive:
+            await host.kill()
+
+
+# ── 3. Workflow 声明式执行 + tool: action ─────────────────────────
+
+
+class _EchoTool(Tool):
+    """最小工具: 回显参数 text, 记录被调用。"""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    @property
+    def name(self) -> str:
+        return "echo"
+
+    @property
+    def description(self) -> str:
+        return "回显文本 (测试用)"
+
+    async def execute(self, context: ToolContext) -> ToolResult:
+        self.calls.append(dict(context.args))
+        return ToolResult(content=f"echo: {context.args.get('text', '')}")
+
+
+class _FakeInstance:
+    """最小 AgentInstance 桩: 仅含 tools (ToolRegistry) + services。"""
+
+    def __init__(self, tools: ToolRegistry, services: dict[str, Any] | None = None) -> None:
+        self.tools = tools
+        self.services = services or {}
+
+
+@pytest.mark.asyncio
+async def test_workflow_declarative_load_and_execute(tmp_path: Path) -> None:
+    """声明式加载: 写 workflow JSON → load_workflows_from_dir → start → SUCCEEDED + 持久化。"""
+    wf_dir = tmp_path / "workflows"
+    wf_dir.mkdir()
+    wf_def = {
+        "workflow_id": "wf_p5",
+        "name": "p5 流程",
+        "stages": [
+            {"stage_id": "s1", "action": "noop:step1", "params": {}},
+            {"stage_id": "s2", "action": "noop:step2", "params": {}},
+        ],
+        "transitions": [
+            {"from_stage": "s1", "to_stage": "s2", "kind": "SEQUENTIAL"},
+        ],
+    }
+    (wf_dir / "wf_p5.json").write_text(json.dumps(wf_def, ensure_ascii=False), encoding="utf-8")
+    engine = WorkflowEngine(base_dir=str(tmp_path / "state"))
+    order: list[str] = []
+
+    async def handler(stage: Any) -> None:
+        order.append(str(getattr(stage, "stage_id", "")))
+
+    engine.set_action_handler(handler)
+    count = load_workflows_from_dir(engine, str(wf_dir))
+    assert count == 1, "应加载 1 个 workflow JSON"
+    status = await engine.start("wf_p5")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert order == ["s1", "s2"], "两 stage 按声明顺序执行"
+    # 可观测性: 持久化文件落地
+    assert (tmp_path / "state" / "wf_p5.json").exists(), "workflow 状态应持久化到文件"
+
+
+@pytest.mark.asyncio
+async def test_workflow_tool_action_invokes_tool(tmp_path: Path) -> None:
+    """tool: 前缀 action 经 build_default_action_handler 真实调 ToolRegistry.execute。
+
+    验证生产 action_handler 调用链: stage.action="tool:echo" → params 取 agent_id →
+    resolver 取 instance → tools.execute → 工具真实执行。
+    """
+    echo_tool = _EchoTool()
+    registry = ToolRegistry(ToolPermission({"echo": "allow"}))
+    registry.register(echo_tool)
+    instance = _FakeInstance(tools=registry)
+
+    # resolver: 直接 callable 形式 (await resolver(agent_id) → instance)
+    async def resolver(agent_id: str) -> _FakeInstance:
+        if agent_id == "a1":
+            return instance
+        return None  # type: ignore[return-value]
+
+    engine = WorkflowEngine(base_dir=str(tmp_path / "state"))
+    engine.set_action_handler(build_default_action_handler(resolver))
+    from isac.runtime.workflow.models import Stage, Workflow
+
+    wf = Workflow(
+        workflow_id="wf_tool",
+        stages=[Stage(stage_id="s1", action="tool:echo", params={"agent_id": "a1", "text": "hello"})],
+        transitions=[],
+    )
+    engine.register(wf)
+    status = await engine.start("wf_tool")
+    assert status is WorkflowStatus.SUCCEEDED
+    assert echo_tool.calls, "tool:echo action 应真实触发工具 execute"
+    assert echo_tool.calls[0].get("text") == "hello"
