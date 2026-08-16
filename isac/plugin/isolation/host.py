@@ -189,6 +189,12 @@ class PluginIsolationHost:
         )
         self._process.start()
         self._alive = True
+        # N5b 批次C C5: 父侧 close _child_conn (子进程经 pickle 持自己的端; 父持有
+        # child 端 FD 会导致子退出时父端不释放 EOF 不传播, respawn/kill 泄漏 FD)。
+        try:
+            self._child_conn.close()
+        except Exception:  # noqa: BLE001
+            pass
         logger.info(
             "插件子进程已启动",
             plugin_id=self.plugin_id,
@@ -217,6 +223,14 @@ class PluginIsolationHost:
             except Exception:  # noqa: BLE001
                 pass
             self._parent_conn = None
+        # N5b 批次C C5: 父侧 close _child_conn (此前只关 _parent_conn, _child_conn 永不
+        # close → 每次 respawn/kill 泄漏一个 FD; 子进程已 dup 自己的端, 父侧关闭安全)。
+        if self._child_conn is not None:
+            try:
+                self._child_conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._child_conn = None
         self._alive = False
         logger.debug("插件子进程已终止", plugin_id=self.plugin_id)
 
@@ -267,6 +281,17 @@ class PluginIsolationHost:
             correlation_id=data.get("correlation_id", ""),
         )
 
+    def _close_conns(self) -> None:
+        """关闭父侧 pipe 两端 (幂等; 防 _child_conn FD 泄漏)。"""
+        for _attr in ("_parent_conn", "_child_conn"):
+            _conn = getattr(self, _attr, None)
+            if _conn is not None:
+                try:
+                    _conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                setattr(self, _attr, None)
+
     async def _on_crash(self) -> None:
         """子进程崩溃时调: 计数 + 重启 (未超 max_restart_attempts)。
 
@@ -297,11 +322,7 @@ class PluginIsolationHost:
                 self._process.close()
         except Exception:  # noqa: BLE001
             pass
-        try:
-            if self._parent_conn is not None:
-                self._parent_conn.close()
-        except Exception:  # noqa: BLE001
-            pass
+        self._close_conns()
         if self._ctx is None:
             self._ctx = mp.get_context("spawn")
         self._parent_conn, self._child_conn = self._ctx.Pipe()
@@ -312,6 +333,10 @@ class PluginIsolationHost:
         )
         self._process.start()
         self._alive = True
+        try:
+            self._child_conn.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     @property
     def is_alive(self) -> bool:

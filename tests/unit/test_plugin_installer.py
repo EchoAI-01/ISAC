@@ -215,3 +215,38 @@ class TestUninstallUpdate:
     async def test_uninstall_nonexistent(self, tmp_path: Path) -> None:
         installer = PluginInstaller(plugins_dir=tmp_path / "plugins")
         assert await installer.uninstall("nope") is False
+
+
+class TestPluginNameValidation:
+    """N5b 批次C C6: 插件名校验 (防路径穿越) + update 原子回滚。"""
+
+    @pytest.mark.asyncio
+    async def test_install_rejects_path_traversal_name(self, tmp_path: Path) -> None:
+        """name='../evil' 等含穿越字符应拒 (防越界写盘)。"""
+        installer = PluginInstaller(plugins_dir=tmp_path / "plugins")
+        with pytest.raises(ValueError, match="非法插件名"):
+            await installer.install({"type": "upload", "name": "../evil", "zip_path": "x"})
+
+    @pytest.mark.asyncio
+    async def test_install_rejects_name_with_slash(self, tmp_path: Path) -> None:
+        """name 含路径分隔符应拒。"""
+        installer = PluginInstaller(plugins_dir=tmp_path / "plugins")
+        with pytest.raises(ValueError, match="非法插件名"):
+            await installer.install({"type": "upload", "name": "a/b", "zip_path": "x"})
+
+    @pytest.mark.asyncio
+    async def test_update_atomic_rollback_on_failure(self, tmp_path: Path) -> None:
+        """update 失败时旧目录应保留 (原子交换回滚, 不再 uninstall+install 丢插件)。"""
+        plugins_dir = tmp_path / "plugins"
+        installer = PluginInstaller(plugins_dir=plugins_dir)
+        # 先装一个可用插件
+        zp = _write_zip(
+            tmp_path / "p.zip",
+            {"plugin/manifest.jsonc": b'{"name":"x"}', "plugin/plugin.py": b"# stub"},
+        )
+        await installer.install({"type": "upload", "zip_path": str(zp), "name": "myplug"})
+        assert (plugins_dir / "myplug").exists()
+        # update 用一个无效 source (market 查不到) → 应失败 + 回滚保留旧目录
+        with pytest.raises(Exception):
+            await installer.update("myplug", source=None)  # market 清单无 myplug
+        assert (plugins_dir / "myplug").exists(), "update 失败应回滚保留旧插件目录"
