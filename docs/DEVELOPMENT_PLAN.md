@@ -879,11 +879,11 @@
   - **依赖**：**R3(插件桥接激活)必须先完成** —— 否则装了也不触发,是假功能。
   - **当前**：**已完成 (2026-08-16)**。新建 `PluginInstaller` (`isac/plugin/runtime/installer.py`, 对标 AstrBot `PluginUpdator`) 支持 market/git/url/upload 四源安装 (SSRF `is_safe_url` + zip slip `safe_extractall` + 失败回滚), 市场清单本地 `data/plugin_marketplace.jsonc` + 可配远程 `marketplace_url` (httpx 拉取, 失败降级仅本地); `PluginManager` 加 `install/reload/uninstall/list_failures/retry`; `ToolRegistry` 加 `deregister`/`deregister_by_source`/`deregister_plugin_sourced` + 来源追踪 (`_source`/`set_current_source`); 新建 `activation` 模块 (`activate_plugin` + `sync_plugin_tools_to_agents`) 遍历运行中 Agent deregister 旧工具 + register 新工具, 运行中会话立即生效 (对标 AstrBot reload 全局重建, 适配 ISAC per-Agent registry); 控制面新增 `GET /plugins/marketplace` + `POST /plugins/install` + `POST /plugins/{name}/reload` + `DELETE /plugins/{name}` + `GET /plugins/failed` + `POST /plugins/{name}/retry` (写操作 `plugin:write` scope + 审计, `allow_install=false` 不注册写端点); CLI `isac plugin list/marketplace/install/reload/uninstall/failed/retry` 经 HTTP; upload 用 base64 body 不引 multipart 依赖。injectors/commands 热重载为加法语义 (仅 tools 精确 deregister, 已知限制)。新增 60 单测 (safe_install/tool_registry/activation/installer/manager_t6/routes_t6), ruff/mypy 全绿; 真机冒烟 `scripts/smoke_plugin_marketplace.py` (干净目录启动 → 列市场清单 → 上传安装 echo 插件 → reload → 卸载, exit=0)。
 
-- [ ] **T7 分发、运维与长跑验证**
+- [~] **T7 分发、运维与长跑验证**
   - **目标**：让别人能照文档在自己机器上跑起来并长期运行。
   - **验收**：`docker compose up` 一键(单服务 + 仅暴露 WebUI 端口 + 一个 `data` 卷,对标 AstrBot `compose.yml`);`pip`/`uv` 单包安装 3 步命令可用;配置版本自动升级迁移(对标 MaiBot `config_upgrade_hooks.py`);备份/导出;**24h soak test** 验证无内存/连接/任务泄漏;`docs/` 快速开始 5 分钟跑通(由未接触过项目的人按文档复现)。
   - **依赖**：T1-T4。
-  - **当前**：未开始。
+  - **当前**：**代码可做部分已完成 (2026-08-16),环境验证待环境**。①`docker compose up` 一键 —— `Dockerfile` (多阶段 builder+runtime, uv --frozen, HEALTHCHECK curl /health) + `docker-compose.yml` (单服务 + 127.0.0.1:8765 端口 + isac_data 卷 + 环境变量映射) 早已存在 (I2 节点)。②`pip`/`uv` 单包安装 —— `uv sync --all-extras --dev` 3 步 (README 快速开始 + docs/QUICKSTART.md)。③配置版本自动升级迁移 —— `ConfigMigrator` (config.py:127, MIGRATIONS 链式 while 升级 + 0.0.0→1.0.0) 早已存在, **本轮补链式迁移测试 2 例** (test_chain_migration_across_multiple_versions 验证 while 链式跨版本 + test_broken_path_warns_and_stops_at_dead_end 验证死端 warning 不抛)。④备份/导出 —— `scripts/export.py` + `scripts/export_openapi.py` 早已存在。⑤docs 快速开始 5 分钟 —— **新建 `docs/QUICKSTART.md`** (路径 A Docker 一键 / B 源码 / C 接入真实 LLM + IM 接入 + 验证清单 + 常见问题)。**待环境项**: 24h soak (需长时运行环境 + 真实 LLM key, 验证无内存/连接/任务泄漏)、"由未接触项目的人按文档复现"真人验证 (需人工)。
 
 ---
 
