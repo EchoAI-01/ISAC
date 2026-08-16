@@ -153,6 +153,13 @@ def _build_memory_consolidator(
     if metadata is None:
         return None
     namespace = str(getattr(memory, "namespace", "") or config.effective_memory_namespace)
+    # N5b 批次E 项2: 注入本 pipeline 的 sparse/vector resolver, 让 consolidator 去重/
+    # 剪枝软删时同步 BM25/向量 (与控制面治理口径一致)。resolver 忽略传入 namespace
+    # (consolidator 只处理自身 namespace, 取本 pipeline 的索引即可)。
+    sparse_obj = getattr(memory, "sparse", None)
+    vector_obj = getattr(memory, "vector", None)
+    sparse_resolver = (lambda _ns: sparse_obj) if sparse_obj is not None else None
+    vector_resolver = (lambda _ns: vector_obj) if vector_obj is not None else None
     return MemoryConsolidator(
         agent_id=config.agent_id,
         namespace=namespace,
@@ -164,6 +171,8 @@ def _build_memory_consolidator(
         prune_importance_below=float(
             consolidation_cfg.get("prune_importance_below", 0.2) or 0.2
         ),
+        sparse_resolver=sparse_resolver,
+        vector_resolver=vector_resolver,
     )
 
 

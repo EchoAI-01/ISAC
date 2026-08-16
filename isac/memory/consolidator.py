@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import difflib
 import json
+import re
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -85,6 +86,8 @@ class MemoryConsolidator:
         dedup_similarity: float = DEFAULT_DEDUP_SIMILARITY,
         prune_after_days: int = DEFAULT_PRUNE_AFTER_DAYS,
         prune_importance_below: float = DEFAULT_PRUNE_IMPORTANCE_BELOW,
+        sparse_resolver: Any = None,
+        vector_resolver: Any = None,
     ) -> None:
         self._agent_id = agent_id
         self._namespace = namespace
@@ -94,6 +97,10 @@ class MemoryConsolidator:
         self._dedup_similarity = max(0.5, min(0.99, float(dedup_similarity)))
         self._prune_after_seconds = max(0, int(prune_after_days) * 86400)
         self._prune_importance_below = max(0.0, float(prune_importance_below))
+        # N5b 批次E 项2: 注入 sparse/vector resolver, 让去重/剪枝软删时同步 BM25/向量
+        # (与控制面治理口径一致), 避免墓碑残留污染 IDF/长度归一与 KNN 槽位。
+        self._sparse_resolver = sparse_resolver
+        self._vector_resolver = vector_resolver
         self._loop_task: asyncio.Task[Any] | None = None
         # R4-②: 待压缩会话队列 (COMPRESS hook 回调入队, _compress_step 后台消费)。
         # 入队元素: {"episode_id": str, "messages": list[str], "context": str}
@@ -216,12 +223,16 @@ class MemoryConsolidator:
         """
         from isac.memory.model.governance import MemoryGovernor
 
-        governor = MemoryGovernor(metadata_store=metadata)
+        governor = MemoryGovernor(
+            metadata_store=metadata,
+            sparse_resolver=self._sparse_resolver,
+            vector_resolver=self._vector_resolver,
+        )
         # 按 created_at 降序: 新的先入桶, 旧的后续命中相似项时被软删
         sorted_eps = sorted(
             episodes, key=lambda e: (e.get("created_at", 0), e.get("id", "")), reverse=True
         )
-        seen_by_scope: dict[tuple[str, str], list[tuple[str, dict[str, Any]]]] = {}
+        seen_by_scope: dict[tuple[str, ...], list[tuple[str, dict[str, Any]]]] = {}
         merged = 0
         for ep in sorted_eps:
             content = str(ep.get("content", "") or "")
@@ -230,7 +241,9 @@ class MemoryConsolidator:
             norm = _normalize_content(content)
             group_id = str(ep.get("group_id", "") or "")
             user_id = str(ep.get("user_id", "") or "")
-            scope = ("group", group_id) if group_id else ("user", user_id)
+            # N5b 批次E 项4: 群聊桶加入 user_id, 避免同群不同用户相似短消息被误判重复
+            # (如 A/B 各发"收到" → 规范化后相似度可 ≥ 阈值, 跨用户误删)。私聊桶按 user_id。
+            scope: tuple[str, ...] = ("group", group_id, user_id) if group_id else ("user", user_id)
             seen = seen_by_scope.setdefault(scope, [])
             # 找同一访问边界内已有的高相似项 (而非精确匹配, 容许表述微差)
             dup_with = _find_similar_in_bucket(
@@ -256,7 +269,11 @@ class MemoryConsolidator:
         """剪枝: created_at 早于阈值且 importance 低于阈值的条目软删。"""
         from isac.memory.model.governance import MemoryGovernor
 
-        governor = MemoryGovernor(metadata_store=metadata)
+        governor = MemoryGovernor(
+            metadata_store=metadata,
+            sparse_resolver=self._sparse_resolver,
+            vector_resolver=self._vector_resolver,
+        )
         now = int(time.time())
         cutoff = now - self._prune_after_seconds
         pruned = 0
@@ -353,7 +370,7 @@ class MemoryConsolidator:
                 agent_id=self._agent_id, person_id=person_id, error=str(exc),
             )
             return False
-        new_text = _clean_llm_output(response.content)
+        new_text = _sanitize_llm_induction(_clean_llm_output(response.content))
         if not new_text or new_text == old_text:
             return False  # 空响应或与既有相同, 不写回
         merged_profile = dict(existing)
@@ -425,6 +442,7 @@ class MemoryConsolidator:
             logger.warning("行话学习: LLM 释义失败, 跳过该词", agent_id=self._agent_id, word=word, error=str(exc))
             return False
         meaning, context = _parse_jargon_response(response.content)
+        meaning = _sanitize_llm_induction(meaning)
         if not meaning or meaning == "未知":
             return False
         try:
@@ -622,6 +640,24 @@ def _clean_llm_output(text: Any) -> str:
             lines = lines[:-1]
         out = "\n".join(lines).strip()
     return out
+
+
+# N5b 批次E 项5: 归纳产物 (profile_text/jargon meaning) 经 _clean_llm_output 后再过
+# 注入防护层 —— 剥离指令前缀行 (防间接 prompt injection: 攻击者在对话埋诱导内容,
+# LLM 归纳出含指令的 profile_text, 落盘后被注入器拼入系统 prompt)。未覆盖全部注入
+# 变体, 但消除最常见的指令前缀式注入; 注入器侧仍应做边界标记与长度上限 (后续)。
+_INJECTION_PREFIX_RE = re.compile(
+    r"^[ \t]*(?:System|SYSTEM|Assistant|IMPORTANT|CRITICAL|忽略[^\n:：]*|disregard\w*)\s*[:：].*$\n?",
+    re.MULTILINE,
+)
+
+
+def _sanitize_llm_induction(text: str) -> str:
+    """剥离归纳产物中的指令前缀行 (防间接 prompt injection)。"""
+    if not text:
+        return ""
+    out = _INJECTION_PREFIX_RE.sub("", text)
+    return "\n".join(line for line in out.splitlines() if line.strip()).strip()
 
 
 # R4-①: 内置中文停用词小表 (常见虚词/语气词, 不引入 jieba 依赖)。

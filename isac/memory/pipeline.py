@@ -267,23 +267,33 @@ class MemoryRetrievalPipeline:
         payload["group_id"] = group_id
         try:
             memory_id = await self.metadata.store_episode(agent_id or self.namespace, payload)
-            self.sparse.add(memory_id, clean_content)
-            if not self.embedder.is_degraded():
-                embeddings = await self.embedder.embed([clean_content])
-                if embeddings:
-                    await self.vector.upsert(memory_id, embeddings[0])
-            # S3: 图谱"提及"边写入 (仅 enable_graph_recall=True 时; 不回填历史数据)。
-            # 写边失败不影响 episode 已成功存储的结果, 只记 warning。
-            if self._enable_graph_recall and memory_id:
-                await self._write_mentioned_edges(memory_id, user_id, group_id, agent_id or self.namespace)
-            if self._metrics is not None:
-                self._metrics.counter("isac_memory_stores_total").inc()
-            return memory_id
         except Exception as exc:
             logger.warning("记忆存储失败，返回空 ID", namespace=self.namespace, error=str(exc))
             if self._metrics is not None:
                 self._metrics.counter("isac_memory_store_errors_total").inc()
             return ""
+        # N5b 批次E 项3: episode 已持久化; 下游索引同步 best-effort, 失败不撤回 episode
+        # 也不返回空 ID (此前 vector.upsert 维度错配抛错被外层 except 吞, episode 入库
+        # 却返回 "" → 幽灵条目 + 调用方误判失败 + 跳过画像更新)。
+        try:
+            self.sparse.add(memory_id, clean_content)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("BM25 索引同步失败, episode 已入库", namespace=self.namespace, error=str(exc))
+        if not self.embedder.is_degraded():
+            try:
+                embeddings = await self.embedder.embed([clean_content])
+                if embeddings:
+                    await self.vector.upsert(memory_id, embeddings[0])
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("向量索引写入失败, episode 已入库 (稀疏检索仍可用)",
+                               namespace=self.namespace, error=str(exc))
+        # S3: 图谱"提及"边写入 (仅 enable_graph_recall=True 时; 不回填历史数据)。
+        # 写边失败不影响 episode 已成功存储的结果, 只记 warning。
+        if self._enable_graph_recall and memory_id:
+            await self._write_mentioned_edges(memory_id, user_id, group_id, agent_id or self.namespace)
+        if self._metrics is not None:
+            self._metrics.counter("isac_memory_stores_total").inc()
+        return memory_id
 
     async def _write_mentioned_edges(
         self, memory_id: str, user_id: str, group_id: str, agent_id: str
