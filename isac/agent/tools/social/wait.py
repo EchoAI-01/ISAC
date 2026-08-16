@@ -39,7 +39,8 @@ class WaitTool(Tool):
         """
         # CR2-Fix-2: 至少 1 秒下限, 不能是 0/负数——requested_seconds=None 不会创建
         # 超时定时器, 若 MESSAGE/PROACTIVE 唤醒路径也未被触发就会永久挂起。
-        seconds = max(1, int(context.args.get("seconds", 5) or 5))
+        # N5b 批次F: 上限 600s (10 分钟), 防 LLM 传超大值致会话长期挂起。
+        seconds = min(600, max(1, int(context.args.get("seconds", 5) or 5)))
         session_id = getattr(context.agent_context.session, "session_id", "")
         agent_id = str(context.services.get("agent_id", "") or "")
         registry = context.services.get("conversation_registry")

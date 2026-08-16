@@ -15,6 +15,8 @@ from isac.utils.logger import get_logger
 logger = get_logger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 10
+# N5b 批次F: LLM 可控参数上限, 防传超大 timeout 致子进程长期占用/卡死。
+MAX_TIMEOUT_SECONDS = 300
 MAX_OUTPUT_CHARS = 4000
 
 
@@ -59,7 +61,10 @@ class BashTool(Tool):
         if guard_error is not None:
             return guard_error
 
-        timeout = max(1, int(context.args.get("timeout", DEFAULT_TIMEOUT_SECONDS) or DEFAULT_TIMEOUT_SECONDS))
+        timeout = min(
+            MAX_TIMEOUT_SECONDS,
+            max(1, int(context.args.get("timeout", DEFAULT_TIMEOUT_SECONDS) or DEFAULT_TIMEOUT_SECONDS)),
+        )
         return await self._run(tokens, timeout)
 
     @staticmethod

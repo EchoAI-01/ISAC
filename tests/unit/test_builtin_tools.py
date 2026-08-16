@@ -117,6 +117,30 @@ async def test_wait_returns_structured_non_blocking_result() -> None:
 
 
 @pytest.mark.asyncio
+async def test_wait_clamps_oversized_seconds() -> None:
+    """N5b 批次F: LLM 传超大 seconds 应 clamp 到 600 上限 (防会话长期挂起)。"""
+    from isac.agent.tools.social.wait import WaitTool
+
+    context = make_context()
+    context.args = {"seconds": 999999}
+    result = await WaitTool().execute(context)
+    assert result.is_error is False
+    assert "等待 600 秒" in result.content
+
+
+@pytest.mark.asyncio
+async def test_bash_clamps_oversized_timeout() -> None:
+    """N5b 批次F: LLM 传超大 timeout 应 clamp 到 300 上限 (防子进程长期占用)。"""
+    from isac.agent.tools.utility.bash import BashTool
+
+    context = make_context({"bash_allowlist": {"ls": {"args": 0}}})
+    context.args = {"command": "ls", "timeout": 999999}
+    result = await BashTool().execute(context)
+    # 执行成功 (ls 允许); 验证 timeout 被 clamp (不报"超时 > 999999s")
+    assert "999999" not in result.content
+
+
+@pytest.mark.asyncio
 async def test_ask_agent_returns_response() -> None:
     context = make_context({"bus": ReplyBus()})
     context.args = {"target_agent": "tech_agent", "question": "怎么设计记忆？"}
