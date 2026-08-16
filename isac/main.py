@@ -21,6 +21,7 @@ from isac.core.policy import EnableMatrix
 from isac.core.types import ProgressEvent
 from isac.gateway.event_bus import EventBus
 from isac.gateway.identity.resolver import IdentityResolver
+from isac.gateway.incoming_media import download_inbound_media
 from isac.gateway.lock import SessionLockManager
 from isac.gateway.models import UserProfile
 from isac.gateway.session import SessionManager
@@ -141,6 +142,16 @@ async def process_message(
         return  # 路由无匹配 → DROP
     routed_message = dataclasses.replace(message, content=decision.content)
 
+    # R1-②: 入站媒体下载落盘 (扫 routed_message.segments 的 image/voice/video/file,
+    # HTTP 下载为 bytes → uploads_store.put → 回填 media_uri 供工具经 MediaNormalizer 读)。
+    # uploads_store 为 None (未启用) 或无 media segment 时直接跳过, 零行为变化。
+    uploads_store = getattr(agent_manager, "_services", {}).get("uploads_store")
+    if uploads_store is not None:
+        try:
+            await download_inbound_media(routed_message, uploads_store)
+        except Exception as exc:  # noqa: BLE001 入站下载失败不阻塞消息主链路
+            logger.warning("入站媒体下载落盘异常, 继续", error=str(exc))
+
     # Q0: 在 get_or_create 改写 session_id 为内部 sess_* 之前, 捕获适配器侧的
     # 平台会话键 (如 WebChat 客户端自带的 session_id)。出站回复/进度帧必须用
     # 平台键路由, 否则 WebChat 队列键与客户端轮询键对不上, 回复永远取不到。
@@ -176,8 +187,24 @@ async def process_message(
         raise
     metrics.counter("isac_messages_processed_total").inc()
     if reply:
-        await _send_reply(channel_registry, routed_message, reply, final_agent_id, platform_session_id)
+        # R1-①: 取目标 Agent 的 artifact_store 供 _send_reply 扫回复 artifact 转 segment
+        await _send_reply(
+            channel_registry, routed_message, reply, final_agent_id, platform_session_id,
+            artifact_store=_resolve_artifact_store(agent_manager, final_agent_id),
+        )
     await event_bus.fire_async(EventType.POST_MESSAGE, routed_message)
+
+
+async def _resolve_artifact_store(agent_manager: Any, agent_id: str) -> Any:
+    """R1-①: 从 agent_manager 取目标 Agent 的 artifact_store (无 get/instance None 时 None)。"""
+    _get = getattr(agent_manager, "get", None)
+    if not callable(_get):
+        return None
+    try:
+        instance = await _get(agent_id)
+        return (instance.services or {}).get("artifact_store") if instance else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 async def _apply_mesh_routing(
@@ -235,12 +262,18 @@ async def _send_reply(
     reply_text: str,
     agent_id: str,
     platform_session_id: str = "",
+    *,
+    artifact_store: Any = None,
 ) -> None:
     """把 Agent 的文本回复经原 Channel 适配器发送。
 
     Q0: platform_session_id 是 gateway 改写前的适配器侧会话键 (WebChat 客户端
     的 session_id); 出站按平台键路由, 客户端才能按自己的键轮询到回复。适配器
     未提供平台键时 (OneBot 等按 group/user 路由的平台) 回退内部 session_id。
+    R1-①: 扫描回复文本中的 ``artifact:<64位hex>`` 引用, 经 ArtifactStore.get_ref
+    取元数据 + MediaResolver.resolve_for_channel 转 Channel segment append 到
+    reply.segments (此前只发文本, 生成的图/语音发不出去)。MediaResolver 不支持的
+    平台 (webchat/telegram/discord) 跳过 segment, 仅文本。
     """
     adapter = channel_registry.get(incoming.platform)
     if adapter is None:
@@ -258,11 +291,40 @@ async def _send_reply(
         content=reply_text,
         reply_to=incoming.msg_id,
     )
+    # R1-①: 扫 artifact 引用转 segment (artifact_store 注入时)
+    if artifact_store is not None:
+        await _append_artifact_segments(reply, artifact_store, incoming.platform)
     success = await adapter.send(reply)
     if not success:
         logger.warning("回复发送失败", platform=incoming.platform, agent_id=agent_id)
     else:
         logger.info("Agent 回复已发送", agent_id=agent_id, platform=incoming.platform, length=len(reply_text))
+
+
+async def _append_artifact_segments(reply: ISACMessage, artifact_store: Any, platform: str) -> None:
+    """R1-①: 扫回复文本 artifact:<hex> → get_ref → MediaResolver 转 segment。
+
+    逐引用异常隔离 (单个 artifact 解析失败不影响其余)。segment append 到 reply.segments。
+    """
+    import re
+
+    from isac.channel.media_resolver import MediaResolver
+
+    ids = re.findall(r"artifact:([a-f0-9]{64})", reply.content or "")
+    seen: set[str] = set()
+    for aid in ids:
+        if aid in seen:
+            continue
+        seen.add(aid)
+        try:
+            ref = await artifact_store.get_ref(aid)
+            if ref is None:
+                continue
+            segment = MediaResolver.resolve_for_channel(platform, ref)
+            if segment is not None:
+                reply.segments.append(segment)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("artifact 转 segment 失败, 跳过", artifact_id=aid, error=str(exc))
 
 
 def _make_progress_sender(
@@ -650,6 +712,22 @@ def _build_tenant_manager(tenancy_config: dict[str, Any]) -> Any:
     return TenantManager(db_path=str(DATA_DIR / "gateway" / "tenants.db"))
 
 
+def _build_media_normalizer(global_config: dict[str, Any]) -> Any:
+    """R1-②: 构造 MediaNormalizer, 白名单含 data/uploads (入站媒体下载落盘目录)。
+
+    安全: transcribe_audio/understand_image 等工具必须先经 MediaNormalizer 校验
+    media_uri (白名单 + MIME + 大小上限), 不能直接信任 LLM 工具参数里的任意路径。
+    """
+    from isac.utils.media import MediaNormalizer
+
+    mn_config = dict(global_config.get("media_normalizer") or {})
+    allowed = list(mn_config.get("allowed_dirs") or ["data/artifacts", "data/uploads"])
+    if "data/uploads" not in allowed:
+        allowed.append("data/uploads")
+    mn_config["allowed_dirs"] = allowed
+    return MediaNormalizer(mn_config)
+
+
 def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。
 
@@ -693,7 +771,7 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
 
     if memory_config.get("enabled"):
         metadata_store, graph_store, embedder, reranker = _build_memory_stack(
-            memory_config, tenant_guard, tenant_context
+            memory_config, tenant_guard, tenant_context, usage_recorder
         )
 
     async def _storage_start() -> None:
@@ -751,15 +829,14 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
     # register_multimodal_providers 实例化 Provider 并注册到 catalog + provider_manager。
     from isac.artifacts.store import ArtifactStore
     from isac.provider.router import ModelRouter
-    from isac.utils.media import MediaNormalizer
 
     model_catalog = ModelCatalog()
     model_router = ModelRouter(model_catalog)
     artifact_store = ArtifactStore(str(DATA_DIR / "artifacts"))
-    # 安全修复: transcribe_audio/understand_image 等工具必须先经 MediaNormalizer
-    # 校验 media_uri (白名单目录 + MIME + 大小上限), 不能直接信任 LLM 工具调用参数
-    # 里的任意绝对路径 (否则可读取白名单外的任意本地文件, 如 ~/.ssh/id_rsa)。
-    media_normalizer = MediaNormalizer(global_config.get("media_normalizer") or {})
+    # R1-②: 入站媒体下载落盘专用 ArtifactStore (与出站 artifacts 分目录, TTL 独立)。
+    uploads_store = ArtifactStore(str(DATA_DIR / "uploads"))
+    # R1-②: MediaNormalizer 白名单含 data/uploads (抽 helper 降 build_services 复杂度)
+    media_normalizer = _build_media_normalizer(global_config)
 
     # J2: 按 global_config.multimodal_providers[] 注册真实 Provider + ModelDescriptor
     # 缺 api_key/model/未知 kind 跳过 + 警告, 不阻塞主链路
@@ -817,6 +894,7 @@ def build_services(global_config: dict[str, Any]) -> dict[str, Any]:
         "model_catalog": model_catalog,
         "model_router": model_router,
         "artifact_store": artifact_store,
+        "uploads_store": uploads_store,
         "media_normalizer": media_normalizer,
         # J4: SubAgent 监督器 (常驻) 与日志句柄 (未启用时为 None)。
         "subagent_supervisor": subagent_supervisor,
@@ -845,9 +923,12 @@ def _build_usage_stack(global_config: dict[str, Any]) -> tuple[Any, Any]:
     from isac.observability.usage.storage import UsageStore
 
     usage_store = UsageStore(str(DATA_DIR / "usage" / "usage.db"))
+    # R1-④: 加载价目表 (provider/model/modality → 价格快照); 文件不存在用空 catalog,
+    # estimated_cost 恒 None (向后兼容)。与 ③ record_* 传的 provider/model 对齐闭环。
+    pricing = PricingCatalog.load(DATA_DIR / "pricing.jsonc")
     usage_recorder = UsageRecorder(
         store=usage_store,
-        pricing=PricingCatalog(),
+        pricing=pricing,
         flush_interval_seconds=float(usage_config.get("flush_interval_seconds", 30)),
     )
     return usage_store, usage_recorder
@@ -857,6 +938,7 @@ def _build_memory_stack(
     memory_config: dict[str, Any],
     tenant_guard: Any,
     tenant_context: Any,
+    usage_recorder: Any = None,
 ) -> tuple[MetadataStore, GraphStore, EmbeddingManager, Reranker]:
     """构造记忆子系统 (memory.enabled=true 时): 元数据/图谱存储 + 嵌入/重排管理器。
 
@@ -886,7 +968,7 @@ def _build_memory_stack(
             model=embedding_config.get("model"),
             base_url=embedding_config.get("base_url", ""),
         )
-    embedder = EmbeddingManager(embedding_config, provider=embedding_provider)
+    embedder = EmbeddingManager(embedding_config, provider=embedding_provider, usage_recorder=usage_recorder)
     # S3: Reranker provider 注入 (仿 CR3-H3 embedding 写法) —— 此前 main 构造
     # Reranker(memory_config.get("reranker", {})) 时从未传入 provider, is_available()
     # 恒 False, rerank 步骤永不执行。配置 reranker.api_key+model 即启用真实 HTTP。
@@ -906,7 +988,7 @@ def _build_memory_stack(
             model=reranker_config.get("model"),
             base_url=reranker_config.get("base_url", ""),
         )
-    reranker = Reranker(reranker_config, provider=reranker_provider)
+    reranker = Reranker(reranker_config, provider=reranker_provider, usage_recorder=usage_recorder)
     return metadata_store, graph_store, embedder, reranker
 
 

@@ -233,6 +233,44 @@ class ArtifactStore:
                 await db.commit()
         return got
 
+    async def get_ref(self, artifact_id: str) -> ArtifactRef | None:
+        """R1-①: 查 artifacts 表构造 ArtifactRef (供 MediaResolver 转 segment 发送)。
+
+        不读取二进制 (只取 kind/mime_type/uri/size_bytes/duration/metadata 元数据);
+        不存在/已过期返回 None (过期行一并清理, 仿 get)。
+        """
+        await self._ensure_schema()
+        now = int(time.time())
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                "SELECT kind, mime_type, uri, size_bytes, duration_seconds, expires_at, metadata "
+                "FROM artifacts WHERE artifact_id = ?",
+                (artifact_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return None
+            exp = row[5]
+            if exp > 0 and exp < now:
+                await self._delete_artifact(db, artifact_id)
+                await db.commit()
+                return None
+            import json as _json
+
+            try:
+                meta = _json.loads(row[6]) if row[6] else {}
+            except (ValueError, TypeError):
+                meta = {}
+        return ArtifactRef(
+            artifact_id=artifact_id,
+            kind=str(row[0] or "file"),
+            mime_type=str(row[1] or ""),
+            uri=str(row[2] or ""),
+            size_bytes=int(row[3] or 0),
+            duration_seconds=float(row[4] or 0.0),
+            metadata=meta,
+        )
+
     async def _delete_artifact(self, db: aiosqlite.Connection, artifact_id: str) -> None:
         """删 DB 行 + 对应磁盘文件 (文件不存在时静默)。"""
         await db.execute("DELETE FROM artifacts WHERE artifact_id = ?", (artifact_id,))

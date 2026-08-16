@@ -227,6 +227,31 @@ async def _setup_conversation_runtime(
         logger.info("会话拟人状态快照已恢复", agent_id=config.agent_id, count=len(snapshots))
 
 
+def _register_media_tools(config: AgentConfig, tools: ToolRegistry) -> None:
+    """R1-⑤: 按 AgentConfig.model_capabilities_allow 条件注册媒体工具。
+
+    默认 ["*"] 全部允许 (向后兼容); 空 list 或指定子集只注册授权工具, 未授权的
+    LLM schema 不可见。词汇用工具名 (与 ModelCapabilitiesInjector hints 一致)。
+    """
+    caps = list(getattr(config, "model_capabilities_allow", ["*"]) or ["*"])
+
+    def _allowed(name: str) -> bool:
+        return "*" in caps or name in caps
+
+    if _allowed("generate_image"):
+        tools.register(GenerateImageTool())
+    if _allowed("generate_video"):
+        tools.register(GenerateVideoTool())
+    if _allowed("transcribe_audio"):
+        tools.register(TranscribeAudioTool())
+    if _allowed("synthesize_speech"):
+        tools.register(SynthesizeSpeechTool())
+    if _allowed("understand_image"):
+        tools.register(VisionUnderstandTool())
+    if _allowed("understand_video"):
+        tools.register(UnderstandVideoTool())
+
+
 def _merge_shared_plugin_tools(
     services: dict[str, Any], tools: ToolRegistry, prompt_builder: SystemPromptBuilder
 ) -> None:
@@ -398,12 +423,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # tools_policy 里显式开启对应能力 (如 {"generate_image": "allow"}) 才会
     # 出现在 LLM schema; model_router/artifact_store/media_normalizer 经 shared
     # services 自动流到 ToolContext.services (main.py 装配的键)。
-    tools.register(GenerateImageTool())
-    tools.register(GenerateVideoTool())
-    tools.register(TranscribeAudioTool())
-    tools.register(SynthesizeSpeechTool())
-    tools.register(VisionUnderstandTool())
-    tools.register(UnderstandVideoTool())
+    # R1-⑤: 媒体工具按 model_capabilities_allow 条件注册 (抽 helper 降 assemble_agent 复杂度)
+    _register_media_tools(config, tools)
 
     # R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry (同 plugin_agent_hooks
     # 合并模式; shared_commands 合并见下方 commands 定义后) + MCPClient 按

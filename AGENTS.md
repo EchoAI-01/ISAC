@@ -53,7 +53,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 2. **FE 前后端分离 (后端先行)** — FE0 API 契约冻结 → FE1 CORS/跨源认证/静态托管降级 → T3-backend 控制面开箱 (control 默认开 + 首登强制设密码 API + 配置 Schema 端点);前端轨道 F1-F4 独立项目, API 基线冻结后启动。
 3. **T5 真实 IM 接入验收** — 需用户凭据;OneBot/NapCat 先行, 飞书/QQ 官方/企业微信逐个真机联调 (此前只有单测)。
 4. **R3 插件与 MCP 生态激活 ✅ 已完成 (2026-08-16)** → **T6 插件市场与热重载 ✅ 已完成 (2026-08-16)**。
-5. **并行收尾 (Q3-Q6/P3-P5 剩余收敛于此)** — R1 多模态闭环 · **R2 控制面与 SubAgent ✅ 已完成 (2026-08-16)** · R4 记忆完整性 (行话写入/中期记忆 COMPRESS/实体关系图) · **R5 持久化与密钥 ✅ 已完成 (2026-08-16)** (Session 持久化 + SecretStore) · **R6 企业化激活 ✅ 已完成 (2026-08-16)** (routes_tenants + TenantManager + ②隔离已满足 + ③workflow 决策落地)。
+5. **并行收尾 (Q3-Q6/P3-P5 剩余收敛于此)** — **R1 多模态闭环 ✅ 已完成 (2026-08-16)** · **R2 控制面与 SubAgent ✅ 已完成 (2026-08-16)** · R4 记忆完整性 (行话写入/中期记忆 COMPRESS/实体关系图) · **R5 持久化与密钥 ✅ 已完成 (2026-08-16)** (Session 持久化 + SecretStore) · **R6 企业化激活 ✅ 已完成 (2026-08-16)** (routes_tenants + TenantManager + ②隔离已满足 + ③workflow 决策落地)。
 6. **R7 发布准入 + T7 分发运维 (最后)** — P3/P4/P5 集成测试补齐 (现全缺)、十二条需求逐条取证、release_checklist、docker compose 一键、24h soak → v1.0 GA。
 
 **里程碑**: M-T1 装上就能聊 (T1+T2, 代码已达成) → M-T2 可部署可管理 (T3/FE + T4) → M-T3 可接入真实 IM (T5) → M-T4 生态可扩展 (R3+T6) → **M-GA 正式版 (T7 + R1-R7)**。GA 后可选: S6 视频 Provider 端点 (暂缓)、微信 mp 公众号 (wecom 已实现)、Slack、主链路流式。
