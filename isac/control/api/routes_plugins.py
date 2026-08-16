@@ -178,16 +178,29 @@ async def _handle_install(
     return {"status": status, "sync": sync_result}
 
 
+def _deregister_shared_by_source(services: dict[str, Any], name: str, event_bus: Any = None) -> None:
+    """C2: 从进程级共享注册表移除该插件来源的全部条目 (工具/命令/注入器/钩子/事件订阅)。
+
+    reload 前清旧条目避免 activate 后新旧同名残留; uninstall 后清空让 sync 精确模式
+    把 per-Agent 对应条目也清掉。event_bus 为顶层共享 (非 services 键), 单独传。
+    """
+    for key in ("plugin_tools", "plugin_commands", "plugin_prompt_builder", "plugin_agent_hooks"):
+        reg = services.get(key)
+        if reg is not None and hasattr(reg, "deregister_by_source"):
+            reg.deregister_by_source(name)
+    if event_bus is not None and hasattr(event_bus, "deregister_by_source"):
+        event_bus.deregister_by_source(name)
+
+
 async def _handle_reload(
     plugin_manager: Any, agent_manager: Any, services: dict[str, Any], name: str,
     *, event_bus: Any, bus: Any, router: Any, audit_log: AuditLog | None,
 ) -> dict[str, Any]:
     from fastapi import HTTPException
 
-    # 1. 先从共享表移除旧工具 (在 on_load 重新注册前, 避免干扰)
-    shared_tools = services.get("plugin_tools")
-    if shared_tools is not None:
-        shared_tools.deregister_by_source(name)
+    # 1. C2: 从共享表移除该插件全部来源条目 (工具/命令/注入器/钩子/事件订阅, 非仅工具),
+    #    避免 activate 后旧的不同名条目残留 (此前只清 tools, 命令/注入器/钩子/事件残留)。
+    _deregister_shared_by_source(services, name, event_bus)
     # 2. PluginManager reload (unload + 重新 load_entry)
     try:
         status = await plugin_manager.reload(name)
@@ -210,12 +223,10 @@ async def _handle_reload(
 
 async def _handle_uninstall(
     plugin_manager: Any, agent_manager: Any, services: dict[str, Any], name: str,
-    *, audit_log: AuditLog | None,
+    *, event_bus: Any = None, bus: Any = None, router: Any = None, audit_log: AuditLog | None,
 ) -> dict[str, Any]:
-    # 先从共享表 + 运行中 Agent 移除该插件工具
-    shared_tools = services.get("plugin_tools")
-    if shared_tools is not None:
-        shared_tools.deregister_by_source(name)
+    # C2: 从共享表 + 运行中 Agent 移除该插件全部来源条目 (工具/命令/注入器/钩子/事件订阅)
+    _deregister_shared_by_source(services, name, event_bus)
     status = await plugin_manager.uninstall(name)
     sync_result = await sync_plugin_tools_to_agents(agent_manager, services, name)
     await _audit_record(audit_log, "uninstall_plugin", name, f"status={status}", 200)
@@ -300,7 +311,7 @@ def build_plugin_marketplace_router(
 
     @api.delete("/{name}", dependencies=write_deps)
     async def uninstall_plugin(name: str) -> dict:
-        return await _handle_uninstall(plugin_manager, agent_manager, services, name, audit_log=audit_log)
+        return await _handle_uninstall(plugin_manager, agent_manager, services, name, **kw)
 
     @api.post("/{name}/retry", dependencies=write_deps)
     async def retry_plugin(name: str) -> dict:
