@@ -334,3 +334,33 @@ async def test_search_filters_by_time_range(tmp_path) -> None:
     hits_until = await pipeline.search("时间", top_k=10, user_id="u1", filters={"until": 1500})
     ids_until = {h.id for h in hits_until}
     assert mid_old in ids_until and mid_new not in ids_until, "until=1500 应只命中 created_at<=1500"
+
+
+@pytest.mark.asyncio
+async def test_store_episode_returns_id_on_vector_dim_mismatch(tmp_path) -> None:
+    """N5b 批次E 项3: vector.upsert 维度错配抛错时 episode 仍入库, 返回真实 memory_id。
+
+    修复前: vector.upsert 抛 ValueError 被外层 except 吞, 返回 "" → 幽灵条目 + 调用方误判。
+    """
+
+    class _WrongDimEmbedder:
+        """维度错配的 embedding provider (返回 4 维, vector store dimension=3)。"""
+
+        async def embed(self, texts):  # noqa: ANN001
+            return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
+
+        async def embed_query(self, query):  # noqa: ANN001
+            return [1.0, 0.0, 0.0, 0.0]
+
+        def dimension(self) -> int:
+            return 4
+
+        def is_degraded(self) -> bool:
+            return False
+
+    pipeline = await make_pipeline(tmp_path, namespace="dim_mismatch", embedding_provider=_WrongDimEmbedder())
+    mid = await pipeline.store_episode("内容 关键词", "sess-1", "u1")
+    assert mid, "vector 维度错配时 episode 应仍入库并返回真实 memory_id (不返回空串)"
+    # episode 确实落盘 (FTS 可查到)
+    rows = await pipeline.metadata.search_fts("dim_mismatch", "关键词")
+    assert any(r.get("id") == mid for r in rows), "错配的 episode 应已在 SQLite 持久化"
