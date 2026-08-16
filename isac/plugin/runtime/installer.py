@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import re
 import shutil
 import subprocess
 import tempfile
@@ -46,6 +47,22 @@ logger = get_logger(__name__)
 # Fix-39: 下载体积上限 (此前 resp.content 全量缓冲无上限 → OOM DoS)。
 MAX_PLUGIN_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 插件 zip 包上限 100MB
 MAX_MARKETPLACE_BYTES = 5 * 1024 * 1024  # 市场清单 JSON 上限 5MB
+# N5b 批次C C6: 插件名正则 (防路径穿越: ../evil 等越界写盘) + 解压后体积上限 (防 zip bomb)。
+_PLUGIN_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+MAX_EXTRACTED_BYTES = 500 * 1024 * 1024  # 解压后总大小上限 500MB
+
+
+def _validate_plugin_name(name: str, plugins_dir: Path) -> Path:
+    """校验插件名合法 (防路径穿越) + 解析后断言在 plugins_dir 子树内。"""
+    if not name or not _PLUGIN_NAME_RE.fullmatch(name):
+        raise ValueError(
+            f"非法插件名 '{name}' (仅允许字母数字下划线短横线, 防路径穿越)"
+        )
+    target = (plugins_dir / name).resolve()
+    if not target.is_relative_to(plugins_dir.resolve()):
+        raise ValueError(f"插件目录越界 (不在 plugins_dir 子树内): {name}")
+    return target
+
 
 
 class PluginInstaller:
@@ -77,6 +94,8 @@ class PluginInstaller:
         name = source.get("name", "")
         if not name:
             raise ValueError("安装源缺少 name")
+        # N5b 批次C C6: name 正则校验 + 子树检查 (防 ../evil 路径穿越越界写盘)。
+        _validate_plugin_name(name, self._plugins_dir)
         if stype == "upload":
             return await self._install_upload(source, name)
         if stype == "url":
@@ -90,11 +109,35 @@ class PluginInstaller:
         raise ValueError(f"未知安装源类型: {stype}")
 
     async def update(self, name: str, source: dict[str, Any] | None = None) -> Path:
-        """更新已安装插件: 删旧目录 + 重新 install (source=None 时从市场清单查)。"""
-        await self.uninstall(name)
-        if source is None:
-            return await self._install_from_market(name)
-        return await self.install(source)
+        """更新已安装插件: 装到临时目录 → 成功才原子 rename 替换旧目录 (失败保留旧目录)。
+
+        N5b 批次C C6: 此前 = uninstall(删旧) + install(装新), install 失败时旧目录已删
+        无回滚 → 插件丢失。改原子交换: 旧目录先重命名备份, 新目录装成功才替换, 失败回滚。
+        """
+        _validate_plugin_name(name, self._plugins_dir)
+        target = (self._plugins_dir / name).resolve()
+        backup: Path | None = None
+        if target.exists():
+            backup = target.with_name(f"{name}.__bak__")
+            if backup.exists():
+                shutil.rmtree(backup, ignore_errors=True)
+            target.rename(backup)
+        try:
+            if source is None:
+                installed = await self._install_from_market(name)
+            else:
+                installed = await self.install(source)
+            # install 成功后 target 已建; 删备份
+            if backup is not None and backup.exists():
+                shutil.rmtree(backup, ignore_errors=True)
+            return installed
+        except Exception:
+            # 回滚: 删半成品新目录, 恢复备份
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            if backup is not None and backup.exists():
+                backup.rename(target)
+            raise
 
     async def uninstall(self, name: str) -> bool:
         """删除插件目录 ``plugins_dir/<name>``。不存在返回 False。"""
