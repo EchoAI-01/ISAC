@@ -14,11 +14,30 @@ from isac.plugin.isolation.host import PluginIsolationHost, _apply_rlimits
 from isac.plugin.isolation.protocol import IPCEnvelope
 
 
-def test_apply_rlimits_accepts_custom_config_without_raising() -> None:
-    """C3-2: rlimits 可配, 默认 None 用内置默认; 权限不足时静默跳过 (不抛)。"""
-    _apply_rlimits({"cpu": (2, 2), "nofile": (128, 128)})
-    _apply_rlimits(None)  # 默认
-    _apply_rlimits({})  # 空 dict → 用默认
+def test_apply_rlimits_uses_custom_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """C3-2: rlimits 参数透传到 setrlimit (mock, 不实际污染测试进程 rlimit)。
+
+    直接调 _apply_rlimits 会 setrlimit 设测试进程的 CPU/AS 上限, 污染后续所有测试
+    (RLIMIT_AS=256MB 会让 pytest 后续 import/分配内存超限卡死)。
+    """
+    import sys
+
+    if sys.platform == "win32":
+        pytest.skip("Windows 无 resource 模块")
+    import resource as _r
+
+    calls: dict = {}
+
+    def _fake_setrlimit(which: int, limits: tuple[int, int]) -> None:
+        calls[which] = limits
+
+    monkeypatch.setattr(_r, "setrlimit", _fake_setrlimit)
+    _apply_rlimits({"cpu": (5, 5), "nofile": (128, 128)})
+    assert calls.get(_r.RLIMIT_CPU) == (5, 5)
+    assert calls.get(_r.RLIMIT_NOFILE) == (128, 128)
+    # 默认 None 用内置默认值
+    _apply_rlimits(None)
+    assert calls.get(_r.RLIMIT_CPU) == (1, 1)
 
 
 def test_host_init_accepts_rlimits_param() -> None:
