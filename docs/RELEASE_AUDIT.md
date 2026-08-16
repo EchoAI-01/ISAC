@@ -71,7 +71,7 @@
 - 兼容层插件子进程化 (R3 限制, 需兼容层 manifest 机制, 留 Z3)
 - 视频生成真实端点 (V2, 用户选型闸门)
 - 微信公众号 mp (V3) + Slack (V4) + 主链路流式 (V1, 体验增强)
-- ServiceContainer 弱类型 (Z1)、main.py 拆分 (Z2)、Provider 测试端点假连接、检索结构化过滤
+- ServiceContainer 弱类型 (Z1)、main.py 拆分 (Z2)、Provider 测试端点假连接
 
 ---
 

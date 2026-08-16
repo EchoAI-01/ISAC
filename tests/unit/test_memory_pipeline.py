@@ -295,3 +295,42 @@ async def test_dense_recall_failure_degrades_to_sparse(tmp_path) -> None:
     hits = await pipeline.search("ISAC keyword", top_k=3)
 
     assert [hit.id for hit in hits] == [memory_id]
+
+
+@pytest.mark.asyncio
+async def test_search_filters_by_topics(tmp_path) -> None:
+    """架构债清偿: pipeline.search filters.topics 过滤 (json_each 匹配 episodes.topics)。"""
+    pipeline = await make_pipeline(tmp_path, namespace="filter_topics")
+    await pipeline.store_episode("项目 记忆 工作", "s1", "u1", metadata={"topics": ["work"]})
+    await pipeline.store_episode("项目 记忆 生活", "s2", "u1", metadata={"topics": ["life"]})
+
+    hits_work = await pipeline.search("记忆", top_k=10, user_id="u1", filters={"topics": ["work"]})
+    assert hits_work, "topics=work 应命中 work 记忆"
+    assert all("工作" in (h.content or "") for h in hits_work)
+    assert not any("生活" in (h.content or "") for h in hits_work)
+
+    hits_life = await pipeline.search("记忆", top_k=10, user_id="u1", filters={"topics": ["life"]})
+    assert hits_life
+    assert all("生活" in (h.content or "") for h in hits_life)
+
+
+@pytest.mark.asyncio
+async def test_search_filters_by_time_range(tmp_path) -> None:
+    """架构债清偿: pipeline.search filters.since/until 时间范围过滤 (created_at)。"""
+    import aiosqlite
+
+    pipeline = await make_pipeline(tmp_path, namespace="filter_time")
+    mid_old = await pipeline.store_episode("旧记忆 时间锚点", "s1", "u1")
+    mid_new = await pipeline.store_episode("新记忆 时间锚点", "s2", "u1")
+    async with aiosqlite.connect(pipeline.metadata.db_path) as db:
+        await db.execute("UPDATE episodes SET created_at = ? WHERE id = ?", (1000, mid_old))
+        await db.execute("UPDATE episodes SET created_at = ? WHERE id = ?", (2000, mid_new))
+        await db.commit()
+
+    hits_since = await pipeline.search("时间", top_k=10, user_id="u1", filters={"since": 1500})
+    ids_since = {h.id for h in hits_since}
+    assert mid_new in ids_since and mid_old not in ids_since, "since=1500 应只命中 created_at>=1500"
+
+    hits_until = await pipeline.search("时间", top_k=10, user_id="u1", filters={"until": 1500})
+    ids_until = {h.id for h in hits_until}
+    assert mid_old in ids_until and mid_new not in ids_until, "until=1500 应只命中 created_at<=1500"

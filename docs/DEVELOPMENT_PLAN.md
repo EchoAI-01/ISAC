@@ -1004,7 +1004,7 @@
 | `main.py` (1518 行) / `manager.py` (1155 行) | 逼近 C901 红线; `main.py` 建议拆 `isac/bootstrap/{services,channels,control_plane,lifecycle,links}.py` | 独立重构项, 并行收尾期插入 |
 | 同步 IO | `audit.py` 同步 `open("a")`、`bus._trigger_persist` 同步 fsync、`routes_routing` 同步写盘 | 任意空档顺手清 |
 | Provider 测试端点假连接 | `POST /providers/{id}/test` 不发真实连接即返回 ok, 且访问私有属性 | R1 顺手做真实 ping |
-| 检索结构化过滤 | `pipeline.search()` 丢弃 `filters`/`agent_id` (topics/时间范围未实现) | R4 检索调优顺手做 |
+| ~~检索结构化过滤~~ | ✅ 已清偿 (2026-08-16): `pipeline.search(filters=)` 透传到 `search_fts`+`get_episodes_by_ids`, `_build_filter_clause` 支持 topics (json_each 匹配) + since/until 时间范围, None 向后兼容不加过滤 | — |
 | ~~媒体 magic-byte 校验~~ | ✅ 已清偿 (2026-08-16): `_check_magic_bytes` 读头部签名校验 png/jpeg/gif/mp3/wav/ogg/flac/mp4/webm, 扩展名伪造拒, 未登记 MIME 跳过向后兼容 | — |
 | 通用实体关系图抽取层 | R4-③ 跳过: 写边层 `GraphStore.add_edge`(通用三元组 relation 任意字符串)已就绪, 但抽取层从零(需 LLM + NER + 人物-人物/人物-话题关系抽取 prompt 工程 + 解析归一, ~150+ 行); 现 `mentioned_in` 提及图已满足 S3 召回, 语义关系图留 Y1 长期记忆深化承接 | Y1 (GA 后) |
 | ~~429 退避区分~~ | ✅ 已清偿 (2026-08-16): `_retry_backoff(attempt, *, rate_limited=True)` RateLimitError 退避基数翻倍 (2,4 vs 普通 1,2), 给服务端配额恢复更多时间 | — |
