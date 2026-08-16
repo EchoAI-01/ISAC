@@ -129,11 +129,11 @@
 
 > N1b 已清偿全部 Critical 与批次 A; 以下为剩余批次, 建议顺序 C → D → E → F/G。
 
-- [ ] **批次 C 插件生态专项** — 启动路径工具 source 追踪 (卸载/重载 deregister 对启动期插件失效); commands/injectors/hooks/EventBus 来源追踪 + deregister (只增不删); 隔离子进程崩溃后自动重载插件 + RLIMIT_CPU 可配 + 并发响应 correlation_id 匹配 + FD 泄漏; installer `name` 路径校验 (`^[A-Za-z0-9_-]+$` + resolve 子树检查)、update 原子交换回滚、解压体积上限; AstrBot import 沙箱接线 (官方语法插件当前加载失败); 插件名≠目录名生命周期映射; MCP 桥接工具名强制前缀 + 默认 restricted (防同名覆盖内置工具)。
-- [ ] **批次 D MCP Client 生命周期** — reload_config 断开旧实例 MCP 连接 (子进程泄漏); stop→start 重连; connect 后 list_tools 失败路径清理; initialize/initialized 握手 + list_tools error 显式 (对真实 MCP server 当前恒 0 工具); stdio reader 脏输出 continue 不退出。
-- [ ] **批次 E 记忆口径一致性** — person_profiles 键分裂 (consolidator 平台 user_id vs manager/注入器 master_id, S2 画像归纳默认部署即死功能); 租户/自定义 namespace 注入器读不到 + person_profiles/jargon 表补租户列; `latest_episode_id_for_session` 租户包裹 SQL 报错 (R4 压缩链路失效, 已实测复现); consolidator 软删同步 BM25/向量; embedding 维度错配部分提交误报; 去重桶加 user_id; 归纳产物防持久化 prompt injection。
-- [ ] **批次 F LLM 可控参数 clamp** — wait/delegate/task 秒数、bash timeout、ask_agent 超时 + hop 深度、generate_image n、/mute 时长 + 命令用户级鉴权。
-- [ ] **批次 G 适配器与零散** — 飞书 p2p 私聊当群聊 (chat_type 未读); Discord/Telegram 自身消息过滤; ChannelRegistry.start_all/stop_all 错误隔离; uploads_store 生命周期注册 (TTL sweep); DELETE 不存在 agent 500→404; PUT routing/rules 400; TenantManager.list_tenants 缓存; resolve_secret 扫描路径对齐; 及 Minor 批量 (详见审查记录)。
+- [x] **批次 C 插件生态专项** — 启动路径工具 source 追踪 (卸载/重载 deregister 对启动期插件失效); commands/injectors/hooks/EventBus 来源追踪 + deregister (只增不删); 隔离子进程崩溃后自动重载插件 + RLIMIT_CPU 可配 + 并发响应 correlation_id 匹配 + FD 泄漏; installer `name` 路径校验 (`^[A-Za-z0-9_-]+$` + resolve 子树检查)、update 原子交换回滚、解压体积上限; AstrBot import 沙箱接线 (官方语法插件当前加载失败); 插件名≠目录名生命周期映射; MCP 桥接工具名强制前缀 + 默认 restricted (防同名覆盖内置工具)。**注: C7 (AstrBot import 沙箱) 留架构债** —— 隔离是 opt-in 设计取舍, 非隔离插件顶层代码在宿主执行; 强制兼容层隔离需重构 adapt 进子进程, 写边层 (PluginIsolationHost) 已就绪待后续接入。
+- [x] **批次 D MCP Client 生命周期** — reload_config 断开旧实例 MCP 连接 (子进程泄漏); stop→start 重连; connect 后 list_tools 失败路径清理; initialize/initialized 握手 + list_tools error 显式 (对真实 MCP server 当前恒 0 工具); stdio reader 脏输出 continue 不退出。
+- [x] **批次 E 记忆口径一致性** — person_profiles 键分裂 (consolidator 平台 user_id vs manager/注入器 master_id, S2 画像归纳默认部署即死功能); 租户/自定义 namespace 注入器读不到 + person_profiles/jargon 表补租户列; `latest_episode_id_for_session` 租户包裹 SQL 报错 (R4 压缩链路失效, 已实测复现); consolidator 软删同步 BM25/向量; embedding 维度错配部分提交误报; 去重桶加 user_id; 归纳产物防持久化 prompt injection。
+- [x] **批次 F LLM 可控参数 clamp** — wait/delegate/task 秒数、bash timeout、ask_agent 超时 + hop 深度、generate_image n、/mute 时长 + 命令用户级鉴权。
+- [x] **批次 G 适配器与零散** — 飞书 p2p 私聊当群聊 (chat_type 未读); Discord/Telegram 自身消息过滤; ChannelRegistry.start_all/stop_all 错误隔离; uploads_store 生命周期注册 (TTL sweep); DELETE 不存在 agent 500→404; PUT routing/rules 400; TenantManager.list_tenants 缓存; resolve_secret 扫描路径对齐; 及 Minor 批量 (详见审查记录)。
 
 ### 里程碑路径
 
