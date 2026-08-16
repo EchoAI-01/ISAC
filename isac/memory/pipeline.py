@@ -88,7 +88,7 @@ class MemoryRetrievalPipeline:
         shared namespace 强制 ACL (K3, DEVELOPMENT_PLAN.md): namespace="shared" 时必须
         传 user_id 或 group_id, 否则拒绝检索 (返回空) 防止跨用户注入。
         """
-        del filters, agent_id  # TODO: 结构化过滤条件 (topics/时间范围等), 当前未实现
+        del agent_id  # agent_id 仅为调用方兼容保留, 检索用 self.namespace 隔离
         clean_query = str(query or "").strip()
         if not clean_query:
             return []
@@ -111,6 +111,7 @@ class MemoryRetrievalPipeline:
                 limit=recall_limit,
                 user_id=user_id,
                 group_id=group_id,
+                filters=filters,
             )
             sparse_rows = self.sparse.search(clean_query, top_k=recall_limit)
             # CR3-H3: 稠密召回 (embedder 降级/失败时返回空, 不影响稀疏路径)
@@ -134,6 +135,7 @@ class MemoryRetrievalPipeline:
                 candidate_ids,
                 user_id=user_id,
                 group_id=group_id,
+                filters=filters,
             )
             hits = self._merge_results([*fts_rows, *missing_rows], sparse_rows, dense_rows, graph_rows)
             if self.reranker is not None and self.reranker.is_available():

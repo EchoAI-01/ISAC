@@ -247,12 +247,14 @@ class MetadataStore:
         limit: int = 10,
         user_id: str = "",
         group_id: str = "",
+        filters: dict | None = None,
     ) -> list[dict]:
         """按 agent_id 隔离执行 FTS5 搜索, 并按 user_id/group_id 做访问控制。
 
         user_id/group_id 均为空时不过滤 (向后兼容); group_id 非空时按群聊场景过滤
         (群内共享); group_id 为空但 user_id 非空时按私聊场景过滤 (仅自己的私聊记忆,
-        不含该用户在群聊中的发言)。
+        不含该用户在群聊中的发言)。filters 为可选结构化过滤 (topics/时间范围, 见
+        ``_build_filter_clause``), None 时向后兼容不加过滤。
         """
         clean_query = " ".join(str(query or "").split())
         if not clean_query:
@@ -265,6 +267,10 @@ class MetadataStore:
         elif user_id:
             conditions.append("episodes.user_id = ? AND episodes.group_id IS NULL")
             params.append(user_id)
+        filter_clause, filter_params = self._build_filter_clause(filters)
+        if filter_clause:
+            conditions.append(filter_clause)
+            params.extend(filter_params)
         where_clause = " AND ".join(conditions)
         query = f"""
             SELECT episodes.*, bm25(episodes_fts) AS score
@@ -287,8 +293,13 @@ class MetadataStore:
         memory_ids: list[str],
         user_id: str = "",
         group_id: str = "",
+        filters: dict | None = None,
     ) -> list[dict]:
-        """按 ID 批量读取 episode，保持输入 ID 顺序 (过滤语义同 search_fts)。"""
+        """按 ID 批量读取 episode，保持输入 ID 顺序 (过滤语义同 search_fts)。
+
+        filters 为可选结构化过滤 (topics/时间范围, 见 ``_build_filter_clause``),
+        None 时向后兼容不加过滤。
+        """
         ordered_ids = [memory_id for memory_id in memory_ids if memory_id]
         if not ordered_ids:
             return []
@@ -306,6 +317,10 @@ class MetadataStore:
         elif user_id:
             conditions.append("user_id = ? AND group_id IS NULL")
             params.append(user_id)
+        filter_clause, filter_params = self._build_filter_clause(filters)
+        if filter_clause:
+            conditions.append(filter_clause)
+            params.extend(filter_params)
         where_clause = " AND ".join(conditions)
         query, scoped_params = self._tenant_scope(f"SELECT * FROM episodes WHERE {where_clause}", params)
         async with aiosqlite.connect(self.db_path) as db:
@@ -537,6 +552,35 @@ class MetadataStore:
             return json.loads(value)
         except json.JSONDecodeError:
             return default
+
+    @staticmethod
+    def _build_filter_clause(filters: dict | None) -> tuple[str, list]:
+        """结构化过滤条件 → (WHERE 片段, params)。filters=None 或空 → ("", [])。
+
+        支持键: ``topics`` (list[str], 含任一 topic, json_each 匹配 episodes.topics
+        JSON 数组); ``since`` (int Unix ts, created_at>=); ``until`` (int Unix ts,
+        created_at<=)。片段带 ``episodes.`` 前缀 (兼容 JOIN 两表与单表查询)。
+        """
+        if not filters:
+            return "", []
+        clauses: list[str] = []
+        params: list[Any] = []
+        topics = filters.get("topics")
+        if topics:
+            ph = ",".join("?" for _ in topics)
+            clauses.append(f"EXISTS (SELECT 1 FROM json_each(episodes.topics) WHERE value IN ({ph}))")
+            params.extend(str(t) for t in topics)
+        since = filters.get("since")
+        if since is not None:
+            clauses.append("episodes.created_at >= ?")
+            params.append(int(since))
+        until = filters.get("until")
+        if until is not None:
+            clauses.append("episodes.created_at <= ?")
+            params.append(int(until))
+        if not clauses:
+            return "", []
+        return " AND ".join(clauses), params
 
     @staticmethod
     def _fts_query(query: str) -> str:
