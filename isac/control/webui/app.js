@@ -483,19 +483,26 @@ async function refreshUsage() {
         apiCall("GET", `/usage/models/summary?group_by=${groupBy}`).catch(() => []),
         apiCall("GET", "/usage/models/events?limit=50").catch(() => ({ events: [] })),
     ]);
-    if (summary === null) return;
+    // N2-2: 用量计量未启用 (usage_store 为 None) 时 /usage/models/* 路由不挂载 →
+    // apiCall 404 返回 null。此前 `if (summary === null) return` 直接退出, 不渲染
+    // 任何行 → usage 表 tbody 空 → 页面无反馈 (既无数据也无空状态提示)。改为渲染
+    // 空状态行, 让"计量未启用/无数据"可见不报错 (与 audit 空状态一致)。
     // summary 表
     clearTableBody("usage-summary-table");
-    (summary || []).forEach(s => {
-        const groupKey = s[groupBy] || s.provider || s.model || "unknown";
-        addRow("usage-summary-table", [
-            groupKey, s.request_count || 0,
-            s.prompt_tokens || 0, s.completion_tokens || 0, s.total_tokens || 0,
-            s.estimated_cost_sum || "-",
-        ]);
-    });
-    if ((summary || []).length === 0) {
-        addRow("usage-summary-table", ["(无数据)", "", "", "", "", ""]);
+    if (summary === null) {
+        addRow("usage-summary-table", ["(计量未启用)", "", "", "", "", ""]);
+    } else {
+        summary.forEach(s => {
+            const groupKey = s[groupBy] || s.provider || s.model || "unknown";
+            addRow("usage-summary-table", [
+                groupKey, s.request_count || 0,
+                s.prompt_tokens || 0, s.completion_tokens || 0, s.total_tokens || 0,
+                s.estimated_cost_sum || "-",
+            ]);
+        });
+        if (summary.length === 0) {
+            addRow("usage-summary-table", ["(无数据)", "", "", "", "", ""]);
+        }
     }
     // events 表
     clearTableBody("usage-events-table");

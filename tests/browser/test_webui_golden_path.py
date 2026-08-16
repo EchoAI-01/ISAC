@@ -121,14 +121,19 @@ def test_golden_path_agent_crud(browser_page: Page, test_server: str) -> None:
     # 启动 Agent
     page.click('#agents-table tr:has-text("e2e-agent") button:has-text("启动")')
     page.wait_for_selector("#agents-table td:has-text('running')", timeout=2000)
-    # 删除 Agent
+    # 删除 Agent (dialog handler 必须在 click 前注册, 否则 playwright 默认 dismiss
+    # confirm dialog → 删除被取消, destroy_agent 审计不记录)。
+    page.on("dialog", lambda dialog: dialog.accept())
     page.click('#agents-table tr:has-text("e2e-agent") button:has-text("删除")')
-    page.on("dialog", lambda dialog: dialog.accept())  # 自动确认删除
-    # 导航到 Logs 页, 验证审计记录
+    # 等删除请求完成 (agent 从列表消失) 再切页, 确保审计记录已落 _buffer
+    page.wait_for_selector(".toast", timeout=2000)
+    # 导航到 Logs 页, 验证审计记录 (等具体动作文本而非任意 td, 避免匹配空状态行)
     page.click('a[data-page="logs"]')
-    page.wait_for_selector("#audit-table td", timeout=2000)
+    page.wait_for_selector('#audit-table td:has-text("create_agent")', timeout=4000)
     audit_text = page.inner_text("#audit-table")
     assert "create_agent" in audit_text
+    assert "start_agent" in audit_text
+    assert "destroy_agent" in audit_text
 
 
 def test_golden_path_routing_and_links(browser_page: Page, test_server: str) -> None:
