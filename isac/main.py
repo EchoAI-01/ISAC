@@ -1387,12 +1387,23 @@ def _setup_webhooks(event_bus: EventBus) -> Any:
     from isac.control.webhooks import WebhookManager
 
     webhook_manager = WebhookManager()
+    # Fix-55: 后台推送任务强引用集合 (asyncio 只弱引用 task, 不持引用会被 GC)。
+    _webhook_bg_tasks: set[asyncio.Task[None]] = set()
 
     async def _dispatch_webhook(payload: Any, event_name: str = "") -> None:
-        try:
-            await webhook_manager.dispatch(event_name, {"event": event_name, "payload": payload})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Webhook 推送失败, 不阻塞主流程", event=event_name, error=str(exc))
+        # Fix-55: 此前直接 await dispatch —— 死/慢订阅 URL 的重试退避 (3 次 × 10s
+        # 超时 + 1s/2s 退避 ≈ 32s) 会经 fire_async 把**会话锁内**的 process_message
+        # 整段卡住, 一个死订阅 = 该会话每条消息阻塞半分钟。改后台任务推送:
+        # 本协程立即返回, 锁即刻释放; 推送成败都在任务内处理。
+        async def _push() -> None:
+            try:
+                await webhook_manager.dispatch(event_name, {"event": event_name, "payload": payload})
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Webhook 推送失败 (后台)", event=event_name, error=str(exc))
+
+        task = asyncio.create_task(_push())
+        _webhook_bg_tasks.add(task)
+        task.add_done_callback(_webhook_bg_tasks.discard)
 
     event_bus.on_async(EventType.POST_MESSAGE, lambda p: _dispatch_webhook(p, "post_message"))
     event_bus.on_async(EventType.POST_SEND, lambda p: _dispatch_webhook(p, "post_send"))
@@ -1565,6 +1576,7 @@ def _register_mcp_server(
         router=router,
         bus=bus,
         plugin_manager=plugin_manager,
+        agents_dir=str(control_config.get("agents_dir", "data/agents")),
     )
 
     async def _start_mcp() -> None:
