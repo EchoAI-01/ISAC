@@ -308,3 +308,64 @@ async def test_mid_term_injector_empty_when_no_metadata() -> None:
     pipeline = type("P", (), {})()  # 无 metadata 属性
     inj = MidTermMemoryInjector(pipeline)  # type: ignore[arg-type]
     assert await inj.build(_ctx_for_session("sess-x")) == ""
+
+
+# ── N5b 批次E: 记忆口径租户隔离 (latest/get/update_episode_summary) ──────────
+
+
+@pytest.mark.asyncio
+async def test_compress_chain_under_tenant_isolation(tmp_path) -> None:
+    """租户 enabled 时 R4 压缩链路 (latest→update→get) 不报错且隔离。
+
+    复现修复前: latest_episode_id_for_session 内层 SELECT id 不含租户列,
+    _tenant_scope enforce 包裹子查询后外层 WHERE organization_id/tenant_id 报错,
+    致 R4 压缩链路在租户 enabled 时失效 (已实测复现)。
+    """
+    from isac.runtime.tenancy.isolation import TenantIsolationGuard
+    from isac.runtime.tenancy.models import TenantContext
+
+    guard = TenantIsolationGuard(enabled=True)
+    tenant_a = TenantContext(organization_id="acme", tenant_id="t1")
+    store = MetadataStore(
+        str(tmp_path / "mem.db"), tenant_guard=guard, tenant_context=tenant_a
+    )
+    await store.init_schema()
+    await store.store_episode("ns1", {
+        "id": "ep1", "session_id": "sess-a", "user_id": "", "content": "会话内容",
+    })
+    # 修复前此处 _tenant_scope 包裹报错; 修复后正常定位
+    ep_id = await store.latest_episode_id_for_session("ns1", "sess-a")
+    assert ep_id == "ep1", "租户 enabled 时 latest_episode_id_for_session 应不报错且命中"
+    # update 落盘 (加租户谓词后仍命中本租户行)
+    ok = await store.update_episode_summary("ns1", ep_id, "压缩摘要。")
+    assert ok, "update_episode_summary 应在租户谓词下命中本租户行"
+    summary = await store.get_episode_summary("ns1", ep_id)
+    assert summary == "压缩摘要。"
+
+
+@pytest.mark.asyncio
+async def test_compress_chain_cross_tenant_isolated(tmp_path) -> None:
+    """跨租户隔离: tenant_b 的 latest/get 读不到 tenant_a 的 episode。"""
+    from isac.runtime.tenancy.isolation import TenantIsolationGuard
+    from isac.runtime.tenancy.models import TenantContext
+
+    guard = TenantIsolationGuard(enabled=True)
+    db_path = str(tmp_path / "mem.db")
+    store_a = MetadataStore(
+        db_path, tenant_guard=guard, tenant_context=TenantContext("acme", "t1")
+    )
+    await store_a.init_schema()
+    await store_a.store_episode("ns1", {
+        "id": "ep1", "session_id": "sess-a", "user_id": "", "content": "acme 私密",
+    })
+    # tenant_b 同 namespace 同 session_id, 但 organization_id 不同 → latest/get 读不到
+    store_b = MetadataStore(
+        db_path, tenant_guard=guard, tenant_context=TenantContext("globex", "t9")
+    )
+    assert await store_b.latest_episode_id_for_session("ns1", "sess-a") == "", \
+        "跨租户: tenant_b 不应读到 tenant_a 的 episode (latest)"
+    assert await store_b.get_episode_summary("ns1", "ep1") == "", \
+        "跨租户: tenant_b 不应读到 tenant_a 的 summary (get)"
+    # update 跨租户写应不命中 (rowcount 0)
+    ok = await store_b.update_episode_summary("ns1", "ep1", "篡改")
+    assert not ok, "跨租户: tenant_b 不应能改 tenant_a 的 summary (update)"
