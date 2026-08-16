@@ -93,7 +93,7 @@
 - [x] **Fix-47** CSRF 豁免 POST /auth/session (带旧 Cookie 重新登录)。
 - [x] **Fix-48** PUT plugins 配置锁 + 列表参数健壮化。
 
-### N1c 第二轮全量代码审查修复轮 (2026-08-16/17, Fix-55~Fix-71) — **批 1 + 批 2 已完成 (全量 1813 通过), 批 3 待清偿**
+### N1c 第二轮全量代码审查修复轮 (2026-08-16/17, Fix-55~Fix-84) — **批 1 + 批 2 + 批 3 全部完成 (全量 1834 通过), 剩余 ~40 Minor 另立批次**
 
 **方法**: 与 N1b 同规格 5 路并行全量审查, 目标"复核 N1b/N5b 修复质量 + 查漏"。确认 3 项新 Critical + 5 项修复回归 + 一批 Medium/Minor。
 
@@ -117,9 +117,23 @@
 - [x] **Fix-70** handoff 无存活校验 (死 Agent 劫持会话至 TTL) → 工具登记前拒绝 + route() 自愈回落。
 - [x] **Fix-71** Telegram entity offset 按 code point 切片错位 → UTF-16 code unit 切片。
 
-**批 3 待清偿 (Medium, 按域分批)**:
+**批 3 已完成 (Medium 12 项, Fix-72~84)**:
 
-- [ ] consolidator profile 读改写竞态; webchat session dict 无界增长; webhook adapter 先限 body 体积再验签; 隔离插件 IPC recv 无超时; forced-turn cancel 路径状态破坏; forced-turn 不可被打断; restore_interrupted 竞态; AgentManager.create check-then-act 竞态; SessionManager 锁粒度过粗; Session schema 缺 platform_session_id/user_ids/muted_until; webhook 事件名文档与 dispatch 不一致; LogBuffer.append 线程安全; 及 ~40 项 Minor。
+- [x] **Fix-72** LogBuffer 非 loop 线程 append 线程安全 (threading.Lock + call_soon_threadsafe)。
+- [x] **Fix-73** AgentManager.create check-then-act 双创建 → per-agent 锁串行。
+- [x] **Fix-74** consolidator 画像归纳写回前重读最新 profile (防过期基线回滚并发更新)。
+- [x] **Fix-75** WebChat 待消费回复会话个数上限 (max_sessions + 逐出 + poll 删条目)。
+- [x] **Fix-76** 三个 webhook 适配器验签前 body 限流 (`webhook_guard.read_body_limited`, 默认 2MB)。
+- [x] **Fix-77** 隔离插件 IPC recv 超时 (默认 30s, 超时按崩溃重启)。
+- [x] **Fix-78** SessionManager per-session_key 锁 (全局锁退化问题) + key 锁惰性回收。
+- [x] **Fix-79** Session 持久化补 platform_session_id/user_ids 列 (含旧库 ALTER 迁移)。
+- [x] **Fix-80** webhook 事件名对齐 CONTROL_PLANE_SPEC §5.1 目录 (旧名自动归一)。
+- [x] **Fix-81** 强制话轮等锁期间被取消不再破坏并发回合状态机 (turn_owns_state)。
+- [x] **Fix-82** 强制话轮注入 conversation_runtime (可被打断) + 正常完成清陈旧打断信号。
+- [x] **Fix-83** SubAgent restore_interrupted 先落库改状态再登记内存索引。
+- [x] **Fix-84** ArtifactStore schema 初始化双重检查锁 (并发首写 database is locked)。
+
+**剩余 (~40 项 Minor)**: 另立批次, 优先级让位于 N2 环境准入与 N4 前端轨道。
 
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 
@@ -191,7 +205,7 @@ M-T2 可部署可管理 = N1 + N4-F1/F2 (前端落地即达成, 后端段已完�
 | 维度 | 现状 | 缺口 | 收敛位置 |
 |---|---|---|---|
 | **1. 功能完整性** | R1-R6 全部完成; REQUIREMENTS 十二条 8✅4⚠️ | 剩余 ⚠️ 项均属 GA 后 (V1-V4/X3/X4), 不阻塞 v1.0 | §四 GA 后计划 |
-| **2. 正确性** | N1b 7 Critical + 批次 A; N5b 批次 C-G; N1c 第二轮审查批 1-2 (Fix-55~71: 3 新 Critical + 回归 + 协议契约) 全部清偿 | N1c 批 3 (12 Medium + ~40 Minor) 待修 | Phase 0 |
+| **2. 正确性** | N1b 7 Critical + 批次 A; N5b 批次 C-G; N1c 第二轮审查批 1-3 (Fix-55~84: 3 新 Critical + 回归 + 协议契约 + 12 Medium) 全部清偿 | N1c 剩余 ~40 Minor 另立批次 | Phase 0 |
 | **3. 开箱体验** | T1/T2/T3-backend/T4 已完成 (后端) | 前端 F1-F4 未启动 (登录向导/十域/实时/插件市场); 内置 `control/webui/` 静态托管待 F2 完成后移除 | Phase 3 |
 | **4. 真实环境验证** | 从未在真实环境验证 | Docker 冒烟 (N2-1)、browser CI (N2-2)、24h soak (N2-4) 全部待环境; 真实 IM 联调 (N3) 待凭据 | Phase 1/2 |
 | **5. 可部署性** | Dockerfile/compose/export 脚本已存在 | **未经真机构建验证** (N2-1); pip/uv 单包 3 步安装未验证; 配置版本迁移 (ConfigMigrator) 已有测试但缺真实升级链验证 | Phase 1/4 |
