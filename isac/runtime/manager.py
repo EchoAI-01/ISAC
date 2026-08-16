@@ -874,7 +874,11 @@ class AgentManager:
             await instance.memory.store_episode(
                 content=content,
                 session_id=session.session_id,
-                user_id=message.user_id,
+                # N5b 批次E 项1: episode.user_id 用归一 master_id (user_profile.user_id)
+                # 而非平台 id, 与 consolidator 归纳写 person_profiles / 注入器读
+                # person_profiles 的键口径一致 (此前键分裂致 S2 画像归纳在启用
+                # consolidation 时即死); user_profile 为 None 时回退平台 id 向后兼容。
+                user_id=(getattr(user_profile, "user_id", "") or message.user_id),
                 group_id=message.group_id or "",
                 metadata={"importance": 0.5},
             )

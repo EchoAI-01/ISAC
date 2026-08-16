@@ -95,3 +95,32 @@ async def test_mid_term_memory_injector_returns_empty_without_summary() -> None:
     """R4-②: 无已落盘 summary 时降级返回空串 (不再复述 pending_messages)。"""
     text = await MidTermMemoryInjector(FakePipeline()).build(make_context(pending_count=2))
     assert text == ""
+
+
+class _RecordingPipeline(FakePipeline):
+    """记录 search 收到的 user_id (验证注入器传归一 master_id)。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.search_user_id: str | None = None
+
+    async def search(self, query: str, top_k: int = 5, **kwargs) -> list[MemoryHit]:
+        self.search_user_id = kwargs.get("user_id")
+        return await super().search(query, top_k=top_k, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_heuristic_injector_uses_master_id_over_platform_id() -> None:
+    """N5b 批次E 项1: heuristic 检索优先用归一 master_id (user_profile.user_id),
+    与 episode.user_id 口径一致 (此前用 session.user_id 平台 id 会漏召回 master_id 写入的 episode)。
+    """
+    pipe = _RecordingPipeline()
+    inj = HeuristicMemoryInjector(pipe)
+    ctx = InjectionContext(
+        session=Session(session_id="sess_1", user_id="platform_y", agent_id="agent_a"),
+        user_profile=UserProfile(user_id="master_x", nickname="小明"),
+        current_message=Message(),
+        pending_messages=[],
+    )
+    await inj.build(ctx)
+    assert pipe.search_user_id == "master_x", "应优先用 user_profile.user_id (master_id)"
