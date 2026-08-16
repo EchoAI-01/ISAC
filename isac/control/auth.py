@@ -340,6 +340,10 @@ class CSRFProtectionMiddleware:
 
     _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
     _CSRF_EXEMPT_PATHS = frozenset({"/api/v1/auth/session"})
+    # Fix-47: POST (登录) 与 DELETE (登出) 均豁免。登录端点用请求体 token 做强认证,
+    # 不依赖 Cookie; 进程重启/token 轮换后浏览器带失效旧 Cookie 重新登录, 若被
+    # "Cookie 存在但无 X-CSRF-Token" 拦下会 403, 用户须手动清 Cookie 才能登录。
+    _CSRF_EXEMPT_METHODS = frozenset({"DELETE", "POST"})
 
     def __init__(self, app: Any) -> None:
         self.app = app
@@ -348,7 +352,7 @@ class CSRFProtectionMiddleware:
         if (
             scope["type"] != "http"
             or scope["method"] in self._SAFE_METHODS
-            or (scope["method"] == "DELETE" and scope["path"] in self._CSRF_EXEMPT_PATHS)
+            or (scope["method"] in self._CSRF_EXEMPT_METHODS and scope["path"] in self._CSRF_EXEMPT_PATHS)
         ):
             await self.app(scope, receive, send)
             return

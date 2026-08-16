@@ -393,3 +393,53 @@ class TestScopeModel:
         )
         assert "result" in response
 
+
+
+# ── Fix-42/43: 认证一致性 (tokens[] scope 接线 + 无凭证 fail-closed) ──
+
+
+@pytest.mark.asyncio
+async def test_tools_call_fail_closed_without_credentials() -> None:
+    """Fix-43: api_token 与 tokens[] 均未配置时, tools/call 必须拒绝 ——
+    此前认证条件 (api_token or parsed_tokens) 为假时整段跳过 → 零认证执行。"""
+    server = ISACMCPServer(services={})
+    resp = await server._handle_request({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "agent_create", "arguments": {}},
+    })
+    assert resp is not None and "error" in resp
+    assert resp["error"]["code"] == -32001
+
+
+@pytest.mark.asyncio
+async def test_tools_call_scope_enforced_with_parsed_tokens(tmp_path) -> None:
+    """Fix-42: main 接线传入 parsed_tokens 后, tokens[] scope 模型对 MCP 生效 ——
+    usage:read 窄 scope token 调 agent_create (需 agent:write) → Forbidden。"""
+    from isac.control.auth import TokenScope
+
+    services = {
+        "global_config": {},
+        "provider_manager": _StubProviderManager(),
+        "memory_factory": lambda namespace: _StubMemory(namespace),
+    }
+    agent_manager = AgentManager(services)
+    server = ISACMCPServer(
+        services=services,
+        parsed_tokens=[TokenScope(token="scoped-tok", scopes=frozenset({"usage:read"}))],
+        agent_manager=agent_manager,
+    )
+    resp = await server._handle_request({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {
+            "name": "agent_create", "arguments": {},
+            "meta": {"authorization": "Bearer scoped-tok"},
+        },
+    })
+    assert resp is not None and "error" in resp
+    assert resp["error"]["code"] == -32003  # Forbidden: missing scope agent:write
+    # 未带 token 同样拒绝
+    resp2 = await server._handle_request({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "agent_create", "arguments": {}},
+    })
+    assert resp2 is not None and resp2["error"]["code"] == -32001

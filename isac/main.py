@@ -1543,11 +1543,16 @@ def _register_mcp_server(
     mcp_cfg = (control_config.get("mcp_server", {}) or {}) if isinstance(control_config, dict) else {}
     if not mcp_cfg.get("enabled"):
         return
+    from isac.control.auth import parse_token_scopes
     from isac.control.mcp_server import ISACMCPServer
 
+    # Fix-42: 传入 parsed_tokens —— 此前只传 api_token, tokens[] 部署 (scope 模型)
+    # 下 mcp_server 的认证条件 (api_token or parsed_tokens) 为假, tools/call
+    # 认证整段被跳过 → MCP 通道零认证执行管理工具。
     mcp_server = ISACMCPServer(
         services or {},
         api_token=str(control_config.get("api_token", "")),
+        parsed_tokens=parse_token_scopes(control_config),
         agent_manager=agent_manager,
         router=router,
         bus=bus,

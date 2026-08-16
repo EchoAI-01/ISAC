@@ -31,11 +31,14 @@ def _make_aes_key(encoding_aes_key: str) -> bytes:
     return base64.b64decode(encoding_aes_key + "=")
 
 
-def _encrypt_wecom_payload(encoding_aes_key: str, plain_xml: str, to_user: str = "corp123") -> str:
+def _encrypt_wecom_payload(encoding_aes_key: str, plain_xml: str, receiveid: str = "corp_test") -> str:
     """用企业微信 WXBizMsgCrypt 算法加密: 16 字节随机串 + 4 字节大端 msg_len +
-    to_user + xml 正文, 然后 AES-256-CBC 加密, 输出 base64(IV + ciphertext)。
+    msg (xml 正文, msg_len 为其长度) + receiveid (corpid), 然后 AES-256-CBC 加密,
+    输出 base64(IV + ciphertext)。
 
-    供测试构造加密事件用 (与官方文档字节序一致)。
+    供测试构造加密事件用 (与官方文档字节序一致)。Fix-37: 此前布局误写为
+    msg_len(len(to_user)) + to_user + xml (与官方协议颠倒), 与实现的错误互相印证
+    导致测试全绿但真实回调必失败; 现按官方布局 random(16)+msg_len(4)+msg+receiveid 编码。
     """
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.primitives.padding import PKCS7
@@ -43,10 +46,10 @@ def _encrypt_wecom_payload(encoding_aes_key: str, plain_xml: str, to_user: str =
     key = _make_aes_key(encoding_aes_key)
     iv = b"\x00" * 16  # 测试用固定 IV (生产是随机的, 但解密不依赖 IV 值)
     random_16 = b"\x01" * 16
-    to_user_bytes = to_user.encode("utf-8")
     xml_bytes = plain_xml.encode("utf-8")
-    msg_len = struct.pack(">I", len(to_user_bytes))
-    plain = random_16 + msg_len + to_user_bytes + xml_bytes
+    receiveid_bytes = receiveid.encode("utf-8")
+    msg_len = struct.pack(">I", len(xml_bytes))
+    plain = random_16 + msg_len + xml_bytes + receiveid_bytes
     padder = PKCS7(128).padder()
     padded = padder.update(plain) + padder.finalize()
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
@@ -105,7 +108,7 @@ async def test_url_verification_returns_decrypted_echostr() -> None:
     """GET 回调: 校验签名通过 → 解密 echostr → 返回明文 echostr。"""
     adapter = _make_adapter()
     plain_echostr = "hello-echo-123"
-    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, plain_echostr, to_user=adapter._corp_id)
+    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, plain_echostr, receiveid=adapter._corp_id)
     timestamp = "1700000000"
     nonce = "nonce-abc"
     signature = _sign(adapter._token, timestamp, nonce, encrypted)
@@ -122,7 +125,7 @@ async def test_url_verification_returns_decrypted_echostr() -> None:
 async def test_url_verification_signature_mismatch_rejected() -> None:
     """GET 回调: 签名不符 → 返回 "success" (不回 echostr 明文, 防伪造)。"""
     adapter = _make_adapter()
-    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, "plain", to_user=adapter._corp_id)
+    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, "plain", receiveid=adapter._corp_id)
 
     req = _make_request("GET", {
         "msg_signature": "wrong-signature", "timestamp": "1700000000",
@@ -137,7 +140,7 @@ async def test_url_verification_signature_mismatch_rejected() -> None:
 async def test_url_verification_missing_token_config_rejected() -> None:
     """未配置 token 时 fail-closed: 拒绝所有 URL 校验 (不允许无签名校验的回调)。"""
     adapter = _make_adapter(token="")
-    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, "plain", to_user=adapter._corp_id)
+    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, "plain", receiveid=adapter._corp_id)
 
     req = _make_request("GET", {
         "msg_signature": "any", "timestamp": "1700000000",
@@ -189,7 +192,7 @@ async def test_message_callback_decrypts_and_normalizes_to_isac_message() -> Non
         "<AgentID>1000001</AgentID>"
         "</xml>"
     )
-    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, inner_xml, to_user=adapter._corp_id)
+    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, inner_xml, receiveid=adapter._corp_id)
     outer_xml = f"<xml><Encrypt><![CDATA[{encrypted}]]></Encrypt></xml>"
     timestamp = "1700000000"
     nonce = "nonce-xyz"
@@ -211,6 +214,43 @@ async def test_message_callback_decrypts_and_normalizes_to_isac_message() -> Non
 
 
 @pytest.mark.asyncio
+async def test_message_callback_receiveid_mismatch_rejected() -> None:
+    """Fix-37: 解密后 receiveid (明文尾部) 与 corp_id 不符 → 拒绝 (防跨企业伪造)。"""
+    adapter = _make_adapter()
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    inner_xml = (
+        "<xml>"
+        "<ToUserName><![CDATA[corp_test]]></ToUserName>"
+        "<FromUserName><![CDATA[user_wecom_1]]></FromUserName>"
+        "<CreateTime>1700000000</CreateTime>"
+        "<MsgType><![CDATA[text]]></MsgType>"
+        "<Content><![CDATA[hi]]></Content>"
+        "<MsgId>1</MsgId>"
+        "<AgentID>1000001</AgentID>"
+        "</xml>"
+    )
+    # 用另一个企业的 corpid 作 receiveid 加密 → 签名合法但 receiveid 校验应拒绝
+    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, inner_xml, receiveid="other_corp")
+    outer_xml = f"<xml><Encrypt><![CDATA[{encrypted}]]></Encrypt></xml>"
+    timestamp = "1700000000"
+    nonce = "nonce-x"
+    signature = _sign(adapter._token, timestamp, nonce, encrypted)
+
+    req = _make_request("POST", {
+        "msg_signature": signature, "timestamp": timestamp, "nonce": nonce,
+    }, outer_xml.encode("utf-8"))
+    resp = await adapter._handle_event(req)
+    assert isinstance(resp, PlainTextResponse)
+    assert resp.body == b"success"
+    assert received == []  # 消息不得进入主链路
+
+
+@pytest.mark.asyncio
 async def test_message_callback_signature_mismatch_rejected() -> None:
     """POST 回调: 签名不符 → 拒绝, 不调 on_message。"""
     adapter = _make_adapter()
@@ -228,7 +268,7 @@ async def test_message_callback_signature_mismatch_rejected() -> None:
         "<MsgId>1</MsgId>"
         "</xml>"
     )
-    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, inner_xml, to_user=adapter._corp_id)
+    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, inner_xml, receiveid=adapter._corp_id)
     outer_xml = f"<xml><Encrypt><![CDATA[{encrypted}]]></Encrypt></xml>"
 
     req = _make_request("POST", {
@@ -307,7 +347,7 @@ async def test_message_callback_non_text_type_degraded_to_placeholder() -> None:
         "<MsgId>1234567891</MsgId>"
         "</xml>"
     )
-    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, inner_xml, to_user=adapter._corp_id)
+    encrypted = _encrypt_wecom_payload(adapter._encoding_aes_key, inner_xml, receiveid=adapter._corp_id)
     outer_xml = f"<xml><Encrypt><![CDATA[{encrypted}]]></Encrypt></xml>"
     timestamp = "1700000000"
     nonce = "n"

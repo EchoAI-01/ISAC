@@ -53,10 +53,13 @@ def build_router(
         instance = await agent_manager.get(agent_id)
         if instance is None:
             raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
-        instance.config.plugins_allow = list(body.get("plugins_allow", ["*"]))
-        instance.config.plugins_deny = list(body.get("plugins_deny", []))
-        # 持久化到 data/agents/<id>/config.jsonc
-        save_agent_config(Path(agents_dir) / agent_id / "config.jsonc", instance.config)
+        # Fix-48: 与 PATCH /agents/{id} 同一把按 agent_id 的配置锁 —— 此前无锁,
+        # 与并发 PATCH 的"读 revision → 合并 → 持久化 → reload"交错会丢更新。
+        async with agent_manager.acquire_config_lock(agent_id):
+            instance.config.plugins_allow = _as_str_list(body.get("plugins_allow", ["*"]))
+            instance.config.plugins_deny = _as_str_list(body.get("plugins_deny", []))
+            # 持久化到 data/agents/<id>/config.jsonc
+            save_agent_config(Path(agents_dir) / agent_id / "config.jsonc", instance.config)
         if audit_log is not None:
             await audit_log.record(
                 actor="authenticated",
@@ -70,6 +73,19 @@ def build_router(
         return {"status": "updated"}
 
     return router
+
+
+def _as_str_list(value: Any) -> list[str]:
+    """Fix-48: 把 body 里的 allow/deny 规范化为 str list。
+
+    此前 ``list(value)`` 对字符串输入会逐字符拆开 (如 ``"abc"`` → ``["a","b","c"]``),
+    无类型校验。list 原样保留 (逐项转 str), 单值包成单元素 list, 其余视为空。
+    """
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    if isinstance(value, str):
+        return [value]
+    return []
 
 
 def build_loaded_plugins_router(

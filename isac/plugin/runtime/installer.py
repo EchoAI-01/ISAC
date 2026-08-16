@@ -27,6 +27,7 @@ from isac.utils.logger import get_logger
 from isac.utils.safe_install import (
     is_safe_url,
     resolve_archive_root_dir,
+    safe_download_bytes,
     safe_extractall,
     validate_plugin_archive,
 )
@@ -41,6 +42,10 @@ except ImportError:  # pragma: no cover
     _loads = json.loads
 
 logger = get_logger(__name__)
+
+# Fix-39: 下载体积上限 (此前 resp.content 全量缓冲无上限 → OOM DoS)。
+MAX_PLUGIN_DOWNLOAD_BYTES = 100 * 1024 * 1024  # 插件 zip 包上限 100MB
+MAX_MARKETPLACE_BYTES = 5 * 1024 * 1024  # 市场清单 JSON 上限 5MB
 
 
 class PluginInstaller:
@@ -240,36 +245,33 @@ class PluginInstaller:
     # ── 辅助 ─────────────────────────────────────────────────
 
     async def _download_url(self, url: str) -> tuple[Path, Path]:
-        """httpx 下载 zip 到临时目录, 返回 (zip_path, owning_tmp_dir)。"""
-        import httpx
+        """httpx 下载 zip 到临时目录, 返回 (zip_path, owning_tmp_dir)。
 
+        Fix-39: safe_download_bytes 对重定向逐跳复跑 is_safe_url (此前
+        follow_redirects=True 不校验重定向目标 → SSRF 绕过), 且流式体积上限
+        防超大 zip 包 OOM。
+        """
         tmp_dir = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="isac_plugin_dl_"))
         zip_path = tmp_dir / "plugin.zip"
         try:
-            async with httpx.AsyncClient(
-                timeout=self._http_timeout, follow_redirects=True, max_redirects=3
-            ) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                await asyncio.to_thread(zip_path.write_bytes, resp.content)
+            content = await safe_download_bytes(
+                url, timeout_seconds=self._http_timeout, max_bytes=MAX_PLUGIN_DOWNLOAD_BYTES
+            )
+            await asyncio.to_thread(zip_path.write_bytes, content)
         except Exception:
             await asyncio.to_thread(shutil.rmtree, tmp_dir, ignore_errors=True)
             raise
         return zip_path, tmp_dir
 
     async def _fetch_remote_marketplace(self) -> list[dict[str, Any]]:
-        """httpx 拉取远程市场清单 (SSRF 校验)。"""
-        import httpx
-
+        """httpx 拉取远程市场清单 (SSRF 校验, 重定向逐跳复校验 + 体积上限, Fix-39)。"""
         if not is_safe_url(self._marketplace_url):
             raise ValueError(f"市场 URL 不安全 (SSRF): {self._marketplace_url}")
-        async with httpx.AsyncClient(
-            timeout=self._http_timeout, follow_redirects=True, max_redirects=3
-        ) as client:
-            resp = await client.get(self._marketplace_url)
-            resp.raise_for_status()
-            data = _loads(resp.text)
-            return list(data.get("plugins", [])) if isinstance(data, dict) else []
+        content = await safe_download_bytes(
+            self._marketplace_url, timeout_seconds=self._http_timeout, max_bytes=MAX_MARKETPLACE_BYTES
+        )
+        data = _loads(content.decode("utf-8"))
+        return list(data.get("plugins", [])) if isinstance(data, dict) else []
 
     async def _write_b64_temp(self, b64: str) -> tuple[Path, Path]:
         """base64 解码 zip 写到临时目录, 返回 (zip_path, owning_tmp_dir)。"""

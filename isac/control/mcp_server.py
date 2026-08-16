@@ -122,9 +122,14 @@ class ISACMCPServer:
                 await writer.drain()
 
     async def _serve_native_stdio(self) -> None:
-        """直接用 sys.stdin/stdout.buffer 的简化实现。"""
+        """直接用 sys.stdin/stdout.buffer 的简化实现。
+
+        Fix-44: readline 是同步阻塞调用, 直接在协程里执行会阻塞整个事件循环
+        (stdin 无即时数据时第一次 readline 即无限期卡死主 loop, 所有平台消息
+        处理停摆)。改用 asyncio.to_thread 卸载到线程池。
+        """
         while True:
-            line = sys.stdin.buffer.readline()
+            line = await asyncio.to_thread(sys.stdin.buffer.readline)
             if not line:
                 break
             try:
@@ -151,7 +156,15 @@ class ISACMCPServer:
 
         # protocol-level 方法 (initialize / tools/list / shutdown) 不需要 token
         # tools/call 需要 token 认证
-        if method == "tools/call" and (self.api_token or self._parsed_tokens):
+        if method == "tools/call":
+            if not (self.api_token or self._parsed_tokens):
+                # Fix-43: 未配置任何凭证时 fail-closed 拒绝 —— 此前此分支整体跳过
+                # 认证 → tools/call 零认证执行。MCP stdio 无网络边界但可经桥接暴露,
+                # 比 HTTP 开发模式更应收紧。
+                return self._error_response(
+                    request_id, -32001,
+                    "Unauthorized: 控制面未配置凭证 (api_token/tokens), 拒绝执行工具",
+                )
             auth_header = params.get("meta", {}).get("authorization", "") if isinstance(params, dict) else ""
             from isac.control.auth import extract_bearer
 

@@ -93,12 +93,18 @@ def _build_setup_manager(config: dict[str, Any]) -> Any:
 
     setup_enabled 默认 False (不破坏无凭证的旧测试); config.sample.jsonc 的
     control.setup_enabled=true 让开箱首登强制设密码。
+
+    Fix-40: 传入 static_credentials_configured —— 已配 api_token/tokens 时 setup
+    通道关闭 (POST /setup 拒绝), 防未认证攻击者经 setup 设密码接管控制面。
     """
     if not config.get("setup_enabled", False):
         return None
     from isac.control.setup import SetupManager
 
-    return SetupManager(config.get("setup_state_path", "data/control/setup_state.json"))
+    return SetupManager(
+        config.get("setup_state_path", "data/control/setup_state.json"),
+        static_credentials_configured=bool(config.get("api_token") or config.get("tokens")),
+    )
 
 
 def _mount_session_auth(
@@ -353,7 +359,7 @@ def create_control_app(
         artifact_store, session_manager, metadata_store, event_bus, auth_dependency,
         scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
         sparse_resolver, workflow_engine, identity_resolver, vector_resolver,
-        webhook_manager, tenant_manager,
+        webhook_manager, tenant_manager, session_secret,
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -553,6 +559,7 @@ def _mount_optional_routers(
     vector_resolver: Any = None,
     webhook_manager: Any = None,
     tenant_manager: Any = None,
+    session_secret: bytes | None = None,
 ) -> None:
     """挂载可选路由 (usage/subagent/providers/config/sessions/memory/events/workflows/identity/webhooks/tenants)。"""
     if usage_store is not None:
@@ -630,7 +637,10 @@ def _mount_optional_routers(
         if events_max_connections is not None:
             kwargs["max_connections"] = events_max_connections
         app.include_router(
-            routes_events.build_router(event_bus, auth_dependency=auth_dependency, tokens=tokens, **kwargs),
+            routes_events.build_router(
+                event_bus, auth_dependency=auth_dependency, tokens=tokens,
+                session_secret=session_secret, **kwargs,
+            ),
             prefix="/api/v1",
         )
     # S4/S5 (P4/P5): identity 与 workflow 控制面路由 (注入时挂载; 无则返回 None 不挂载)。
@@ -641,7 +651,9 @@ def _mount_optional_routers(
     # T4: 实时日志 SSE 端点 (LogBuffer 单例启用时挂载; 否则返回 None 不挂载)。
     from isac.control.api import routes_logs
 
-    logs_router = routes_logs.build_router(auth_dependency=auth_dependency)
+    logs_router = routes_logs.build_router(
+        auth_dependency=auth_dependency, scope_dependency=scope_dependency,
+    )
     if logs_router is not None:
         app.include_router(logs_router, prefix="/api/v1")
     # R2-③: Webhook 路由 (抽到 helper 降 _mount_optional_routers 复杂度)

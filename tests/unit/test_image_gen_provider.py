@@ -41,6 +41,11 @@ def _make_provider(
         transport=httpx.MockTransport(handler),
         timeout=5.0,
     )
+    # Fix-38: 下载走独立 client (无 Authorization 头), 测试同样注入 MockTransport。
+    provider._download_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        timeout=5.0,
+    )
     return provider
 
 
@@ -106,6 +111,30 @@ async def test_generate_url_downloads_and_stores(
     assert len(refs) == 1
     got = await artifact_store.get(refs[0].artifact_id)
     assert got == b"\x89PNG\r\n\x1a\ndownloaded image bytes"
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_url_download_does_not_leak_bearer_key_to_third_party(
+    artifact_store: ArtifactStore,
+) -> None:
+    """Fix-38: 生成图片的下载 URL 可能指向任意第三方 CDN 主机; 下载请求不得携带
+    Bearer api_key (此前复用带 Authorization 头的 client, 会把 key 外泄到该主机)。"""
+    seen_download_auth: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "/images/generations" in url:
+            return httpx.Response(200, content=json.dumps({
+                "created": 1234567890,
+                "data": [{"url": "https://93.184.216.34/image-0.png"}],
+            }).encode("utf-8"))
+        seen_download_auth.append(request.headers.get("authorization"))
+        return httpx.Response(200, content=b"\x89PNG\r\n\x1a\nx")
+
+    provider = _make_provider(handler, artifact_store=artifact_store)
+    await provider.generate(prompt="a dog", n=1)
+    assert seen_download_auth == [None]  # 下载请求无 Authorization 头
     await provider.aclose()
 
 
