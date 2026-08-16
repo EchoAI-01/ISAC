@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 # 工具默认等待子任务终态的超时 (秒)
 _DEFAULT_WAIT_TIMEOUT = 30.0
+# N5b 批次F: LLM 可控参数上限, 防传超大值致主上下文长期挂起/资源耗尽。
+_MAX_WAIT_TIMEOUT = 300.0
+_MAX_BUDGET_TOKENS = 32000
 _POLL_INTERVAL = 0.05
 _TERMINAL = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
 
@@ -58,7 +61,7 @@ class TaskTool(Tool):
         task_text = str(context.args.get("task", "") or "").strip()
         if not task_text:
             return ToolResult(content="task 缺少任务描述。", is_error=True)
-        budget = max(500, int(context.args.get("budget_tokens", 2000) or 2000))
+        budget = min(_MAX_BUDGET_TOKENS, max(500, int(context.args.get("budget_tokens", 2000) or 2000)))
 
         # J4-2: 优先走 SubAgentSupervisor; 无 supervisor 时回退到 task_runner (向后兼容)
         supervisor: SubAgentSupervisor | None = context.services.get("subagent_supervisor")
@@ -102,7 +105,10 @@ class TaskTool(Tool):
         run = await supervisor.submit(task)
         # 子任务派生时 task_depth+1, 递归深度生效
         # (子 Agent 的 services 由 supervisor 注入 runner_factory 时设置 task_depth=depth+1)
-        wait_timeout = float(context.args.get("_wait_timeout", _DEFAULT_WAIT_TIMEOUT) or _DEFAULT_WAIT_TIMEOUT)
+        wait_timeout = min(
+            _MAX_WAIT_TIMEOUT,
+            float(context.args.get("_wait_timeout", _DEFAULT_WAIT_TIMEOUT) or _DEFAULT_WAIT_TIMEOUT),
+        )
         deadline = time.monotonic() + wait_timeout
         while time.monotonic() < deadline:
             cur = await supervisor.get_status(task_id, agent_ctx)
