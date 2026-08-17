@@ -131,6 +131,78 @@ async def test_restricted_tool_runs_when_service_injected() -> None:
     assert "line2" in result.content
 
 
+class _DummyMcpTool(Tool):
+    """以 mcp: 前缀命名的测试工具 (模拟 MCPToolBridge 的注册名, 不走真实 client)。"""
+
+    @property
+    def name(self) -> str:
+        return "mcp:srv:search"
+
+    @property
+    def description(self) -> str:
+        return "mcp 桥接测试工具"
+
+    async def execute(self, context: ToolContext) -> ToolResult:
+        return ToolResult(content="mcp-ran")
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_restricted_rejected_without_mcp_clients() -> None:
+    """U0 Fix-87: mcp: 工具默认 restricted, restricted 档下 services 未注入
+    mcp_clients 时 LLM 直调被拒 (此前 _required_service 无 mcp 映射 → 等效 allow)。"""
+    registry = ToolRegistry(ToolPermission())
+    registry.register(_DummyMcpTool())
+    # services 非空但无 mcp_clients → restricted 门拒绝
+    result = await registry.execute(
+        ToolCall(id="c1", name="mcp:srv:search", arguments={}),
+        make_agent_context(),
+        services={"other_service": object()},
+    )
+    assert result.is_error is True
+    assert "受限" in result.content
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_restricted_rejected_with_empty_services() -> None:
+    """U0 Fix-87: services 为空 (未接线) 时 mcp 工具同样被拒。"""
+    registry = ToolRegistry(ToolPermission())
+    registry.register(_DummyMcpTool())
+    result = await registry.execute(
+        ToolCall(id="c1", name="mcp:srv:search", arguments={}),
+        make_agent_context(),
+        services={},
+    )
+    assert result.is_error is True
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_runs_when_mcp_clients_injected() -> None:
+    """U0 Fix-87: MCP 接线 (services 注入非空 mcp_clients) 后 mcp 工具正常执行。"""
+    registry = ToolRegistry(ToolPermission())
+    registry.register(_DummyMcpTool())
+    result = await registry.execute(
+        ToolCall(id="c1", name="mcp:srv:search", arguments={}),
+        make_agent_context(),
+        services={"mcp_clients": [object()]},
+    )
+    assert result.is_error is False
+    assert result.content == "mcp-ran"
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_tools_policy_allow_overrides_restricted() -> None:
+    """U0 Fix-87: Agent tools_policy 显式 allow 可覆盖 restricted 默认档。"""
+    registry = ToolRegistry(ToolPermission({"mcp:srv:search": "allow"}))
+    registry.register(_DummyMcpTool())
+    result = await registry.execute(
+        ToolCall(id="c1", name="mcp:srv:search", arguments={}),
+        make_agent_context(),
+        services={"other_service": object()},  # 无 mcp_clients 但 policy=allow
+    )
+    assert result.is_error is False
+    assert result.content == "mcp-ran"
+
+
 @pytest.mark.asyncio
 async def test_restricted_tool_blocks_path_traversal() -> None:
     """restricted 工具拒绝 .. 越权路径。"""
