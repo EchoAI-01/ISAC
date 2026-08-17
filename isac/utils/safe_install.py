@@ -28,6 +28,9 @@ PLUGIN_ENTRY_FILES: tuple[str, ...] = ("manifest.jsonc", "metadata.yaml", "mai_p
 # 重定向状态码集合 (safe_download_bytes 手动逐跳跟随)
 _REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
 
+# U0 Fix-86: safe_extractall 流式解压的读块大小 (累计实际写盘字节用)
+_EXTRACT_CHUNK_BYTES = 65536
+
 
 def _is_ip_unsafe(ip: Any, allow_loopback: bool) -> bool:
     """IP 是否不安全 (loopback/private/link-local/reserved/multicast/0.0.0.0/8)。
@@ -126,24 +129,64 @@ async def safe_download_bytes(
     raise ValueError(f"超过最大重定向次数 ({max_redirects})")
 
 
-def safe_extractall(zip_ref: zipfile.ZipFile, target_dir: Path) -> None:
-    """zip slip 防护: 逐 member 检查解压后绝对路径是否落在 ``target_dir`` 子树内。
+def safe_extractall(
+    zip_ref: zipfile.ZipFile,
+    target_dir: Path,
+    *,
+    max_extracted_bytes: int | None = None,
+) -> None:
+    """zip slip 防护 + (U0 Fix-86) 解压体积上限。
 
-    用 ``Path.resolve()`` 展开 symlink, 比 AstrBot ``os.path.abspath`` 严格。
-    越界 (如 ``../../../etc/passwd`` 条目) raise ValueError。``target_dir`` 不存在则创建。
+    zip slip: 逐 member 检查解压后绝对路径是否落在 ``target_dir`` 子树内, 用
+    ``Path.resolve()`` 展开 symlink, 比 AstrBot ``os.path.abspath`` 严格。越界
+    (如 ``../../../etc/passwd`` 条目) raise ValueError。``target_dir`` 不存在则创建。
+
+    体积上限 (U0 Fix-86): ``max_extracted_bytes`` 非 None 时, 对文件条目流式解压并
+    累计**实际写盘字节** (zip 中央目录的 ``file_size`` 元数据可被伪造, 不可信, 以
+    实际解压字节为准), 累计超限即 raise ValueError 并清理已解出的半成品文件 (不留
+    残留)。防 zip bomb: 小压缩包解压成巨大文件撑爆磁盘/配额。``max_extracted_bytes=None``
+    时不检查体积 (向后兼容既有调用)。
     """
     target_dir = Path(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     target_resolved = target_dir.resolve()
-    for member in zip_ref.infolist():
-        member_path = (target_dir / member.filename).resolve()
-        try:
-            member_path.relative_to(target_resolved)
-        except ValueError as exc:  # pragma: no cover - 越界路径分支
-            raise ValueError(
-                f"zip slip 防护: 解压条目越界 {member.filename} -> {member_path}"
-            ) from exc
-        zip_ref.extract(member, target_dir)
+    total_bytes = 0
+    written_files: list[Path] = []
+    try:
+        for member in zip_ref.infolist():
+            member_path = (target_dir / member.filename).resolve()
+            try:
+                member_path.relative_to(target_resolved)
+            except ValueError as exc:  # pragma: no cover - 越界路径分支
+                raise ValueError(
+                    f"zip slip 防护: 解压条目越界 {member.filename} -> {member_path}"
+                ) from exc
+            if member.is_dir():
+                member_path.mkdir(parents=True, exist_ok=True)
+                continue
+            member_path.parent.mkdir(parents=True, exist_ok=True)
+            # 先登记再写盘: 超限中止时该 (可能半截) 文件也在清理清单里
+            written_files.append(member_path)
+            with zip_ref.open(member) as src, member_path.open("wb") as dst:
+                while True:
+                    chunk = src.read(_EXTRACT_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    total_bytes += len(chunk)
+                    if max_extracted_bytes is not None and total_bytes > max_extracted_bytes:
+                        raise ValueError(
+                            f"解压体积超限 (累计 > {max_extracted_bytes} 字节), "
+                            f"疑似 zip bomb, 中止于条目: {member.filename}"
+                        )
+                    dst.write(chunk)
+    except Exception:
+        # U0 Fix-86: 超限/越界中止时清理已解出的半成品文件 (不残留)
+        for path in written_files:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
 
 def resolve_archive_root_dir(extract_dir: Path) -> Path:

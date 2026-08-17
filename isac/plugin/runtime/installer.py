@@ -270,7 +270,9 @@ class PluginInstaller:
         try:
             with zipfile.ZipFile(zip_path) as zf:
                 validate_plugin_archive(zf)
-                safe_extractall(zf, extract_tmp)
+                # U0 Fix-86: 接入解压体积上限 (此前 MAX_EXTRACTED_BYTES 全仓零引用) ——
+                # safe_extractall 流式累计实际写盘字节, 超限中止并清半成品 (防 zip bomb)。
+                safe_extractall(zf, extract_tmp, max_extracted_bytes=MAX_EXTRACTED_BYTES)
             root = resolve_archive_root_dir(extract_tmp)
             self._plugins_dir.mkdir(parents=True, exist_ok=True)
             if target.exists():

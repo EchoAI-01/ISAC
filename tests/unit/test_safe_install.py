@@ -84,6 +84,38 @@ class TestSafeExtractall:
             with pytest.raises(ValueError):
                 safe_extractall(zf, target)
 
+    def test_rejects_zip_bomb_over_size_limit(self, tmp_path: object) -> None:
+        """U0 Fix-86: 解压累计实际字节超 max_extracted_bytes → raise 且无残留文件。"""
+        tmp = tmp_path  # type: ignore[assignment]
+        # manifest 2 字节 + big.bin 1000 字节; cap=500 → 解到 big.bin 中途超限
+        data = _make_zip({"plugin/manifest.jsonc": b"{}", "plugin/big.bin": b"A" * 1000})
+        target = tmp / "out"
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            with pytest.raises(ValueError, match="体积超限"):
+                safe_extractall(zf, target, max_extracted_bytes=500)
+        # 无残留文件 (半成品已清理; 空目录不算文件)
+        leftover_files = [p for p in target.rglob("*") if p.is_file()]
+        assert leftover_files == []
+
+    def test_within_size_limit_extracts_normally(self, tmp_path: object) -> None:
+        """U0 Fix-86 回归: 未超限的包正常解压, 内容完整。"""
+        tmp = tmp_path  # type: ignore[assignment]
+        data = _make_zip({"plugin/manifest.jsonc": b"{}", "plugin/a.bin": b"A" * 100})
+        target = tmp / "out"
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            safe_extractall(zf, target, max_extracted_bytes=10_000)
+        assert (target / "plugin" / "manifest.jsonc").exists()
+        assert (target / "plugin" / "a.bin").read_bytes() == b"A" * 100
+
+    def test_no_limit_backward_compat(self, tmp_path: object) -> None:
+        """U0 Fix-86 回归: max_extracted_bytes=None (默认) 不检查体积, 既有调用不受影响。"""
+        tmp = tmp_path  # type: ignore[assignment]
+        data = _make_zip({"plugin/manifest.jsonc": b"{}", "plugin/big.bin": b"B" * 5000})
+        target = tmp / "out"
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            safe_extractall(zf, target)  # 不传 max → 不检查
+        assert (target / "plugin" / "big.bin").read_bytes() == b"B" * 5000
+
 
 class TestResolveArchiveRootDir:
     def test_single_subdir(self, tmp_path: object) -> None:
