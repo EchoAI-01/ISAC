@@ -147,6 +147,21 @@
     }
   },
 
+  // U1 事件溯源会话内核 (默认开启 = 开箱可用的滑动窗口历史)
+  // 会话存储为 append-only 事件表 (data/gateway/session_events.db, WAL),
+  // 消息历史/滑动窗口/压缩全部从事件派生; 入站消息即持久事件
+  // ("Model-visible ⟺ Logged"), 重启/断电容忍 (torn-tail 自动修复)。
+  //   - enabled: false 时回退旧行为 (LLM 每回合只看当前 burst, 无历史窗口)
+  //   - window_turns: 滑动窗口保留的最近轮数 (一轮 = 一问一答)
+  //   - budget_tokens: 窗口 token 预算 (从最旧丢弃); null/0 = 不设预算
+  "session": {
+    "history": {
+      "enabled": true,
+      "window_turns": 10,
+      "budget_tokens": null
+    }
+  },
+
   // P1 拟人化会话运行时 (默认关闭 = 每条消息即时处理, 零行为变化)
   // enabled=true 后:
   //   - debounce_seconds: 静默窗口秒数, 窗口内的连续消息合并为一轮处理 (0 = 不合并)
