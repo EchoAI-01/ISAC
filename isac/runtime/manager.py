@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -471,7 +472,10 @@ class AgentManager:
         )
         # P1(L2): 积压 >1 条时合并为一轮输入 (带说话人前缀多行)
         user_content = self._merge_pending_content(pending)
-        messages = [{"role": "user", "content": user_content}]
+        # U1: 事件溯源历史窗口 —— 派生当前 burst 之前的历史 (并把本 burst 落事件)。
+        # 未注入 store/deriver 或关闭时返回 [], 行为与改造前一致 (仅当前 burst)。
+        history_messages = await self._derive_session_history(instance, message, user_content)
+        messages = history_messages + [{"role": "user", "content": user_content}]
         result = await self._run_loop_with_conversation(instance, conv_runtime, messages, agent_context)
         if result.interrupted:
             logger.info("本轮被新消息打断, 旧回复已抑制", agent_id=agent_id)
@@ -485,12 +489,16 @@ class AgentManager:
             # 话轮调度: 记录本轮回复, 更新滑窗频率与存在感数据。
             turn_scheduler.record_reply()
             instance.gating.get_idle_backoff(session.session_id).record_reply()
+            # U1: 回复成功 → turn.completed 事件落盘 (下一回合的历史窗口可见);
+            # 返回的 seq 供 episodes 事件投影定位本回合事件对。
+            turn_seq = await self._record_turn_completed(instance, message, result.content)
             # Q1: 回复后异步写入记忆 (episodic + 画像回路), 不阻塞回复发送。
             # MVP-Fix: 写入**本回合实际看到的输入** (合并后的整个 burst), 而不是
             # 触发这一轮的单条 —— 否则突发被合并处理时, 记忆只留下其中一条,
             # 用户后来问起前面说过的内容检索不到。
             self._schedule_memory_write(
-                instance, message, session, user_profile, result.content, user_content
+                instance, message, session, user_profile, result.content, user_content,
+                turn_seq=turn_seq,
             )
         return result.content or None
 
@@ -686,6 +694,103 @@ class AgentManager:
         if len(pending) == 1:
             return pending[0].content
         return "\n".join(f"{m.user_name or m.user_id}: {m.content}" for m in pending)
+
+    # ── U1 事件溯源会话历史 ───────────────────────────────────
+
+    def _session_history_enabled(self) -> bool:
+        """U1: session.history.enabled (默认 True); store/deriver/session_mgr 缺一不可。"""
+        if self._services.get("session_event_store") is None:
+            return False
+        if self._services.get("session_history") is None:
+            return False
+        if self._services.get("session_mgr") is None:
+            return False
+        hist_cfg = self._services.get("global_config", {}).get("session", {}).get("history", {}) or {}
+        return bool(hist_cfg.get("enabled", True))
+
+    def _session_key_for(self, instance: AgentInstance, message: ISACMessage) -> str | None:
+        """U1: 事件流分区键 (与 SessionManager.make_session_key 口径一致)。"""
+        session_mgr = self._services.get("session_mgr")
+        if session_mgr is None:
+            return None
+        return session_mgr.make_session_key(
+            instance.agent_id, message.platform, message.user_id, message.group_id
+        )
+
+    async def _derive_session_history(
+        self, instance: AgentInstance, message: ISACMessage, user_content: str
+    ) -> builtins.list[dict]:
+        """U1: 派生当前 burst 之前的会话历史窗口, 并把本 burst 落事件。
+
+        "Model-visible ⟺ Logged": 本回合合并后的 user 输入追加为 message.user 事件,
+        且在 LLM 请求 (副作用) 前 flush 落盘。返回的历史窗口不含本 burst (避免与
+        调用方追加的当前 user message 重复)。store/deriver 未注入或关闭时返回 []
+        (零行为变化); 派生异常降级为无历史不阻塞主链路。
+        """
+        if not self._session_history_enabled():
+            return []
+        store = self._services["session_event_store"]
+        deriver = self._services["session_history"]
+        session_key = self._session_key_for(instance, message)
+        if session_key is None:
+            return []
+        from isac.session.models import EVENT_USER_MESSAGE, SessionEvent
+
+        try:
+            past_events = await store.fetch_recent(session_key, limit=self._session_history_fetch_limit())
+            history = deriver.derive_window(past_events)
+            await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_USER_MESSAGE,
+                    timestamp=int(time.time()),
+                    payload={"content": user_content, "user_name": message.user_name or message.user_id},
+                )
+            )
+            await store.flush()  # 副作用 (LLM 请求) 前强制落盘
+            return history
+        except Exception as exc:  # noqa: BLE001 历史派生失败不阻塞回复
+            logger.warning("会话历史派生失败, 降级为无历史", error=str(exc))
+            return []
+
+    def _session_history_fetch_limit(self) -> int:
+        """U1: 派生窗口取最近多少条事件 (窗口轮数 * 每轮事件数的保守上界)。"""
+        hist_cfg = self._services.get("global_config", {}).get("session", {}).get("history", {}) or {}
+        try:
+            window_turns = max(1, int(hist_cfg.get("window_turns", 10) or 10))
+        except (TypeError, ValueError):
+            window_turns = 10
+        return max(50, window_turns * 6)
+
+    async def _record_turn_completed(
+        self, instance: AgentInstance, message: ISACMessage, reply_content: str
+    ) -> int | None:
+        """U1: 回复成功后把助手输出追加为 turn.completed 事件。
+
+        返回事件 seq (episodes 事件投影用); 未启用/落盘失败返回 None (best-effort)。
+        """
+        if not reply_content or not self._session_history_enabled():
+            return None
+        store = self._services["session_event_store"]
+        session_key = self._session_key_for(instance, message)
+        if session_key is None:
+            return None
+        from isac.session.models import EVENT_TURN_COMPLETED, SessionEvent
+
+        try:
+            seq = await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_TURN_COMPLETED,
+                    timestamp=int(time.time()),
+                    payload={"content": reply_content},
+                )
+            )
+            await store.flush()
+            return seq if seq > 0 else None
+        except Exception as exc:  # noqa: BLE001 事件落盘失败不阻塞回复
+            logger.warning("turn.completed 事件落盘失败", error=str(exc))
+            return None
 
     def _conversation_debounce_seconds(self, instance: AgentInstance) -> float:
         """P1: 读 debounce 静默窗口秒数 (全局 conversation 节 ∪ Agent 级覆盖)。"""
@@ -914,6 +1019,7 @@ class AgentManager:
         user_profile: UserProfile | None,
         reply: str,
         user_content: str | None = None,
+        turn_seq: int | None = None,
     ) -> None:
         """Q1: 把本轮对话写入记忆 (后台任务, 失败降级不影响回复)。
 
@@ -921,13 +1027,64 @@ class AgentManager:
         从未调用 store_episode, 记忆恒为空。写入放后台任务是为了不给回复路径增加
         延迟 (配置 embedding 时 store_episode 内含一次向量化 API 调用)。
         user_content 缺省时用 message.content (直调 handle_message 的旧调用方)。
+        turn_seq: U1 本回合 turn.completed 事件 seq, episodes 事件投影定位用。
         """
         task = asyncio.create_task(
-            self._write_memory(instance, message, session, user_profile, reply, user_content),
+            self._write_memory(
+                instance, message, session, user_profile, reply, user_content,
+                turn_seq=turn_seq,
+            ),
             name=f"memory-write-{session.session_id}",
         )
         self._memory_tasks[task] = instance.agent_id
         task.add_done_callback(lambda t: self._memory_tasks.pop(t, None))
+
+    async def _project_episode_content(
+        self, instance: AgentInstance, message: ISACMessage, turn_seq: int | None
+    ) -> tuple[str, str, str] | None:
+        """U1: episodes 事件投影 —— 从事件流读回本回合内容作为记忆写入源。
+
+        事件流是唯一事实源 (append-only 不可变): 按 turn_seq 定位本回合
+        turn.completed 事件, 及其之前最近的 message.user 事件, 返回
+        ``(用户输入, 助手回复, 说话人)``。事件流不可用/未启用/定位失败返回 None
+        (调用方回退内存参数) —— 投影失败不阻塞记忆写入。
+        """
+        if turn_seq is None or not self._session_history_enabled():
+            return None
+        store = self._services["session_event_store"]
+        session_key = self._session_key_for(instance, message)
+        if session_key is None:
+            return None
+        from isac.session.models import EVENT_TURN_COMPLETED, EVENT_USER_MESSAGE
+
+        try:
+            # 本回合事件对 (user→turn) 紧邻; 后台写入可能与下一回合入站交叠,
+            # 窗口取大些保证 turn_seq 事件仍在其中。
+            events = await store.fetch_recent(session_key, limit=32)
+            turn_event = next(
+                (e for e in events if e.event_type == EVENT_TURN_COMPLETED and e.seq == turn_seq),
+                None,
+            )
+            if turn_event is None:
+                return None
+            user_event = next(
+                (
+                    e for e in reversed(events)
+                    if e.event_type == EVENT_USER_MESSAGE and e.seq < turn_seq
+                ),
+                None,
+            )
+            if user_event is None:
+                return None
+            said = str(user_event.payload.get("content", ""))
+            reply = str(turn_event.payload.get("content", ""))
+            speaker = str(user_event.payload.get("user_name", ""))
+            if not said or not reply:
+                return None
+            return said, reply, speaker
+        except Exception as exc:  # noqa: BLE001 投影失败回退直写, 不阻塞记忆
+            logger.debug("episodes 事件投影失败, 回退直写", error=str(exc))
+            return None
 
     async def _write_memory(
         self,
@@ -937,18 +1094,31 @@ class AgentManager:
         user_profile: UserProfile | None,
         reply: str,
         user_content: str | None = None,
+        turn_seq: int | None = None,
     ) -> None:
-        """写入一轮对话的 episodic 记忆 + 更新人物画像 (SPECIFICATION 5.1: 失败降级)。"""
+        """写入一轮对话的 episodic 记忆 + 更新人物画像 (SPECIFICATION 5.1: 失败降级)。
+
+        U1: 内容源优先**事件投影** (从 append-only 事件流读回本回合事件对),
+        事件流不可用时回退内存参数 —— 检索面 (store_episode) 不变, 写入侧以
+        不可变事件流为事实源。
+        """
         try:
             user_name = message.user_name or message.user_id
             display_name = instance.config.display_name or instance.agent_id
+            projected = await self._project_episode_content(instance, message, turn_seq)
+            if projected is not None:
+                said, reply, event_user = projected
+                user_name = event_user or user_name
+                merged_burst = True  # 事件投影必经 _dispatch_message, user_content 语义存在
+            else:
+                said = user_content if user_content is not None else message.content
+                merged_burst = user_content is not None
             # 存整轮对话 (用户话 + 回复): BM25/向量召回都能命中双方内容,
             # 注入时也能还原"谁说了什么"。合并回合存的是**整个 burst**
             # (user_content, 已带说话人前缀), 与 Agent 实际看到的输入一致。
-            said = user_content if user_content is not None else message.content
             content = (
                 f"{said}\n{display_name}: {reply}"
-                if user_content is not None and len(said.splitlines()) > 1
+                if merged_burst and len(said.splitlines()) > 1
                 else f"{user_name}: {said}\n{display_name}: {reply}"
             )
             await instance.memory.store_episode(

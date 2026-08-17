@@ -712,6 +712,42 @@ def _build_tenant_manager(tenancy_config: dict[str, Any]) -> Any:
     return TenantManager(db_path=str(DATA_DIR / "gateway" / "tenants.db"))
 
 
+def _build_session_history_kernel(global_config: dict[str, Any]) -> tuple[Any, Any]:
+    """U1: 构造事件溯源会话内核 (SessionEventStore + SessionHistoryDeriver)。
+
+    session.history 配置节: enabled (默认 True) / window_turns (默认 10) /
+    budget_tokens (默认 None)。store 落 data/gateway/session_events.db (WAL)。
+    返回 (store, deriver); enabled=false 时仍构造 (由 manager 侧 _session_history_enabled
+    判定, 便于测试注入) —— 真正不启用时在 manager 返回空历史, 零行为变化。
+    """
+    from isac.session.event_store import SessionEventStore
+    from isac.session.history import SessionHistoryDeriver
+
+    hist_cfg = global_config.get("session", {}).get("history", {}) or {}
+
+    def _int(key: str, default: int) -> int:
+        try:
+            return max(1, int(hist_cfg.get(key, default) or default))
+        except (TypeError, ValueError):
+            return default
+
+    store = SessionEventStore(str(DATA_DIR / "gateway" / "session_events.db"))
+    budget_raw = hist_cfg.get("budget_tokens")
+    try:
+        budget_tokens = int(budget_raw) if budget_raw else None
+    except (TypeError, ValueError):
+        budget_tokens = None
+    deriver = SessionHistoryDeriver(window_turns=_int("window_turns", 10), budget_tokens=budget_tokens)
+    return store, deriver
+
+
+async def _start_session_event_store(store: Any) -> None:
+    """U1: 会话事件存储启动 —— 建表 + 逐分区 torn-tail 修复 (抽自 main 降 C901)。"""
+    await store.start()
+    for key in await store.list_session_keys():
+        await store.repair_torn_tail(key)
+
+
 def _build_media_normalizer(global_config: dict[str, Any]) -> Any:
     """R1-②: 构造 MediaNormalizer, 白名单含 data/uploads (入站媒体下载落盘目录)。
 
@@ -1244,6 +1280,13 @@ async def main() -> None:
     services["session_lock"] = session_lock
     services["channel_registry"] = channel_registry
 
+    # U1: 事件溯源会话内核 —— append-only 会话事件表 + 滑动窗口历史派生器。
+    # store 注册生命周期 (启动建表 + torn-tail 修复, 关闭 flush); deriver 按配置构造。
+    # manager._derive_session_history 据此在每回合派生历史窗口 (开箱可用)。
+    session_event_store, session_history_deriver = _build_session_history_kernel(global_config)
+    services["session_event_store"] = session_event_store
+    services["session_history"] = session_history_deriver
+
     # P0: 消息处理并发化 —— handle_message 只负责派生任务立即返回, 适配器收取
     # 循环不再被单条消息的 LLM 往返阻塞 (跨会话真并行); 单会话仍靠会话锁串行。
     handle_message, drain_inflight = make_message_dispatcher(
@@ -1330,6 +1373,14 @@ async def main() -> None:
     # (同 artifact_store), 此处无条件注册。
     uploads_store = services["uploads_store"]
     runtime.register_lifecycle("uploads_store", uploads_store.start, uploads_store.stop)
+
+    # U1: 会话事件存储生命周期 (启动建表 + 逐分区 torn-tail 修复; 关闭 flush)。
+    # torn-tail: kill -9 可能留下孤儿 tool.called (无 outcome), 重放前合成 OUTCOME_UNKNOWN。
+    runtime.register_lifecycle(
+        "session_events",
+        lambda: _start_session_event_store(session_event_store),
+        session_event_store.stop,
+    )
 
     # J1: 用量存储生命周期 (仅启用计量时注册; stop 时先 flush 缓冲再关连接)。
     _register_usage_lifecycle(runtime, services)

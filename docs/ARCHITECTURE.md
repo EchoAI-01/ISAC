@@ -1069,6 +1069,41 @@ QUEUED → RUNNING → WAITING_TOOL → RUNNING
 
 ---
 
+### 3.14 Session Event Sourcing Kernel — 事件溯源会话内核 (U1)
+
+会话存储从可变表升级为**事件溯源** (2026-08-17 全景 Review 决策, 范式参考 deepseek-harness 会话内核与 SubAgentJournal): append-only 会话事件表是唯一事实源, 消息历史/滑动窗口/压缩全部从事件**派生**, 存储本身不可涂改。
+
+```text
+入站消息 (burst 合并后)
+  │ message.user 事件追加 + flush (LLM 请求前强制落盘)
+  ▼
+SessionEventStore  (data/gateway/session_events.db, WAL + write-behind)
+  │ 分区键 session_key = agent_id:platform:group/user (与 SessionManager 口径一致)
+  │ seq 分区内原子单调 (INSERT...SELECT COALESCE(MAX(seq),0)+1)
+  ▼
+SessionHistoryDeriver  (无状态派生器)
+  ├─ fold: 全量折叠 (turn.compressed 以 source_seqs 溯源替代原始区间)
+  ├─ derive_window: 滑动窗口 (最近 N 轮 + budget 感知截断)
+  └─ 未知事件类型拒绝重建; IGNORABLE 白名单安全跳过
+  ▼
+AgentManager._dispatch_message
+  │ messages = derive_window(历史事件) + [当前 burst]
+  ▼
+LLM 回复 → turn.completed 事件追加 → episodes 事件投影写入记忆
+```
+
+核心规则：
+
+- **Model-visible ⟺ Logged**: 任何可能进入 LLM 上下文的入站消息, 必须先作为 `message.user` 事件落盘 (副作用前 `flush()`), 才允许发起 LLM 请求。
+- **不可变 + 可溯源**: 压缩不删改原始事件, 而是追加 `turn.compressed` replace 事件 (payload.source_seqs 指向被替代区间); 摘要不小于原文时拒绝提交 (`validate_compression`)。
+- **未知事件默认拒绝重建**: 白名单外事件类型触发 `UnknownSessionEventError`, 仅 `IGNORABLE_EVENT_TYPES` (如 `session.migrated` 迁移标记) 可安全跳过 —— 前向兼容且不静默吞语义变化。
+- **torn-tail 容忍**: kill -9 可能留下孤儿 `tool.called` (无 outcome); 启动时逐分区 `repair_torn_tail` 合成 `OUTCOME_UNKNOWN` 结果事件, 不猜结果。
+- **episodes 是事件投影**: 记忆写入侧从事件流读回本回合 `message.user`/`turn.completed` 事件对作为内容源 (检索面不变), 事件流不可用时回退直写。
+- **零依赖开箱可用**: 历史派生只依赖事件流, memory/embedding 关闭时窗口仍工作 (底线场景)。
+- 配置: `session.history.enabled` (默认 true) / `window_turns` (默认 10) / `budget_tokens`; 旧会话迁移见 `python -m isac.session.migrate`。
+
+---
+
 ## 五、消息生命周期
 
 ```
@@ -1191,6 +1226,13 @@ ISAC/
 │   │   ├── user_mapper.py          # 跨平台用户映射
 │   │   ├── lock.py                 # SessionLockManager (并发控制)
 │   │   └── models.py               # Session/Profile 数据模型
+│   │
+│   ├── session/                    # U1 事件溯源会话内核
+│   │   ├── __init__.py
+│   │   ├── models.py               # SessionEvent + 事件类型白名单
+│   │   ├── event_store.py          # SessionEventStore (append-only, WAL + write-behind)
+│   │   ├── history.py              # SessionHistoryDeriver (折叠/窗口/压缩溯源)
+│   │   └── migrate.py              # 旧 sessions 数据迁移脚本
 │   │
 │   ├── router/                     # 消息路由 (Agent 归属)
 │   │   ├── __init__.py
