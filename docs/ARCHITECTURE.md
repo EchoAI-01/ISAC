@@ -830,6 +830,15 @@ class FocusMode:
 
 插件格式识别、兼容范围矩阵、权限模型、生命周期和兼容测试见 [PLUGIN_COMPATIBILITY.md](./PLUGIN_COMPATIBILITY.md)。
 
+**信任分级与隔离默认化 (U6)**: 有 manifest 的原生插件**默认经 PluginIsolationHost
+在子进程隔离加载** (spawn 子进程 + rlimits 资源限额 + IPC 超时); manifest `trust`
+字段两档 —— `sandboxed` (缺省) 隔离, `hosted` 需部署配置 `trust_hosted` 清单按目录名
+显式确认 (运营方显式确认信任) 才宿主进程内加载, 未确认仍隔离。隔离宿主参数
+(rlimits/ipc_timeout/max_restart_attempts) 经 `control.plugins.isolation` 部署配置接线。
+卸载/热重载时运行中 Agent 的工具/命令/注入器按来源 (source) 同步清除, 零残留不留至重启。
+无 manifest 的 AstrBot/MaiBot 兼容层插件当前机制无法隔离, 宿主进程内加载 + 显式告警
+(降级承诺, 处置决策见 PLUGIN_COMPATIBILITY.md §5.4)。
+
 **兼容层架构**:
 
 ```

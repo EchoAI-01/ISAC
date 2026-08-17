@@ -248,15 +248,31 @@
       "enabled": false,
       "base_dir": "data/workflows"
     },
-    // Fix-31: 部署方强制隔离插件 (经子进程加载), 覆盖插件自己 manifest.jsonc 的
-    // isolated 声明——不完全信任的插件作者/供应链不会主动声明 isolated: true,
-    // 这里给部署方一侧的强制开关。填插件目录名列表, 或 "*" 表示该加载路径下
-    // 全部插件都强制隔离。默认 [] (不覆盖, 只信任插件自己的 manifest 声明)。
-    // 仅 ISAC 原生插件格式支持隔离; 对 AstrBot/MaiBot 兼容层插件 (无
-    // manifest.jsonc) 强制隔离会导致加载失败 (清晰报错, 不会静默退回不受保护的
-    // 宿主进程内加载)。
+    // U6 信任分级倒转: 有 manifest.jsonc 的原生插件**默认隔离加载** (子进程,
+    // trust 缺省=sandboxed), 市场/git/url/upload 安装的插件未显式声明 hosted 即进沙箱。
+    // 仅当 manifest 声明 trust: "hosted" 且目录名列在下方 trust_hosted 清单内
+    // (运营方显式确认信任) 才在宿主进程内加载。无 manifest 的 AstrBot/MaiBot 兼容层
+    // 插件无法隔离, 仍在宿主进程内 (降级承诺, 见 PLUGIN_COMPATIBILITY.md)。
     "plugins": {
+      // trust_hosted: 运营方显式确认信任、允许宿主进程内加载的插件目录名清单
+      // (须同时 manifest 声明 trust: "hosted" 才生效)。
+      "trust_hosted": [],
+      // Fix-31: 部署方强制隔离清单 (覆盖一切 manifest 声明)。填插件目录名列表,
+      // 或 "*" 表示全部强制隔离。对无 manifest 的兼容层插件强制隔离会清晰报错。
       "isolated_plugins": [],
+      // U6: 隔离宿主参数接线 (rlimits 仅 POSIX 生效; Windows 跳过资源限额)。
+      "isolation": {
+        // 子进程资源限额: cpu 秒数 / nofile 文件描述符数 / as 地址空间字节
+        "rlimits": {
+          "cpu": [60, 60],
+          "nofile": [64, 64],
+          "as": [268435456, 268435456]
+        },
+        // IPC 响应等待超时 (秒), 超时按子进程挂死处理 (terminate + respawn)
+        "ipc_timeout_seconds": 30,
+        // 子进程崩溃重启上限, 超过后放弃
+        "max_restart_attempts": 3
+      },
       // T6: 远程插件市场清单 URL。空 = 仅用本地 data/plugin_marketplace.jsonc。
       // 配置后控制面 httpx 拉取远程清单 (SSRF 校验 + 超时 + 缓存), 与本地合并。
       "marketplace_url": "",

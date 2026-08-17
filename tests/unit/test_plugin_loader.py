@@ -17,7 +17,7 @@ def tmp_plugin_dir(tmp_path: Path) -> Path:
     plugins_root = tmp_path / "plugins"
     plugins_root.mkdir()
 
-    # ISAC Native 插件
+    # ISAC Native 插件 (U6: 声明 trust=hosted, 测试以 trust_hosted 确认走宿主进程内加载)
     native_dir = plugins_root / "native_hello"
     native_dir.mkdir()
     (native_dir / "manifest.jsonc").write_text(
@@ -27,6 +27,7 @@ def tmp_plugin_dir(tmp_path: Path) -> Path:
                 "version": "1.0.0",
                 "description": "测试原生插件",
                 "entry": "plugin.py",
+                "trust": "hosted",
             },
             ensure_ascii=False,
         ),
@@ -115,7 +116,8 @@ class TestPluginLoaderLoad:
 class TestPluginManagerLoadAll:
     @pytest.mark.asyncio
     async def test_load_all_loads_every_plugin(self, tmp_plugin_dir: Path) -> None:
-        manager = PluginManager({})
+        # U6: native_hello 声明 trust=hosted, 经 trust_hosted 确认走宿主进程内加载
+        manager = PluginManager({"trust_hosted": ["native_hello"]})
         report = await manager.load_all(tmp_plugin_dir)
         assert "native_hello" in report
         assert "astrbot_hello" in report
@@ -138,8 +140,9 @@ class TestPluginManagerLoadAll:
         (bad_dir / "plugin.py").write_text("raise RuntimeError('bad plugin')", encoding="utf-8")
         good_dir = plugins_root / "good"
         good_dir.mkdir()
+        # U6: 声明 trust=hosted + trust_hosted 确认 → 宿主进程内加载 (快路径)
         (good_dir / "manifest.jsonc").write_text(
-            json.dumps({"name": "good", "entry": "plugin.py"}), encoding="utf-8"
+            json.dumps({"name": "good", "entry": "plugin.py", "trust": "hosted"}), encoding="utf-8"
         )
         (good_dir / "plugin.py").write_text(
             "from isac.plugin.native.plugin import ISACPlugin\n"
@@ -147,7 +150,7 @@ class TestPluginManagerLoadAll:
             encoding="utf-8",
         )
 
-        manager = PluginManager({})
+        manager = PluginManager({"trust_hosted": ["good"]})
         report = await manager.load_all(plugins_root)
         assert "failed" in report["bad"]
         assert "loaded" in report["good"]
@@ -156,7 +159,8 @@ class TestPluginManagerLoadAll:
 class TestPluginManagerUnload:
     @pytest.mark.asyncio
     async def test_unload_calls_on_unload_and_removes(self, tmp_plugin_dir: Path) -> None:
-        manager = PluginManager({})
+        # U6: native_hello 声明 trust=hosted, 经 trust_hosted 确认走宿主进程内加载
+        manager = PluginManager({"trust_hosted": ["native_hello"]})
         await manager.load_all(tmp_plugin_dir)
         loaded = manager.get("native_hello")
         assert loaded is not None
@@ -208,7 +212,8 @@ class TestPluginManagerIsolation:
             await manager.shutdown()
 
     @pytest.mark.asyncio
-    async def test_non_isolated_plugin_still_loads_in_process(self, tmp_path: Path) -> None:
+    async def test_u6_default_trust_is_sandboxed(self, tmp_path: Path) -> None:
+        """U6 信任分级倒转: 有 manifest 但未声明 trust 的原生插件默认隔离加载。"""
         root = tmp_path / "plugins"
         root.mkdir()
         plugin_dir = root / "plain"
@@ -221,9 +226,40 @@ class TestPluginManagerIsolation:
             encoding="utf-8",
         )
         manager = PluginManager({})
-        await manager.load_all(root)
-        assert manager.is_isolated("plain") is False
-        assert manager.get("plain") is not None  # 内进程加载
+        try:
+            await manager.load_all(root)
+            assert manager.is_isolated("plain") is True  # 默认沙箱
+            assert manager.get("plain") is None
+        finally:
+            await manager.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_u6_hosted_trust_requires_deployer_confirmation(self, tmp_path: Path) -> None:
+        """U6: trust=hosted 需部署方 trust_hosted 确认才宿主进程内加载; 未确认仍隔离。"""
+        root = tmp_path / "plugins"
+        root.mkdir()
+
+        def _make_hosted(name: str) -> None:
+            d = root / name
+            d.mkdir(parents=True)
+            (d / "manifest.jsonc").write_text(
+                json.dumps({"name": name, "entry": "plugin.py", "trust": "hosted"}), encoding="utf-8"
+            )
+            (d / "plugin.py").write_text(
+                "from isac.plugin.native.plugin import ISACPlugin\nclass P(ISACPlugin):\n    pass\n",
+                encoding="utf-8",
+            )
+
+        _make_hosted("unconfirmed")
+        _make_hosted("confirmed")
+        manager = PluginManager({"trust_hosted": ["confirmed"]})
+        try:
+            await manager.load_all(root)
+            assert manager.is_isolated("unconfirmed") is True  # 声明 hosted 但未确认 → 仍隔离
+            assert manager.is_isolated("confirmed") is False
+            assert manager.get("confirmed") is not None  # 确认后宿主进程内加载
+        finally:
+            await manager.shutdown()
 
     @pytest.mark.asyncio
     async def test_unload_isolated_kills_host(self, tmp_path: Path) -> None:
@@ -275,12 +311,25 @@ class TestPluginManagerDeployerForcedIsolation:
     async def test_deployer_forced_isolation_does_not_affect_unlisted_plugin(
         self, tmp_path: Path
     ) -> None:
-        """isolated_plugins 只对列出的目录名生效, 未列出的插件维持原有 (宿主进程内) 行为。"""
+        """isolated_plugins 只对列出的目录名强制; 未列出的插件按信任分级走
+        (U6: trust=hosted + trust_hosted 确认 → 宿主进程内)。"""
         root = tmp_path / "plugins"
         root.mkdir()
         self._make_plain_native_plugin(root, "untrusted_plugin")
-        self._make_plain_native_plugin(root, "trusted_plugin")
-        manager = PluginManager({"isolated_plugins": ["untrusted_plugin"]})
+        plugin_dir = root / "trusted_plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "manifest.jsonc").write_text(
+            json.dumps({"name": "trusted_plugin", "version": "1.0.0", "entry": "plugin.py", "trust": "hosted"}),
+            encoding="utf-8",
+        )
+        (plugin_dir / "plugin.py").write_text(
+            "from isac.plugin.native.plugin import ISACPlugin\n"
+            "class PlainPlugin(ISACPlugin):\n"
+            "    def ping(self):\n"
+            "        return 'pong'\n",
+            encoding="utf-8",
+        )
+        manager = PluginManager({"isolated_plugins": ["untrusted_plugin"], "trust_hosted": ["trusted_plugin"]})
         try:
             await manager.load_all(root)
             assert manager.is_isolated("untrusted_plugin") is True
@@ -305,17 +354,21 @@ class TestPluginManagerDeployerForcedIsolation:
             await manager.shutdown()
 
     @pytest.mark.asyncio
-    async def test_absent_isolated_plugins_config_defaults_to_no_forced_isolation(
+    async def test_absent_isolated_plugins_config_defaults_to_trust_inversion(
         self, tmp_path: Path
     ) -> None:
-        """未配置 isolated_plugins (如 PluginManager({})) 时零行为变化: 仍只按 manifest 决定。"""
+        """U6 信任分级倒转: 未配置 isolated_plugins 时, 有 manifest 的原生插件
+        默认隔离 (此前默认宿主进程内, 只认 manifest isolated=true)。"""
         root = tmp_path / "plugins"
         root.mkdir()
         self._make_plain_native_plugin(root, "plain")
         manager = PluginManager({})
-        await manager.load_all(root)
-        assert manager.is_isolated("plain") is False
-        assert manager.get("plain") is not None
+        try:
+            await manager.load_all(root)
+            assert manager.is_isolated("plain") is True
+            assert manager.get("plain") is None
+        finally:
+            await manager.shutdown()
 
     @pytest.mark.asyncio
     async def test_forced_isolation_on_non_native_plugin_fails_clearly_instead_of_unprotected_load(
