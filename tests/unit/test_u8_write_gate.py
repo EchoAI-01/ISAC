@@ -171,10 +171,10 @@ def test_ast_audit_no_session_write_outside_gate() -> None:
 
 
 def test_write_gate_is_wired_in_main_services() -> None:
-    """门必须接线进生产 services 袋 (防"定义了未接线")。"""
-    main_src = (REPO_ROOT / "isac" / "main.py").read_text(encoding="utf-8")
-    assert "session_write_gate" in main_src
-    assert "SessionWriteGate()" in main_src
+    """门必须接线进生产 services 袋 (防"定义了未接线")。U2 后装配在 bootstrap.py。"""
+    bootstrap_src = (REPO_ROOT / "isac" / "bootstrap.py").read_text(encoding="utf-8")
+    assert "session_write_gate" in bootstrap_src
+    assert "SessionWriteGate()" in bootstrap_src
 
 
 # ── 治理门禁: catalog 一致性 (与 CI --check 同语义) ──────────
