@@ -67,15 +67,50 @@ class MemoryGovernor:
         *,
         sparse_resolver: Callable[[str], SparseBM25Index | None] | None = None,
         vector_resolver: Callable[[str], Any] | None = None,
+        tenant_guard: Any = None,
+        tenant_context: Any = None,
     ) -> None:
         self._store = metadata_store
         self._sparse_resolver = sparse_resolver
         self._vector_resolver = vector_resolver
+        # U0 Fix-85: 租户作用域。未显式注入时从所包装的 MetadataStore 读取其
+        # _tenant_guard/_tenant_context (生产接线里 store 已带租户上下文, 见 main.py
+        # build_services), 让治理 SQL 与检索/写入走同一套租户隔离。此前治理操作直连
+        # db_path 裸 SQL 只按 agent_id 过滤, 绕过租户谓词 —— 两租户共享同一 memory.db
+        # 时 (见 test_p5 _make_tenanted_pipeline), 租户 A 凭据可对租户 B 的记忆
+        # freeze/correct/delete, 是多租户卖点面上的越权实洞。
+        self._tenant_guard = (
+            tenant_guard if tenant_guard is not None else getattr(metadata_store, "_tenant_guard", None)
+        )
+        self._tenant_context = (
+            tenant_context if tenant_context is not None else getattr(metadata_store, "_tenant_context", None)
+        )
 
     def _db_path(self) -> str | None:
         if self._store is None:
             return None
         return self._store.db_path
+
+    def _tenant_predicate(self) -> tuple[str, list[str]]:
+        """U0 Fix-85: 返回 episodes 表的租户谓词片段 + 参数。
+
+        隔离启用 (guard.enabled) 且非默认租户时返回
+        ``(" AND organization_id = ? AND tenant_id = ?", [org, tenant])``;
+        否则返回 ``("", [])`` —— 与 MetadataStore._tenant_scope/enforce 的语义一致
+        (默认租户/未启用直通, 零行为变化)。治理操作直连 db_path 裸 SQL, 无法走
+        enforce() 的子查询包裹 (那是 SELECT 专用), 故对 UPDATE/SELECT 一律手动拼
+        租户列谓词 (参照 metadata.update_episode_summary 的做法)。
+        """
+        guard = self._tenant_guard
+        ctx = self._tenant_context
+        if guard is None or ctx is None or not getattr(guard, "enabled", False):
+            return "", []
+        if getattr(ctx, "is_default", True):
+            return "", []
+        return (
+            " AND organization_id = ? AND tenant_id = ?",
+            [str(getattr(ctx, "organization_id", "")), str(getattr(ctx, "tenant_id", ""))],
+        )
 
     def _sync_sparse(self, agent_id: str, item_id: str, content: str | None) -> None:
         """同步内存 BM25 索引: content=None 表示移除, 否则重建该文档 (CR3-L3)。
@@ -120,10 +155,15 @@ class MemoryGovernor:
         里的 {agent_id} 段形同摆设 —— 任何 agent_id 都能操作任意 item_id, 只要
         item 存在。加 agent_id 条件后, item 存在但属于别的 agent 时视为"不存在"
         (幂等语义: 返回 False, 不泄露"item 存在但属于别人"的信息)。
+
+        U0 Fix-85: 追加租户谓词 —— item 存在但属于别的租户时同样视为"不存在",
+        拦截跨租户越权 (两租户共享同一 memory.db)。
         """
+        pred, tparams = self._tenant_predicate()
         async with aiosqlite.connect(db_path) as db:
             cursor = await db.execute(
-                "SELECT 1 FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+                f"SELECT 1 FROM episodes WHERE id = ? AND agent_id = ?{pred}",
+                (item_id, agent_id, *tparams),
             )
             return await cursor.fetchone() is not None
 
@@ -180,10 +220,11 @@ class MemoryGovernor:
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
+        pred, tparams = self._tenant_predicate()
         async with aiosqlite.connect(db_path) as db:
             await db.execute(
-                "UPDATE episodes SET frozen = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (int(time.time()), item_id, agent_id),
+                f"UPDATE episodes SET frozen = 1, updated_at = ? WHERE id = ? AND agent_id = ?{pred}",
+                (int(time.time()), item_id, agent_id, *tparams),
             )
             await db.commit()
         logger.info("记忆条目已冻结", item_id=item_id, agent_id=agent_id)
@@ -195,10 +236,11 @@ class MemoryGovernor:
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
+        pred, tparams = self._tenant_predicate()
         async with aiosqlite.connect(db_path) as db:
             await db.execute(
-                "UPDATE episodes SET protected = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (int(time.time()), item_id, agent_id),
+                f"UPDATE episodes SET protected = 1, updated_at = ? WHERE id = ? AND agent_id = ?{pred}",
+                (int(time.time()), item_id, agent_id, *tparams),
             )
             await db.commit()
         logger.info("记忆条目已保护", item_id=item_id, agent_id=agent_id)
@@ -218,9 +260,11 @@ class MemoryGovernor:
         revision_id = uuid.uuid4().hex
         now = int(time.time())
         new_content = _truncate_content(new_content)
+        pred, tparams = self._tenant_predicate()
         async with aiosqlite.connect(db_path) as db:
             cursor = await db.execute(
-                "SELECT content, frozen, deleted FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+                f"SELECT content, frozen, deleted FROM episodes WHERE id = ? AND agent_id = ?{pred}",
+                (item_id, agent_id, *tparams),
             )
             row = await cursor.fetchone()
             if row and row[1] == 1:
@@ -234,8 +278,9 @@ class MemoryGovernor:
                 (revision_id, item_id, old_content, new_content, now, "correct"),
             )
             await db.execute(
-                "UPDATE episodes SET content = ?, corrected_by = ?, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (new_content, revision_id, now, item_id, agent_id),
+                f"UPDATE episodes SET content = ?, corrected_by = ?, updated_at = ? "
+                f"WHERE id = ? AND agent_id = ?{pred}",
+                (new_content, revision_id, now, item_id, agent_id, *tparams),
             )
             await db.commit()
         logger.info("记忆条目已纠正", item_id=item_id, revision_id=revision_id)
@@ -262,17 +307,19 @@ class MemoryGovernor:
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
+        pred, tparams = self._tenant_predicate()
         async with aiosqlite.connect(db_path) as db:
             cursor = await db.execute(
-                "SELECT protected FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+                f"SELECT protected FROM episodes WHERE id = ? AND agent_id = ?{pred}",
+                (item_id, agent_id, *tparams),
             )
             row = await cursor.fetchone()
             if row and row[0] == 1:
                 logger.info("记忆条目受保护, 拒绝删除", item_id=item_id)
                 return False
             await db.execute(
-                "UPDATE episodes SET deleted = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (int(time.time()), item_id, agent_id),
+                f"UPDATE episodes SET deleted = 1, updated_at = ? WHERE id = ? AND agent_id = ?{pred}",
+                (int(time.time()), item_id, agent_id, *tparams),
             )
             await db.commit()
         logger.info("记忆条目已软删除", item_id=item_id, agent_id=agent_id)
@@ -289,13 +336,15 @@ class MemoryGovernor:
         db_path = self._db_path()
         if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
+        pred, tparams = self._tenant_predicate()
         async with aiosqlite.connect(db_path) as db:
             await db.execute(
-                "UPDATE episodes SET deleted = 0, frozen = 0, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (int(time.time()), item_id, agent_id),
+                f"UPDATE episodes SET deleted = 0, frozen = 0, updated_at = ? WHERE id = ? AND agent_id = ?{pred}",
+                (int(time.time()), item_id, agent_id, *tparams),
             )
             cursor = await db.execute(
-                "SELECT content FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
+                f"SELECT content FROM episodes WHERE id = ? AND agent_id = ?{pred}",
+                (item_id, agent_id, *tparams),
             )
             row = await cursor.fetchone()
             await db.commit()
@@ -322,11 +371,12 @@ class MemoryGovernor:
         db_path = self._db_path()
         if db_path is None:
             return []
+        pred, tparams = self._tenant_predicate()
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT * FROM episodes WHERE agent_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
-                (agent_id, max(1, int(limit)), max(0, int(offset))),
+                f"SELECT * FROM episodes WHERE agent_id = ?{pred} ORDER BY created_at ASC LIMIT ? OFFSET ?",
+                (agent_id, *tparams, max(1, int(limit)), max(0, int(offset))),
             )
             rows = await cursor.fetchall()
         items: list[MemoryItem] = []
