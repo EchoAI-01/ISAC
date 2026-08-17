@@ -57,6 +57,10 @@ jobs:
       - name: Model capabilities snapshot parse check
         run: uv run python scripts/gen_model_capabilities.py --check
 
+      - name: Redline metrics check
+        # U9: main.py 行数 / services 键数 / 硬编码门控词条目数 / 迁移棘轮, 只减不增
+        run: uv run python scripts/check_redlines.py
+
   browser:
     # K8-2: Playwright 浏览器黄金路径测试 (tests/browser/); 未装时 skip,
     # CI 显式 install chromium 后跑。与 check/build/docker 并行, 失败不阻塞主链路。

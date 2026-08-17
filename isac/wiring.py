@@ -112,7 +112,7 @@ def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[st
         )
 
 
-def _wire_llm_capabilities(services: dict[str, Any], global_config: dict[str, Any]) -> None:
+def _wire_llm_capabilities(services: ServiceContainer, global_config: dict[str, Any]) -> None:
     """U7: 能力快照接线 —— ModelRouter 注入 + primary LLM 描述符注册。
 
     ①provider_manager.model_router = model_router: chat_with_retry 成功/最终失败
@@ -124,11 +124,11 @@ def _wire_llm_capabilities(services: dict[str, Any], global_config: dict[str, An
     """
     from isac.provider.capabilities import CapabilitySnapshot
 
-    provider_manager = services.get("provider_manager")
-    model_catalog = services.get("model_catalog")
+    provider_manager = services.provider_manager
+    model_catalog = services.model_catalog
     if provider_manager is None or model_catalog is None:
         return
-    model_router = services.get("model_router")
+    model_router = services.model_router
     if model_router is not None:
         provider_manager.model_router = model_router
 

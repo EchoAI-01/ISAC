@@ -2,7 +2,14 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> ⚠️ **最近更新: 2026-08-18 —— U2 装配层重构完成 (main.py 2046→82 行 + ServiceContainer, U 节点全部清偿)**。架构债 Z1+Z2 收敛, 全部验收项落地:
+> ⚠️ **最近更新: 2026-08-18 —— U9 A+ 复评门禁完成, U 架构演进轮 U0-U9 全部清偿**。
+> **①复评报告**归档 docs/U9_ARCHITECTURE_REVIEW.md: 12 模块逐项评级**无 C 项、B 项 2** (B-1 services 残余访问棘轮 / B-2 语义关系抽取层架构债, 均带收敛路径), 其余 A-/A; 实测 1962 passed 零失败 + ruff/mypy (293 源文件) 全绿。
+> **②"定义了未接线"清零常驻**: test_u9_release_gate.py UNWIRED_LEDGER 登记册 (7 历史符号使用点审计) + 安全模块零 TODO 卫生检查, 零残留。
+> **③红线指标 CI 常驻**: scripts/check_redlines.py (main.py ≤120 行 / 模块 ≤500 / services 键 ≤36 / 门控词 ≤27 只减不增 / services 残余 ≤205 棘轮) 入 CI catalog-drift job。
+> **④Minor 批清**: smoke_main_resident flake **根治** (固定 sleep → 就绪标记轮询, 5/5 稳定); CHANGELOG 补齐 07-26 后全部轮次; 版本号策略定稿 (SemVer, 1.0.0=GA 目标, GA 前不打 tag); services.get 首批迁移 (215→205 棘轮冻结)。
+> **代码侧 GA 门槛就绪** (U0-U9 全 [x] + 复评通过 + 红线常驻); 环境准入 N2/N3/N4 按既有排期。
+>
+> ⚠️ **2026-08-18 —— U2 装配层重构完成 (main.py 2046→82 行 + ServiceContainer, U 节点全部清偿)**。架构债 Z1+Z2 收敛, 全部验收项落地:
 > **①main.py 薄入口**: 2046 行 → **82 行**纯 re-export 兼容面 (既有 `from isac.main import ...` 零改动), AST 精确抽取零转写拆出 —— **dispatch.py** 481 行 (消息主链路)、**wiring.py** 499 行 (build_services + 服务构造器)、**bootstrap.py** 499 行 (main() 运行时生命周期); cli 早已分离 `isac/__main__.py`。卫星模块层级归位: control/bootstrap.py、runtime/plugin_bootstrap.py、channel/registration.py、runtime/mesh/query.py、memory/stack.py (记忆构造器归记忆层)、observability/usage/stack.py、tenancy/media 构造器各归其层。
 > **②ServiceContainer** (runtime/services.py): dict 子类 + **14 核心键类型化属性**, build_services 返回 ServiceContainer —— 键错配在类型层不可能 (mypy strict 293 源文件全绿); dict 语义全保持, 下游字符串键访问渐进迁移 ("先核心 10 键, 再清其余"第一阶段完成, 残余 ~215 处列 U9 批清)。
 > **③lint 红线常驻** (test_u2_assembly_redlines.py): main.py ≤120 行、四模块各 ≤500 行只减不增、薄入口禁函数定义、ServiceContainer 核心键哨兵、拆分模块禁反向 import main (单向链)。

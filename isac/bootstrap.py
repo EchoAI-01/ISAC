@@ -154,8 +154,8 @@ async def main() -> None:
 
     # ── Provider ────────────────────────────────────────────
     services = build_services(global_config)
-    metrics: MetricsCollector = services["metrics"]
-    register_llm_provider(services["provider_manager"], global_config.get("llm", {}))
+    metrics: MetricsCollector = services.metrics
+    register_llm_provider(services.provider_manager, global_config.get("llm", {}))
     # U7: 能力快照接线 (model_router 注入 + primary LLM 描述符注册, 见函数 docstring)
     _wire_llm_capabilities(services, global_config)
 
@@ -299,8 +299,8 @@ async def main() -> None:
         await _register_control_plane(
             runtime, control_config, agent_manager, router, bus, metrics,
             services.get("usage_store"), services.get("subagent_supervisor"),
-            services.get("provider_manager"), services.get("model_catalog"),
-            services.get("artifact_store"),
+            services.provider_manager, services.model_catalog,
+            services.artifact_store,
             session_mgr, services.get("metadata_store"),
             event_bus,
             webhook_manager,
@@ -314,7 +314,7 @@ async def main() -> None:
     )
     # K2: Provider (httpx.AsyncClient 连接池) 在 shutdown 时 aclose, 避免连接泄漏;
     # 启动无需动作 (httpx.AsyncClient 惰性创建, 首次 chat 时才建池)。
-    provider_manager = services["provider_manager"]
+    provider_manager = services.provider_manager
     runtime.register_lifecycle(
         "providers",
         _noop_start,
@@ -335,7 +335,7 @@ async def main() -> None:
     # J2: 制品存储生命周期 (启动 schema 初始化 + 周期 TTL 扫描; 关闭时 sweep 兜底)。
     # ArtifactStore 在 build_services 中无条件构造, 这里无条件注册: 即使无多模态
     # Provider 注册, start_ttl_sweep 也只是周期扫描空 DB, 开销可忽略。
-    artifact_store = services["artifact_store"]
+    artifact_store = services.artifact_store
     runtime.register_lifecycle("artifact_store", artifact_store.start, artifact_store.stop)
 
     # N5b 批次G: 入站媒体 uploads_store 同样需注册生命周期 (start_ttl_sweep 周期清理
@@ -343,7 +343,7 @@ async def main() -> None:
     # → sweep 任务不跑, 入站媒体文件 + DB 行无限堆积 (incoming_media.py 每次 put 写
     # 7 天过期元数据但无人扫)。uploads_store 在 build_services 无条件构造并放入 services
     # (同 artifact_store), 此处无条件注册。
-    uploads_store = services["uploads_store"]
+    uploads_store = services.uploads_store
     runtime.register_lifecycle("uploads_store", uploads_store.start, uploads_store.stop)
 
     # U1: 会话事件存储生命周期 (启动建表 + 逐分区 torn-tail 修复; 关闭 flush)。
