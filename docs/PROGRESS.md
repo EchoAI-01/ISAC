@@ -2,7 +2,15 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> ⚠️ **最近更新: 2026-08-17 —— U6 插件隔离默认化完成 (信任分级倒转, 含 Z3 兼容层处置决策)**。隔离从 opt-in 倒转为默认:
+> ⚠️ **最近更新: 2026-08-17 —— U3 门控策略化完成 (配置 + i18n + LLM judge, 可穿插节点续清)**。门控从硬编码中文词表升级为配置化可插拔策略, 全部验收项落地:
+> **①GatingProfile** (`isac/gating/profile.py`): 评分权重/阈值/三类问询词表/策略档位统一收口 —— 全部可经 `config.gating` 覆盖 (weights/markers/locale/strategy/reply_necessity_threshold/llm_judge_max_per_minute/hybrid_escalate_band), 未配置回落 constants 默认; 数据类默认 = zh_CN 词表 (constants 同源), 裸构造亦与 U3 前一致; strategy 非法值归一 keywords。
+> **②GatingStrategy 四档** (`isac/gating/strategy.py`): off (恒无内容信号) / keywords (默认, U3 前语义原样) / llm-judge (小模型判相关性; 缺失/异常/None/超频率上限 fail-safe 回落 keywords, 滑动窗口上限默认 10 次/分钟) / hybrid (keywords 先行, 无问询信号才升级 judge)。策略只产出内容信号, 分数换算仍归 ReplyNecessityJudge —— 单一调用点, 策略可换评分模型不变。
+> **③i18n 词表** (locales GATING_MARKERS): zh_CN 为 constants 三组中文词表原样迁入, en_US 新增英文词表; `load_gating_markers(locale)` 未知语言回退默认; config markers 覆盖优先于 locale。drift test: 双语包键集合 == GATING_MARKER_KINDS 三类且非空 (CI 常驻)。
+> **④装配接线** (runtime/assembly.py): `_merged_gating_config` 全局 config.gating 与 Agent 级浅合并 (嵌套 weights/markers 子键合并, Agent 优先); `_build_gating_judge_fn` 仅 llm-judge/hybrid 档且 provider 在场时构造, 经 ProviderManager.chat_with_retry 走 **fallback 链最便宜档** (拍板 #3), yes/no 解析异常归 None 回落。config.sample.jsonc 增全局 gating 节样例。
+> **成本**: llm-judge 每条待判定消息 ≤1 次最便宜档短请求 + 频率上限兜底, 单群中等活跃度约每分钟 ≤10 次小模型调用成本近零 (ARCHITECTURE.md §3.7 落档)。
+> 测试: U3 专项 17 例 (四档策略/fail-safe/频率上限/hybrid 升级/权重词表阈值配置化/**英文群聊 e2e 双语对照**/默认零行为回归/词表 drift/全局-Agent 合并) + 既有门控域 236 例回归全绿。全量 **1920 通过 + 4 skip** (smoke_main_resident 全量批负载 flake 单独复跑稳定, U9 根治项)、ruff/mypy (279 源文件) 全绿。**U3 完成, 可穿插节点剩 U2/U7/U8, 之后 U9 复评门禁**。
+>
+> ⚠️ **2026-08-17 —— U6 插件隔离默认化完成 (信任分级倒转, 含 Z3 兼容层处置决策)**。隔离从 opt-in 倒转为默认:
 > **①信任分级倒转** (`PluginManager._should_isolate`/`_manifest_trust`): 有 manifest 的原生插件**默认隔离加载** (子进程 PluginIsolationHost; trust 缺省=sandboxed, 旧 `isolated:true` 等价向后兼容); `trust: "hosted"` 仅当目录名在部署配置 `control.plugins.trust_hosted` 确认清单内才宿主进程内加载 (运营方显式确认信任), **未确认仍隔离** (不轻信 manifest); `isolated_plugins` 强制清单优先级最高保持。市场/git/url/upload 安装的插件未显式 hosted 即进沙箱。
 > **②rlimits/ipc_timeout 部署接线** (`_isolation_host_kwargs`): `control.plugins.isolation` 节 rlimits(cpu/nofile/as)/ipc_timeout_seconds/max_restart_attempts 解析传入 PluginIsolationHost (此前构造恒用内置默认配置不可达); 非法值安全忽略。
 > **③hooks 零残留**: 卸载经共享表 deregister_by_source + sync_plugin_tools_to_agents 按来源同步运行中 Agent (机制批次 C 已接线, 补验收测试)。

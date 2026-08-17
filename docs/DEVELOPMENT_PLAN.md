@@ -1342,11 +1342,11 @@ v1.0 GA = 以下全部满足:
   - **依赖**: U0。
   - **当前**: 未开始。
 
-- [ ] **U3 门控策略化 (配置 + i18n + LLM judge)**
+- [x] **U3 门控策略化 (配置 + i18n + LLM judge)**
   - **目标**: constants.py 硬编码的三组中文关键词表与评分权重迁入 config `gating` 节 + locales 双语包 (zh_CN 现有词表迁入, en_US 新配); GatingStrategy 可插拔四档 (off / keywords / llm-judge / hybrid), TurnGate 单一调用点; llm-judge 档用小模型判群聊发言相关性 (频率上限 + 成本估算入文档; 已拍板: fallback 链最便宜档); 词汇表 drift test (config 与 locales 键一致性 CI 检查)。
   - **验收**: 英文群聊场景门控 e2e 通过; 调整任何门控参数不改代码; zh_CN 默认配置下既有门控行为回归一致。
   - **依赖**: U0。
-  - **当前**: 未开始。
+  - **当前**: **已完成 (2026-08-17)**。①**GatingProfile** (gating/profile.py): 门控参数画像收口 —— 全部评分权重/阈值/三类词表/策略档位可经 `config.gating` 覆盖 (weights/markers/locale/strategy/reply_necessity_threshold/llm_judge_max_per_minute/hybrid_escalate_band), 未配置回落 constants 默认; 数据类字段默认 = zh_CN 词表 (constants 同源), 裸构造 GatingProfile() 亦与 U3 前行为一致; strategy 非法值归一 keywords。②**GatingStrategy 可插拔四档** (gating/strategy.py): off (恒无内容信号) / keywords (默认, 词表匹配, U3 前语义原样) / llm-judge (小模型判相关性, judge 缺失/异常/返回 None/超频率上限 fail-safe 回落 keywords, 滑动窗口频率上限默认 10 次/分钟) / hybrid (keywords 先行, 无任何问询信号才升级 judge); 策略只产出内容信号 (is_question/is_request/is_consult/judged_by_llm), 分数换算仍归 ReplyNecessityJudge (单一调用点, 策略可换评分模型不变)。③**i18n 词表** (locales): GATING_MARKERS 双语包 —— zh_CN 为 constants 三组中文词表原样迁入, en_US 新增英文词表 (question/request/consult); load_gating_markers(locale) 未知语言回退默认语言; config markers 覆盖优先于 locale 词表。④**装配接线** (runtime/assembly.py): _merged_gating_config 全局 config.gating 与 Agent 级浅合并 (嵌套 weights/markers 子键合并, Agent 优先); _build_gating_judge_fn 仅 llm-judge/hybrid 档且 provider 在场时构造, 经 ProviderManager.chat_with_retry 走 **fallback 链最便宜档** (拍板 #3), yes/no 解析, 异常归 None 回落。⑤**drift test**: zh_CN/en_US 词表键集合 == GATING_MARKER_KINDS 三类且非空 (CI 常驻)。⑥**配置样例**: config.sample.jsonc 全局 gating 节 (strategy/locale/threshold + weights/markers/频率上限注释样例)。成本说明: llm-judge 每条待判定群聊消息 ≤1 次最便宜档调用 (频率上限兜底), 单群中等活跃度下约每分钟 ≤10 次小模型短请求, 成本近零 (ARCHITECTURE.md §3.7)。测试: U3 专项 17 例 (四档策略/fail-safe/频率上限/hybrid 升级/权重词表阈值配置化/英文群聊 e2e 双语对照/默认零行为回归/词表 drift/全局-Agent 合并) + 既有门控域 236 例回归全绿。全量 1920 通过+4 skip (smoke_main_resident 全量批负载 flake 单独复跑稳定, U9 根治项), ruff/mypy 全绿。
 
 - [x] **U4 租户机制强制 (半墙 → 整墙)**
   - **目标**: 隔离从"调用方自觉"升级为"机制强制": TenantBound 连接包装层自动注入租户谓词 (替换逐处子查询, 调用方无法绕过); person_profiles/jargon_entries/memory_revisions/memory_audit 补 tenant_id 列 + 迁移脚本; QueryMemoryTool 改 master_id 检索 (修私聊工具召回系统性漏); 租户前缀/自定义 namespace 下 consolidator-manager-injector 三处键统一。

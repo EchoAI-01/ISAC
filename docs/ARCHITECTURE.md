@@ -824,6 +824,29 @@ class FocusMode:
     def exit(self, session_id: str): ...
 ```
 
+**门控策略化 (U3)**: 评分权重与三类问询词表 (question/request/consult) 不再硬编码 ——
+统一收口到 `GatingProfile` (isac/gating/profile.py): 权重读 `config.gating.weights`
+(缺省回落 constants), 词表按 `config.gating.locale` 从 locales 双语包装载
+(zh_CN 为原中文词表迁入, en_US 新增英文词表), `config.gating.markers` 可整体覆盖。
+内容判定经 `GatingStrategy` 可插拔四档 (isac/gating/strategy.py):
+
+| 档位 | 行为 |
+|---|---|
+| `off` | 恒无内容信号 (群聊普通消息仅凭 @/提及/压力分触发) |
+| `keywords` (默认) | 词表匹配, U3 前语义原样 |
+| `llm-judge` | 小模型判群聊发言相关性; 缺失/异常/返回 None/超频率上限 fail-safe 回落 keywords |
+| `hybrid` | keywords 先行, 无任何问询信号时升级 llm-judge 复判 |
+
+策略只产出内容信号 (is_question/is_request/is_consult), 分数换算仍归
+ReplyNecessityJudge —— 单一调用点, 策略可换而评分模型不变。zh_CN 默认配置下
+行为与 U3 前完全一致 (默认 profile = 框架常量)。
+
+**llm-judge 成本与频率**: 判定器走 ProviderManager fallback 链**最便宜档**
+(拍板 #3, 任务简单小模型够用), 每条待判定消息 ≤1 次短请求; 滑动窗口频率上限
+`llm_judge_max_per_minute` (默认 10 次/分钟) 兜底成本, 超限回落 keywords。
+单群中等活跃度下每分钟 ≤10 次最便宜档短调用, 成本近零; judge 故障时
+fail-safe 回落 keywords, 不因判定器不可用改变门控可用性。
+
 ---
 
 ### 3.8 Plugin System — AstrBot / MaiBot 兼容 + 原生 SDK
@@ -1294,6 +1317,8 @@ ISAC/
 │   ├── gating/                     # 门控系统
 │   │   ├── __init__.py
 │   │   ├── system.py               # GatingSystem (门面)
+│   │   ├── profile.py              # U3 GatingProfile (权重+词表配置化)
+│   │   ├── strategy.py             # U3 GatingStrategy 四档 (off/keywords/llm-judge/hybrid)
 │   │   ├── reply_necessity.py      # 回复必要性
 │   │   ├── turn_scheduler.py       # 话轮调度
 │   │   ├── turn_gates.py           # 触发门控

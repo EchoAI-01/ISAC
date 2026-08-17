@@ -128,6 +128,10 @@ GatingSystem.evaluate
 ISACAgentLoop.run
 ```
 
+> U3 起 GatingSystem 的内容判定 (问题/请求/征询信号) 经 GatingStrategy 可插拔
+> 四档配置 (off/keywords/llm-judge/hybrid), 权重与词表按 locale 配置化
+> (详见 ARCHITECTURE.md §3.7); 默认 keywords + zh_CN 与此前行为一致。
+
 ### 4.1 触发来源
 
 | 来源 | 说明 | 是否绕过普通频率 |

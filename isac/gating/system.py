@@ -24,7 +24,9 @@ from typing import Any
 from isac.channel.model import ISACMessage
 from isac.core.types import GatingContext
 from isac.gating.idle_backoff import IdleBackoffController
+from isac.gating.profile import GatingProfile
 from isac.gating.reply_necessity import ReplyNecessityJudge
+from isac.gating.strategy import JudgeFn, build_strategy
 from isac.gating.turn_gates import TurnGates
 from isac.gating.turn_scheduler import TurnScheduler
 from isac.gating.types import GateDecision
@@ -81,12 +83,18 @@ class GatingSystem:
     dict[session_id, ...] 模式)，避免同一 Agent 服务的多个会话共享发言频率/退避状态、
     互相干扰 (CODE_REVIEW_REPORT.md #6)。
 
-    config 覆盖项 (AgentConfig.gating, ARCHITECTURE.md 3.7):
+    config 覆盖项 (AgentConfig.gating + 全局 config.gating, U3 门控策略化):
+      - strategy: off / keywords (默认) / llm-judge / hybrid (内容判定策略档位)
+      - locale: 门控词表语言 (zh_CN 默认 / en_US), 词表来自 locales 双语包
+      - weights: 评分权重覆盖 (base_at/content_question/... 见 GatingProfile)
+      - markers: question/request/consult 词表覆盖 (优先于 locale 词表)
       - reply_necessity_threshold: int  覆盖 REPLY_NECESSITY_THRESHOLD
+      - llm_judge_max_per_minute / hybrid_escalate_band: llm-judge/hybrid 档参数
       - turn_scheduler.max_ratio / window_seconds
       - idle_backoff.base_seconds / cap_seconds
       - turn_gates.trigger_threshold
-    未提供时使用各子系统的框架级默认值 (CODE_REVIEW_REPORT.md #8)。
+    未提供时使用各子系统的框架级默认值 (CODE_REVIEW_REPORT.md #8); zh_CN 默认
+    配置下行为与 U3 前完全一致。
     """
 
     def __init__(
@@ -96,15 +104,23 @@ class GatingSystem:
         turn_scheduler: Callable[[], TurnScheduler] | None = None,
         turn_gates: TurnGates | None = None,
         idle_backoff: Callable[[], IdleBackoffController] | None = None,
+        judge_fn: JudgeFn | None = None,
     ):
         config = config or {}
 
+        # U3: 门控参数画像 (权重 + i18n 词表 + 策略档位)。reply_necessity_threshold
+        # 覆盖保留向后兼容 (显式 config 键优先于 profile 默认)。
+        self.profile = GatingProfile.from_config(config)
+        if config.get("reply_necessity_threshold") is not None:
+            try:
+                self.profile.threshold = int(config["reply_necessity_threshold"])
+            except (TypeError, ValueError):
+                pass
+
         if reply_necessity is None:
-            threshold = config.get("reply_necessity_threshold")
-            reply_necessity = (
-                ReplyNecessityJudge(threshold=int(threshold))
-                if threshold is not None
-                else ReplyNecessityJudge()
+            reply_necessity = ReplyNecessityJudge(
+                profile=self.profile,
+                strategy=build_strategy(self.profile, judge_fn),
             )
         self.reply_necessity = reply_necessity
 
