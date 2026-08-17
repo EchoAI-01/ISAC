@@ -1178,6 +1178,37 @@ LLM tool_call
 
 ---
 
+### 3.16 Data-Driven Agent — prompt 文件化 + 能力快照 + category 路由 (U7)
+
+Agent 的"人格与模型选择"从代码/配置常量升级为**数据文件驱动** (参考 oh-my-openagent 数据化三件套):
+
+**①prompt 文件化** (`isac/agent/prompt_files.py`): 人格/规则写
+`<control.agents_dir>/<agent_id>/prompts/*.md`, frontmatter 声明
+`family` (prompt 族: persona/rules/自定义) + `variant` (变体键, 默认 `default`,
+模型族变体如 `claude`/`gpt`) + `priority`/`enabled`。装配时 persona 族文件
+**替代** config.persona.description 的身份注入, 其余族追加; 变体按当前模型族选择
+(`config.llm.model_family` 覆盖优先, 否则按模型名前缀推断), 未命中回落 default。
+**改人格 = 改文件; 新增一个模型族 = 加一个 variant 文件, 零代码改动**。无 prompt
+文件时落回 config 路径 (零行为变化)。frontmatter 用无依赖子集解析器 (key: value)。
+
+**②模型能力快照** (`isac/provider/capabilities.py` + `scripts/gen_model_capabilities.py`):
+数据源 models.dev api.json (拍板 #4, 覆盖 2700+ 模型), 归一化为
+`data/model_capabilities.json` (context_window/supports_tools/模态/cost 标注);
+CI 每周刷新 (`.github/workflows/model-capabilities.yml`) + 新鲜度 drift 测试
+(快照 >60 天即失败报警); 国产新模型晚收录用 `data/model_capabilities.overrides.json`
+手动补录 (同键覆盖)。启动时 primary LLM 的 ModelDescriptor 合并快照能力注册进
+ModelCatalog; `ProviderManager.model_router` 接线后 `chat_with_retry` 成功/最终失败
+上报健康 (`record_health` 生产接线, 限流除外), **fallback 链按能力与可达性过滤**。
+
+**③category 路由** (`isac/provider/category_routing.py`): 委派任务
+(`delegate_task.category`) 按四类画像选模型链 —— qa (快+便宜) / creative (放宽成本) /
+tool_heavy (必须 supports_tools) / chat (最便宜档); 画像可经
+`config.model_routing.categories` 覆盖。选择经既有 ModelRouter (能力/成本/延迟/
+健康过滤 + 打分), 命中另一个已注册 LLM provider 时子 Agent 换模型执行, 无候选回落
+父 Agent 模型 (fail-safe)。
+
+---
+
 ## 五、消息生命周期
 
 ```
@@ -1330,6 +1361,7 @@ ISAC/
 │   │   ├── loop.py                 # ISACAgentLoop
 │   │   ├── hooks.py                # AgentHooks / HookRegistry
 │   │   ├── prompt_builder.py       # SystemPromptBuilder
+│   │   ├── prompt_files.py         # U7 prompt 文件化 (frontmatter + 模型族变体)
 │   │   ├── injector.py             # PromptInjector 兼容 re-export（新代码从 core.injector 导入）
 │   │   ├── injectors/              # 内置注入器
 │   │   │   ├── __init__.py
@@ -1442,6 +1474,8 @@ ISAC/
 │   │   ├── manager.py              # ProviderManager
 │   │   ├── catalog.py              # ModelCatalog / ModelDescriptor
 │   │   ├── router.py               # 按能力/授权/健康/成本/延迟选模型
+│   │   ├── capabilities.py         # U7 模型能力快照 (models.dev → 本地 JSON)
+│   │   ├── category_routing.py     # U7 category 路由 (委派任务按类型选模型链)
 │   │   ├── llm/                    # LLM / Vision Providers
 │   │   ├── embed/                  # Embedding Providers
 │   │   ├── rerank/                 # Reranking Providers

@@ -2,7 +2,13 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> ⚠️ **最近更新: 2026-08-17 —— U3 门控策略化完成 (配置 + i18n + LLM judge, 可穿插节点续清)**。门控从硬编码中文词表升级为配置化可插拔策略, 全部验收项落地:
+> ⚠️ **最近更新: 2026-08-17 —— U7 Agent 数据化完成 (prompt 文件化 + 能力快照 + category 路由)**。Agent 的"人格与模型选择"从代码/配置常量升级为数据文件驱动, 全部验收项落地:
+> **①prompt 文件化** (`isac/agent/prompt_files.py`): `<control.agents_dir>/<agent_id>/prompts/*.md` frontmatter 声明 family/variant/priority/enabled (无依赖子集解析器); persona 族文件**替代** config 身份注入, 其余族 (rules 等) 追加; 变体按当前模型族选择 (config.llm.model_family 覆盖优先, 否则模型名前缀推断 16 族), 未命中回落 default —— **改人格=改文件, 新增一个模型族=加一个 variant 文件零代码改动**; 无 prompt 文件落回 config 路径零行为变化。
+> **②模型能力快照管线**: `scripts/gen_model_capabilities.py` (仅标准库) 拉 models.dev api.json 归一化 (拍板 #4 数据源) + `data/model_capabilities.overrides.json` 手动补录合并 (国产新模型晚收录兜底); **首份快照已生成入库 6666 模型**; CapabilitySnapshot 加载/查询/新鲜度检查; **drift CI 报警**: 专项测试断言快照在库 + ≤60 天新鲜 + 规模≥1000 + 关键模型 supports_tools (过期即失败); `.github/workflows/model-capabilities.yml` 每周一刷新有差异自动提交。启动接线 `_wire_llm_capabilities`: primary LLM ModelDescriptor 合并快照能力注册 ModelCatalog; **record_health 生产接线** (此前"定义未接线"): chat_with_retry 成功/最终失败上报健康 (限流除外), fallback 链按能力与可达性过滤。
+> **③category 路由** (`isac/provider/category_routing.py`): qa/creative/tool_heavy/chat 四类画像 (成本/延迟上限 + requires_tools 能力过滤, ModelRouter.select 新增能力过滤参数), `config.model_routing.categories` 覆盖画像不改代码; delegate_task 增 category 参数, 子 Agent runner 经 ModelRouter 选型命中另一已注册 LLM provider 时切换执行 (ProviderManager._llm_registry 注册表), 无候选回落父模型 fail-safe。
+> 测试: U7 专项 23 例 (frontmatter/模型族推断/变体选择四路/快照容错/新鲜度/生成器归一化+overrides/committed 快照 drift/四档 category 选型/能力过滤/健康上报三路/runner 切换与回落) + provider 域 41 例回归全绿。全量 **1943 通过 + 4 skip** (smoke_main_resident 全量批负载 flake 单独复跑稳定, U9 根治项)、ruff/mypy (282 源文件) 全绿。**U7 完成, 可穿插节点剩 U2/U8, 之后 U9 复评门禁**。
+>
+> ⚠️ **2026-08-17 —— U3 门控策略化完成 (配置 + i18n + LLM judge, 可穿插节点续清)**。门控从硬编码中文词表升级为配置化可插拔策略, 全部验收项落地:
 > **①GatingProfile** (`isac/gating/profile.py`): 评分权重/阈值/三类问询词表/策略档位统一收口 —— 全部可经 `config.gating` 覆盖 (weights/markers/locale/strategy/reply_necessity_threshold/llm_judge_max_per_minute/hybrid_escalate_band), 未配置回落 constants 默认; 数据类默认 = zh_CN 词表 (constants 同源), 裸构造亦与 U3 前一致; strategy 非法值归一 keywords。
 > **②GatingStrategy 四档** (`isac/gating/strategy.py`): off (恒无内容信号) / keywords (默认, U3 前语义原样) / llm-judge (小模型判相关性; 缺失/异常/None/超频率上限 fail-safe 回落 keywords, 滑动窗口上限默认 10 次/分钟) / hybrid (keywords 先行, 无问询信号才升级 judge)。策略只产出内容信号, 分数换算仍归 ReplyNecessityJudge —— 单一调用点, 策略可换评分模型不变。
 > **③i18n 词表** (locales GATING_MARKERS): zh_CN 为 constants 三组中文词表原样迁入, en_US 新增英文词表; `load_gating_markers(locale)` 未知语言回退默认; config markers 覆盖优先于 locale。drift test: 双语包键集合 == GATING_MARKER_KINDS 三类且非空 (CI 常驻)。

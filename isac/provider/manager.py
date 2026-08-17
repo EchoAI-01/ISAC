@@ -67,13 +67,49 @@ class ProviderManager:
         # J2: 多模态 Provider 池 (按 (provider_id, model_id) 索引)
         # 媒体工具通过 multimodal_provider(provider_id, model_id) 取实例。
         self._multimodal_providers: dict[tuple[str, str], Any] = {}
+        # U7: LLM Provider 注册表 (按 (provider_id, model_id) 索引), category 路由
+        # 选中 ModelDescriptor 后据此取回可执行的 Provider 实例。
+        self._llm_registry: dict[tuple[str, str], LLMProvider] = {}
+        # U7: provider 实例 → provider_id (健康上报用, id() 键避免要求可哈希语义)
+        self._provider_ids: dict[int, str] = {}
+        # U7: 可选 ModelRouter 引用 (main.py 装配后注入); 在场时 chat_with_retry
+        # 成功/最终失败上报健康状态, 供路由按可达性过滤 (record_health 接线)。
+        self.model_router: Any = None
 
-    def register(self, provider: LLMProvider, *, fallback: bool = False) -> None:
-        """注册全局 Provider (main.py 组装时调用)。"""
+    def register(
+        self,
+        provider: LLMProvider,
+        *,
+        fallback: bool = False,
+        provider_id: str = "",
+        model_id: str = "",
+    ) -> None:
+        """注册全局 Provider (main.py 组装时调用)。
+
+        U7: 同时登记 (provider_id, model_id) → provider 索引供 category 路由取回
+        实例; provider_id 缺省按 primary/fallback 命名, model_id 缺省取
+        provider.get_model_name()。既有调用方不传新参数行为不变。
+        """
         if fallback:
             self._fallback = provider
         else:
             self._primary = provider
+        pid = provider_id or ("fallback" if fallback else "primary")
+        mid = model_id or provider.get_model_name()
+        self._llm_registry[(pid, mid)] = provider
+        self._provider_ids[id(provider)] = pid
+
+    def llm_provider_for(self, provider_id: str, model_id: str) -> LLMProvider | None:
+        """U7: 按 (provider_id, model_id) 取已注册 LLM Provider; 未注册返回 None。"""
+        return self._llm_registry.get((provider_id, model_id))
+
+    def _report_health(self, provider: LLMProvider, *, healthy: bool) -> None:
+        """U7: 向 ModelRouter 上报 provider 健康状态 (未注入 router 时无操作)。"""
+        if self.model_router is None:
+            return
+        pid = self._provider_ids.get(id(provider))
+        if pid:
+            self.model_router.record_health(pid, healthy=healthy)
 
     def list_providers(self) -> list[LLMProvider]:
         """返回已注册的全局 Provider (primary + fallback), 供 /health 聚合查询。
@@ -214,9 +250,12 @@ class ProviderManager:
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                return await self._call_and_record(
+                response = await self._call_and_record(
                     provider, agent_id=agent_id, session_id=session_id, trace_id=trace_id, **kwargs
                 )
+                # U7: 成功即可达 —— 健康上报供 ModelRouter 按可达性过滤。
+                self._report_health(provider, healthy=True)
+                return response
             except RateLimitError as exc:
                 last_error = exc
                 logger.warning("LLM 限流，退避重试", attempt=attempt + 1)
@@ -238,7 +277,7 @@ class ProviderManager:
         if self._fallback is not None:
             logger.warning("回退到备选模型", model=self._fallback.get_model_name())
             try:
-                return await self._call_and_record(
+                response = await self._call_and_record(
                     self._fallback,
                     agent_id=agent_id,
                     session_id=session_id,
@@ -246,9 +285,16 @@ class ProviderManager:
                     fallback_from=provider.get_model_name(),
                     **kwargs,
                 )
+                self._report_health(self._fallback, healthy=True)
+                return response
             except Exception as exc:
                 last_error = exc
+                self._report_health(self._fallback, healthy=False)
 
+        # U7: 最终失败上报不健康 (限流除外 —— 429 是配额暂竭非 provider 不可达,
+        # 标记 unhealthy 会让恢复期不必要地拉长)。
+        if not isinstance(last_error, RateLimitError):
+            self._report_health(provider, healthy=False)
         logger.error("LLM 全部失败，降级回复", error=str(last_error))
         # T4: 降级文案按错误类型映射可操作提示 (引用真实配置路径), 而非泛化"我现在有点累"。
         return LLMResponse(content=_degraded_reply_from_error(last_error))

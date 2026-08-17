@@ -1,0 +1,42 @@
+# U7 模型能力快照每周刷新 (models.dev → data/model_capabilities.json)。
+# 生成器: scripts/gen_model_capabilities.py (仅标准库); 有差异时提交回 dev。
+# 新鲜度 drift 报警由 tests/unit/test_u7_model_capabilities.py 承担 (快照过期即失败)。
+name: Model Capabilities Refresh
+
+on:
+  schedule:
+    # 每周一 05:17 UTC (避开整点拥塞)
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Regenerate snapshot
+        run: uv run python scripts/gen_model_capabilities.py
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet data/model_capabilities.json; then
+            echo "快照无变化, 跳过提交"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/model_capabilities.json
+            git commit -m "chore(u7): 每周刷新模型能力快照 (models.dev)"
+            git push
+          fi

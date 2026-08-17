@@ -15,10 +15,13 @@ from isac.channel.model import ISACMessage
 from isac.core.types import AgentContext, Budget
 from isac.gateway.models import Session
 from isac.runtime.subagent.models import SubAgentResult, SubAgentTask
+from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from isac.runtime.manager import AgentManager
     from isac.runtime.subagent.supervisor import SubAgentSupervisor
+
+logger = get_logger(__name__)
 
 _CHANNEL_TOOLS = frozenset({"send_emoji", "send_image", "switch_chat"})
 _DELEGATION_TOOLS = frozenset({"task", "delegate_task"})
@@ -41,6 +44,9 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
 
         tools = _build_tool_registry(instance.tools, task)
         services = _build_services(instance.services, task)
+        # U7 category 路由: 按任务类型经 ModelRouter 选模型链 (无候选/未配置时
+        # 回落父 Agent 模型, fail-safe 零行为变化)。
+        llm = _select_llm_for_task(instance, task)
         prompt_builder = SystemPromptBuilder()
         prompt_builder.register(
             BaseIdentityInjector(
@@ -49,7 +55,7 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
             )
         )
         loop = ISACAgentLoop(
-            llm=instance.loop.llm,
+            llm=llm,
             prompt_builder=prompt_builder,
             hooks=AgentHooks(),
             tools=tools,
@@ -114,6 +120,44 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
         )
 
     supervisor.set_runner_factory(_runner)
+
+
+def _select_llm_for_task(instance: Any, task: SubAgentTask) -> Any:
+    """U7 category 路由: 按任务类型经 ModelRouter 选模型链。
+
+    仅当路由命中**另一个已注册 LLM provider** 时切换; 无 category/model_router/
+    候选/provider 实例时回落父 Agent 模型 (fail-safe 零行为变化)。provider_manager
+    保持父实例不变 (重试/健康/计量入口不动)。
+    """
+    from isac.provider.category_routing import select_for_category
+
+    category = str(task.context.get("category", "") or "").strip().lower()
+    if not category:
+        return instance.loop.llm
+    model_router = instance.services.get("model_router")
+    provider_manager = instance.loop.provider_manager
+    if model_router is None or provider_manager is None:
+        return instance.loop.llm
+    global_config = instance.services.get("global_config") or {}
+    routing_config = (global_config.get("model_routing") or {}).get("categories")
+    selection = select_for_category(
+        model_router, category, config=routing_config if isinstance(routing_config, dict) else None
+    )
+    if selection is None:
+        return instance.loop.llm
+    descriptor = selection.descriptor
+    provider = provider_manager.llm_provider_for(descriptor.provider_id, descriptor.model_id)
+    if provider is None or provider is instance.loop.llm:
+        return instance.loop.llm
+    logger.info(
+        "子 Agent category 路由切换模型",
+        task_id=task.task_id,
+        category=category,
+        provider=descriptor.provider_id,
+        model=descriptor.model_id,
+        reason=selection.reason,
+    )
+    return provider
 
 
 def _collect_evidence_refs(result: Any) -> list[str]:
