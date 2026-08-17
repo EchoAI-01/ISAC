@@ -442,7 +442,6 @@ class ISACAgentLoop:
             session=context.session,
             user_profile=context.user_profile,
             current_message=context.current_message,
-            pending_messages=context.pending_messages,
             timestamp=context.timestamp,
             available_prompt_tokens=context.available_prompt_tokens,
         )

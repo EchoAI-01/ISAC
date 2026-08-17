@@ -52,6 +52,9 @@ class IdentityResolver:
     async def _ensure_schema(self) -> None:
         """惰性创建 person_identities / identity_conflicts 表 (复用 K3 _ensure_column 思路)."""
         async with aiosqlite.connect(self._db_path) as db:
+            # U0 顺带批清: WAL + busy_timeout (对齐 metadata.py 既有做法)。
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA busy_timeout=5000")
             await db.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS person_identities (

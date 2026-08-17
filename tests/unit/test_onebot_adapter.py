@@ -11,6 +11,11 @@ import pytest
 from isac.channel.adapters.onebot.adapter import OneBotAdapter
 from isac.channel.model import ISACMessage, MessageSegment
 
+# U0 顺带批清: aiocqhttp 是可选 extra (pyproject.toml [onebot])。adapter fixture 仅在
+# _init_bot 时 mock _ensure_imports, TestSend 调 send() 会走真实 _ensure_imports →
+# 未装 aiocqhttp 时 ModuleNotFoundError 致 4 例失败。未安装时整模块跳过。
+pytest.importorskip("aiocqhttp", reason="onebot extra 未安装: uv sync --extra onebot")
+
 
 @pytest.fixture
 def config() -> dict[str, Any]:

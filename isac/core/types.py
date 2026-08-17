@@ -176,7 +176,6 @@ class RuntimeContext:
     session: Session
     user_profile: UserProfile | None
     current_message: ISACMessage
-    pending_messages: list[ISACMessage] = field(default_factory=list)
     timestamp: float = 0.0
 
 

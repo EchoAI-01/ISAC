@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 
 # 工具默认等待子任务终态的超时 (秒); 超时返回当前状态, 不阻塞主链路
 _DEFAULT_WAIT_TIMEOUT = 30.0
+# U0 顺带批清: _wait_timeout 上限 clamp (对齐 utility/task.py 的 _MAX_WAIT_TIMEOUT),
+# 此前 LLM 可传任意大 _wait_timeout 让 delegate_task 阻塞过久。
+_MAX_WAIT_TIMEOUT = 300.0
 # 工具 poll 间隔
 _POLL_INTERVAL = 0.05
 
@@ -93,7 +96,10 @@ class DelegateTaskTool(_SupervisorToolBase):
         )
         # submit → 等终态 → 返回摘要
         run = await supervisor.submit(task)
-        wait_timeout = float(context.args.get("_wait_timeout", _DEFAULT_WAIT_TIMEOUT) or _DEFAULT_WAIT_TIMEOUT)
+        wait_timeout = min(
+            _MAX_WAIT_TIMEOUT,
+            float(context.args.get("_wait_timeout", _DEFAULT_WAIT_TIMEOUT) or _DEFAULT_WAIT_TIMEOUT),
+        )
         # 等待终态 (poll get_status)
         deadline = time.monotonic() + wait_timeout
         while time.monotonic() < deadline:

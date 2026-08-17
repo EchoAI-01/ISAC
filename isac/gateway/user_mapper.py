@@ -105,6 +105,9 @@ class UserMapper:
 
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self._db_path) as db:
+            # U0 顺带批清: WAL + busy_timeout (对齐 metadata.py 既有做法)。
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA busy_timeout=5000")
             await db.executescript(SCHEMA_SQL)
             await db.commit()
         self._schema_ready = True
