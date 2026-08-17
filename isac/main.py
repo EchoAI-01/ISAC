@@ -1404,6 +1404,11 @@ async def main() -> None:
     # 发回原 Channel (channel_registry); /mute 等命令路径也读 session_mgr。
     services["session_mgr"] = session_mgr
     services["session_lock"] = session_lock
+    # U8 SessionWriteGate: 会话写入统一仲裁门 (先预约后写入, hold 窗口, fail-closed)。
+    # 强制话轮/handoff 等主动写入路径经此门串行; 未接门 (如测试夹具) 时旧行为保持。
+    from isac.runtime.write_gate import SessionWriteGate
+
+    services["session_write_gate"] = SessionWriteGate()
     services["channel_registry"] = channel_registry
 
     # U1: 事件溯源会话内核 —— append-only 会话事件表 + 滑动窗口历史派生器。
