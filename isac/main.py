@@ -1702,37 +1702,61 @@ async def _adapt_compat_plugins(
     隔离, 失败不阻塞其他插件。call_on_load 已显式跳过非 native (manager.py:239),
     故兼容层插件不在此前经 PluginContext.on_load, 必须经本函数桥接。
     """
-    try:
-        from isac.plugin.compatibility.astrbot.adapter import AstrBotStarAdapter
-        from isac.plugin.compatibility.maibot.plugin import MaiBotPluginAdapter
-    except ImportError as exc:
-        logger.debug("兼容层适配器不可用, 跳过桥接", error=str(exc))
-        return
-
     loaded: dict[str, Any] = getattr(plugin_manager, "_loaded", {})
     for name, plugin in loaded.items():
-        instance = getattr(plugin, "instance", None)
-        if instance is None:
-            continue
-        try:
-            if getattr(plugin, "is_astrbot", lambda: False)():
-                result = await AstrBotStarAdapter(instance).adapt(shared_tools)
-                if result.get("tools") or result.get("hooks"):
-                    logger.info(
-                        "AstrBot 插件已桥接", plugin=name,
-                        tools=result.get("tools"), pending_hooks=result.get("hooks"),
-                    )
-            elif getattr(plugin, "is_maibot", lambda: False)():
-                result = await MaiBotPluginAdapter(instance).adapt(
-                    shared_tools, shared_commands
-                )
-                if result.get("tools") or result.get("commands"):
-                    logger.info(
-                        "MaiBot 插件已桥接", plugin=name,
-                        tools=result.get("tools"), commands=result.get("commands"),
-                    )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("兼容层插件桥接失败, 跳过该插件", plugin=name, error=str(exc), exc_info=True)
+        await _adapt_one_compat_plugin(name, plugin, shared_tools, shared_commands)
+
+
+async def _adapt_one_compat_plugin(
+    name: str, plugin: Any, shared_tools: Any, shared_commands: Any
+) -> None:
+    """U0 Fix-88: 桥接单个兼容层插件 (从 _adapt_compat_plugins 抽出降 C901)。
+
+    按插件名设 current_source, 让桥接的工具/命令标 source=name 并加 <plugin>: 前缀
+    (确定性命名空间隔离); 与 activate_plugin 单插件路径同构。失败只记日志不 raise。
+    """
+    instance = getattr(plugin, "instance", None)
+    if instance is None:
+        return
+    registries = [
+        r for r in (shared_tools, shared_commands)
+        if r is not None and hasattr(r, "set_current_source")
+    ]
+    for r in registries:
+        r.set_current_source(name)
+    try:
+        await _run_compat_adapt(name, plugin, instance, shared_tools, shared_commands)
+    except ImportError as exc:
+        logger.debug("兼容层适配器不可用, 跳过桥接", plugin=name, error=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("兼容层插件桥接失败, 跳过该插件", plugin=name, error=str(exc), exc_info=True)
+    finally:
+        for r in registries:
+            r.set_current_source(None)
+
+
+async def _run_compat_adapt(
+    name: str, plugin: Any, instance: Any, shared_tools: Any, shared_commands: Any
+) -> None:
+    """U0 Fix-88: 按插件类型调对应 adapter.adapt 并记录桥接结果 (拆出降 C901)。"""
+    if getattr(plugin, "is_astrbot", lambda: False)():
+        from isac.plugin.compatibility.astrbot.adapter import AstrBotStarAdapter
+
+        result = await AstrBotStarAdapter(instance).adapt(shared_tools)
+        if result.get("tools") or result.get("hooks"):
+            logger.info(
+                "AstrBot 插件已桥接", plugin=name,
+                tools=result.get("tools"), pending_hooks=result.get("hooks"),
+            )
+    elif getattr(plugin, "is_maibot", lambda: False)():
+        from isac.plugin.compatibility.maibot.plugin import MaiBotPluginAdapter
+
+        result = await MaiBotPluginAdapter(instance).adapt(shared_tools, shared_commands)
+        if result.get("tools") or result.get("commands"):
+            logger.info(
+                "MaiBot 插件已桥接", plugin=name,
+                tools=result.get("tools"), commands=result.get("commands"),
+            )
 
 
 def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
