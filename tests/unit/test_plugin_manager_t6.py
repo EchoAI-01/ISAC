@@ -14,10 +14,13 @@ from isac.plugin.runtime.manager import PluginManager
 
 
 def _make_native_plugin(parent: Path, name: str) -> Path:
-    """在 parent 下创建一个最小 ISAC 原生插件目录, 返回插件目录路径。"""
+    """在 parent 下创建一个最小 ISAC 原生插件目录, 返回插件目录路径。
+
+    U6: 声明 trust=hosted, 测试以 trust_hosted 确认走宿主进程内快路径。
+    """
     pdir = parent / name
     pdir.mkdir(parents=True, exist_ok=True)
-    (pdir / "manifest.jsonc").write_text(f'{{"name":"{name}","entry":"plugin.py"}}')
+    (pdir / "manifest.jsonc").write_text(f'{{"name":"{name}","entry":"plugin.py","trust":"hosted"}}')
     (pdir / "plugin.py").write_text(
         "from isac.plugin.native.plugin import ISACPlugin\n"
         f"class {name.capitalize()}(ISACPlugin):\n"
@@ -30,7 +33,7 @@ def _make_native_plugin(parent: Path, name: str) -> Path:
 async def test_reload_native(tmp_path: Path) -> None:
     plugins_dir = tmp_path / "plugins"
     _make_native_plugin(plugins_dir, "myplug")
-    pm = PluginManager({})
+    pm = PluginManager({"trust_hosted": ["myplug"]})
     await pm.load_all(plugins_dir)
     assert "myplug" in pm.list_loaded()
 
@@ -48,7 +51,7 @@ async def test_reload_not_loaded() -> None:
 
 @pytest.mark.asyncio
 async def test_install_loads(tmp_path: Path) -> None:
-    pm = PluginManager({})
+    pm = PluginManager({"trust_hosted": ["newplug"]})
     pm._plugins_dir = tmp_path
 
     class _FakeInstaller:
@@ -64,7 +67,7 @@ async def test_install_loads(tmp_path: Path) -> None:
 async def test_uninstall_removes_dir(tmp_path: Path) -> None:
     plugins_dir = tmp_path / "plugins"
     _make_native_plugin(plugins_dir, "myplug")
-    pm = PluginManager({})
+    pm = PluginManager({"trust_hosted": ["myplug"]})
     pm._plugins_dir = plugins_dir
     await pm.load_all(plugins_dir)
     assert "myplug" in pm.list_loaded()
@@ -93,13 +96,13 @@ async def test_retry_success(tmp_path: Path) -> None:
     bad = plugins_dir / "retryplug"
     bad.mkdir(parents=True)
     (bad / "readme.txt").write_text("not a plugin")
-    pm = PluginManager({})
+    pm = PluginManager({"trust_hosted": ["retryplug"]})
     pm._plugins_dir = plugins_dir
     await pm.load_all(plugins_dir)
     assert "retryplug" in pm.list_failures()
 
-    # 修复: 补入口
-    (bad / "manifest.jsonc").write_text('{"name":"retryplug","entry":"plugin.py"}')
+    # 修复: 补入口 (U6: trust=hosted + trust_hosted 确认 → 宿主进程内快路径)
+    (bad / "manifest.jsonc").write_text('{"name":"retryplug","entry":"plugin.py","trust":"hosted"}')
     (bad / "plugin.py").write_text(
         "from isac.plugin.native.plugin import ISACPlugin\n"
         "class Retryplug(ISACPlugin):\n"
@@ -111,10 +114,14 @@ async def test_retry_success(tmp_path: Path) -> None:
 
 
 def _make_native_plugin_name_ne_dir(parent: Path, dir_name: str, manifest_name: str) -> Path:
-    """目录名 dir_name 但 manifest.name=manifest_name (≠目录名), 驱动 C8 路径。"""
+    """目录名 dir_name 但 manifest.name=manifest_name (≠目录名), 驱动 C8 路径。
+
+    U6: 声明 trust=hosted, 测试以 trust_hosted 确认走宿主进程内加载 (C8 依赖
+    宿主内 LoadedPlugin.path)。
+    """
     pdir = parent / dir_name
     pdir.mkdir(parents=True, exist_ok=True)
-    (pdir / "manifest.jsonc").write_text(f'{{"name":"{manifest_name}","entry":"plugin.py"}}')
+    (pdir / "manifest.jsonc").write_text(f'{{"name":"{manifest_name}","entry":"plugin.py","trust":"hosted"}}')
     (pdir / "plugin.py").write_text(
         "from isac.plugin.native.plugin import ISACPlugin\n"
         f"class {manifest_name.capitalize()}(ISACPlugin):\n"
@@ -133,7 +140,7 @@ async def test_reload_uses_loaded_path_when_manifest_name_differs_from_dir(tmp_p
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir()
     _make_native_plugin_name_ne_dir(plugins_dir, "actual_dir", "manifest_name")
-    pm = PluginManager({})
+    pm = PluginManager({"trust_hosted": ["actual_dir"]})
     await pm.load_all(plugins_dir)
     assert "manifest_name" in pm.list_loaded()
     # plugins_dir/manifest_name 不存在; 修复前 reload 会 not_found
@@ -148,7 +155,7 @@ async def test_uninstall_uses_loaded_path_when_manifest_name_differs_from_dir(tm
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir()
     pdir = _make_native_plugin_name_ne_dir(plugins_dir, "actual_dir", "manifest_name")
-    pm = PluginManager({})
+    pm = PluginManager({"trust_hosted": ["actual_dir"]})
     await pm.load_all(plugins_dir)
     status = await pm.uninstall("manifest_name")
     assert status == "uninstalled"

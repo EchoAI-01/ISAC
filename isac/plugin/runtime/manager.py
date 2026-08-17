@@ -64,7 +64,7 @@ class PluginManager:
         self.enable_matrix = enable_matrix
         self._loader = PluginLoader()
         self._loaded: dict[str, LoadedPlugin] = {}  # name -> LoadedPlugin (宿主进程内)
-        # H2: name -> PluginIsolationHost (manifest isolated=true 的插件, 跑在子进程)
+        # H2: name -> PluginIsolationHost (隔离加载的插件, 跑在子进程)
         self._iso_hosts: dict[str, PluginIsolationHost] = {}
         self._plugin_context_factory = plugin_context_factory
         # T6: 记录 plugins_dir 供 reload/install/retry 定位; 失败插件名 → 错误信息。
@@ -79,13 +79,22 @@ class PluginManager:
         isolated_cfg = config.get("isolated_plugins", []) if isinstance(config, dict) else []
         self._force_isolate_all = isolated_cfg == "*"
         self._force_isolated_names: set[str] = set(isolated_cfg) if isinstance(isolated_cfg, list) else set()
+        # U6 信任分级倒转: 有 manifest 的原生插件**默认隔离** (trust 缺省=sandboxed);
+        # 仅当 manifest 显式声明 trust: "hosted" 且目录名在部署方 trust_hosted 确认
+        # 清单内 (运营方显式确认信任) 时才允许宿主进程内加载。
+        trust_hosted_cfg = config.get("trust_hosted", []) if isinstance(config, dict) else []
+        self._trust_hosted_names: set[str] = (
+            set(trust_hosted_cfg) if isinstance(trust_hosted_cfg, list) else set()
+        )
 
     async def load_all(self, plugin_dir: str | Path) -> dict[str, Any]:
         """加载目录下全部插件 (自动识别 AstrBot / MaiBot / ISAC 原生格式)。
 
-        H2: manifest 声明 isolated=true 的原生插件经 PluginIsolationHost 在**子进程**
-        加载 (顶层代码不进宿主, 资源受限); 其余插件仍在宿主进程内加载。错误隔离:
-        单个插件加载失败记录日志, 不影响其他插件。返回 {name: 状态} 报告。
+        U6 信任分级倒转: 有 manifest 的原生插件**默认经 PluginIsolationHost 在
+        子进程加载** (trust 缺省=sandboxed); 仅 manifest 声明 trust: "hosted" 且
+        目录名在部署方 trust_hosted 确认清单内的插件在宿主进程内加载。无 manifest
+        的兼容层插件仍在宿主进程内 (降级承诺, 见 PLUGIN_COMPATIBILITY.md)。
+        错误隔离: 单个插件加载失败记录日志, 不影响其他插件。返回 {name: 状态} 报告。
         """
         plugin_dir = Path(plugin_dir)
         self._plugins_dir = plugin_dir
@@ -95,10 +104,11 @@ class PluginManager:
         entries = [entry for entry in sorted(plugin_dir.iterdir()) if entry.is_dir()]
         in_process = [entry for entry in entries if not self._should_isolate(entry)]
         if in_process:
-            # H2: 隔离插件已改走子进程; 宿主进程内加载路径仍无沙箱, 只对非隔离插件告警。
+            # U6: 宿主进程内加载的插件 = 兼容层 (无 manifest, 降级承诺) 或运营方
+            # 显式确认信任的 hosted 插件; 告警提示信任责任在部署方。
             logger.warning(
-                "部分插件在宿主进程内加载执行, 无进程隔离 —— 仅加载完全可信的插件 "
-                "(需隔离的插件请在 manifest.jsonc 声明 isolated: true)",
+                "部分插件在宿主进程内加载执行, 无进程隔离 —— 仅限完全可信插件 "
+                "(hosted 信任需 manifest 声明 trust: hosted + 部署配置 trust_hosted 确认)",
                 plugin_dir=str(plugin_dir),
                 count=len(in_process),
             )
@@ -108,7 +118,7 @@ class PluginManager:
         return report
 
     async def _load_entry(self, entry: Path, report: dict[str, str]) -> None:
-        """加载单个插件目录 (isolated=true → 子进程, 否则宿主进程内)。错误隔离。"""
+        """加载单个插件目录 (U6 _should_isolate 判定 → 子进程或宿主内)。错误隔离。"""
         try:
             if self._should_isolate(entry):
                 await self._load_isolated(entry, report)
@@ -129,33 +139,94 @@ class PluginManager:
             self._failures[entry.name] = f"failed: {exc}"
 
     @staticmethod
-    def _is_isolated_native(entry: Path) -> bool:
-        """原生插件 manifest 是否声明 isolated=true (只有 ISAC 原生格式支持隔离标志)。"""
+    def _manifest_trust(entry: Path) -> str | None:
+        """U6: 读 manifest 的信任档位。
+
+        返回 "sandboxed" / "hosted"; 无 manifest 返回 None (兼容层插件)。
+        - ``trust`` 字段显式声明优先 ("sandboxed"|"hosted");
+        - 旧 ``isolated: true`` 字段等价 sandboxed (向后兼容);
+        - 有 manifest 但未声明 → 缺省 "sandboxed" (信任分级倒转: 默认不信任)。
+        """
         manifest_path = entry / "manifest.jsonc"
         if not manifest_path.exists():
-            return False
+            return None
         try:
             manifest = _loads(manifest_path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001 manifest 解析失败交给常规加载路径报错
-            return False
-        return bool(manifest.get("isolated", False))
+            return "sandboxed"
+        trust = str(manifest.get("trust", "") or "").strip().lower()
+        if trust in ("sandboxed", "hosted"):
+            return trust
+        if bool(manifest.get("isolated", False)):
+            return "sandboxed"
+        return "sandboxed"
 
     def _should_isolate(self, entry: Path) -> bool:
-        """是否应该把该插件目录经 PluginIsolationHost 在子进程加载。
+        """U6: 是否经 PluginIsolationHost 在子进程加载 (信任分级倒转)。
 
-        Fix-31: 决策权拆成两路径, 任一命中即隔离 ——
-        1. 部署方强制指定 (isolated_plugins 配置, 按目录名或 "*"), 对 AstrBot/
-           MaiBot 兼容层插件同样生效 (它们没有 manifest.jsonc, 之前完全没有
-           被隔离的可能)。
-        2. 插件自己的 manifest.jsonc 声明 isolated: true (仅原生格式支持, 保留
-           原有行为, 一个"愿意被隔离"的插件依然可以这样声明)。
+        判定顺序:
+        1. 部署方强制指定 (isolated_plugins 配置, 按目录名或 "*") → 隔离, 对
+           AstrBot/MaiBot 兼容层插件同样生效。
+        2. 无 manifest (兼容层插件): 当前隔离机制只支持原生格式 → 宿主进程内
+           加载 (降级承诺, 见 PLUGIN_COMPATIBILITY.md U6 处置决策)。
+        3. 有 manifest: trust="hosted" 且目录名在部署方 trust_hosted 确认清单内
+           (运营方显式确认信任) → 宿主进程内; **其余一律默认隔离** —— 市场/git/
+           url/upload 安装的插件未声明 hosted 即进沙箱。
         """
         if self._force_isolate_all or entry.name in self._force_isolated_names:
             return True
-        return self._is_isolated_native(entry)
+        trust = self._manifest_trust(entry)
+        if trust is None:
+            return False
+        if trust == "hosted" and entry.name in self._trust_hosted_names:
+            return False
+        return True
+
+    @staticmethod
+    def _parse_rlimits(rlimits_raw: Any) -> dict[str, tuple[int, int]]:
+        """U6: 解析 rlimits 配置 ({cpu/nofile/as: [soft, hard]}); 非法项安全忽略。"""
+        if not isinstance(rlimits_raw, dict):
+            return {}
+        rlimits: dict[str, tuple[int, int]] = {}
+        for key in ("cpu", "nofile", "as"):
+            pair = rlimits_raw.get(key)
+            if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                try:
+                    rlimits[key] = (int(pair[0]), int(pair[1]))
+                except (TypeError, ValueError):
+                    continue
+        return rlimits
+
+    def _isolation_host_kwargs(self) -> dict[str, Any]:
+        """U6: 从部署配置读隔离宿主参数 (plugins.isolation 节)。
+
+        支持键: ``rlimits`` ({cpu/nofile/as: [soft, hard]}), ``ipc_timeout_seconds``,
+        ``max_restart_attempts``。缺省项交给 PluginIsolationHost 内置默认。
+        """
+        iso_cfg = self.config.get("isolation", {}) if isinstance(self.config, dict) else {}
+        if not isinstance(iso_cfg, dict):
+            iso_cfg = {}
+        kwargs: dict[str, Any] = {}
+        rlimits = self._parse_rlimits(iso_cfg.get("rlimits"))
+        if rlimits:
+            kwargs["rlimits"] = rlimits
+        try:
+            if iso_cfg.get("ipc_timeout_seconds") is not None:
+                kwargs["ipc_timeout"] = float(iso_cfg["ipc_timeout_seconds"])
+        except (TypeError, ValueError):
+            pass
+        try:
+            if iso_cfg.get("max_restart_attempts") is not None:
+                kwargs["max_restart_attempts"] = int(iso_cfg["max_restart_attempts"])
+        except (TypeError, ValueError):
+            pass
+        return kwargs
 
     async def _load_isolated(self, entry: Path, report: dict[str, str]) -> None:
-        """H2: 经 PluginIsolationHost 在子进程加载插件 (顶层代码不进宿主进程)。
+        """H2/U6: 经 PluginIsolationHost 在子进程加载插件 (顶层代码不进宿主进程)。
+
+        U6: rlimits/ipc_timeout/max_restart_attempts 从部署配置 plugins.isolation
+        节接线 (此前构造恒用内置默认, 配置不可达)。
 
         Fix-31: 隔离机制目前只支持 ISAC 原生格式 (需要 manifest.jsonc 提供 name/
         entry_point 等元信息)。部署方可以强制要求隔离 AstrBot/MaiBot 兼容层插件,
@@ -172,7 +243,7 @@ class PluginManager:
 
         manifest = _loads(manifest_path.read_text(encoding="utf-8"))
         name = str(manifest.get("name") or entry.name)
-        host = PluginIsolationHost(plugin_id=name)
+        host = PluginIsolationHost(plugin_id=name, **self._isolation_host_kwargs())
         await host.spawn()
         try:
             result = await host.load_plugin(str(entry))

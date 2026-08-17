@@ -2,7 +2,14 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> ⚠️ **最近更新: 2026-08-17 —— U5 工具权限管线 + HITL 卡片审批完成 (U 轮第四节点)**。工具权限从静态三态表升级为四段管线, 全部验收项落地:
+> ⚠️ **最近更新: 2026-08-17 —— U6 插件隔离默认化完成 (信任分级倒转, 含 Z3 兼容层处置决策)**。隔离从 opt-in 倒转为默认:
+> **①信任分级倒转** (`PluginManager._should_isolate`/`_manifest_trust`): 有 manifest 的原生插件**默认隔离加载** (子进程 PluginIsolationHost; trust 缺省=sandboxed, 旧 `isolated:true` 等价向后兼容); `trust: "hosted"` 仅当目录名在部署配置 `control.plugins.trust_hosted` 确认清单内才宿主进程内加载 (运营方显式确认信任), **未确认仍隔离** (不轻信 manifest); `isolated_plugins` 强制清单优先级最高保持。市场/git/url/upload 安装的插件未显式 hosted 即进沙箱。
+> **②rlimits/ipc_timeout 部署接线** (`_isolation_host_kwargs`): `control.plugins.isolation` 节 rlimits(cpu/nofile/as)/ipc_timeout_seconds/max_restart_attempts 解析传入 PluginIsolationHost (此前构造恒用内置默认配置不可达); 非法值安全忽略。
+> **③hooks 零残留**: 卸载经共享表 deregister_by_source + sync_plugin_tools_to_agents 按来源同步运行中 Agent (机制批次 C 已接线, 补验收测试)。
+> **④兼容层处置决策 (Z3 收敛)**: 选"文档化降级承诺" —— 无 manifest 的 AstrBot/MaiBot 插件当前机制无法真正隔离 (依赖宿主内 import 沙箱与 PluginContext 直接桥接), 宿主进程内加载 + 启动显式告警 (信任责任在部署方); 强制隔离兼容层插件时清晰报错不静默退回; compat 隔离迁移保留架构债 C7。落 PLUGIN_COMPATIBILITY.md §5.4 + ARCHITECTURE.md §3.8。
+> 测试: U6 专项 7 例 (市场安装默认隔离/hosted 未确认仍隔离/兼容层降级/rlimits 解析与生效/卸载零残留) + 既有插件域测试适配信任分级 (hosted+trust_hosted 快路径)。全量 **1903 通过 + 4 skip** (smoke_main_resident 全量批负载偶发 flake, 单独复跑稳定, U9 根治项)、ruff/mypy (277 源文件) 全绿。**U6 完成, 可穿插节点剩 U2/U3/U7/U8, 之后 U9 复评门禁**。
+>
+> ⚠️ **2026-08-17 —— U5 工具权限管线 + HITL 卡片审批完成 (U 轮第四节点)**。工具权限从静态三态表升级为四段管线, 全部验收项落地:
 > **①四段管线** (`ToolRegistry.execute` 重构): pre-execute waterfall (effective_policy 四档 allow/restricted/**ask**/deny, 未知档位值 fail-closed 归 deny) → 单调 **DenyGuard** (会话×工具拒绝账本, 只增不删无撤销 API; 拒绝经 `tool.outcome=DENIED` 事件持久化, 启动时 `restore_from_events` 从 U1 事件流重建 —— 跨重启拒绝仍不可翻回) → 执行 (异常隔离) → post 审计留痕 (tool.called 执行前副作用前 flush / tool.outcome 执行后, payload 带 decision+decider+reason)。
 > **②ask 档 HITL 闭环** (ApprovalGate): 审批卡片经 channel_registry 投递本会话 (审批码+工具+参数摘要); 回流两路 —— IM 回复"同意/拒绝 <审批码>" 经 process_message 入口拦截直达 gate.decide (不触发对话回合; 过期/未知码按普通消息继续路由不误吞) + 控制面 `POST /api/v1/approvals/{id}/decide`; 超时 (tools.approval.timeout_seconds 默认 300s) fail-closed 拒绝并登记 guard; 审批门未接线时 ask 档直接拒绝 (不静默放行)。
 > **③决策理由词汇表** (`decision_reasons.py`): 10 规范 reason / 5 decision / 3 decider, `validate_reason` 越表 raise; drift test 扫描 registry 源码引用的全部常量 ∈ 词汇表。决策留痕可查询: `GET /api/v1/approvals/history` 聚合事件表全部 tool.* 决策记录。
