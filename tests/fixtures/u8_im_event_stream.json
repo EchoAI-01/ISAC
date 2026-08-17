@@ -1,0 +1,17 @@
+{
+  "description": "U8 mock IM 事件流快照: 无真实凭据回放整条 bot 链路 (平台/用户/群已脱敏)",
+  "events": [
+    {"content": "你好", "user_id": "user-alpha", "group_id": null, "at_bot": false},
+    {"content": "帮我总结一下今天的安排", "user_id": "user-alpha", "group_id": null, "at_bot": false},
+    {"content": "@bot 这个方案行不行", "user_id": "user-beta", "group_id": "group-ops", "at_bot": true},
+    {"content": "收到，谢谢", "user_id": "user-beta", "group_id": "group-ops", "at_bot": false},
+    {"content": "@bot 明天天气怎么样", "user_id": "user-gamma", "group_id": "group-ops", "at_bot": true}
+  ],
+  "scripted_replies": [
+    "你好呀，有什么可以帮你的？",
+    "今天安排如下：上午评审，下午联调。",
+    "方案可行，注意两个风险点。",
+    "明天多云转晴，适合联调。"
+  ],
+  "expected_reply_count": 4
+}

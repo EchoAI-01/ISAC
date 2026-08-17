@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "top_level_count": 21,
+  "source": "data/config.sample.jsonc",
+  "keys": {
+    "alerting": {
+      "children": [
+        "check_interval_seconds",
+        "enabled",
+        "webhook_url"
+      ]
+    },
+    "artifacts": {
+      "children": [
+        "ttl_days"
+      ]
+    },
+    "bot_id": {
+      "children": []
+    },
+    "channels": {
+      "children": [
+        "discord",
+        "feishu",
+        "onebot",
+        "qq_official",
+        "telegram",
+        "webchat",
+        "wechat"
+      ]
+    },
+    "control": {
+      "children": [
+        "agents_dir",
+        "api_token",
+        "cors",
+        "enabled",
+        "host",
+        "plugins",
+        "port",
+        "setup_enabled",
+        "setup_state_path",
+        "workflow"
+      ]
+    },
+    "conversation": {
+      "children": [
+        "debounce_seconds",
+        "enabled",
+        "max_interrupts_per_turn",
+        "proactive"
+      ]
+    },
+    "debug": {
+      "children": []
+    },
+    "gating": {
+      "children": [
+        "locale",
+        "reply_necessity_threshold",
+        "strategy"
+      ]
+    },
+    "identity": {
+      "children": [
+        "enabled",
+        "heuristic_enabled"
+      ]
+    },
+    "llm": {
+      "children": [
+        "api_key",
+        "base_url",
+        "model",
+        "provider"
+      ]
+    },
+    "logging": {
+      "children": [
+        "format",
+        "level",
+        "per_module"
+      ]
+    },
+    "mcp": {
+      "children": [
+        "servers"
+      ]
+    },
+    "memory": {
+      "children": [
+        "consolidation",
+        "embedding",
+        "enabled",
+        "graph_recall",
+        "reranker"
+      ]
+    },
+    "model_routing": {
+      "children": [
+        "categories"
+      ]
+    },
+    "multimodal_providers": {
+      "children": []
+    },
+    "observability": {
+      "children": [
+        "usage"
+      ]
+    },
+    "persona": {
+      "children": [
+        "description"
+      ]
+    },
+    "session": {
+      "children": [
+        "history"
+      ]
+    },
+    "subagent": {
+      "children": [
+        "enabled"
+      ]
+    },
+    "tenancy": {
+      "children": [
+        "enabled",
+        "organization_id",
+        "tenant_id"
+      ]
+    },
+    "tools": {
+      "children": [
+        "approval",
+        "bash_allowlist"
+      ]
+    }
+  }
+}

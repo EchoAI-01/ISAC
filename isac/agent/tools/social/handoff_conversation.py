@@ -62,15 +62,30 @@ class HandoffConversationTool(Tool):
         # P2: 会话归属转移 —— router 经 services 注入 (无 router 时降级为仅投递摘要)。
         # MVP-Fix: 移交带 TTL (router.DEFAULT_HANDOFF_TTL_SECONDS), 到期归属自动
         # 回落常规路由; 接手方把会话移交回原归属者即可提前撤销。
+        # U8 SessionWriteGate: 归属转移是会话流写入, 先预约后写入 (fail-closed)。
         session = context.agent_context.session
-        if router is not None and session is not None:
-            platform = getattr(session, "platform", "")
-            group_id = getattr(session, "group_id", None)
-            user_id = getattr(session, "user_id", "")
-            if target == agent_id:
-                # 移交给自己 = 交还归属 (撤销此前的移交覆盖)
-                router.clear_handoff(platform, group_id, user_id)
-                return ToolResult(content=f"已交还会话归属 (撤销移交), 摘要: {summary[:50]}")
-            router.set_handoff(platform, group_id, user_id, target)
-            return ToolResult(content=f"已移交会话给 {target} (后续消息由其接手), 摘要: {summary[:50]}")
-        return ToolResult(content=f"已通知 {target} 接手 (摘要已送达), 摘要: {summary[:50]}")
+        gate = context.services.get("session_write_gate")
+        reservation = None
+        if gate is not None:
+            session_key = getattr(session, "session_id", "") or f"handoff:{agent_id}"
+            reservation = gate.reserve(session_key, "handoff")
+            if reservation is None:
+                return ToolResult(
+                    content="移交暂缓: 该会话有在途写入 (SessionWriteGate 仲裁), 请稍后重试。",
+                    is_error=True,
+                )
+        try:
+            if router is not None and session is not None:
+                platform = getattr(session, "platform", "")
+                group_id = getattr(session, "group_id", None)
+                user_id = getattr(session, "user_id", "")
+                if target == agent_id:
+                    # 移交给自己 = 交还归属 (撤销此前的移交覆盖)
+                    router.clear_handoff(platform, group_id, user_id)
+                    return ToolResult(content=f"已交还会话归属 (撤销移交), 摘要: {summary[:50]}")
+                router.set_handoff(platform, group_id, user_id, target)
+                return ToolResult(content=f"已移交会话给 {target} (后续消息由其接手), 摘要: {summary[:50]}")
+            return ToolResult(content=f"已通知 {target} 接手 (摘要已送达), 摘要: {summary[:50]}")
+        finally:
+            if gate is not None and reservation is not None:
+                gate.commit(reservation)

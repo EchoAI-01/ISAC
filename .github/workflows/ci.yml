@@ -31,6 +31,32 @@ jobs:
         # 覆盖率下滑会阻止合并; 关键安全/启动路径 (K7/K1/K4) 已有专项测试
         run: uv run pytest --cov=isac --cov-branch --cov-report=term-missing --cov-fail-under=75
 
+  catalog-drift:
+    # U8 治理门禁: catalog 漂移检测 —— 工具面/配置键面/模型能力快照变更后未重新
+    # 生成入库 catalog 即失败 (生成脚本见 scripts/gen_*_catalog.py 与
+    # scripts/gen_model_capabilities.py)。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Tool catalog drift check
+        run: uv run python scripts/gen_tool_catalog.py --check
+
+      - name: Config catalog drift check
+        run: uv run python scripts/gen_config_catalog.py --check
+
+      - name: Model capabilities snapshot parse check
+        run: uv run python scripts/gen_model_capabilities.py --check
+
   browser:
     # K8-2: Playwright 浏览器黄金路径测试 (tests/browser/); 未装时 skip,
     # CI 显式 install chromium 后跑。与 check/build/docker 并行, 失败不阻塞主链路。

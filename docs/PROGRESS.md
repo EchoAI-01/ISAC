@@ -2,7 +2,14 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> ⚠️ **最近更新: 2026-08-17 —— U7 Agent 数据化完成 (prompt 文件化 + 能力快照 + category 路由)**。Agent 的"人格与模型选择"从代码/配置常量升级为数据文件驱动, 全部验收项落地:
+> ⚠️ **最近更新: 2026-08-18 —— U8 注入仲裁门 + 治理门禁完成 (可穿插节点全部清偿)**。会话写入面从"补丁约定"升级为机制仲裁 + 治理门禁, 全部验收项落地:
+> **①SessionWriteGate** (`isac/runtime/write_gate.py`): 主动/注入式写入统一仲裁门 —— 先预约后写入 (`reserve(session_key, source)`, 同会话单活跃租约先到者得; 门内名单 proactive/handoff/plugin_injection/memory_injection, 未登记来源拒绝); hold 窗口默认 30s (clamp 1~600s) 超时作废; `commit` 过期/已取消/被接手 → **fail-closed 丢弃产出** —— Fix-81/82 两次补丁的状态机互踩根因 (多写者无仲裁) 收编进该门。接线: 强制话轮经 `_reserve_forced_turn_write` 预约 (让位不抢, finally 幂等取消) + handoff 归属转移经门; build_services 注入; 未接门零行为变化。**AST 审计常驻**: 门之外 `forced_turn` 赋值/`transition_to` 调用即失败 —— 故意绕过当场捕获。
+> **②治理门禁**: 工具 catalog (自动发现 29 工具: name/description/默认策略) + 配置 catalog (config.sample.jsonc 21 顶层键) 生成脚本, `--check` 漂移检测入 CI catalog-drift job —— 工具面/配置面变更未重新生成入库即失败, 强制变更留档。
+> **③快照回放**: 脱敏 IM 事件流 JSON 夹具 (5 事件: 私聊/@/群聊短反应) 经真实主链路 EventBus→Router→Gating→AgentManager→LLM→Channel 回放, **无真实凭据跑整条 bot 链路** —— 回复序列按 scripted 消费对齐 (WAIT 不消耗回复) + 门在场反应式链路零干扰零残留。
+> **④evidence 规范化**: `scripts/new_evidence_dir.py` 建 `evidence/YYYY-MM-DD-<slug>/` + README 骨架, 真机证据必留档; U8 验收证据留档 `evidence/2026-08-18-u8-gate-and-governance/` (PASS)。
+> 测试: U8 专项单测 12 例 + 快照回放集成 2 例。全量 **1958 通过 + 4 skip** (smoke_main_resident 本批亦通过, 仍为 U9 根治项)、ruff/mypy (283 源文件) 全绿。**U8 完成, 可穿插节点已清 U3/U6/U7/U8, 剩 U2 装配层重构 → 之后 U9 复评门禁**。
+>
+> ⚠️ **2026-08-17 —— U7 Agent 数据化完成 (prompt 文件化 + 能力快照 + category 路由)**。Agent 的"人格与模型选择"从代码/配置常量升级为数据文件驱动, 全部验收项落地:
 > **①prompt 文件化** (`isac/agent/prompt_files.py`): `<control.agents_dir>/<agent_id>/prompts/*.md` frontmatter 声明 family/variant/priority/enabled (无依赖子集解析器); persona 族文件**替代** config 身份注入, 其余族 (rules 等) 追加; 变体按当前模型族选择 (config.llm.model_family 覆盖优先, 否则模型名前缀推断 16 族), 未命中回落 default —— **改人格=改文件, 新增一个模型族=加一个 variant 文件零代码改动**; 无 prompt 文件落回 config 路径零行为变化。
 > **②模型能力快照管线**: `scripts/gen_model_capabilities.py` (仅标准库) 拉 models.dev api.json 归一化 (拍板 #4 数据源) + `data/model_capabilities.overrides.json` 手动补录合并 (国产新模型晚收录兜底); **首份快照已生成入库 6666 模型**; CapabilitySnapshot 加载/查询/新鲜度检查; **drift CI 报警**: 专项测试断言快照在库 + ≤60 天新鲜 + 规模≥1000 + 关键模型 supports_tools (过期即失败); `.github/workflows/model-capabilities.yml` 每周一刷新有差异自动提交。启动接线 `_wire_llm_capabilities`: primary LLM ModelDescriptor 合并快照能力注册 ModelCatalog; **record_health 生产接线** (此前"定义未接线"): chat_with_retry 成功/最终失败上报健康 (限流除外), fallback 链按能力与可达性过滤。
 > **③category 路由** (`isac/provider/category_routing.py`): qa/creative/tool_heavy/chat 四类画像 (成本/延迟上限 + requires_tools 能力过滤, ModelRouter.select 新增能力过滤参数), `config.model_routing.categories` 覆盖画像不改代码; delegate_task 增 category 参数, 子 Agent runner 经 ModelRouter 选型命中另一已注册 LLM provider 时切换执行 (ProviderManager._llm_registry 注册表), 无候选回落父模型 fail-safe。

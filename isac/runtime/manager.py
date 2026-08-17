@@ -847,6 +847,25 @@ class AgentManager:
             return
         await self._run_forced_turn(instance, session, runtime, task)
 
+    def _reserve_forced_turn_write(self, session: Session, task_id: str) -> tuple[Any, Any, bool]:
+        """U8: 强制话轮写入预约。返回 (gate, reservation, permitted)。
+
+        permitted=False = 仲裁让位 (放弃本次强制话轮); gate 为 None 时 reservation
+        亦为 None 且恒放行 (未接门零行为变化, 测试夹具路径)。
+        """
+        gate = self._services.get("session_write_gate")
+        if gate is None:
+            return None, None, True
+        reservation = gate.reserve(session.session_id, "proactive")
+        if reservation is None:
+            logger.info(
+                "强制话轮让位: 会话已有活跃写入租约 (SessionWriteGate 仲裁)",
+                task_id=task_id,
+                session_id=session.session_id,
+            )
+            return gate, None, False
+        return gate, reservation, True
+
     async def _run_forced_turn(
         self,
         instance: AgentInstance,
@@ -876,6 +895,13 @@ class AgentManager:
         """
         import time as _time
 
+        # U8 SessionWriteGate: 先预约后写入 —— 强制话轮是主动写入会话流, 动手前
+        # 取租约 (单写者仲裁); 在途已有活跃写者时放弃本次 (机会性主动, 让位不抢)。
+        # Fix-81/82 的状态机互踩根因 (多写者无仲裁) 收编进该门。
+        gate, reservation, permitted = self._reserve_forced_turn_write(session, task.task_id)
+        if not permitted:
+            return
+
         lock_mgr = self._services.get("session_lock")
         lock_key = f"{session.platform}:{session.user_id or 'unknown'}:{session.group_id or 'private'}"
         lock = await lock_mgr.acquire(lock_key) if lock_mgr is not None else None
@@ -899,11 +925,24 @@ class AgentManager:
                 if runtime is not None:
                     runtime.clear_interrupt()
                 if result.content:
-                    instance.gating.get_turn_scheduler(session.session_id).record_reply()
-                    await self._send_proactive_reply(instance, session, result.content)
+                    # U8: 租约有效才推送产出 —— 超时作废 fail-closed, 丢弃本轮输出
+                    # (租约失效意味着另一写者可能已接手, 继续推送会互踩状态机)。
+                    if gate is not None and reservation is not None and not gate.commit(reservation):
+                        logger.warning(
+                            "强制话轮租约失效, 丢弃本次产出 (fail-closed)",
+                            task_id=task.task_id,
+                            session_id=session.session_id,
+                        )
+                    else:
+                        instance.gating.get_turn_scheduler(session.session_id).record_reply()
+                        await self._send_proactive_reply(instance, session, result.content)
         except Exception:  # noqa: BLE001
             logger.error("强制话轮执行异常", task_id=task.task_id, exc_info=True)
         finally:
+            # U8: 未提交的租约一律取消 (异常/被打断/未产出), 释放会话写入面。
+            # 已 commit 的租约 cancel 为无操作 (幂等)。
+            if gate is not None and reservation is not None:
+                gate.cancel(reservation)
             self._finish_forced_turn(runtime, turn_owns_state, lock_mgr, lock_key, lock, acquired)
 
     @staticmethod

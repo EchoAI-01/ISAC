@@ -20,6 +20,8 @@ data/*
 # U7 模型能力快照 (models.dev 生成, CI 每周刷新, 见 .github/workflows/model-capabilities.yml)
 !data/model_capabilities.json
 !data/model_capabilities.overrides.json
+# U8 治理门禁 catalog (生成物入库, CI --check 漂移检测)
+!data/catalogs
 
 # IDE
 .idea/

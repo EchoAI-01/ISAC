@@ -1209,6 +1209,38 @@ tool_heavy (必须 supports_tools) / chat (最便宜档); 画像可经
 
 ---
 
+### 3.17 SessionWriteGate + 治理门禁 (U8)
+
+**SessionWriteGate** (`isac/runtime/write_gate.py`): 会话写入统一仲裁门 ——
+主动/注入式写入 (强制话轮 proactive、handoff 归属转移、插件注入、记忆注入) 动手前
+`reserve(session_key, source)` 取租约:
+
+- **先预约后写入**: 同一 session_key 同时只允许一个活跃租约 (先到者得, 后来者拿
+  None 即放弃, 不排队不抢锁); 未登记来源 (`_ALLOWED_SOURCES` 之外) 直接拒绝。
+- **hold 窗口**: 租约默认 30s (clamp 1~600s, monotonic), 超时作废。
+- **fail-closed**: `commit` 在过期/已取消/被接手时返回 False —— 写入方必须丢弃
+  产出 (租约失效意味着另一写者可能已接手会话, 继续推送会互踩状态机 —— Fix-81/82
+  两次补丁的根因收编进该门)。反应式消息回合不经此门 (由会话锁串行)。
+- **AST 审计常驻** (tests/unit/test_u8_write_gate.py): 扫描 isac/ 全部源文件,
+  门之外出现 `forced_turn` 赋值或 `transition_to(` 调用即失败 —— 故意绕过当场捕获
+  (允许清单: manager.py 门内写者 + conversation 状态机本体)。
+
+**治理门禁** (scripts/ + CI):
+
+- **工具 catalog** (`scripts/gen_tool_catalog.py`): 自动发现 isac/agent/tools/
+  全部 Tool 子类 (name/description + 默认策略), 归一化 `data/catalogs/tools.json`;
+- **配置 catalog** (`scripts/gen_config_catalog.py`): config.sample.jsonc 顶层/二级
+  键面 → `data/catalogs/config_keys.json`。
+- 两者均带 `--check` 漂移检测: 工具面/配置键面变更后未重新生成入库 catalog →
+  CI `catalog-drift` job 失败, 强制变更留档。
+- **快照回放** (tests/integration/test_u8_snapshot_replay.py): 脱敏 IM 事件流 JSON
+  夹具经真实主链路 (EventBus → Router → Gating → AgentManager → LLM → Channel)
+  回放, 无真实凭据跑整条 bot 链路 (回复序列对齐 + 门在场零干扰断言)。
+- **evidence 规范化**: 真机证据必留档 `evidence/YYYY-MM-DD-<slug>/`
+  (`scripts/new_evidence_dir.py` 创建目录 + README 骨架)。
+
+---
+
 ## 五、消息生命周期
 
 ```

@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "tool_count": 29,
+  "tools": {
+    "ask_agent": {
+      "module": "isac.agent.tools.social.ask_agent",
+      "description": "向另一个 Agent 提问并获取回复 (仅限已互联的 Agent)",
+      "default_policy": "allow"
+    },
+    "bash": {
+      "module": "isac.agent.tools.utility.bash",
+      "description": "执行受白名单限制的 shell 命令 (默认禁用, 需在配置中显式启用)",
+      "default_policy": "deny"
+    },
+    "cancel_subagent": {
+      "module": "isac.agent.tools.subagent",
+      "description": "取消一个进行中的子任务 (幂等)",
+      "default_policy": "restricted"
+    },
+    "delegate_task": {
+      "module": "isac.agent.tools.subagent",
+      "description": "把需要调用工具或查询的子任务交给隔离子 Agent 执行, 只返回结果",
+      "default_policy": "restricted"
+    },
+    "fetch_history": {
+      "module": "isac.agent.tools.social.fetch_history",
+      "description": "拉取当前会话的聊天历史记录",
+      "default_policy": "allow"
+    },
+    "generate_image": {
+      "module": "isac.agent.tools.media",
+      "description": "根据文字描述生成图片",
+      "default_policy": "deny"
+    },
+    "generate_video": {
+      "module": "isac.agent.tools.media",
+      "description": "根据文字描述生成视频",
+      "default_policy": "deny"
+    },
+    "handoff_conversation": {
+      "module": "isac.agent.tools.social.handoff_conversation",
+      "description": "把当前会话移交给另一个 Agent 接手 (仅限已互联的 Agent)",
+      "default_policy": "restricted"
+    },
+    "list_available_agents": {
+      "module": "isac.agent.tools.social.list_available_agents",
+      "description": "列出当前 Agent 可协作的其他 Agent (已配置互联 Link 的对端)",
+      "default_policy": "restricted"
+    },
+    "list_subagents": {
+      "module": "isac.agent.tools.subagent",
+      "description": "列出当前子任务及其状态",
+      "default_policy": "restricted"
+    },
+    "memory_query_agent": {
+      "module": "isac.agent.tools.social.memory_query_agent",
+      "description": "向另一个 Agent 发起授权记忆查询 (仅限 Link 授予的可见记忆范围)",
+      "default_policy": "restricted"
+    },
+    "notify_agent": {
+      "module": "isac.agent.tools.social.notify_agent",
+      "description": "向另一个 Agent 发送单向通知 (仅限已互联的 Agent, 不等待回复)",
+      "default_policy": "restricted"
+    },
+    "query_memory": {
+      "module": "isac.agent.tools.social.query_memory",
+      "description": "查询长期记忆 (只读)",
+      "default_policy": "allow"
+    },
+    "query_person_profile": {
+      "module": "isac.agent.tools.social.query_person_profile",
+      "description": "查询某个用户的画像信息 (只读)",
+      "default_policy": "allow"
+    },
+    "read_file": {
+      "module": "isac.agent.tools.utility.read_file",
+      "description": "读取项目目录内的文件内容",
+      "default_policy": "restricted"
+    },
+    "send_emoji": {
+      "module": "isac.agent.tools.social.send_emoji",
+      "description": "发送一个表情 (emoji 或平台表情包)",
+      "default_policy": "allow"
+    },
+    "send_image": {
+      "module": "isac.agent.tools.social.send_image",
+      "description": "生成并发送一张图片",
+      "default_policy": "allow"
+    },
+    "subagent_log": {
+      "module": "isac.agent.tools.subagent",
+      "description": "分页读取某个子任务的脱敏工作日志",
+      "default_policy": "restricted"
+    },
+    "subagent_status": {
+      "module": "isac.agent.tools.subagent",
+      "description": "查询某个子任务的运行状态",
+      "default_policy": "restricted"
+    },
+    "switch_chat": {
+      "module": "isac.agent.tools.social.switch_chat",
+      "description": "主动切换当前聊天话题",
+      "default_policy": "allow"
+    },
+    "synthesize_speech": {
+      "module": "isac.agent.tools.media",
+      "description": "把文字合成为语音",
+      "default_policy": "deny"
+    },
+    "task": {
+      "module": "isac.agent.tools.utility.task",
+      "description": "将子任务委派给一个子 Agent 执行",
+      "default_policy": "restricted"
+    },
+    "transcribe_audio": {
+      "module": "isac.agent.tools.media",
+      "description": "把语音转成文字",
+      "default_policy": "deny"
+    },
+    "understand_image": {
+      "module": "isac.agent.tools.media",
+      "description": "理解图片内容并作答",
+      "default_policy": "deny"
+    },
+    "understand_video": {
+      "module": "isac.agent.tools.media",
+      "description": "理解视频内容并作答",
+      "default_policy": "deny"
+    },
+    "view_forward_message": {
+      "module": "isac.agent.tools.social.view_forward_message",
+      "description": "查看合并转发消息的详细内容",
+      "default_policy": "allow"
+    },
+    "wait": {
+      "module": "isac.agent.tools.social.wait",
+      "description": "暂时不回复，等待对方继续说",
+      "default_policy": "allow"
+    },
+    "web_search": {
+      "module": "isac.agent.tools.utility.web_search",
+      "description": "搜索网络信息",
+      "default_policy": "deny"
+    },
+    "write_file": {
+      "module": "isac.agent.tools.utility.write_file",
+      "description": "写入项目目录内的文件",
+      "default_policy": "restricted"
+    }
+  }
+}
