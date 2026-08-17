@@ -1317,7 +1317,7 @@ v1.0 GA = 以下全部满足:
 
 **推进方式**: 不估工时, 按各节点验收标准推进; 验收铁律 (真机证据) 与三态标记适用; 每项完成同步 PROGRESS.md。
 
-- [ ] **U0 安全清偿 (P0, 阻塞一切发布相关工作)**
+- [x] **U0 安全清偿 (P0, 阻塞一切发布相关工作)**
   - **目标**: 清偿深度 Review 新发现的 4 项安全实洞 (Fix-85~88), 均在多租户与插件生态两个核心卖点面上。
   - **验收**:
     ①**Fix-85 治理面租户谓词**: `MemoryGovernor` 全部 SQL 补租户作用域, `routes_memory_admin` 校验 agent 归属租户; `tests/integration/test_p5_enterprise_isolation.py` 扩展到治理面 —— 租户 A 凭据对租户 B 记忆 freeze/correct/delete 一律拒绝。(发现: `governance.py` SQL 不经租户谓词, 控制面传裸 agent_id。)
@@ -1327,7 +1327,7 @@ v1.0 GA = 以下全部满足:
     另顺带批清: delegate_task `_wait_timeout` clamp、gateway 诸库 (sessions/identity/tenants) WAL + busy_timeout、`pending_messages` 死字段删除、onebot 测试 extra 缺失时 importorskip。
   - **产出**: 对应修复 + 每项回归测试 (按 Fix-N 体系编号归档 CODE_REVIEW_REPORT.md)。
   - **依赖**: 无。
-  - **当前**: 未开始。
+  - **当前**: **已完成 (2026-08-17)**。Fix-85 治理面全部 episodes SQL 补 organization_id/tenant_id 谓词 (guard.enabled 且非默认租户时, 与 metadata enforce 语义一致) + test_p5 新增跨租户治理拒绝/默认租户直通 2 例; Fix-86 safe_extractall 增 max_extracted_bytes 流式累计实际写盘字节 (元数据可伪造, 以实际为准) 超限中止+清半成品, installer 接入 MAX_EXTRACTED_BYTES, zip bomb 3 例; Fix-87 _required_service 补 mcp:*→mcp_clients 映射 (接线时 assembly 注入, 未接线拒绝; 4 例); Fix-88 ToolRegistry.register 对插件来源工具自动 <plugin>: 前缀包装 (_NamespacedTool), 已含 ':' 跳过, 启动期 compat 桥接补 set_current_source (防覆盖内置 6 例)。顺带批清: subagent _wait_timeout clamp 300 / gateway 四库 WAL+busy_timeout / pending_messages 死字段删除 (基类+SessionContext+loop 拷贝+4 测试传参) / onebot importorskip。全量单测 1740 通过+1 skip, integration 91 通过, ruff/mypy 全绿。
 
 - [ ] **U1 事件溯源会话内核 (架构演进地基)**
   - **目标**: 会话存储从可变表升级为事件溯源: append-only 会话事件表 + 状态全部从事件派生 (消息历史=折叠、滑动窗口=窗口派生策略、压缩=带 `source_seqs` 溯源的 replace 事件); 入站消息即持久事件 ("Model-visible ⟺ Logged" 的 IM 化, 天然解决异步消息/重启续跑/审计合规); 未知事件类型默认拒绝重建 (ignorable 白名单); torn-tail 容忍 + repair (孤儿工具调用合成 OUTCOME_UNKNOWN, 不猜结果); 工具执行前/LLM 请求前强制 flush (副作用前落盘)。
