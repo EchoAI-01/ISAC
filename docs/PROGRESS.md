@@ -2,7 +2,14 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> ⚠️ **最近更新: 2026-08-17 —— U4 租户机制强制完成 (半墙 → 整墙, U 轮第三节点)**。隔离从"调用方自觉"升级为"机制强制", 全部验收项落地:
+> ⚠️ **最近更新: 2026-08-17 —— U5 工具权限管线 + HITL 卡片审批完成 (U 轮第四节点)**。工具权限从静态三态表升级为四段管线, 全部验收项落地:
+> **①四段管线** (`ToolRegistry.execute` 重构): pre-execute waterfall (effective_policy 四档 allow/restricted/**ask**/deny, 未知档位值 fail-closed 归 deny) → 单调 **DenyGuard** (会话×工具拒绝账本, 只增不删无撤销 API; 拒绝经 `tool.outcome=DENIED` 事件持久化, 启动时 `restore_from_events` 从 U1 事件流重建 —— 跨重启拒绝仍不可翻回) → 执行 (异常隔离) → post 审计留痕 (tool.called 执行前副作用前 flush / tool.outcome 执行后, payload 带 decision+decider+reason)。
+> **②ask 档 HITL 闭环** (ApprovalGate): 审批卡片经 channel_registry 投递本会话 (审批码+工具+参数摘要); 回流两路 —— IM 回复"同意/拒绝 <审批码>" 经 process_message 入口拦截直达 gate.decide (不触发对话回合; 过期/未知码按普通消息继续路由不误吞) + 控制面 `POST /api/v1/approvals/{id}/decide`; 超时 (tools.approval.timeout_seconds 默认 300s) fail-closed 拒绝并登记 guard; 审批门未接线时 ask 档直接拒绝 (不静默放行)。
+> **③决策理由词汇表** (`decision_reasons.py`): 10 规范 reason / 5 decision / 3 decider, `validate_reason` 越表 raise; drift test 扫描 registry 源码引用的全部常量 ∈ 词汇表。决策留痕可查询: `GET /api/v1/approvals/history` 聚合事件表全部 tool.* 决策记录。
+> **④命名空间管线机制化** (Fix-88): 不变量测试断言非 builtin 来源工具注册名必含 ':' 前缀 (同名插件工具机制上不可能覆盖内置), 已含 ':' 不二次前缀。
+> 既有 restricted 服务门/EnableMatrix channel 覆盖/三态语义全回归一致。测试: U5 专项单测 22 例 + HITL 全链路集成 4 例 (同意/拒绝/超时三路经真实 process_message 主链路闭环)。全量 **1895 通过 + 4 skip**、ruff/mypy (277 源文件) 全绿 (smoke_main_resident 全量批负载下偶发 flake, 单独复跑稳定, U9 根治项)。**U5 完成, 按 §三之五 顺序 U0→U1→U4→U5 主链清偿完毕, 进入可穿插节点 (U2/U3/U6/U7/U8)**。
+>
+> ⚠️ **2026-08-17 —— U4 租户机制强制完成 (半墙 → 整墙, U 轮第三节点)**。隔离从"调用方自觉"升级为"机制强制", 全部验收项落地:
 > **①TenantBoundDB 机制强制层** (新建 `isac/memory/storage/tenant_bound.py`): 租户读写原语唯一入口 —— `scoped()` SELECT 自动经 enforce() 子查询包裹 (CR2-Fix-18 防绕过语义唯一实现)、`predicate()` UPDATE/DELETE 规范谓词片段、`row_values()` INSERT 打标值、`connect()` 连接收口。MetadataStore 与 MemoryGovernor 的谓词逻辑全部委托该层 (此前两处各维护一份 + 调用方可自行拼 SQL 绕过)。
 > **②四表补租户列 + 打标/作用域**: person_profiles/jargon_entries/memory_revisions/memory_audit 经 _ensure_column 迁移补 organization_id/tenant_id (默认 'default', 存量免回填); profile/jargon 写入打标、读取经租户作用域 (get_person_profile/list_jargon); governor 审计与 revision 行打租户标, list_audit 跨租户不可见, 治理 SELECT 改走 scoped() 子查询 (UPDATE 走 predicate())。
 > **③QueryMemoryTool 改 master_id 检索**: user_id 取 user_profile.user_id (与 _write_memory 落盘 episode.user_id=master_id 口径一致) —— 修私聊场景工具召回系统性漏 (此前按平台 id 检索 master_id 存储的记忆恒漏); query_person_profile 同步修 (person_id 回落链 + agent 键统一)。

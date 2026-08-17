@@ -366,6 +366,8 @@ def create_control_app(
         scope_dependency, parsed_tokens, config.get("events_max_connections"), audit_log,
         sparse_resolver, workflow_engine, identity_resolver, vector_resolver,
         webhook_manager, tenant_manager, session_secret,
+        approval_gate=(services or {}).get("approval_gate"),
+        session_event_store=(services or {}).get("session_event_store"),
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
@@ -566,8 +568,11 @@ def _mount_optional_routers(
     webhook_manager: Any = None,
     tenant_manager: Any = None,
     session_secret: bytes | None = None,
+    approval_gate: Any = None,
+    session_event_store: Any = None,
 ) -> None:
-    """挂载可选路由 (usage/subagent/providers/config/sessions/memory/events/workflows/identity/webhooks/tenants)。"""
+    """挂载可选路由 (usage/subagent/providers/config/sessions/memory/events/
+    workflows/identity/webhooks/tenants/approvals)。"""
     if usage_store is not None:
         from isac.control.api import routes_usage
 
@@ -672,6 +677,31 @@ def _mount_optional_routers(
         app, tenant_manager, auth_dependency=auth_dependency,
         scope_dependency=scope_dependency, audit_log=audit_log,
     )
+    # U5: 审批路由 (approval_gate 注入时挂载; HITL ask 档运维侧回流)
+    _mount_approvals_router(
+        app, approval_gate, auth_dependency=auth_dependency,
+        scope_dependency=scope_dependency, audit_log=audit_log,
+        session_event_store=session_event_store,
+    )
+
+
+def _mount_approvals_router(
+    app: Any, approval_gate: Any, *,
+    auth_dependency: Any, scope_dependency: Any, audit_log: Any,
+    session_event_store: Any = None,
+) -> None:
+    """U5: 挂载审批控制面路由 (approval_gate 注入时; 无则返回 None 不挂载)。"""
+    if approval_gate is None:
+        return
+    from isac.control.api import routes_approvals
+
+    router = routes_approvals.build_router(
+        approval_gate, auth_dependency=auth_dependency,
+        scope_dependency=scope_dependency, audit_log=audit_log,
+        session_event_store=session_event_store,
+    )
+    if router is not None:
+        app.include_router(router, prefix="/api/v1")
 
 
 def _mount_tenant_router(

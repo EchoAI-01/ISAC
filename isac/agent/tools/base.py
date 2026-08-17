@@ -7,9 +7,15 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from isac.core.types import ToolResult
+from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from isac.core.types import AgentContext
+
+logger = get_logger(__name__)
+
+# U5: tools_policy 合法档位 (未知值 fail-closed 按 deny, 见 ToolPermission.check)。
+_VALID_LEVELS: frozenset[str] = frozenset({"allow", "restricted", "ask", "deny"})
 
 
 @dataclass
@@ -95,16 +101,24 @@ class ToolPermission:
         self.policy = {**self.DEFAULT_POLICY, **(policy or {})}
 
     def check(self, tool_name: str) -> str:
-        """返回 "allow" | "restricted" | "deny" (未声明默认 allow)。
+        """返回 "allow" | "restricted" | "ask" | "deny" (未声明默认 allow)。
+
+        U5: 四档语义 —— allow 直接放行; restricted 需注入对应后端服务;
+        **ask 执行前需人工审批** (ApprovalGate, 超时 fail-closed); deny 禁用。
+        策略表里的未知档位值 fail-closed 归一为 deny (防配置笔误漂移放行)。
 
         N5b 批次C C9: MCP 桥接工具 (``mcp:`` 前缀) 未显式声明时默认 restricted。
         U0 Fix-87: restricted 语义落实 —— ToolRegistry._required_service 把 mcp:*
         映射到 "mcp_clients" (MCP 接线时 assembly 注入), 未接线的 Agent 缺该服务 →
         restricted 门拒绝 LLM 直调。此前无映射时 restricted 等效 allow (语义矛盾)。
-        Agent tools_policy 仍可显式覆盖 (deny 禁用 / allow 放行)。
+        Agent tools_policy 仍可显式覆盖 (deny 禁用 / allow 放行 / ask 人工审批)。
         """
         if tool_name in self.policy:
-            return self.policy[tool_name]
+            level = self.policy[tool_name]
+            if level not in _VALID_LEVELS:
+                logger.warning("tools_policy 未知档位, fail-closed 按 deny 处理", tool=tool_name, level=str(level))
+                return "deny"
+            return level
         if tool_name.startswith("mcp:"):
             return "restricted"
         return "allow"

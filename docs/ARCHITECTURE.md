@@ -1114,6 +1114,38 @@ LLM 回复 → turn.completed 事件追加 → episodes 事件投影写入记忆
 
 ---
 
+### 3.15 Tool Permission Pipeline — 工具权限管线 + HITL 审批 (U5)
+
+工具权限从静态三态表升级为**四段管线** (参考 deepseek-harness 集中权限管线 + RikkaHub 消息内审批范式):
+
+```text
+LLM tool_call
+  │
+  ▼ 阶段 1: pre-execute waterfall (ToolRegistry.execute)
+  │  effective_policy = ToolPermission(全局默认 ∘ Agent tools_policy) ∘ EnableMatrix(Channel 覆盖)
+  │  四档: allow 放行 / restricted 查后端服务门 / deny 拒 / ask → 人工审批
+  ▼ 阶段 2: 单调 DenyGuard
+  │  本会话该工具曾被拒 (人工拒绝/超时) → 直接拒绝, 不可翻回 (无撤销 API,
+  │  拒绝经 tool.outcome=DENIED 事件持久化, 启动时 restore_from_events 重建)
+  ▼ 阶段 3: 执行 (tool.execute, 异常隔离)
+  ▼ 阶段 4: post 审计留痕 (U1 会话事件表)
+     tool.called (执行前, 副作用前 flush) / tool.outcome (执行后或拒绝)
+     payload 带 decision + decider + reason (规范词汇表 decision_reasons.py)
+```
+
+**ask 档 HITL 闭环** (ApprovalGate):
+
+- 卡片投递: ask 工具执行前经 `channel_registry` 向本会话发结构化审批卡片 (审批码 + 工具 + 参数摘要); 各适配器暂无交互按钮能力, 卡片为文本 + 审批码, 未来支持按钮回调时只需把回调接到 `decide()`。
+- 回流两路: ①IM 回复 `同意/拒绝 <审批码>` 被 `process_message` 入口拦截直达 `ApprovalGate.decide` (不触发对话回合); ②控制面 `POST /api/v1/approvals/{id}/decide` (运维侧)。
+- **超时 fail-closed**: `tools.approval.timeout_seconds` (默认 300s) 内无回复自动拒绝并登记 DenyGuard。
+- 决策留痕查询: `GET /api/v1/approvals/history` 读 U1 事件表全部 tool.* 决策记录。
+
+**决策理由词汇表**: decision/decider/reason 字段一律取 `decision_reasons.py` 规范值 (如 `ask_approved`/`human`/`human_approved`), 未知档位值 fail-closed 归 deny; drift test 断言管线产出的理由不越表。
+
+**命名空间注册管线**: mcp:/compat/native 工具统一经 `ToolRegistry.register` 自动 `<plugin>:` 前缀 (U0 Fix-88 机制化), 机制上不可能覆盖内置工具。
+
+---
+
 ## 五、消息生命周期
 
 ```

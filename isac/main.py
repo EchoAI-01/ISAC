@@ -114,6 +114,45 @@ def _build_identity_resolver(
     )
 
 
+def _maybe_consume_approval_reply(
+    message: ISACMessage, agent_manager: Any, metrics: MetricsCollector
+) -> bool:
+    """U5: 若消息是 ask 档审批回复 ("同意/拒绝 <审批码>") 则消费并返回 True。
+
+    HITL 的 IM 回流路径: 审批回复直达 ApprovalGate 决定 pending 审批, 不触发常规
+    对话回合。approval_gate 未注入 / 消息非审批回复 / 审批码已过期时返回 False,
+    调用方继续走正常路由。抽自 process_message (降 C901)。
+    """
+    approval_gate = getattr(agent_manager, "_services", {}).get("approval_gate")
+    if approval_gate is None:
+        return False
+    parsed = approval_gate.parse_reply(message.content)
+    if parsed is None:
+        return False
+    approval_id, verdict = parsed
+    decider = f"human:{message.platform}:{message.user_id}"
+    if not approval_gate.decide(approval_id, verdict, decider=decider):
+        return False  # 审批码未知/已过期 → 按普通消息继续路由
+    metrics.counter("isac_messages_dropped_total").inc()
+    return True
+
+
+async def _download_inbound_media_safe(routed_message: ISACMessage, agent_manager: Any) -> None:
+    """R1-②: 入站媒体下载落盘 (失败不阻塞主链路; 抽自 process_message 降 C901)。
+
+    扫 routed_message.segments 的 image/voice/video/file, HTTP 下载为 bytes →
+    uploads_store.put → 回填 media_uri 供工具经 MediaNormalizer 读。uploads_store
+    为 None (未启用) 或无 media segment 时直接跳过, 零行为变化。
+    """
+    uploads_store = getattr(agent_manager, "_services", {}).get("uploads_store")
+    if uploads_store is None:
+        return
+    try:
+        await download_inbound_media(routed_message, uploads_store)
+    except Exception as exc:  # noqa: BLE001 入站下载失败不阻塞消息主链路
+        logger.warning("入站媒体下载落盘异常, 继续", error=str(exc))
+
+
 async def process_message(
     message: ISACMessage,
     *,
@@ -136,21 +175,18 @@ async def process_message(
         return  # 被插件拦截
     message = payload
 
+    # U5: 审批回复拦截 —— "同意/拒绝 <审批码>" 直达 ApprovalGate, 不作对话处理。
+    if _maybe_consume_approval_reply(message, agent_manager, metrics):
+        return
+
     decision = await router.route(message)
     if decision is None:
         metrics.counter("isac_messages_dropped_total").inc()
         return  # 路由无匹配 → DROP
     routed_message = dataclasses.replace(message, content=decision.content)
 
-    # R1-②: 入站媒体下载落盘 (扫 routed_message.segments 的 image/voice/video/file,
-    # HTTP 下载为 bytes → uploads_store.put → 回填 media_uri 供工具经 MediaNormalizer 读)。
-    # uploads_store 为 None (未启用) 或无 media segment 时直接跳过, 零行为变化。
-    uploads_store = getattr(agent_manager, "_services", {}).get("uploads_store")
-    if uploads_store is not None:
-        try:
-            await download_inbound_media(routed_message, uploads_store)
-        except Exception as exc:  # noqa: BLE001 入站下载失败不阻塞消息主链路
-            logger.warning("入站媒体下载落盘异常, 继续", error=str(exc))
+    # R1-②: 入站媒体下载落盘 (uploads_store 未启用/无 media segment 时跳过)。
+    await _download_inbound_media_safe(routed_message, agent_manager)
 
     # Q0: 在 get_or_create 改写 session_id 为内部 sess_* 之前, 捕获适配器侧的
     # 平台会话键 (如 WebChat 客户端自带的 session_id)。出站回复/进度帧必须用
@@ -741,11 +777,36 @@ def _build_session_history_kernel(global_config: dict[str, Any]) -> tuple[Any, A
     return store, deriver
 
 
-async def _start_session_event_store(store: Any) -> None:
-    """U1: 会话事件存储启动 —— 建表 + 逐分区 torn-tail 修复 (抽自 main 降 C901)。"""
+async def _start_session_event_store(store: Any, deny_guard: Any = None) -> None:
+    """U1: 会话事件存储启动 —— 建表 + 逐分区 torn-tail 修复 (抽自 main 降 C901)。
+
+    U5: deny_guard 注入时同步从事件流重建单调拒绝账本 (tool.outcome=DENIED) ——
+    拒绝跨进程重启仍不可翻回。
+    """
     await store.start()
     for key in await store.list_session_keys():
         await store.repair_torn_tail(key)
+        if deny_guard is not None:
+            events = await store.fetch_recent(key, limit=500)
+            deny_guard.restore_from_events(key, events)
+
+
+def _build_tool_permission_pipeline(global_config: dict[str, Any]) -> tuple[Any, Any]:
+    """U5: 构造工具权限管线组件 (ApprovalGate + DenyGuard)。
+
+    tools.approval 配置节: timeout_seconds (默认 300, 下限 5)。ask 档工具执行前
+    经 ApprovalGate 等待人工"同意/拒绝", 超时 fail-closed; DenyGuard 记录会话内
+    被拒工具 (拒绝不可翻回), 启动时从 U1 事件流重建。返回 (approval_gate, deny_guard)。
+    """
+    from isac.agent.tools.approval import ApprovalGate
+    from isac.agent.tools.guard import DenyGuard
+
+    approval_cfg = global_config.get("tools", {}).get("approval", {}) or {}
+    try:
+        timeout_seconds = float(approval_cfg.get("timeout_seconds", 300) or 300)
+    except (TypeError, ValueError):
+        timeout_seconds = 300.0
+    return ApprovalGate(timeout_seconds=timeout_seconds), DenyGuard()
 
 
 def _build_media_normalizer(global_config: dict[str, Any]) -> Any:
@@ -1287,6 +1348,13 @@ async def main() -> None:
     services["session_event_store"] = session_event_store
     services["session_history"] = session_history_deriver
 
+    # U5: 工具权限管线 —— ApprovalGate (ask 档人工审批, 超时 fail-closed) +
+    # DenyGuard (单调拒绝账本, 拒绝不可翻回, 启动时从事件流重建)。注入 services
+    # 供 ToolRegistry.execute 四段管线与 process_message 审批回复拦截使用。
+    approval_gate, deny_guard = _build_tool_permission_pipeline(global_config)
+    services["approval_gate"] = approval_gate
+    services["deny_guard"] = deny_guard
+
     # P0: 消息处理并发化 —— handle_message 只负责派生任务立即返回, 适配器收取
     # 循环不再被单条消息的 LLM 往返阻塞 (跨会话真并行); 单会话仍靠会话锁串行。
     handle_message, drain_inflight = make_message_dispatcher(
@@ -1376,9 +1444,10 @@ async def main() -> None:
 
     # U1: 会话事件存储生命周期 (启动建表 + 逐分区 torn-tail 修复; 关闭 flush)。
     # torn-tail: kill -9 可能留下孤儿 tool.called (无 outcome), 重放前合成 OUTCOME_UNKNOWN。
+    # U5: 同步从事件流重建 DenyGuard 拒绝账本 (拒绝跨重启不可翻回)。
     runtime.register_lifecycle(
         "session_events",
-        lambda: _start_session_event_store(session_event_store),
+        lambda: _start_session_event_store(session_event_store, deny_guard),
         session_event_store.stop,
     )
 
