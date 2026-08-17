@@ -22,6 +22,36 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class _NamespacedTool(Tool):
+    """U0 Fix-88: 插件工具命名空间包装器 —— 给注册名加 ``<plugin>:`` 前缀。
+
+    委托 description/parameters/execute 给内层原工具, 仅 name 变为
+    ``f"{namespace}:{inner.name}"``。让 compat/native 插件工具在机制上不可能与内置
+    工具同名冲突或覆盖 (此前同名只有一条覆盖 warning, 非确定性; 恶意/失误的同名
+    插件工具可顶替内置工具)。方案对齐 MCPToolBridge 的 ``mcp:{server}:{tool}``
+    命名空间。内层工具的 LLM 调用语义不变 (execute 透传)。
+    """
+
+    def __init__(self, namespace: str, inner: Tool) -> None:
+        self._namespace = namespace
+        self._inner = inner
+
+    @property
+    def name(self) -> str:
+        return f"{self._namespace}:{self._inner.name}"
+
+    @property
+    def description(self) -> str:
+        return self._inner.description
+
+    @property
+    def parameters(self) -> dict:
+        return self._inner.parameters
+
+    async def execute(self, context: ToolContext) -> ToolResult:
+        return await self._inner.execute(context)
+
+
 class ToolRegistry:
     """工具注册表。每个 AgentInstance 持有一个独立实例 (权限策略按 Agent 配置)。"""
 
@@ -45,8 +75,16 @@ class ToolRegistry:
 
         T6: source 追踪工具来源插件名。source=None 时取 _current_source (on_load
         期间设置) 或 "builtin"。向后兼容: 既有 register(tool) 调用 → source="builtin"。
+
+        U0 Fix-88: 插件来源 (effective_source != "builtin") 的工具自动加
+        ``<plugin>:`` 前缀 (包装为 _NamespacedTool), 确定性命名空间隔离, 防同名覆盖
+        内置工具。已含 ":" 的名字 (如 mcp:server:tool / 已包装) 跳过, 避免二次前缀;
+        builtin 工具不加。前缀用 effective_source, 与 source 追踪键一致, 故
+        tools_policy/EnableMatrix/deregister_by_source 的键统一为 ``<plugin>:<tool>``。
         """
         effective_source = source or self._current_source or "builtin"
+        if effective_source != "builtin" and ":" not in tool.name:
+            tool = _NamespacedTool(effective_source, tool)
         if tool.name in self._tools:
             logger.warning("工具重复注册，已覆盖", tool=tool.name)
         self._tools[tool.name] = tool

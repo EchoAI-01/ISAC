@@ -111,8 +111,9 @@ async def test_activate_plugin_native_registers_with_source() -> None:
     assert status == "ok"
     assert plugin.on_load_called
     shared_tools = services["plugin_tools"]
-    assert shared_tools.get("native_tool") is not None
-    assert shared_tools.source_of("native_tool") == "p1"
+    # U0 Fix-88: 插件来源工具名加 <plugin>: 前缀
+    assert shared_tools.get("p1:native_tool") is not None
+    assert shared_tools.source_of("p1:native_tool") == "p1"
 
 
 @pytest.mark.asyncio
@@ -130,8 +131,8 @@ async def test_sync_injects_to_running_agents() -> None:
     agent = _FakeAgent()
     mgr = _FakeAgentManager([agent])
     result = await sync_plugin_tools_to_agents(mgr, services, "p1")
-    assert agent.tools.get("t1") is not None
-    assert agent.tools.source_of("t1") == "p1"
+    assert agent.tools.get("p1:t1") is not None
+    assert agent.tools.source_of("p1:t1") == "p1"
     assert "a1" in result
 
 
@@ -144,8 +145,8 @@ async def test_sync_removes_old_tools() -> None:
     mgr = _FakeAgentManager([agent])
     # 共享表面前无 p1 工具 (模拟插件已 deregister)
     result = await sync_plugin_tools_to_agents(mgr, services, "p1")
-    assert agent.tools.get("old_t") is None
-    assert result["a1"] == ["old_t"]
+    assert agent.tools.get("p1:old_t") is None
+    assert result["a1"] == ["p1:old_t"]
 
 
 @pytest.mark.asyncio
@@ -157,4 +158,4 @@ async def test_sync_skips_non_running() -> None:
     agent.status = "stopped"
     mgr = _FakeAgentManager([agent])
     await sync_plugin_tools_to_agents(mgr, services, "p1")
-    assert agent.tools.get("t1") is None
+    assert agent.tools.get("p1:t1") is None

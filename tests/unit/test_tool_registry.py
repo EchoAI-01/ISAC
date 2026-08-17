@@ -291,14 +291,15 @@ def test_register_default_source_builtin() -> None:
 def test_register_with_source() -> None:
     registry = ToolRegistry()
     registry.register(_NamedTool("a"), source="plugin_x")
-    assert registry.source_of("a") == "plugin_x"
+    # U0 Fix-88: 插件来源工具名加 <plugin>: 前缀
+    assert registry.source_of("plugin_x:a") == "plugin_x"
 
 
 def test_set_current_source() -> None:
     registry = ToolRegistry()
     registry.set_current_source("p1")
     registry.register(_NamedTool("a"))
-    assert registry.source_of("a") == "p1"
+    assert registry.source_of("p1:a") == "p1"
     registry.set_current_source(None)
     registry.register(_NamedTool("b"))
     assert registry.source_of("b") == "builtin"
@@ -307,9 +308,9 @@ def test_set_current_source() -> None:
 def test_deregister_removes_tool() -> None:
     registry = ToolRegistry()
     registry.register(_NamedTool("a"), source="p1")
-    assert registry.deregister("a") is True
-    assert registry.get("a") is None
-    assert registry.source_of("a") is None
+    assert registry.deregister("p1:a") is True
+    assert registry.get("p1:a") is None
+    assert registry.source_of("p1:a") is None
 
 
 def test_deregister_nonexistent_returns_false() -> None:
@@ -323,9 +324,9 @@ def test_deregister_by_source() -> None:
     registry.register(_NamedTool("b"), source="p1")
     registry.register(_NamedTool("c"), source="builtin")
     removed = registry.deregister_by_source("p1")
-    assert sorted(removed) == ["a", "b"]
-    assert registry.get("a") is None
-    assert registry.get("b") is None
+    assert sorted(removed) == ["p1:a", "p1:b"]
+    assert registry.get("p1:a") is None
+    assert registry.get("p1:b") is None
     assert registry.get("c") is not None
 
 
@@ -335,7 +336,7 @@ def test_deregister_plugin_sourced() -> None:
     registry.register(_NamedTool("b"), source="p2")
     registry.register(_NamedTool("c"), source="builtin")
     removed = registry.deregister_plugin_sourced()
-    assert sorted(removed) == ["a", "b"]
+    assert sorted(removed) == ["p1:a", "p2:b"]
     assert registry.get("c") is not None
 
 
@@ -344,11 +345,72 @@ def test_get_by_source() -> None:
     registry.register(_NamedTool("a"), source="p1")
     registry.register(_NamedTool("b"), source="builtin")
     tools = registry.get_by_source("p1")
-    assert [t.name for t in tools] == ["a"]
+    assert [t.name for t in tools] == ["p1:a"]
 
 
 def test_definitions_unaffected_by_source() -> None:
     registry = ToolRegistry()
     registry.register(_NamedTool("a"), source="p1")
     defs = registry.definitions()
-    assert any(d["name"] == "a" for d in defs)
+    assert any(d["name"] == "p1:a" for d in defs)
+
+
+# ── U0 Fix-88: 插件工具命名空间 (<plugin>: 前缀确定性隔离) ─────────────
+
+
+def test_fix88_plugin_tool_gets_namespace_prefix() -> None:
+    """插件来源工具注册名自动加 <plugin>: 前缀。"""
+    registry = ToolRegistry()
+    registry.register(_NamedTool("search"), source="weather")
+    assert registry.get("weather:search") is not None
+    assert registry.get("search") is None  # 原名不再可直达
+
+
+def test_fix88_plugin_tool_cannot_shadow_builtin() -> None:
+    """插件注册与内置同名的工具 → 加前缀后机制上不可能覆盖内置工具。"""
+    registry = ToolRegistry()
+    registry.register(_NamedTool("bash"))  # builtin
+    registry.register(_NamedTool("bash"), source="evil_plugin")  # 同名插件工具
+    # 内置 bash 原样保留, 插件工具被隔离到 evil_plugin:bash
+    assert registry.get("bash") is not None
+    assert registry.get("evil_plugin:bash") is not None
+    assert registry.source_of("bash") == "builtin"
+    assert registry.source_of("evil_plugin:bash") == "evil_plugin"
+
+
+def test_fix88_builtin_tool_not_prefixed() -> None:
+    registry = ToolRegistry()
+    registry.register(_NamedTool("builtin_tool"))  # source=builtin
+    assert registry.get("builtin_tool") is not None
+
+
+def test_fix88_already_namespaced_not_double_prefixed() -> None:
+    """已含 ':' 的名字 (如 mcp:server:tool) 不二次加前缀。"""
+    registry = ToolRegistry()
+    registry.register(_NamedTool("mcp:srv:tool"), source="p1")
+    assert registry.get("mcp:srv:tool") is not None
+    assert registry.get("p1:mcp:srv:tool") is None
+
+
+@pytest.mark.asyncio
+async def test_fix88_namespaced_tool_delegates_execute() -> None:
+    """前缀包装器 execute 透传内层工具。"""
+    registry = ToolRegistry()
+    registry.register(_NamedTool("doit"), source="p1")
+    result = await registry.execute(
+        ToolCall(id="c1", name="p1:doit", arguments={}),
+        make_agent_context(),
+        services={"any": 1},
+    )
+    assert result.is_error is False
+    assert result.content == "ok"
+
+
+def test_fix88_current_source_prefix_on_on_load() -> None:
+    """on_load 期间 set_current_source → 插件 register 的工具加该插件前缀。"""
+    registry = ToolRegistry()
+    registry.set_current_source("myplug")
+    registry.register(_NamedTool("helper"))
+    registry.set_current_source(None)
+    assert registry.get("myplug:helper") is not None
+    assert registry.source_of("myplug:helper") == "myplug"
