@@ -2,7 +2,13 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
-> ⚠️ **最近更新: 2026-08-18 —— U8 注入仲裁门 + 治理门禁完成 (可穿插节点全部清偿)**。会话写入面从"补丁约定"升级为机制仲裁 + 治理门禁, 全部验收项落地:
+> ⚠️ **最近更新: 2026-08-18 —— U2 装配层重构完成 (main.py 2046→82 行 + ServiceContainer, U 节点全部清偿)**。架构债 Z1+Z2 收敛, 全部验收项落地:
+> **①main.py 薄入口**: 2046 行 → **82 行**纯 re-export 兼容面 (既有 `from isac.main import ...` 零改动), AST 精确抽取零转写拆出 —— **dispatch.py** 481 行 (消息主链路)、**wiring.py** 499 行 (build_services + 服务构造器)、**bootstrap.py** 499 行 (main() 运行时生命周期); cli 早已分离 `isac/__main__.py`。卫星模块层级归位: control/bootstrap.py、runtime/plugin_bootstrap.py、channel/registration.py、runtime/mesh/query.py、memory/stack.py (记忆构造器归记忆层)、observability/usage/stack.py、tenancy/media 构造器各归其层。
+> **②ServiceContainer** (runtime/services.py): dict 子类 + **14 核心键类型化属性**, build_services 返回 ServiceContainer —— 键错配在类型层不可能 (mypy strict 293 源文件全绿); dict 语义全保持, 下游字符串键访问渐进迁移 ("先核心 10 键, 再清其余"第一阶段完成, 残余 ~215 处列 U9 批清)。
+> **③lint 红线常驻** (test_u2_assembly_redlines.py): main.py ≤120 行、四模块各 ≤500 行只减不增、薄入口禁函数定义、ServiceContainer 核心键哨兵、拆分模块禁反向 import main (单向链)。
+> 全量 **1962 通过 + 4 skip** 零失败 (smoke_main_resident 本批亦过, U9 根治项不变)、ruff/mypy 全绿。**U2 完成 —— U0-U8 全部清偿, 进入 U9 A+ 复评门禁 (最后节点)**。
+>
+> ⚠️ **2026-08-18 —— U8 注入仲裁门 + 治理门禁完成 (可穿插节点全部清偿)**。会话写入面从"补丁约定"升级为机制仲裁 + 治理门禁, 全部验收项落地:
 > **①SessionWriteGate** (`isac/runtime/write_gate.py`): 主动/注入式写入统一仲裁门 —— 先预约后写入 (`reserve(session_key, source)`, 同会话单活跃租约先到者得; 门内名单 proactive/handoff/plugin_injection/memory_injection, 未登记来源拒绝); hold 窗口默认 30s (clamp 1~600s) 超时作废; `commit` 过期/已取消/被接手 → **fail-closed 丢弃产出** —— Fix-81/82 两次补丁的状态机互踩根因 (多写者无仲裁) 收编进该门。接线: 强制话轮经 `_reserve_forced_turn_write` 预约 (让位不抢, finally 幂等取消) + handoff 归属转移经门; build_services 注入; 未接门零行为变化。**AST 审计常驻**: 门之外 `forced_turn` 赋值/`transition_to` 调用即失败 —— 故意绕过当场捕获。
 > **②治理门禁**: 工具 catalog (自动发现 29 工具: name/description/默认策略) + 配置 catalog (config.sample.jsonc 21 顶层键) 生成脚本, `--check` 漂移检测入 CI catalog-drift job —— 工具面/配置面变更未重新生成入库即失败, 强制变更留档。
 > **③快照回放**: 脱敏 IM 事件流 JSON 夹具 (5 事件: 私聊/@/群聊短反应) 经真实主链路 EventBus→Router→Gating→AgentManager→LLM→Channel 回放, **无真实凭据跑整条 bot 链路** —— 回复序列按 scripted 消费对齐 (WAIT 不消耗回复) + 门在场反应式链路零干扰零残留。

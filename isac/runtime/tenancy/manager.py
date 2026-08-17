@@ -296,3 +296,15 @@ class TenantManager:
                 await db.commit()
         except Exception as exc:  # noqa: BLE001
             logger.warning("TenantManager 删除失败", error=str(exc))
+
+
+# U2: 从 main.py 归位的构造器 (tenancy.enabled 时构造, 否则 None 零行为变化)
+_DATA_DIR = Path("data")
+
+def _build_tenant_manager(tenancy_config: dict[str, Any]) -> Any:
+    """R6-①: tenancy.enabled 时构造 TenantManager (SQLite); 否则 None (路由不挂载, 零行为变化)。"""
+    if not bool(tenancy_config.get("enabled")):
+        return None
+    from isac.runtime.tenancy.manager import TenantManager
+
+    return TenantManager(db_path=str(_DATA_DIR / "gateway" / "tenants.db"))

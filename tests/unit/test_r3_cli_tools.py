@@ -11,7 +11,7 @@ from pathlib import Path
 
 def test_build_services_injects_cli_tool_backends(tmp_path: Path, monkeypatch) -> None:
     """build_services 注入 workspace_root (data/workspace, mkdir) + bash_allowlist。"""
-    monkeypatch.setattr("isac.main.DATA_DIR", tmp_path)
+    monkeypatch.setattr("isac.wiring.DATA_DIR", tmp_path)
     from isac.main import build_services
 
     services = build_services(
@@ -25,7 +25,7 @@ def test_build_services_injects_cli_tool_backends(tmp_path: Path, monkeypatch) -
 
 def test_build_services_default_bash_allowlist_empty(tmp_path: Path, monkeypatch) -> None:
     """未配置 tools.bash_allowlist 时默认空 (禁止所有命令, 但 services 已注入)。"""
-    monkeypatch.setattr("isac.main.DATA_DIR", tmp_path)
+    monkeypatch.setattr("isac.wiring.DATA_DIR", tmp_path)
     from isac.main import build_services
 
     services = build_services({})

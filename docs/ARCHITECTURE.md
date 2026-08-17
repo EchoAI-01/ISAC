@@ -1323,8 +1323,11 @@ ISAC/
 │
 ├── isac/                           # 主包
 │   ├── __init__.py                 # 版本号
-│   ├── __main__.py                 # 入口
-│   ├── main.py                     # 应用入口
+│   ├── __main__.py                 # CLI 入口 (run/password/secret/plugin 子命令)
+│   ├── main.py                     # 薄入口 (U2: 纯 re-export 兼容面, ≤120 行红线)
+│   ├── dispatch.py                 # U2 消息主链路 (入站→路由→Agent→出站)
+│   ├── wiring.py                   # U2 服务装配 (build_services → ServiceContainer)
+│   ├── bootstrap.py                # U2 启动编排 (main 运行时生命周期)
 │   │
 │   ├── core/                       # 核心框架
 │   │   ├── __init__.py

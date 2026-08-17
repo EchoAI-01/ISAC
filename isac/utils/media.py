@@ -193,3 +193,23 @@ class MediaNormalizer:
                 context={"uri": uri, "expected": expected_kind, "actual": kind},
             )
         return mime_type, kind
+
+
+# U2: 从 main.py 归位的构造器 —— 白名单恒含 data/uploads (入站媒体落盘目录)
+from typing import Any as _Any  # noqa: E402
+
+
+def _build_media_normalizer(global_config: dict[str, _Any]) -> Any:
+    """R1-②: 构造 MediaNormalizer, 白名单含 data/uploads (入站媒体下载落盘目录)。
+
+    安全: transcribe_audio/understand_image 等工具必须先经 MediaNormalizer 校验
+    media_uri (白名单 + MIME + 大小上限), 不能直接信任 LLM 工具参数里的任意路径。
+    """
+    from isac.utils.media import MediaNormalizer
+
+    mn_config = dict(global_config.get("media_normalizer") or {})
+    allowed = list(mn_config.get("allowed_dirs") or ["data/artifacts", "data/uploads"])
+    if "data/uploads" not in allowed:
+        allowed.append("data/uploads")
+    mn_config["allowed_dirs"] = allowed
+    return MediaNormalizer(mn_config)
