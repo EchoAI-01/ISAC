@@ -376,6 +376,72 @@ def _merge_shared_plugin_commands(
             commands.register(_cmd)
 
 
+def _merged_gating_config(global_config: dict[str, Any], agent_gating: dict[str, Any] | None) -> dict[str, Any]:
+    """U3: 合并全局 ``config.gating`` 与 Agent 级 ``AgentConfig.gating``。
+
+    全局节提供部署默认 (strategy/locale/weights/markers/词表), Agent 级覆盖
+    (浅合并, Agent 键优先)。两者皆空时返回 {} (GatingSystem 用框架默认)。
+    """
+    merged: dict[str, Any] = {}
+    global_gating = global_config.get("gating") if isinstance(global_config, dict) else None
+    if isinstance(global_gating, dict):
+        merged.update(global_gating)
+    if isinstance(agent_gating, dict):
+        # 嵌套 dict (weights/markers) 也做浅合并, Agent 覆盖全局同名子键。
+        for key, value in agent_gating.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = {**merged[key], **value}
+            else:
+                merged[key] = value
+    return merged
+
+
+def _build_gating_judge_fn(
+    global_config: dict[str, Any], agent_gating: dict[str, Any] | None, services: dict[str, Any]
+) -> Any:
+    """U3: llm-judge/hybrid 档时构造门控相关性判定函数; 其余档/无 provider 返回 None。
+
+    判定器用 fallback 链**最便宜档** (fallback provider 优先, 缺则 primary), 经
+    ProviderManager.chat_with_retry 调用 (自带重试 + 降级)。解析模型 yes/no 输出
+    为 True/False, 无法判定返回 None (策略层回落 keywords)。成本与频率上限见
+    ARCHITECTURE.md 3.7。
+    """
+    merged = _merged_gating_config(global_config, agent_gating)
+    strategy = str(merged.get("strategy") or "keywords").strip().lower()
+    if strategy not in ("llm-judge", "hybrid"):
+        return None
+    provider_manager = services.get("provider_manager")
+    if provider_manager is None:
+        return None
+    provider = getattr(provider_manager, "_fallback", None) or getattr(provider_manager, "_primary", None)
+    if provider is None:
+        return None
+
+    judge_system = (
+        "你是群聊相关性裁判。判断一条群聊消息是否需要 AI 助手回应 "
+        "(被提问、被请求、征求意见、或明确需要帮助)。只回答 yes 或 no。"
+    )
+
+    async def judge_fn(content: str, context: Any) -> bool | None:
+        try:
+            response = await provider_manager.chat_with_retry(
+                provider,
+                agent_id="gating-judge",
+                system=judge_system,
+                messages=[{"role": "user", "content": content}],
+            )
+            text = str(getattr(response, "content", "") or "").strip().lower()
+            if text.startswith("yes"):
+                return True
+            if text.startswith("no"):
+                return False
+            return None
+        except Exception:  # noqa: BLE001 判定器故障由策略层 fail-safe 回落
+            return None
+
+    return judge_fn
+
+
 async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> AgentInstance:
     """按配置组装一个 AgentInstance。
 
@@ -398,7 +464,10 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
         channel_overrides=channel_overrides,
     )
 
-    gating = GatingSystem(config=config.gating)
+    gating = GatingSystem(
+        config=_merged_gating_config(global_config, config.gating),
+        judge_fn=_build_gating_judge_fn(global_config, config.gating, services),
+    )
 
     prompt_builder = SystemPromptBuilder()
     # Q2 激活: persona.description (Agent 级覆盖全局) 接入身份注入器, 使不同 Agent

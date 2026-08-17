@@ -162,6 +162,24 @@
     }
   },
 
+  // U3 门控策略化 (全局默认; Agent 级 AgentConfig.gating 可覆盖)。调整任一参数
+  // 都不改代码。strategy 四档: off / keywords (默认) / llm-judge / hybrid。
+  //   - locale: 门控词表语言 (zh_CN 默认中文词表 / en_US 英文词表), 词表在 locales。
+  //   - weights: 评分权重覆盖 (缺省用框架默认, 见 isac/gating/profile.py)。
+  //   - markers: question/request/consult 词表覆盖 (优先于 locale 词表)。
+  //   - llm-judge/hybrid 用小模型判群聊发言相关性: llm_judge_max_per_minute 频率
+  //     上限 (成本防护), 判定器故障/超限自动回落 keywords (fail-safe)。成本估算:
+  //     每次判定约 1 次最便宜 fallback 档调用 (prompt≈系统语+消息, 输出 yes/no)。
+  "gating": {
+    "strategy": "keywords",
+    "locale": "zh_CN",
+    "reply_necessity_threshold": 80
+    // "weights": { "content_question": 15, "content_request": 20 },
+    // "markers": { "question": ["?", "吗"] },
+    // "llm_judge_max_per_minute": 10,
+    // "hybrid_escalate_band": 20
+  },
+
   // P1 拟人化会话运行时 (默认关闭 = 每条消息即时处理, 零行为变化)
   // enabled=true 后:
   //   - debounce_seconds: 静默窗口秒数, 窗口内的连续消息合并为一轮处理 (0 = 不合并)

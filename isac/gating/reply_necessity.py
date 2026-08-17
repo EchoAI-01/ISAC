@@ -20,38 +20,29 @@ score() 主要服务群聊「提及但未 @」与普通消息路径；基础分�
 from __future__ import annotations
 
 from isac.channel.model import ISACMessage
-from isac.core.constants import (
-    GATING_BASE_SCORE_AT,
-    GATING_BASE_SCORE_FOCUS,
-    GATING_BASE_SCORE_MENTION,
-    GATING_BASE_SCORE_PRIVATE,
-    GATING_CONSULT_MARKERS,
-    GATING_CONTENT_CONSULT,
-    GATING_CONTENT_LONG_TEXT,
-    GATING_CONTENT_LONG_TEXT_EXTRA,
-    GATING_CONTENT_QUESTION,
-    GATING_CONTENT_REQUEST,
-    GATING_CONTENT_SHORT_REACTION,
-    GATING_FREQUENCY_MAX,
-    GATING_FREQUENCY_MIN,
-    GATING_LONG_TEXT_THRESHOLD,
-    GATING_LONG_TEXT_THRESHOLD_EXTRA,
-    GATING_PRESENCE_PENALTY_MAX,
-    GATING_PRESSURE_CAP,
-    GATING_PRESSURE_PER_PENDING,
-    GATING_QUESTION_MARKERS,
-    GATING_REQUEST_MARKERS,
-    GATING_SHORT_REACTION_MAX_LEN,
-    REPLY_NECESSITY_THRESHOLD,
-)
 from isac.core.types import GatingContext
+from isac.gating.profile import GatingProfile
+from isac.gating.strategy import GatingStrategy, build_strategy
 
 
 class ReplyNecessityJudge:
-    """回复必要性评分器 (ARCHITECTURE.md 3.7)。"""
+    """回复必要性评分器 (ARCHITECTURE.md 3.7)。
 
-    def __init__(self, threshold: int = REPLY_NECESSITY_THRESHOLD):
-        self.threshold = threshold
+    U3 门控策略化: 权重与词表收口到 GatingProfile (配置 + i18n), 内容判定经
+    GatingStrategy 可插拔 (off/keywords/llm-judge/hybrid)。默认 profile =
+    U3 前框架默认 (zh_CN keywords), 零行为变化。
+    """
+
+    def __init__(
+        self,
+        threshold: int | None = None,
+        profile: GatingProfile | None = None,
+        strategy: GatingStrategy | None = None,
+    ):
+        self.profile = profile or GatingProfile()
+        # threshold 显式传入优先 (向后兼容旧构造签名), 否则用 profile 值。
+        self.threshold = int(threshold) if threshold is not None else self.profile.threshold
+        self.strategy = strategy or build_strategy(self.profile)
 
     async def score(self, pending: list[ISACMessage], context: GatingContext) -> float:
         """计算回复必要性得分。
@@ -66,68 +57,70 @@ class ReplyNecessityJudge:
         content = (context.current_message.content or "").strip()
 
         base = self._base_score(context)
-        content_score = self._content_score(content, context)
-        pressure = min(context.pending_count * GATING_PRESSURE_PER_PENDING, GATING_PRESSURE_CAP)
+        content_score = await self._content_score(content, context)
+        pressure = min(
+            context.pending_count * self.profile.pressure_per_pending, self.profile.pressure_cap
+        )
         presence_penalty = self._presence_penalty(context)
         frequency = self._clamp_frequency(context.effective_frequency)
 
         raw = base + content_score + pressure - presence_penalty
         return max(0.0, raw * frequency)
 
-    @staticmethod
-    def _base_score(context: GatingContext) -> float:
+    def _base_score(self, context: GatingContext) -> float:
         """基础分：取适用信号中的最高档。"""
+        p = self.profile
         if context.has_at:
-            return float(GATING_BASE_SCORE_AT)
+            return float(p.base_at)
         if context.has_mention:
-            return float(GATING_BASE_SCORE_MENTION)
+            return float(p.base_mention)
         if context.focus_active:
-            return float(GATING_BASE_SCORE_FOCUS)
+            return float(p.base_focus)
         if context.is_private:
-            return float(GATING_BASE_SCORE_PRIVATE)
+            return float(p.base_private)
         return 0.0
 
-    @staticmethod
-    def _content_score(content: str, context: GatingContext) -> float:
-        """内容分：问题/请求/征询/长文本加分，纯短反应扣分。"""
+    async def _content_score(self, content: str, context: GatingContext) -> float:
+        """内容分：问题/请求/征询/长文本加分，纯短反应扣分。
+
+        U3: 问询信号经 GatingStrategy 产出 (可插拔 off/keywords/llm-judge/hybrid)。
+        """
         if not content:
             return 0.0
+        p = self.profile
 
-        is_question = any(marker in content for marker in GATING_QUESTION_MARKERS)
-        is_request = any(marker in content for marker in GATING_REQUEST_MARKERS)
         mentioned = context.has_at or context.has_mention
-        is_consult = mentioned and any(marker in content for marker in GATING_CONSULT_MARKERS)
+        signals = await self.strategy.signals(content, context, mentioned)
 
         score = 0.0
-        if is_question:
-            score += GATING_CONTENT_QUESTION
-        if is_request:
-            score += GATING_CONTENT_REQUEST
-        if is_consult:
-            score += GATING_CONTENT_CONSULT
+        if signals.is_question:
+            score += p.content_question
+        if signals.is_request:
+            score += p.content_request
+        if signals.is_consult:
+            score += p.content_consult
 
         length = len(content)
-        if length > GATING_LONG_TEXT_THRESHOLD_EXTRA:
-            score += GATING_CONTENT_LONG_TEXT_EXTRA
-        elif length > GATING_LONG_TEXT_THRESHOLD:
-            score += GATING_CONTENT_LONG_TEXT
+        if length > p.long_text_threshold_extra:
+            score += p.content_long_text_extra
+        elif length > p.long_text_threshold:
+            score += p.content_long_text
 
         # 短反应扣分：仅当没有任何问询信号时才算「无意义短回应」
-        if not (is_question or is_request or is_consult) and length <= GATING_SHORT_REACTION_MAX_LEN:
-            score += GATING_CONTENT_SHORT_REACTION
+        has_inquiry = signals.is_question or signals.is_request or signals.is_consult
+        if not has_inquiry and length <= p.short_reaction_max_len:
+            score += p.content_short_reaction
 
         return score
 
-    @staticmethod
-    def _presence_penalty(context: GatingContext) -> float:
+    def _presence_penalty(self, context: GatingContext) -> float:
         """存在感惩罚：近窗口本 Agent 发言占比越高，越抑制发言 (0~上限)。"""
         window = context.recent_window_messages
         if window <= 0:
             return 0.0
         ratio = min(context.recent_self_replies / window, 1.0)
-        return GATING_PRESENCE_PENALTY_MAX * ratio
+        return self.profile.presence_penalty_max * ratio
 
-    @staticmethod
-    def _clamp_frequency(frequency: float) -> float:
+    def _clamp_frequency(self, frequency: float) -> float:
         """频率系数限制在 [下限, 上限]。"""
-        return max(GATING_FREQUENCY_MIN, min(GATING_FREQUENCY_MAX, frequency))
+        return max(self.profile.frequency_min, min(self.profile.frequency_max, frequency))
