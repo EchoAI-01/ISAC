@@ -269,8 +269,15 @@
   // R3: CLI 工具后端配置。workspace_root 固定为 data/workspace (LLM 文件操作沙箱,
   // read_file/write_file 相对它解析, 禁绝对路径/..越权)。bash_allowlist 默认空
   // (禁止所有命令); 配置允许的命令前缀让 bash 工具可用 (如 ["ls", "cat", "git"])。
+  //
+  // U5 approval: ask 档工具的人工审批配置。tools_policy 值设为 "ask" 的工具执行前
+  // 需人工批准 (IM 回复 "同意 <审批码>"/"拒绝 <审批码>", 或控制面 POST
+  // /api/v1/approvals/{id}/decide); timeout_seconds 秒内未回复自动拒绝 (fail-closed)。
   "tools": {
-    "bash_allowlist": []
+    "bash_allowlist": [],
+    "approval": {
+      "timeout_seconds": 300
+    }
   },
 
   // R3: 全局 MCP Server 定义。assemble_agent 按 Agent 级 mcp_servers (允许名列表)

@@ -104,7 +104,8 @@ class EnableMatrix:
             channel_val = channel_cfg[tool_name]
             if channel_val == DECISION_DENY:
                 return DECISION_DENY
-            if channel_val in (DECISION_ALLOW, "restricted"):
+            # U5: ask 档 (人工审批) 与 allow/restricted 一样可作 channel 覆盖值
+            if channel_val in (DECISION_ALLOW, "restricted", "ask"):
                 policy = channel_val
         return policy
 
