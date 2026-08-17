@@ -604,7 +604,10 @@ def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[st
                 api_key=api_key,
                 base_url=str(llm_config.get("base_url", "")),
                 model=str(llm_config.get("model", "")),
-            )
+            ),
+            # U7: provider_id 与 ModelDescriptor 键一致, category 路由据此取回实例
+            provider_id=str(llm_config.get("provider", "") or "primary"),
+            model_id=str(llm_config.get("model", "")),
         )
         logger.info(
             "已注册 OpenAICompatProvider",
@@ -620,6 +623,66 @@ def register_llm_provider(provider_manager: ProviderManager, llm_config: dict[st
             provider=llm_config.get("provider"),
             api_key_placeholder=is_placeholder_key(api_key),
         )
+
+
+def _wire_llm_capabilities(services: dict[str, Any], global_config: dict[str, Any]) -> None:
+    """U7: 能力快照接线 —— ModelRouter 注入 + primary LLM 描述符注册。
+
+    ①provider_manager.model_router = model_router: chat_with_retry 成功/最终失败
+    上报健康状态, 路由按可达性过滤 (record_health 从"定义未接线"转生产接线);
+    ②primary LLM 注册 ModelDescriptor: supports_tools/模态从
+    data/model_capabilities.json (models.dev 快照) 增强, cost/latency 档可经
+    llm.cost_tier/latency_tier 配置。快照缺失时保守默认 (不阻塞, 仅路由精细度下降)。
+    Stub 引导态不注册描述符 (不参与能力路由)。
+    """
+    from isac.provider.capabilities import CapabilitySnapshot
+
+    provider_manager = services.get("provider_manager")
+    model_catalog = services.get("model_catalog")
+    if provider_manager is None or model_catalog is None:
+        return
+    model_router = services.get("model_router")
+    if model_router is not None:
+        provider_manager.model_router = model_router
+
+    llm_config = global_config.get("llm", {}) or {}
+    provider = getattr(provider_manager, "_primary", None)
+    provider_id = str(llm_config.get("provider") or "primary")
+    if provider is None or not str(llm_config.get("model") or ""):
+        return  # Stub 引导态/未配置模型: 不注册描述符
+    model_id = str(llm_config.get("model"))
+
+    snapshot = CapabilitySnapshot.load(DATA_DIR / "model_capabilities.json")
+    cap = snapshot.get(provider_id, model_id)
+    modalities_in = {"text"}
+    supports_tools = False
+    if cap is not None:
+        supports_tools = bool(cap.supports_tools)
+        modalities_in |= set(cap.modalities_in)
+    operations = {"chat"}
+    if "image" in modalities_in:
+        operations.add("vision")
+    cost_tier = str(llm_config.get("cost_tier") or "") or (cap.cost_tier if cap else "") or "standard"
+    descriptor = ModelDescriptor(
+        provider_id=provider_id,
+        model_id=model_id,
+        modalities_in=modalities_in,
+        modalities_out={"text"},
+        operations=operations,
+        supports_tools=supports_tools,
+        supports_streaming=True,
+        cost_tier=cost_tier,
+        latency_tier=str(llm_config.get("latency_tier") or "standard"),
+    )
+    model_catalog.register(descriptor)
+    logger.info(
+        "已注册 LLM 能力描述符",
+        provider=provider_id,
+        model=model_id,
+        supports_tools=supports_tools,
+        snapshot_hit=cap is not None,
+        snapshot_models=len(snapshot),
+    )
 
 
 # J2: 多模态 Provider 按 kind 实例化 + 注册到 ProviderManager + ModelCatalog
@@ -1259,6 +1322,8 @@ async def main() -> None:
     services = build_services(global_config)
     metrics: MetricsCollector = services["metrics"]
     register_llm_provider(services["provider_manager"], global_config.get("llm", {}))
+    # U7: 能力快照接线 (model_router 注入 + primary LLM 描述符注册, 见函数 docstring)
+    _wire_llm_capabilities(services, global_config)
 
     # ── Runtime (Agent 管理 + 互联总线) ─────────────────────
     agent_manager = AgentManager(services)

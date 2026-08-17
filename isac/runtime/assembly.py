@@ -376,6 +376,60 @@ def _merge_shared_plugin_commands(
             commands.register(_cmd)
 
 
+def _register_identity_prompts(
+    prompt_builder: SystemPromptBuilder, config: AgentConfig, global_config: dict[str, Any]
+) -> None:
+    """身份注入装配 (U7): prompt 文件优先, config 路径兜底。
+
+    <agents_dir>/<agent_id>/prompts/*.md 存在时按文件装配 (改人格=改文件, 新增
+    模型族变体=加一个文件); persona 族文件**替代** config 身份注入, 其余族
+    (rules 等) 追加注入。无 prompt 文件时落回 Q2 config 路径 (零行为变化)。
+    """
+    if _register_file_prompts(prompt_builder, config, global_config):
+        return
+    # Q2 激活: persona.description (Agent 级覆盖全局) 接入身份注入器, 使不同 Agent
+    # 的人格文本在 System Prompt 中可辨; 未配置时两者皆空, 注入器自身回落默认文案
+    # (零行为变化)。
+    identity_text = config.persona.get("description") or global_config.get("persona", {}).get("description")
+    prompt_builder.register(BaseIdentityInjector(identity_text))
+
+
+def _register_file_prompts(
+    prompt_builder: SystemPromptBuilder, config: AgentConfig, global_config: dict[str, Any]
+) -> bool:
+    """U7 prompt 文件化: 从 <agents_dir>/<agent_id>/prompts/*.md 装配注入器。
+
+    persona 族文件替代 config 身份注入 (返回 True 时调用方跳过 BaseIdentityInjector);
+    其余族 (rules/自定义) 追加注入。变体按当前模型族选择 (config.llm.model_family
+    覆盖优先, 否则按模型名前缀推断) —— 新增模型族 = 加一个 variant 文件, 零代码改动。
+    无 prompt 文件目录/空目录返回 False (落回 config 路径, 零行为变化)。
+    """
+    from pathlib import Path
+
+    from isac.agent.prompt_files import FilePromptInjector, load_prompt_dir, model_family_of
+
+    agents_dir = str((global_config.get("control", {}) or {}).get("agents_dir", "data/agents"))
+    grouped = load_prompt_dir(Path(agents_dir) / config.agent_id / "prompts")
+    if not grouped:
+        return False
+
+    # 模型族解析器: 构建时闭包读取 Agent/全局 llm 配置 (reload 后取到新值)。
+    agent_llm = config.llm if isinstance(config.llm, dict) else None
+
+    def _model_family() -> str:
+        llm_config = agent_llm if agent_llm is not None else (global_config.get("llm") or {})
+        return model_family_of(
+            str(llm_config.get("model") or ""), override=str(llm_config.get("model_family") or "")
+        )
+
+    has_persona_file = False
+    for family, docs in sorted(grouped.items()):
+        priority = 100 if family == "persona" else None  # persona 族对齐身份注入优先级
+        prompt_builder.register(FilePromptInjector(family, docs, _model_family, priority=priority))
+        has_persona_file = has_persona_file or family == "persona"
+    return has_persona_file
+
+
 def _merged_gating_config(global_config: dict[str, Any], agent_gating: dict[str, Any] | None) -> dict[str, Any]:
     """U3: 合并全局 ``config.gating`` 与 Agent 级 ``AgentConfig.gating``。
 
@@ -470,11 +524,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     )
 
     prompt_builder = SystemPromptBuilder()
-    # Q2 激活: persona.description (Agent 级覆盖全局) 接入身份注入器, 使不同 Agent
-    # 的人格文本在 System Prompt 中可辨; 未配置时两者皆空, 注入器自身回落默认文案
-    # (零行为变化)。
-    _identity_text = config.persona.get("description") or global_config.get("persona", {}).get("description")
-    prompt_builder.register(BaseIdentityInjector(_identity_text))
+    _register_identity_prompts(prompt_builder, config, global_config)
     # J2: 多模态能力注入器 (默认无授权媒体能力 → 注入空串, 主链路零变化)。
     # model_capabilities_allow 字段将在 J2 实现节点加入 AgentConfig; 当前经 getattr 兜底。
     _media_caps = [c for c in (getattr(config, "model_capabilities_allow", None) or []) if c != "chat"]

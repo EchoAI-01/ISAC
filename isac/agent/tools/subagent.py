@@ -57,6 +57,14 @@ class DelegateTaskTool(_SupervisorToolBase):
             "properties": {
                 "objective": {"type": "string", "description": "子任务目标"},
                 "summary": {"type": "string", "description": "给子 Agent 的最小背景摘要"},
+                "category": {
+                    "type": "string",
+                    "enum": ["qa", "creative", "tool_heavy", "chat"],
+                    "description": (
+                        "任务类型 (U7 category 路由): qa=问答检索, creative=创作生成, "
+                        "tool_heavy=工具密集, chat=轻量闲聊; runner 按类型选模型链, 缺省用父 Agent 模型"
+                    ),
+                },
             },
             "required": ["objective"],
         }
@@ -71,6 +79,9 @@ class DelegateTaskTool(_SupervisorToolBase):
             return ToolResult(content="缺少 objective, 无法派生子任务。", is_error=True)
 
         summary = str(context.args.get("summary", "") or "")
+        # U7: category 路由 —— 任务类型透传 runner, 按类型经 ModelRouter 选模型链;
+        # 非法值透传后 runner profile_for 返回 None → 回落父 Agent 模型 (fail-safe)。
+        category = str(context.args.get("category", "") or "").strip().lower()
         # Fix-68: task_depth 由 runner 写入 AgentContext.services, 此前从
         # ToolContext.services (收窄后的 loop.services) 读恒 0 → 深度守卫失效。
         depth = int(context.agent_context.services.get("task_depth", 0) or 0)
@@ -90,7 +101,7 @@ class DelegateTaskTool(_SupervisorToolBase):
             session_id=getattr(agent_ctx.session, "session_id", ""),
             trace_id=str(agent_ctx.services.get("task_id", "") or task_id),
             objective=objective,
-            context={"summary": summary, "task_depth": depth + 1},
+            context={"summary": summary, "task_depth": depth + 1, "category": category},
             policy=SubAgentPolicy(max_depth=max_depth),
             created_at=int(time.time()),
         )

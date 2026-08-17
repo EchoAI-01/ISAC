@@ -29,6 +29,25 @@
     "api_key": "sk-your-key",
     "base_url": "https://api.openai.com/v1",
     "model": "gpt-4o-mini"
+    // ── U7 数据化可选键 ──────────────────────────────────────────
+    // cost_tier / latency_tier: 本模型在 ModelRouter 的档位 (free|low|standard|high /
+    //   fast|standard|slow), category 路由打分用; 缺省按能力快照标注或 standard。
+    // model_family: prompt 文件变体选择用的模型族名 (缺省按模型名前缀推断,
+    //   如 gpt-* → gpt, claude-* → claude); 新模型族在此声明即可匹配 prompts/ 变体。
+    // "cost_tier": "low",
+    // "latency_tier": "fast",
+    // "model_family": "gpt"
+  },
+
+  // U7 category 路由: 委派任务 (delegate_task.category) 按类型选模型链, 经
+  // ModelCatalog/ModelRouter 数据驱动选择 (能力/成本/延迟/可达性过滤)。
+  // 四类默认画像见 isac/provider/category_routing.py; categories 节可覆盖任一字段
+  // (operation/cost_ceiling/latency_target/requires_tools), 不改代码。
+  "model_routing": {
+    "categories": {
+      // "chat": { "cost_ceiling": "free" },
+      // "creative": { "cost_ceiling": "high" }
+    }
   },
 
   // J2 多模态 Provider 数组: 用户可配置任意 OpenAI 兼容端点

@@ -17,6 +17,9 @@ htmlcov/
 data/*
 !data/.gitkeep
 !data/config.sample.jsonc
+# U7 模型能力快照 (models.dev 生成, CI 每周刷新, 见 .github/workflows/model-capabilities.yml)
+!data/model_capabilities.json
+!data/model_capabilities.overrides.json
 
 # IDE
 .idea/
