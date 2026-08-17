@@ -22,6 +22,7 @@ import pytest
 from isac.agent.tools.base import Tool, ToolContext, ToolPermission, ToolResult
 from isac.agent.tools.registry import ToolRegistry
 from isac.memory.embedder import EmbeddingManager
+from isac.memory.model import MemoryGovernor
 from isac.memory.pipeline import MemoryRetrievalPipeline
 from isac.memory.reranker import Reranker
 from isac.memory.storage.graph import GraphStore
@@ -85,6 +86,55 @@ async def test_cross_tenant_search_isolated(tmp_path: Path) -> None:
         await pipe_a.graph.close()
         await pipe_b.vector.close()
         await pipe_b.graph.close()
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_governance_rejected(tmp_path: Path) -> None:
+    """U0 Fix-85: 两租户共享同一 memory.db, 治理面 (freeze/protect/correct/delete/
+    restore/export) 必须按租户作用域隔离 —— 租户 A 的 governor 对租户 B 的记忆条目
+    一律拒绝 (返回 False / 空), 租户 B 自己的 governor 可正常操作。
+
+    回归此前漏洞: MemoryGovernor 直连 db_path 裸 SQL 只按 agent_id 过滤, 绕过租户
+    谓词, 租户 A 凭据可 freeze/correct/delete 租户 B 的记忆 (多租户卖点面越权)。
+    """
+    guard = TenantIsolationGuard(enabled=True)
+    tenant_a = TenantContext(organization_id="acme", tenant_id="t1")
+    tenant_b = TenantContext(organization_id="globex", tenant_id="t9")
+    db_path = str(tmp_path / "memory.db")
+    store_a = MetadataStore(db_path, tenant_guard=guard, tenant_context=tenant_a)
+    store_b = MetadataStore(db_path, tenant_guard=guard, tenant_context=tenant_b)
+    await store_b.init_schema()
+    # 租户 B 写入一条记忆 (打 globex/t9 租户标)
+    item_id = await store_b.store_episode(
+        NAMESPACE, {"id": "ep_b_secret", "content": "租户B 的机密记忆", "summary": "s"}
+    )
+    assert item_id == "ep_b_secret"
+
+    # 租户 A 的 governor (包装带 acme/t1 上下文的 store) 越权操作 → 一律拒绝
+    gov_a = MemoryGovernor(store_a)
+    assert await gov_a.freeze(item_id, NAMESPACE) is False
+    assert await gov_a.protect(item_id, NAMESPACE) is False
+    assert await gov_a.correct(item_id, "被篡改", NAMESPACE) is False
+    assert await gov_a.delete(item_id, NAMESPACE) is False
+    assert await gov_a.restore(item_id, NAMESPACE) is False
+    assert await gov_a.export(NAMESPACE) == []
+
+    # 正向对照: 租户 B 自己的 governor 可操作 (同库同租户不误伤)
+    gov_b = MemoryGovernor(store_b)
+    assert await gov_b.freeze(item_id, NAMESPACE) is True
+    assert await gov_b.export(NAMESPACE) != []
+
+
+@pytest.mark.asyncio
+async def test_governance_default_tenant_passthrough(tmp_path: Path) -> None:
+    """U0 Fix-85 回归保护: tenancy 未启用 (guard disabled) 时治理行为零变化 ——
+    不加租户谓词, 既有单租户部署不受影响。"""
+    store = MetadataStore(str(tmp_path / "memory.db"))  # 无 guard/context
+    await store.init_schema()
+    item_id = await store.store_episode(NAMESPACE, {"id": "ep_1", "content": "普通记忆"})
+    gov = MemoryGovernor(store)
+    assert await gov.freeze(item_id, NAMESPACE) is True
+    assert await gov.delete(item_id, NAMESPACE) is True
 
 
 # ── 2. 插件进程隔离 (spawn → load → call → crash restart) ─────────
