@@ -14,6 +14,8 @@
 4. **文档即蓝图**：整体思路、节点待办、项目构造、蓝图必须落成文档；修改实现时同步更新文档。
 5. **代码可读性**：必须写中文 docstring；复杂逻辑加行内注释解释"为什么"；保持代码整洁。
 6. **文档可读性**：避免模糊词与未定义名词；必须解释的专业术语集中放在 [术语表](#五术语表)。
+7. **禁止"定义了未接线"**：安全相关的常量、机制、限制必须接线到生产或删除，不允许零引用声明（2026-08-17 立；反例：MAX_EXTRACTED_BYTES / install_sandbox / CompressionPolicy 三处）。
+8. **同构面核对清单**：每个安全/防护修复交付前，必须核对同类入口是否全部覆盖同等防护（2026-08-17 立；反例：mcp: 前缀未推广到兼容层、SSRF pin 未推广到入站下载、租户谓词未推广到治理面）。
 
 ---
 
@@ -38,6 +40,8 @@
 当前概况(详见 PROGRESS.md)：A-K 已达可运行完成度 —— A-C、F-H 完成;E 经 K6 端到端验收;I 主体完成(WebUI v2 已落地,浏览器测试 CI 随 K8 接入);J1-J4 完成;K1-K8 稳定化完成,进入发布候选。**L 拟人化 / M 路由 Mesh / N 记忆深化 / O 企业化** 四大节点的 14 子节点中,**L2-L5、M1-M2、N1-N3、O1-O3 核心逻辑 + 单测已实现,但主链路尚未接线**(标 `[~]`:默认关闭、生产路径无调用点,按 §二完成定义尚不算完成),O4/O5 未开始(`[ ]`);向量库 / 图谱 / Embedding / Reranker 检索后端已实现(向量/图谱召回待接入 pipeline)。为把这些 `[~]` 能力接入同一主链路协同工作,新增大节点 **P 主链路接线与激活**(P0-P5,定义见 §四)。当前 1271 单测通过、ruff/mypy 全绿、主链路零行为变化。**2026-07-27 骨架轮 (S1-S7)** 又为 P3 图谱召回 / P4 身份归一 / P5 Workflow 控制面 / MemoryConsolidator / O4 三平台(飞书·微信·QQ 官方)/ O5 视频 Provider 补齐**骨架 + 默认关闭接线锚点**(均 default-off、零行为变化,见各节点"当前"与文末"S 骨架轮")。
 
 **2026-07-26 MVP 差距复核**：对照 `docs/REQUIREMENTS.md` 十二条原始需求做 10 域并行代码取证(498 次代码检索 + 一次真实启动实测),发现一批标 `[x]` **已交付**的节点(D8/E4/F1-F3/H1/H2/J1-J4/K1-K4/K7)存在与其"完成定义"矛盾的未接线子行为,已在对应节点下补记"**2026-07-26 MVP 缺口复核**"说明(不改动其余已验证部分的 `[x]`);并新增大节点 **Q MVP 收尾**,收纳未被 P0-P5 覆盖、但 MVP 必需的缺口(记忆写入回路等,定义见 §四 Q)。技术路线全景见 [ROADMAP.md](./ROADMAP.md);模块开发范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
+
+**2026-08-17 全景 Review 与架构演进决策**: 完成 18 项目全景 Review (16 存量项目增量核对 + 新增 deepseek-harness / oh-my-openagent 全量审查) 与 ISAC 深度 Review (报告归档于工作目录 `.tmpfiles/agent-review-2026-08-17/`, 含 `isac-deep.md` 461 行深度评估, 实测 pytest 1822/7/3、ruff/mypy 全绿): 认定 **4 项安全实洞**与 **8 项架构问题** (区别于"功能未完成"的进度问题, 定性原则见 §三之五)。项目负责人拍板**升级完再发版** (不留过渡形态): 新增大节点 **U 架构演进轮** (U0 安全清偿、U1-U8 八项架构升级、U9 A+ 复评门禁, 定义见 §四 U); 发布路径与四项已拍板决策见 **§三之五** (取代 §三之三/§三之四 的 M-GA 定义); 架构债 Z1/Z2 升级收敛至 U2, 兼容层隔离收敛至 U6。
 
 ## 三之二、下一步开发计划 (2026-08-15 整合: 前后端分离 · 后端先行)
 
@@ -179,7 +183,7 @@
 
 ### 里程碑路径
 
-M-T2 可部署可管理 = N1 + N4-F1/F2 (前端落地即达成, 后端段已完成); **M-T3 可接入 = N2 + N3** (环境与凭据解除后); M-T4 可扩展已达成 (R3+T6); **M-GA v1.0 = N2 全过 + N3 至少一个平台真机通过 + N4-F2 完成** + release_checklist 七段全绿。GA 后进入 §四 GA 后开发计划 (V/X/Y/Z)。
+M-T2 可部署可管理 = N1 + N4-F1/F2 (前端落地即达成, 后端段已完成); **M-T3 可接入 = N2 + N3** (环境与凭据解除后); M-T4 可扩展已达成 (R3+T6); **M-GA v1.0 = N2 全过 + N3 至少一个平台真机通过 + N4-F2 完成** + release_checklist 七段全绿 **(2026-08-17 修订: 另需 U 节点组全过 + A+ 复评达标, 见 §三之五)**。GA 后进入 §四 GA 后开发计划 (V/X/Y/Z)。
 
 ---
 
@@ -291,15 +295,83 @@ GA 达成后进入 V (功能广度) / X (生态商业化) / Y (智能演进) / Z
 | **M-P1 工程验证通过** | Docker/soak/browser CI 全过 + 性能基线产出 | Phase 1 |
 | **M-P2 真实 IM 可用** | 至少一个平台真机收发通过 | Phase 2 |
 | **M-P3 管理者旅程完整** | 前端十域 + 登录向导 + 实时可用 | Phase 3 |
-| **M-GA v1.0 正式版** | release_checklist 七段全绿 + 十二条取证 + 安全自查 | Phase 0-4 全过 |
+| **M-GA v1.0 正式版** | release_checklist 七段全绿 + 十二条取证 + 安全自查 + **U 节点组全过 + A+ 复评 (§三之五)** | Phase 0-4 全过 + U 节点组 |
 
-**GA 充分必要条件** (与 §三之三 里程碑路径一致并补全): N2 全过 (M-P1) + N3 至少一个平台真机通过 (M-P2) + N4-F2 完成 (M-P3) + Phase 0 代码清偿 (M-P0) + release_checklist 七段全绿 + 十二条取证 + 安全自查 (Phase 4)。
+**GA 充分必要条件** (2026-08-17 修订, 以 §三之五 为准): N2 全过 (M-P1) + N3 至少一个平台真机通过 (M-P2) + N4-F2 完成 (M-P3) + Phase 0 代码清偿 (M-P0) + release_checklist 七段全绿 + 十二条取证 + 安全自查 (Phase 4) + **U0-U9 架构演进全过 + A+ 复评达标 (U9)**。
 
 ### 五、关键路径、依赖与风险
 
 - **关键路径**: Phase 0 (本沙箱可做) → Phase 1 → Phase 2/3 可并行 → Phase 4。**Phase 2 (IM 凭据) 与 Phase 3 (前端) 相互独立**, 可并行推进; Phase 4 依赖全部前置。
 - **外部依赖 (阻塞项, 需用户提供)**: ① IM 凭据 + 回调公网地址 (Phase 2); ② 真实 LLM key (Phase 1 soak + 兼容性矩阵); ③ docker daemon + 浏览器环境 (Phase 1); ④ 前端技术栈决策 (Phase 3 N4-1)。
 - **风险**: ① 凭据/环境等待会拉长 Phase 2 时间线 —— 缓解: Phase 0/1 不依赖凭据的部分先行, 凭据清单提前发用户准备; ② LLM 端点兼容性可能暴露协议差异 —— 缓解: Phase 1 兼容性矩阵提前实测, 差异早发现早适配; ③ 24h soak 可能暴露泄漏 —— 缓解: 尽早启动, 失败项转 N5b 新批次清偿。
+
+---
+
+## 三之五、架构演进与发布总纲 (2026-08-17 制定; 发布路径取代 §三之三/§三之四 的既有 M-GA 定义)
+
+**背景**: 2026-08-17 完成 18 项目全景 Review 与 ISAC 深度 Review (见 §三 概况)。结论: 后端代码面收尾质量高 (两轮对抗审查 43 项修复逐条核实无虚报, 1826 测试函数、mypy 全绿), 但存在 **4 项安全实洞**与 **8 项架构问题**。项目负责人已拍板: **架构升级全部完成并复评达标后才发布 v1.0**, 不留过渡形态, 不估工时, 只按验收标准推进, 质量目标为稳定性/健壮性/可维护性/可扩展性/可升级空间/模块化全部 A+ 水准。
+
+### 已拍板决策 (2026-08-17)
+
+| # | 决策 | 选择 | 说明 |
+|---|------|------|------|
+| 1 | 会话存储形态 | **事件溯源 (SQLite 事件表)** | "银行流水式": 只追加不涂改、可回溯、崩溃可精确重放恢复; 与既有 SQLite 栈一致, 不引入新依赖 (落点 U1) |
+| 2 | 发版时点 | **升级完再发版** | U0-U9 全部验收 + A+ 复评通过才发 v1.0; 过渡性止血方案 (临时滑动窗口等) 全部取消, 一步做到最终形态 |
+| 3 | 群聊门控 LLM judge 模型档位 | **fallback 链最便宜档** | "要不要回复"判断任务简单, 小模型够用且成本近零 (落点 U3) |
+| 4 | 模型能力清单数据源 | **models.dev 开源数据** | 覆盖 2700+ 模型、每周 CI 刷新、零维护; 个别国产新模型晚收录时手动补录兜底 (落点 U7) |
+
+### 架构问题 vs 进度问题 (定性原则)
+
+- **架构问题** = 做法本身需要升级的结构性缺陷, 归 U 节点组清偿, 计入架构评分;
+- **进度问题** = 功能未完成, 做完即可, 归既有节点, 不计入架构评分。包括: mp 公众号/视频 Provider/Slack/前端 F1-F4/Docker 冒烟/24h soak/真实 IM 凭据联调/CHANGELOG 补齐/发布卫生等;
+- 原列的 COMPRESS 触发面窄、滑动窗口缺失等债务**依附 U1 解决** (事件溯源后二者均为派生策略), 不单独立项。
+
+**8 项架构问题 → U 节点映射**:
+
+| 架构问题 | 现状评分 | 收敛节点 |
+|---|---|---|
+| 装配层反模式 (main.py 1832 行上帝模块 + 25 键无类型 services 袋) | 总体分层 B+ | U2 |
+| 门控硬编码 (中文关键词表 + 权重钉死 constants.py) | 配置与门控 C+ | U3 |
+| 可变持久化 (episodes 可覆盖写、gateway 诸库无 WAL、非事件溯源) | 持久化层 B- | U1 |
+| 租户半隔离 (治理面/画像/行话无租户列, 靠调用方自觉) | 记忆系统 B | U4 (前哨 U0 Fix-85) |
+| 工具权限静态化 (无 ask 档、无单调 guard、restricted 语义走样) | MCP B+ | U5 (前哨 U0 Fix-87/88) |
+| 插件隔离非默认 (供应链插件默认宿主内 exec) | 插件与隔离 B | U6 (前哨 U0 Fix-86) |
+| 对话上下文无结构位 (loop 无历史派生槽位) | 主循环 A- | U1 (窗口=派生策略) |
+| 注入无仲裁 (四路写会话靠锁兜底, Fix-81/82 已两次补丁) | 主循环 A- | U8 |
+
+### 推进顺序 (只按验收推进, 不估工时)
+
+```
+U0 安全清偿 (阻塞一切) → U1 事件溯源内核 (地基) → U4 → U5;
+U2/U3/U6/U7/U8 可穿插 → U9 A+ 复评门禁 (最后);
+N2 环境准入 / N3 真机联调 / N4 前端 的环境与凭据等待期与 U 节点并行利用, 不互斥。
+GA 门槛以 U 节点组与环境准入两者都完成为准。
+```
+
+### v1.0 GA 门槛 (修订版, 取代 §三之三/§三之四 的 M-GA 定义)
+
+v1.0 GA = 以下全部满足:
+
+1. **U0-U8 全部 `[x]`** (按 §二完成定义: 非桩实现 + 单测 + 集成/真机验证 + 主链路接线 + 文档 + ruff/mypy/CI);
+2. **U9 A+ 复评通过**: 按 `isac-deep.md` 同款方法 (只读代码级审查 + 实测) 逐模块复评 —— 无 C 项、B 项 ≤2、其余 A-/A+ 以上; "定义了未接线"零残留;
+3. 原 GA 条件全部维持: N2 全过 + N3 至少一平台真机 + N4-F2 完成 + release_checklist 七段全绿 + REQUIREMENTS 十二条取证 + 安全自查;
+4. 验收铁律适用: 每项附真机部署证据。
+
+### 新增工程纪律 (2026-08-17, 已并入 §一 总则第 7/8 条)
+
+1. 禁止"定义了未接线"的安全常量/机制 (lint 规则常驻, U9 落地);
+2. 同构面核对清单 (每个安全修复交付前核对同类入口);
+3. 红线指标只减不增: main.py 行数、services 袋键数、硬编码门控词条目数纳入 CI 监控 (U2/U3 落地)。
+
+### 本轮经验来源 (18 项目全景 Review → U 节点映射)
+
+- **U1** ← deepseek-harness 会话内核四件套 (append-only 事件日志 + surface 派生模型可见面 + 带 sourceEventSeqs 溯源的 replace 压缩 + 未知事件默认拒绝重建) + "Model-visible ⟺ Logged" (入站队列即持久事件) + 副作用前 flush; pi 三存储规范 (entries/registers/ledger + 持久化程序计数器) 互证;
+- **U3** ← MaiBot 决策-表达分离 + grok-build decision_reason 词汇治理 (23 规范值 + drift test);
+- **U4** ← 反面教材: deepseek-harness 单信任域空白; 正面: ISAC 自有 TenantIsolationGuard 升级为机制强制;
+- **U5** ← deepseek-harness 工具权限集中管线 (pre-execute allow/deny/ask + 单调 guard + fail-closed 审批 + 权限预设事件溯源) + grok-build 决策理由规范词汇 + RikkaHub 消息内审批卡片范式;
+- **U6** ← MaiBot Supervisor 隔离模式; ISAC 自有 PluginIsolationHost 转正为默认路径;
+- **U7** ← oh-my-openagent 数据化三件套 (prompt 文件按模型族变体 + models.dev 能力快照生成管线 + category 路由);
+- **U8** ← oh-my-openagent prompt-async-gate (预约表 + hold 窗口 + 编译器 AST 审计禁绕过) + deepseek-harness 治理门禁 (生成目录 + --check 漂移检测 + 无 key 快照回放)。
 
 ---
 
@@ -1237,6 +1309,83 @@ GA 达成后进入 V (功能广度) / X (生态商业化) / Y (智能演进) / Z
 
 ---
 
+### U 架构演进轮 (2026-08-17 制定, v1.0 GA 前置, 发布路径与决策见 §三之五)
+
+**目标**: 把 2026-08-17 深度 Review 认定的 8 项架构问题清偿到 A+ 水准 (稳定性/健壮性/可维护性/可扩展性/可升级空间/模块化)。现状证据与工作目录报告见 `.tmpfiles/agent-review-2026-08-17/` (主报告 `isac-deep.md`)。
+
+**依赖顺序**: U0 最先 (安全, 阻塞一切发布相关工作) → U1 (地基, U3/U5 部分项依赖) → U4 → U5; U2/U3/U6/U7/U8 可穿插; U9 最后 (复评门禁)。
+
+**推进方式**: 不估工时, 按各节点验收标准推进; 验收铁律 (真机证据) 与三态标记适用; 每项完成同步 PROGRESS.md。
+
+- [ ] **U0 安全清偿 (P0, 阻塞一切发布相关工作)**
+  - **目标**: 清偿深度 Review 新发现的 4 项安全实洞 (Fix-85~88), 均在多租户与插件生态两个核心卖点面上。
+  - **验收**:
+    ①**Fix-85 治理面租户谓词**: `MemoryGovernor` 全部 SQL 补租户作用域, `routes_memory_admin` 校验 agent 归属租户; `tests/integration/test_p5_enterprise_isolation.py` 扩展到治理面 —— 租户 A 凭据对租户 B 记忆 freeze/correct/delete 一律拒绝。(发现: `governance.py` SQL 不经租户谓词, 控制面传裸 agent_id。)
+    ②**Fix-86 解压体积上限接线**: `MAX_EXTRACTED_BYTES` 接入解压循环 (流式累计计数, 超限中止 + 清理); zip bomb 构造测试被拒且无残留文件。(发现: `installer.py` 该常量全仓零引用。)
+    ③**Fix-87 MCP restricted 语义修正**: restricted 服务门补 `mcp:*` 映射, 或改默认 allow 并同步文档与 `base.py` 注释 (二选一, 消除语义矛盾); restricted 档下 LLM 直调 mcp: 工具被拒的用例。
+    ④**Fix-88 兼容层工具命名空间**: mcp: 前缀防护推广到 compat/native 插件工具 (`<plugin>:tool` 前缀), 同名工具在机制上不可能覆盖内置工具 (现有 warning 升级为确定性隔离)。
+    另顺带批清: delegate_task `_wait_timeout` clamp、gateway 诸库 (sessions/identity/tenants) WAL + busy_timeout、`pending_messages` 死字段删除、onebot 测试 extra 缺失时 importorskip。
+  - **产出**: 对应修复 + 每项回归测试 (按 Fix-N 体系编号归档 CODE_REVIEW_REPORT.md)。
+  - **依赖**: 无。
+  - **当前**: 未开始。
+
+- [ ] **U1 事件溯源会话内核 (架构演进地基)**
+  - **目标**: 会话存储从可变表升级为事件溯源: append-only 会话事件表 + 状态全部从事件派生 (消息历史=折叠、滑动窗口=窗口派生策略、压缩=带 `source_seqs` 溯源的 replace 事件); 入站消息即持久事件 ("Model-visible ⟺ Logged" 的 IM 化, 天然解决异步消息/重启续跑/审计合规); 未知事件类型默认拒绝重建 (ignorable 白名单); torn-tail 容忍 + repair (孤儿工具调用合成 OUTCOME_UNKNOWN, 不猜结果); 工具执行前/LLM 请求前强制 flush (副作用前落盘)。
+  - **验收**: 强制断电 (kill -9) 后事件重放恢复无损; 上下文压缩可查溯源凭证, 摘要不小于原文时拒绝提交; **滑动窗口历史开箱可用** (最近 N 轮, budget 感知截断, 窗口大小可配; memory 关闭时仍维持窗口内连续性 —— 这是底线场景); 真机演示"隔天回到同一群聊仍保持上下文"并留档; episodes 写入改事件投影 (检索面不变, 写入侧不可变化); 既有全量测试绿 + 新增事件溯源专项套件 (重放/压缩溯源/torn-tail/未知事件拒绝)。
+  - **产出**: `session events` SQLite 事件表 (WAL + write-behind 批处理)、派生器 (全量/窗口/压缩后三种派生策略)、旧 sessions 数据迁移脚本、repair 工具、配置项、MEMORY_DESIGN.md / ARCHITECTURE.md 同步。
+  - **依赖**: U0。
+  - **当前**: 未开始。
+
+- [ ] **U2 装配层重构 (收敛架构债清单 Z1+Z2)**
+  - **目标**: main.py (1832 行, 08-17 实测) 拆为 bootstrap/dispatch/wiring/cli 四模块 (各 ≤500 行, main.py 变薄入口); `build_services` 25 键 services 袋 ServiceContainer Protocol 化 (先核心 10 键, 再清其余), 下游 123 处防御式 `services.get(...)` 清零; 合入 lint 红线 (main.py 行数冻结, 只减不增)。
+  - **验收**: mypy strict 通过装配层; 键错配在类型层不可能; 既有全量测试绿; 单向导入链 (main.py:3-6 声明) 保持。
+  - **依赖**: U0。
+  - **当前**: 未开始。
+
+- [ ] **U3 门控策略化 (配置 + i18n + LLM judge)**
+  - **目标**: constants.py 硬编码的三组中文关键词表与评分权重迁入 config `gating` 节 + locales 双语包 (zh_CN 现有词表迁入, en_US 新配); GatingStrategy 可插拔四档 (off / keywords / llm-judge / hybrid), TurnGate 单一调用点; llm-judge 档用小模型判群聊发言相关性 (频率上限 + 成本估算入文档; 已拍板: fallback 链最便宜档); 词汇表 drift test (config 与 locales 键一致性 CI 检查)。
+  - **验收**: 英文群聊场景门控 e2e 通过; 调整任何门控参数不改代码; zh_CN 默认配置下既有门控行为回归一致。
+  - **依赖**: U0。
+  - **当前**: 未开始。
+
+- [ ] **U4 租户机制强制 (半墙 → 整墙)**
+  - **目标**: 隔离从"调用方自觉"升级为"机制强制": TenantBound 连接包装层自动注入租户谓词 (替换逐处子查询, 调用方无法绕过); person_profiles/jargon_entries/memory_revisions/memory_audit 补 tenant_id 列 + 迁移脚本; QueryMemoryTool 改 master_id 检索 (修私聊工具召回系统性漏); 租户前缀/自定义 namespace 下 consolidator-manager-injector 三处键统一。
+  - **验收**: 两租户共库全场景零串档 (检索/治理/画像/行话/工具召回集成测试); 审计确认无裸 SQL 绕过点; `tenancy.enabled=false` 时零行为变化。
+  - **依赖**: U0 (Fix-85 是其前哨)。
+  - **当前**: 未开始。
+
+- [ ] **U5 工具权限管线 + HITL 卡片审批**
+  - **目标**: 工具权限从静态 scope 表升级为四段管线: pre-execute (allow/deny/ask waterfall) → 单调 guard (拒绝不可翻回) → 执行 → post 审计留痕 (决策 + 决策者 + 理由, 经 U1 事件表); ask 档落 IM 审批卡片 (人点同意/拒绝, 超时 fail-closed); 决策理由词汇表 (规范值 + drift test); mcp:/compat/native 统一走命名空间注册管线 (Fix-88 机制化)。
+  - **验收**: 真机演示 ask 审批完整闭环 (卡片同意/拒绝/超时三条路); guard 拒绝不可翻案测试; 决策留痕可查询; 既有 restricted/EnableMatrix 语义回归一致。
+  - **依赖**: U0 (Fix-87/88 前哨)、U1 (留痕载体)。
+  - **当前**: 未开始。
+
+- [ ] **U6 插件隔离默认化 (信任分级倒转)**
+  - **目标**: 市场/git/url/upload 安装的插件**默认隔离 host 运行** (trust 分级: manifest 声明 `trust: sandboxed|hosted`, hosted 需运营方显式确认); rlimits/ipc_timeout 从部署配置接线; 运行中 Agent 的插件 hooks 卸载后同步清除 (不留至重启)。兼容层 (AstrBot/MaiBot) 隔离迁移 (原 Z3) 在本节点给出处置决策: 复活 manifest 机制接入隔离, 或文档化降级承诺 + ARCHITECTURE.md 修订, 二选一消除"隔离承诺与实现落差"。
+  - **验收**: 市场插件默认在隔离 host 运行的集成测试; rlimits 生效验证; 卸载后 hooks 零残留测试; 兼容层处置决策落文档。
+  - **依赖**: U0 (Fix-86 前哨)。
+  - **当前**: 未开始。
+
+- [ ] **U7 Agent 数据化 + 模型能力快照 + category 路由**
+  - **目标**: ①prompt 文件化: 人格/规则写 agents/*.md (frontmatter 声明变体键), SystemPromptBuilder 从文件装配, 改人格=改文件; ②模型能力快照管线: models.dev → 生成 JSON → CI 定期刷新 + 新鲜度测试 (已拍板数据源), fallback 链按能力与可达性过滤; ③category 路由: 委派任务按类型 (问答/创作/工具密集/闲聊) 选模型链, 并入现有数据驱动路由表。
+  - **验收**: 新增一个模型族=加一个文件, 零代码改动; 能力快照漂移 CI 报警; category 路由委派测试; 既有 persona 行为回归一致。
+  - **依赖**: U0。
+  - **当前**: 未开始。
+
+- [ ] **U8 注入仲裁门 + 治理门禁**
+  - **目标**: ①SessionWriteGate: 记忆注入/handoff/插件注入/强制话轮统一预约表 (先预约后写入、hold 窗口、超时作废 fail-closed), Fix-81/82 补丁逻辑收编进门内; AST 审计 (ruff 自定义规则或 import-linter) 禁止门之外的会话写入路径; ②治理门禁: 工具 catalog / 配置 catalog 生成脚本 + CI --check 漂移检测; mock IM 事件流快照回放 (无真实凭据跑整条 bot 链路); ③evidence 目录规范化 (日期-slug/, 真机证据必留档)。
+  - **验收**: 审计测试能当场捕获故意绕过的写入; catalog drift CI 生效; 快照回放测试跑通; 强制话轮/打断既有集成测试回归绿。
+  - **依赖**: U0。
+  - **当前**: 未开始。
+
+- [ ] **U9 A+ 架构复评与发布门禁 (最后执行)**
+  - **目标**: 按 `isac-deep.md` 同款方法 (只读代码级审查 + 实测 pytest/ruff/mypy) 对 U1-U8 改造后的架构逐模块复评; 清零全部"定义了未接线" (lint 规则常驻); 红线指标 (main.py 行数 / services 键数 / 硬编码门控词条目数) 纳入 CI 常驻监控; Minor 批清收尾 (smoke_main_resident flake 根治、CHANGELOG 补齐 07-26 之后全部变更、版本号策略定稿)。
+  - **验收 (GA 门槛组成部分)**: 复评报告无 C 项、B 项 ≤2、其余 A-/A+; "零引用安全常量" lint 规则全仓通过; 复评报告归档 docs/。
+  - **依赖**: U0-U8 全部 `[x]`。
+  - **当前**: 未开始。
+
+---
+
 ### 架构债清单 (2026-08-15 整合自 2026-07-28/29 两轮评审, 各轮顺手清)
 
 > 两轮评审 (Review/ 报告, 已整合删除) 遗留的架构级债务统一登记于此; 对应修复时机见"建议时机"列, 不单独立轮。
@@ -1244,9 +1393,10 @@ GA 达成后进入 V (功能广度) / X (生态商业化) / Y (智能演进) / Z
 
 | 债务 | 说明 | 建议时机 |
 |------|------|---------|
-| `services: dict[str, Any]` 弱类型 | 跨几十个文件传递, 改 key 名即全仓 AttributeError; 改 ServiceContainer Protocol/TypedDict | 功能面稳定后 (R7 收尾期) |
-| 兼容层插件宿主进程执行 | AstrBot/MaiBot 插件 `exec_module` 在宿主进程, 绕过 `PluginIsolationHost` 隔离承诺 | 与 R3 接线同步迁移 |
-| `main.py` (1518 行) / `manager.py` (1155 行) | 逼近 C901 红线; `main.py` 建议拆 `isac/bootstrap/{services,channels,control_plane,lifecycle,links}.py` | 独立重构项, 并行收尾期插入 |
+| `services: dict[str, Any]` 弱类型 | 跨几十个文件传递, 改 key 名即全仓 AttributeError; 改 ServiceContainer Protocol/TypedDict | **升级至 U2** (2026-08-17, 见 §四 U) |
+| 兼容层插件宿主进程执行 | AstrBot/MaiBot 插件 `exec_module` 在宿主进程, 绕过 `PluginIsolationHost` 隔离承诺 | **升级至 U6** (2026-08-17, 处置决策在 U6 落地) |
+| `main.py` (1832 行, 08-17 实测) / `manager.py` (1258 行) | 逼近 C901 红线且 main.py 逆向增长中 (1519→1832); 拆分方案见 U2 | **升级至 U2** (2026-08-17) |
+| 2026-08-17 深度 Review 四项安全实洞 (治理面绕过租户谓词 / MAX_EXTRACTED_BYTES 零引用 / MCP restricted 等效 allow / 兼容层工具无前缀) | 均在多租户与插件生态核心卖点面 | **U0 立即清偿** (Fix-85~88) |
 | 同步 IO | `audit.py` 同步 `open("a")`、`bus._trigger_persist` 同步 fsync、`routes_routing` 同步写盘 | 任意空档顺手清 |
 | Provider 测试端点假连接 | `POST /providers/{id}/test` 不发真实连接即返回 ok, 且访问私有属性 | R1 顺手做真实 ping |
 | ~~检索结构化过滤~~ | ✅ 已清偿 (2026-08-16): `pipeline.search(filters=)` 透传到 `search_fts`+`get_episodes_by_ids`, `_build_filter_clause` 支持 topics (json_each 匹配) + since/until 时间范围, None 向后兼容不加过滤 | — |
@@ -1303,12 +1453,14 @@ GA 达成后进入 V (功能广度) / X (生态商业化) / Y (智能演进) / Z
 - [ ] **X2 插件生态运营** — T6 插件市场之上: 市场托管与审核签名机制、插件开发文档与模板库、版本兼容声明; 与 AstrBot/MaiBot 存量插件的迁移工具产品化 (scripts/migrate.py 升级)。
 - [ ] **X3 多租户商业化** — R6 routes_tenants 之上: 组织/配额/计费模型、用量成本按租户结算 (usage 计量已就绪)、租户级 WebUI 视图。
 - [ ] **X4 安全与合规** — 第三方安全审计; 数据合规能力 (记忆治理 freeze/delete 扩展为"被遗忘权"导出与清除流程); 审计日志归档策略。
+- [ ] **X5 Agent 即服务商业化接口** — 把"API/MCP 自动化创建与配置 Agent"从内部能力升级为对外产品: G1 Admin API + G2 MCP Server + R6 多租户底座之上补开放 API 配额/限流/计费挂接 (与 X3 协同) + 外部开发者文档与 SLA; 这是项目负责人框架愿景中预留的商业化能力。
 
 #### Y 智能演进轮 (v2.0): 深化"像人"的核心差异
 
 - [ ] **Y1 长期记忆深化** — R4 实体关系图之上: 人物-人物/人物-话题语义网络持续抽取; 记忆反思 (定期自省生成自我叙事与关系总结, 经 MemoryConsolidator 通道); 记忆可解释性 (用户可查"为什么记得这个")。
 - [ ] **Y2 多 Agent 社会** — Mesh 从少数 Agent 协作扩展为大规模拓扑: 群聊中多角色并存、Agent 社区模拟、跨 Agent 记忆共享的 ACL 精细化。
 - [ ] **Y3 自主成长** — BehaviorLearner 的行为特征累积升级为长期行为画像演化闭环 (风格随关系深度与互动历史渐变, 有界不漂移)。
+- [ ] **Y4 学习效果评估与回滚** — 拟人化/记忆/行为学习的效果评估闭环 (学习前后对比评估 + 效果恶化自动回滚); 18 个调研项目全员缺失此能力 (hermes-agent evals 回归台仅部分缓解), 可成为 ISAC 的差异化卖点。
 
 #### Z 工程演进 (持续线, 不设节点门, 见缝插针)
 
@@ -1318,8 +1470,9 @@ GA 达成后进入 V (功能广度) / X (生态商业化) / Y (智能演进) / Z
 - [ ] **Z2 main.py 拆分** — `isac/bootstrap/{services,channels,control_plane,lifecycle,links}.py` (2026-07-28 复审给出的划分方案)。
 - [ ] **Z3 兼容层插件子进程化** — AstrBot/MaiBot 插件全部迁 PluginIsolationHost (R3 留下的架构受限项, 需先解决"兼容层无 manifest"问题)。
 - [ ] **Z4 上游兼容测试矩阵** — AstrBot/MaiBot 真实插件样本的 CI 兼容回归 (现兼容层测试用仿写样本)。
+- [ ] **Z5 多进程部署预研** — "执行外移、状态内留" (参考 openclaw Cloud Workers 模式: 执行可下放独立进程/一次性云机, 会话状态/推理/凭据留在网关); 前置 U1 事件溯源内核 (状态可从事件重建是执行外移的前提)。
 
-**GA 后里程碑**: M-v1.1 (V1-V4 流式+视频+微信 mp+Slack) → M-v1.2 (V5-V6 语音+前端扩展 + X1-X2 分发+插件生态) → **M-v2.0** (X3-X4 商业化+合规 + Y1-Y3 智能演进)。Z 线贯穿始终。依赖要点: V5 依赖 V1; V2/V5 含用户选型闸门; X3 依赖 R6; Y1 依赖 R4。
+**GA 后里程碑**: M-v1.1 (V1-V4 流式+视频+微信 mp+Slack) → M-v1.2 (V5-V6 语音+前端扩展 + X1-X2 分发+插件生态) → **M-v2.0** (X3-X5 商业化+合规 + Y1-Y4 智能演进)。Z 线贯穿始终。依赖要点: V5 依赖 V1; V2/V5 含用户选型闸门; X3 依赖 R6; X5 依赖 G1/G2 + X3; Y1 依赖 R4; Z5 依赖 U1。
 
 ---
 
@@ -1363,3 +1516,10 @@ GA 达成后进入 V (功能广度) / X (生态商业化) / Y (智能演进) / Z
 | **Q 节点(MVP 收尾)** | 2026-07-26 对照 `REQUIREMENTS.md` 逐条代码取证后新增的节点组,收纳未被 P0-P5 覆盖、但 MVP 必需的缺口(定义见 §四 Q)。 |
 | **MVP 差距复核** | 2026-07-26 对照 `REQUIREMENTS.md` 十二条需求做的一次性审计事件(10 域并行代码取证 + 真实启动实测);其结论落为各节点下的"MVP 缺口复核"批注与 §四 Q 节点组。 |
 | **MVP 缺口复核** | 本文档中标注在已交付(`[x]`)节点下的补充说明(是上述"MVP 差距复核"审计的逐节点产物),记录与该节点"完成定义"矛盾的未接线子行为,不改动该节点其余已验证部分的状态,指向修复它的 Q/P 节点。 |
+| **U 节点组 (架构演进轮)** | 2026-08-17 设立的 v1.0 GA 前置节点组: U0 安全清偿、U1-U8 八项架构升级、U9 A+ 复评门禁; 定义见 §四 U, 发布路径与已拍板决策见 §三之五。 |
+| **事件溯源** | (U1) 会话存储范式: 一切操作记为只追加事件, 消息历史/压缩/滑动窗口全部从事件"派生", 存储本身不可涂改; 参考 deepseek-harness 会话内核与 pi 三存储规范。 |
+| **SessionWriteGate** | (U8) 会话写入单一闸门: 记忆注入/handoff/插件注入/强制话轮先预约后写入, 超时作废, AST 审计禁止绕过; 参考 oh-my-openagent prompt-async-gate。 |
+| **GatingStrategy** | (U3) 可插拔门控策略: off/keywords/llm-judge/hybrid 四档, 词表与权重配置化 + i18n, 取代硬编码中文关键词表。 |
+| **能力快照** | (U7) 模型能力清单生成管线: models.dev → 生成 JSON → CI 定期刷新 + 新鲜度测试; 模型路由按能力与可达性过滤。 |
+| **category 路由** | (U7) 委派任务按类型 (问答/创作/工具密集/闲聊) 选模型链, 取代"每个 Agent 钉一个模型"。 |
+| **同构面核对清单** | §一.8 工程纪律: 每个安全修复交付前核对同类入口是否全覆盖同等防护; 反例见 §一 总则。 |
