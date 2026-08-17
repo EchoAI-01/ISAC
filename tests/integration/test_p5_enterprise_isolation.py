@@ -137,6 +137,108 @@ async def test_governance_default_tenant_passthrough(tmp_path: Path) -> None:
     assert await gov.delete(item_id, NAMESPACE) is True
 
 
+# ── 1b. U4 租户机制强制 (画像/行话/工具召回/键统一 全场景) ──────
+
+
+@pytest.mark.asyncio
+async def test_u4_cross_tenant_profiles_jargon_meta_isolated(tmp_path: Path) -> None:
+    """U4 两租户共库全场景零串档: 画像/行话/episode 元数据读取跨租户不可见。"""
+    guard = TenantIsolationGuard(enabled=True)
+    tenant_a = TenantContext(organization_id="acme", tenant_id="t1")
+    tenant_b = TenantContext(organization_id="globex", tenant_id="t9")
+    db_path = str(tmp_path / "memory.db")
+    store_a = MetadataStore(db_path, tenant_guard=guard, tenant_context=tenant_a)
+    store_b = MetadataStore(db_path, tenant_guard=guard, tenant_context=tenant_b)
+    await store_a.init_schema()
+
+    ns_a = guard.namespace_for(NAMESPACE, tenant_a)  # acme:t1:agent_p5
+    # 租户 A 写画像 + 行话 + episode
+    await store_a.upsert_person_profile(ns_a, {"person_id": "u1", "name": "张三"})
+    await store_a.upsert_jargon(ns_a, "中台", "共享服务平台")
+    ep_id = await store_a.store_episode(ns_a, {"content": "租户A 机密", "user_id": "u1", "session_id": "s1"})
+
+    # 租户 B 全场景不可见 (即使知道 A 的命名空间键)
+    assert await store_b.get_person_profile(ns_a, "u1") is None
+    assert await store_b.list_jargon(ns_a) == []
+    assert await store_b.get_episode_meta_by_ids([ep_id]) == []
+    # A 自己可见
+    assert (await store_a.get_person_profile(ns_a, "u1"))["name"] == "张三"
+    assert [j["word"] for j in await store_a.list_jargon(ns_a)] == ["中台"]
+    assert (await store_a.get_episode_meta_by_ids([ep_id]))[0]["id"] == ep_id
+
+
+@pytest.mark.asyncio
+async def test_u4_key_unification_write_read_consistent(tmp_path: Path) -> None:
+    """U4 键统一: 写侧 (manager/consolidator 口径 = pipeline.namespace) 与读侧
+    (注入器口径) 同键, tenancy 开启时画像可读; 跨租户同键不可见。
+
+    生产 memory_factory 对 namespace 加租户前缀 (namespace_for), pipeline.namespace
+    即前缀键 —— 此处直接按前缀键构造 pipeline 模拟该口径。
+    """
+    guard = TenantIsolationGuard(enabled=True)
+    tenant_a = TenantContext(organization_id="acme", tenant_id="t1")
+    tenant_b = TenantContext(organization_id="globex", tenant_id="t9")
+    ns_a = guard.namespace_for(NAMESPACE, tenant_a)
+    ns_b = guard.namespace_for(NAMESPACE, tenant_b)
+
+    async def _pipeline_for(tenant: TenantContext, ns: str) -> MemoryRetrievalPipeline:
+        metadata = MetadataStore(
+            str(tmp_path / "memory.db"), tenant_guard=guard, tenant_context=tenant,
+        )
+        await metadata.init_schema()
+        return MemoryRetrievalPipeline(
+            namespace=ns,
+            metadata=metadata,
+            vector=VectorStore(str(tmp_path / "vectors.db"), dimension=3),
+            sparse=SparseBM25Index(),
+            graph=GraphStore(str(tmp_path / "graph.db")),
+            embedder=EmbeddingManager({}),
+            reranker=Reranker({}),
+            enable_graph_recall=False,
+        )
+
+    pipe_a = await _pipeline_for(tenant_a, ns_a)
+    pipe_b = await _pipeline_for(tenant_b, ns_b)
+    try:
+        # 写侧 (manager 口径): pipeline.namespace 键
+        await pipe_a.metadata.upsert_person_profile(
+            pipe_a.namespace, {"person_id": "master_u1", "name": "张三", "profile_text": "A 的画像"},
+        )
+        # 读侧 (注入器口径): 同一 pipeline.namespace 键可读
+        profile = await pipe_a.metadata.get_person_profile(pipe_a.namespace, "master_u1")
+        assert profile is not None and profile["name"] == "张三"
+        # 租户 B 用自己的前缀键读不到 A 的画像; 即使拿到 A 的键也被谓词拦
+        assert await pipe_b.metadata.get_person_profile(pipe_b.namespace, "master_u1") is None
+        assert await pipe_b.metadata.get_person_profile(pipe_a.namespace, "master_u1") is None
+    finally:
+        await pipe_a.vector.close()
+        await pipe_a.graph.close()
+        await pipe_b.vector.close()
+        await pipe_b.graph.close()
+
+
+@pytest.mark.asyncio
+async def test_u4_tool_recall_master_id(tmp_path: Path) -> None:
+    """U4 QueryMemoryTool master_id 修复的场景回归: episode 按 master_id 落盘,
+    私聊检索必须用 master_id 才命中 (平台 id 检索系统性漏)。"""
+    guard = TenantIsolationGuard(enabled=True)
+    tenant_a = TenantContext(organization_id="acme", tenant_id="t1")
+    pipe = await _make_tenanted_pipeline(tmp_path, tenant_a, guard)
+    try:
+        # 写入侧口径 (manager._write_memory): user_id = master_id
+        mid = await pipe.store_episode("项目 进度 汇报", "s1", user_id="master_u1", agent_id=NAMESPACE)
+        assert mid
+        # 工具修复后口径: user_profile.user_id (master_id) → 命中
+        hits = await pipe.search("进度", top_k=5, user_id="master_u1", agent_id=NAMESPACE)
+        assert any(h.id == mid for h in hits)
+        # 修复前的错误口径: 平台 id 私聊检索 → 漏 (group_id 为空按私聊过滤)
+        hits_platform = await pipe.search("进度", top_k=5, user_id="platform_u1", agent_id=NAMESPACE)
+        assert all(h.id != mid for h in hits_platform)
+    finally:
+        await pipe.vector.close()
+        await pipe.graph.close()
+
+
 # ── 2. 插件进程隔离 (spawn → load → call → crash restart) ─────────
 
 

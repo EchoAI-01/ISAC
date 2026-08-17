@@ -102,7 +102,12 @@ class MidTermMemoryInjector(MemoryInjector):
         session_id = str(getattr(context.session, "session_id", "") or "")
         if not session_id:
             return ""
-        agent_id = str(getattr(context.session, "agent_id", "") or "")
+        # U4: agent 键统一用 pipeline.namespace —— episodes 写在租户前缀 namespace
+        # 下 (pipeline.store_episode), 此前读侧用裸 session.agent_id, tenancy 开启后
+        # 必然读空。默认单租户时 namespace == agent_id, 零行为变化。
+        agent_id = str(
+            getattr(self.pipeline, "namespace", "") or getattr(context.session, "agent_id", "") or ""
+        )
         # 取本会话最近 episode 的 summary (consolidator _compress_step 落盘)
         try:
             episode_id = await metadata.latest_episode_id_for_session(agent_id, session_id)

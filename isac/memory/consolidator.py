@@ -54,9 +54,6 @@ DEFAULT_JARGON_MAX_LEN: int = 12
 # R4-②: 单次会话摘要 prompt 最大输入字符数 (transcript 截断)。
 DEFAULT_COMPRESS_INPUT_MAX_CHARS: int = 4000
 
-# Fix-67: _fetch_episode_meta IN 子句分块大小 (SQLite 绑定变量上限余量内)。
-_META_FETCH_CHUNK: int = 500
-
 
 @dataclass
 class ConsolidationResult:
@@ -190,45 +187,19 @@ class MemoryConsolidator:
     ) -> list[dict[str, Any]]:
         """补齐 episodes 表的 created_at/importance/frozen/protected/user_id 列。
 
-        Fix-67: IN 子句分块 (每批 ≤500) —— SQLite 绑定变量有上限 (旧版 999 /
-        新版 32766), 大命名空间一次性传入全部 id 会抛 "too many SQL variables";
-        而 _load_episodes 未包异常, 会让该命名空间此后每个整合周期都静默失败、
-        去重/剪枝/归纳/压缩整体停摆。分块查询并合并。
+        U4: 改经 ``MetadataStore.get_episode_meta_by_ids`` (租户作用域内分块查询),
+        不再直连 db_path 裸 SQL —— 此前该路径绕过全部租户机制 (无租户谓词、无
+        agent_id 谓词), 是审计认定的裸 SQL 绕过点。Fix-67 的分块语义保留在
+        metadata 方法内 (每批 ≤500, 防 SQLite 绑定变量上限)。
         """
-        import aiosqlite
-
-        db_path = getattr(metadata, "db_path", None)
-        if not db_path:
+        try:
+            return await metadata.get_episode_meta_by_ids(ids)
+        except AttributeError:
+            # 旧 store/测试 mock 无该方法 → 返回空 (整合降级为只有 content)
             return []
-        rows: list[Any] = []
-        async with aiosqlite.connect(db_path) as db:
-            db.row_factory = aiosqlite.Row
-            for i in range(0, len(ids), _META_FETCH_CHUNK):
-                chunk = ids[i : i + _META_FETCH_CHUNK]
-                placeholders = ",".join(["?"] * len(chunk))
-                query = (
-                    f"SELECT id, created_at, importance, frozen, protected, user_id, group_id "
-                    f"FROM episodes WHERE id IN ({placeholders})"
-                )
-                try:
-                    cursor = await db.execute(query, chunk)
-                    rows.extend(await cursor.fetchall())
-                except Exception as exc:  # noqa: BLE001 单块失败隔离, 不拖垮整轮
-                    logger.warning(
-                        "整合元数据分块查询失败, 跳过该块", error=str(exc), chunk_size=len(chunk)
-                    )
-        return [
-            {
-                "id": str(r["id"]),
-                "created_at": int(r["created_at"] or 0),
-                "importance": float(r["importance"] or 0.5),
-                "frozen": int(r["frozen"] or 0),
-                "protected": int(r["protected"] or 0),
-                "user_id": str(r["user_id"] or ""),
-                "group_id": str(r["group_id"] or ""),
-            }
-            for r in rows
-        ]
+        except Exception as exc:  # noqa: BLE001 元数据失败不拖垮整轮整合
+            logger.warning("整合元数据查询失败, 降级为只有 content", error=str(exc))
+            return []
 
     async def _dedup_step(
         self, episodes: list[dict[str, Any]], metadata: MetadataStore

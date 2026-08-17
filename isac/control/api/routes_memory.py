@@ -59,52 +59,75 @@ async def _query_episodes_by_agent(store: Any, agent_id: str, limit: int) -> lis
     CR3-Fix: 排除软删除行 (deleted=1) —— 检索链路 (FTS/BM25/向量) 与预热都过滤墓碑,
     读端点若把已删除内容原文吐出, 治理 delete 的"已删除"语义就被绕过 (合规导出
     走 MemoryGovernor.export, 那才是有意包含软删条目的通道)。
+    U4: 经 store._tenant_db.scoped() 租户作用域 (投影含租户列), 不再裸 SQL 绕过。
     """
     import aiosqlite
 
+    tdb = getattr(store, "_tenant_db", None)
+    if tdb is None:
+        return []
+    query, params = tdb.scoped(
+        "SELECT id, session_id, user_id, content, summary, importance, created_at, "
+        "organization_id, tenant_id "
+        "FROM episodes WHERE agent_id = ? AND deleted = 0 ORDER BY created_at DESC LIMIT ?",
+        [agent_id, limit],
+    )
     rows: list[dict] = []
-    async with aiosqlite.connect(store.db_path) as db:
+    async with tdb.connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT id, session_id, user_id, content, summary, importance, created_at "
-            "FROM episodes WHERE agent_id = ? AND deleted = 0 ORDER BY created_at DESC LIMIT ?",
-            (agent_id, limit),
-        )
+        cursor = await db.execute(query, params)
         for row in await cursor.fetchall():
-            rows.append(dict(row))
+            data = dict(row)
+            data.pop("organization_id", None)
+            data.pop("tenant_id", None)
+            rows.append(data)
     return rows
 
 
 async def _query_profiles_by_agent(store: Any, agent_id: str) -> list[dict]:
-    """从 MetadataStore 查询某 agent_id 的人物画像。"""
+    """从 MetadataStore 查询某 agent_id 的人物画像 (U4: 经租户作用域)。"""
     import aiosqlite
 
+    tdb = getattr(store, "_tenant_db", None)
+    if tdb is None:
+        return []
+    query, params = tdb.scoped(
+        "SELECT person_id, name, profile_text, relationship_depth, interaction_count, "
+        "first_seen, last_seen, organization_id, tenant_id FROM person_profiles WHERE agent_id = ? "
+        "ORDER BY last_seen DESC LIMIT 200",
+        [agent_id],
+    )
     rows: list[dict] = []
-    async with aiosqlite.connect(store.db_path) as db:
+    async with tdb.connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT person_id, name, profile_text, relationship_depth, interaction_count, "
-            "first_seen, last_seen FROM person_profiles WHERE agent_id = ? "
-            "ORDER BY last_seen DESC LIMIT 200",
-            (agent_id,),
-        )
+        cursor = await db.execute(query, params)
         for row in await cursor.fetchall():
-            rows.append(dict(row))
+            data = dict(row)
+            data.pop("organization_id", None)
+            data.pop("tenant_id", None)
+            rows.append(data)
     return rows
 
 
 async def _query_jargon_by_agent(store: Any, agent_id: str) -> list[dict]:
-    """从 MetadataStore 查询某 agent_id 的术语。"""
+    """从 MetadataStore 查询某 agent_id 的术语 (U4: 经租户作用域)。"""
     import aiosqlite
 
+    tdb = getattr(store, "_tenant_db", None)
+    if tdb is None:
+        return []
+    query, params = tdb.scoped(
+        "SELECT word, meaning, context, usage_count, created_at, organization_id, tenant_id "
+        "FROM jargon_entries WHERE agent_id = ? ORDER BY usage_count DESC, word ASC LIMIT 200",
+        [agent_id],
+    )
     rows: list[dict] = []
-    async with aiosqlite.connect(store.db_path) as db:
+    async with tdb.connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT word, meaning, context, usage_count, created_at FROM jargon_entries "
-            "WHERE agent_id = ? ORDER BY usage_count DESC, word ASC LIMIT 200",
-            (agent_id,),
-        )
+        cursor = await db.execute(query, params)
         for row in await cursor.fetchall():
-            rows.append(dict(row))
+            data = dict(row)
+            data.pop("organization_id", None)
+            data.pop("tenant_id", None)
+            rows.append(data)
     return rows
