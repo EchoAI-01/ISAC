@@ -42,7 +42,6 @@ def _ctx_for_session(session_id: str) -> InjectionContext:
         session=Session(session_id=session_id, user_id="u1", agent_id="a1", platform="web"),
         user_profile=UserProfile(user_id="u1", nickname="测试"),
         current_message=_Msg(content="?"),  # type: ignore[arg-type]
-        pending_messages=[_Msg(content="?")],  # type: ignore[list-item]
         timestamp=time.time(),
     )
 

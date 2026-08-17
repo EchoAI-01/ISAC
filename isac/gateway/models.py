@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from isac.channel.model import ISACMessage
 from isac.core.types import Budget
 
 
@@ -16,7 +15,6 @@ class SessionContext:
     interrupt_requested: bool = False  # 是否请求中断
     iteration: int = 0  # 当前迭代次数
     reasoning_content: str = ""  # 推理内容
-    pending_messages: list[ISACMessage] = field(default_factory=list)
 
 
 @dataclass

@@ -46,13 +46,11 @@ class Message:
     content: str = "我们继续补施工图"
 
 
-def make_context(*, pending_count: int = 0) -> InjectionContext:
-    pending = [Message(content=f"第 {index} 条消息") for index in range(pending_count)]
+def make_context() -> InjectionContext:
     return InjectionContext(
         session=Session(session_id="sess_1", user_id="user_1", agent_id="agent_a"),
         user_profile=UserProfile(user_id="user_1", nickname="小明"),
         current_message=Message(),
-        pending_messages=pending,
     )
 
 
@@ -93,7 +91,7 @@ async def test_jargon_injector_matches_current_message() -> None:
 @pytest.mark.asyncio
 async def test_mid_term_memory_injector_returns_empty_without_summary() -> None:
     """R4-②: 无已落盘 summary 时降级返回空串 (不再复述 pending_messages)。"""
-    text = await MidTermMemoryInjector(FakePipeline()).build(make_context(pending_count=2))
+    text = await MidTermMemoryInjector(FakePipeline()).build(make_context())
     assert text == ""
 
 
@@ -120,7 +118,6 @@ async def test_heuristic_injector_uses_master_id_over_platform_id() -> None:
         session=Session(session_id="sess_1", user_id="platform_y", agent_id="agent_a"),
         user_profile=UserProfile(user_id="master_x", nickname="小明"),
         current_message=Message(),
-        pending_messages=[],
     )
     await inj.build(ctx)
     assert pipe.search_user_id == "master_x", "应优先用 user_profile.user_id (master_id)"

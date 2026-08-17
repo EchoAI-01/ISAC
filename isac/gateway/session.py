@@ -191,6 +191,11 @@ class SessionManager:
 
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self._db_path) as db:
+            # U0 顺带批清: WAL 让并发读写不互斥 (一写多读), busy_timeout 在写锁竞争时
+            # 等待而非立即 "database is locked"。对齐 metadata.py/artifacts store 的既有
+            # 做法 (journal_mode 文件级持久, 一次设置后续连接继承)。
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA busy_timeout=5000")
             await db.executescript(SCHEMA_SQL)
             # Fix-79: 旧库补列 (新库列已存在, ALTER 报 duplicate column 静默跳过)
             for stmt in _SCHEMA_MIGRATIONS:

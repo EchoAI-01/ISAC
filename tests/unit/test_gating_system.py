@@ -44,7 +44,6 @@ def _make_context(
         session=session,
         user_profile=None,
         current_message=msg,
-        pending_messages=[msg],
         is_private=is_private,
         has_at=has_at,
         has_mention=has_mention,
