@@ -167,7 +167,15 @@ class ToolRegistry:
         """restricted 工具 → 必须注入的 service key (tuple = 任一注入即可)。
 
         没有列入的 restricted 工具默认只要求 services 非空 (任意后端存在即可)。
+
+        U0 Fix-87: mcp: 桥接工具映射到 "mcp_clients" —— MCP 接线时 assembly 注入
+        agent_services["mcp_clients"] (非空列表); 未接线则缺失/为空, restricted 门
+        拒绝。此前 mcp: 工具在 ToolPermission.check 默认 restricted 但本映射无对应项
+        → restricted 等效 allow (语义矛盾: "受限"却恒放行)。补映射后 restricted 语义
+        落实: LLM 直调未接线 Agent 的 mcp 工具被拒。
         """
+        if tool_name.startswith("mcp:"):
+            return "mcp_clients"
         mapping: dict[str, str | tuple[str, ...]] = {
             "read_file": "workspace_root",
             "write_file": "workspace_root",

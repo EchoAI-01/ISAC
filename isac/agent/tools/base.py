@@ -97,9 +97,11 @@ class ToolPermission:
     def check(self, tool_name: str) -> str:
         """返回 "allow" | "restricted" | "deny" (未声明默认 allow)。
 
-        N5b 批次C C9: MCP 桥接工具 (``mcp:`` 前缀) 未显式声明时默认 restricted,
-        需在 Agent tools_policy 显式开启 (如 {"mcp:server:tool": "allow"}) 才放行,
-        防任意外部 MCP 工具未经审批被 LLM 调用。
+        N5b 批次C C9: MCP 桥接工具 (``mcp:`` 前缀) 未显式声明时默认 restricted。
+        U0 Fix-87: restricted 语义落实 —— ToolRegistry._required_service 把 mcp:*
+        映射到 "mcp_clients" (MCP 接线时 assembly 注入), 未接线的 Agent 缺该服务 →
+        restricted 门拒绝 LLM 直调。此前无映射时 restricted 等效 allow (语义矛盾)。
+        Agent tools_policy 仍可显式覆盖 (deny 禁用 / allow 放行)。
         """
         if tool_name in self.policy:
             return self.policy[tool_name]
