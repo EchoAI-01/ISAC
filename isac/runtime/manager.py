@@ -1177,8 +1177,11 @@ class AgentManager:
         person_id 与读侧 (PersonProfileInjector / query_person_profile 工具) 保持
         同一口径: 优先 UserMapper master_id (Q1 起 SQLite 持久化, 跨重启稳定),
         无 user_profile 时退化用平台 user_id (与注入器的 session.user_id 兜底一致)。
-        agent 键用 instance.agent_id (读侧用 session.agent_id, 二者相同)。
-        画像文本的 LLM 归纳留 MemoryConsolidator (MVP 之后), 本回路只做启发式累积。
+
+        U4: agent 键统一用 pipeline.namespace (租户前缀/自定义 namespace 下与
+        consolidator/注入器/工具读侧同键 —— 此前 manager 用裸 instance.agent_id,
+        与 consolidator 的租户前缀键分裂, 画像归纳写入 injector 永远读不到)。
+        默认单租户时 namespace == agent_id, 零行为变化。
 
         R12: 改用 ``increment_person_interaction`` 原子增量更新, 消除
         read-modify-write 竞态 (同一人并发消息导致 interaction_count 丢失)。
@@ -1189,16 +1192,17 @@ class AgentManager:
         person_id = (getattr(user_profile, "user_id", "") or message.user_id or "").strip()
         if not person_id:
             return
+        agent_key = str(getattr(instance.memory, "namespace", "") or instance.agent_id)
         # name 仅在首次出现 (新 person_id) 时用 user_name 兜底; 已存在行由
         # increment_person_interaction 走 ON CONFLICT DO UPDATE, 不覆盖 name
         # (避免每次消息把 LLM 归纳的 name 重置为平台 user_name)。
         name_for_insert = (message.user_name or person_id) if message.user_name else None
         if not hasattr(metadata_store, "increment_person_interaction"):
             # 旧 store (或 mock) 不支持新方法 → 保留旧 read-modify-write 路径
-            existing = await metadata_store.get_person_profile(instance.agent_id, person_id) or {}
+            existing = await metadata_store.get_person_profile(agent_key, person_id) or {}
             from isac.utils.helpers import unix_now
             await metadata_store.upsert_person_profile(
-                instance.agent_id,
+                agent_key,
                 {
                     "person_id": person_id,
                     "name": message.user_name or existing.get("name") or message.user_id,
@@ -1214,7 +1218,7 @@ class AgentManager:
             )
             return
         await metadata_store.increment_person_interaction(
-            instance.agent_id,
+            agent_key,
             person_id,
             name=name_for_insert,
             relationship_depth_step=RELATIONSHIP_DEPTH_STEP,

@@ -39,12 +39,22 @@ class QueryMemoryTool(Tool):
             return ToolResult(content="query_memory 缺少查询文本。", is_error=True)
         top_k = max(1, int(context.args.get("top_k", 3) or 3))
 
+        # U4: user_id 用归一 master_id (user_profile.user_id), 与写入侧口径一致
+        # (manager._write_memory 落盘 episode.user_id = master_id) —— 此前用平台
+        # session.user_id 检索, UserMapper 归一生效时私聊工具召回系统性漏。
+        profile = getattr(context.agent_context, "user_profile", None)
+        user_id = str(
+            getattr(profile, "user_id", "")
+            or getattr(context.agent_context.session, "user_id", "")
+            or ""
+        )
+
         try:
             hits = await memory.search(
                 query,
                 top_k=top_k,
                 agent_id=getattr(context.agent_context.session, "agent_id", ""),
-                user_id=getattr(context.agent_context.session, "user_id", ""),
+                user_id=user_id,
                 group_id=getattr(context.agent_context.session, "group_id", "") or "",
             )
         except Exception as exc:

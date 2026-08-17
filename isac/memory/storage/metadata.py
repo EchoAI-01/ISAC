@@ -6,6 +6,11 @@ CR3-L2 (O1/P5): 可选注入 TenantIsolationGuard + TenantContext —— 写入�
 episodes 行打 organization_id/tenant_id 标, 读查询用 guard.enforce() 子查询
 包裹加租户谓词。未注入 (默认) 或 guard.enabled=False 时零行为变化 (单租户
 passthrough); 注入按运行时实例进行, 不 import runtime 层 (DEVELOP.md 1.2)。
+
+U4: 租户机制强制 —— 租户读写原语统一经 TenantBoundDB (tenant_bound.py):
+SELECT 走 scoped() (enforce 子查询), UPDATE/DELETE 走 predicate(), INSERT 走
+row_values() 打标。五张记忆表 (episodes/person_profiles/jargon_entries/
+memory_revisions/memory_audit) 全部带 organization_id/tenant_id 列。
 """
 
 from __future__ import annotations
@@ -18,13 +23,10 @@ from typing import Any
 
 import aiosqlite
 
+from isac.memory.storage.tenant_bound import TenantBoundDB
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-# 与 isac.runtime.tenancy.models.DEFAULT_ORG/DEFAULT_TENANT 对齐的字面量
-# (不能 import runtime 层, 见 DEVELOP.md 导入顺序)。
-_DEFAULT_TENANT_VALUE = "default"
 
 # ARCHITECTURE.md 3.6 存储层 Schema (含 agent_id 命名空间)
 SCHEMA_SQL = """
@@ -138,21 +140,18 @@ class MetadataStore:
         self.db_path = db_path
         self._tenant_guard = tenant_guard
         self._tenant_context = tenant_context
+        # U4: 租户机制强制层 —— 读写原语 (scoped/predicate/row_values) 唯一入口。
+        self._tenant_db = TenantBoundDB(
+            db_path, tenant_guard=tenant_guard, tenant_context=tenant_context
+        )
 
     def _tenant_scope(self, query: str, params: list) -> tuple[str, list]:
-        """给读查询加租户谓词 (CR3-L2); 未注入 guard/context 时原样返回。"""
-        if self._tenant_guard is None or self._tenant_context is None:
-            return query, list(params)
-        return self._tenant_guard.enforce(query, list(params), self._tenant_context)
+        """给读查询加租户谓词 (CR3-L2); U4 起委托 TenantBoundDB.scoped。"""
+        return self._tenant_db.scoped(query, params)
 
     def _tenant_row_values(self) -> tuple[str, str]:
-        """写入行的 (organization_id, tenant_id) 标记值。"""
-        if self._tenant_context is None:
-            return (_DEFAULT_TENANT_VALUE, _DEFAULT_TENANT_VALUE)
-        return (
-            str(getattr(self._tenant_context, "organization_id", _DEFAULT_TENANT_VALUE)),
-            str(getattr(self._tenant_context, "tenant_id", _DEFAULT_TENANT_VALUE)),
-        )
+        """写入行的 (organization_id, tenant_id) 标记值 (U4 委托 TenantBoundDB)。"""
+        return self._tenant_db.row_values()
 
     async def init_schema(self) -> None:
         """初始化 Schema。"""
@@ -179,6 +178,11 @@ class MetadataStore:
             # 默认 'default' = 单租户退化态; 常量默认值可用于 ADD COLUMN)
             await self._ensure_column(db, "episodes", "organization_id", "TEXT DEFAULT 'default'")
             await self._ensure_column(db, "episodes", "tenant_id", "TEXT DEFAULT 'default'")
+            # U4: 租户机制强制 —— person_profiles/jargon_entries/memory_revisions/
+            # memory_audit 同样补租户列 (此前仅 episodes 有, 其余四表裸奔)。
+            for table in ("person_profiles", "jargon_entries", "memory_revisions", "memory_audit"):
+                await self._ensure_column(db, table, "organization_id", "TEXT DEFAULT 'default'")
+                await self._ensure_column(db, table, "tenant_id", "TEXT DEFAULT 'default'")
             await db.commit()
 
     @staticmethod
@@ -356,25 +360,75 @@ class MetadataStore:
 
         供 ``AgentManager.destroy(keep_memory=False)`` 调用。episodes 的 AFTER
         DELETE 触发器同步清理 episodes_fts 倒排索引 (显式 DELETE 语句总会触发,
-        无需 recursive_triggers)。agent_id 为多租户场景下已含前缀的完整命名空间,
-        天然租户隔离。返回删除的 episodes 行数。
+        无需 recursive_triggers)。agent_id 为多租户场景下已含前缀的完整命名空间;
+        U4 起 DELETE 再叠加租户谓词双保险 (机制强制, 不依赖键口径自觉)。
+        返回删除的 episodes 行数。
         """
+        pred, tparams = self._tenant_db.predicate()
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("DELETE FROM episodes WHERE agent_id = ?", (agent_id,))
+            cursor = await db.execute(
+                f"DELETE FROM episodes WHERE agent_id = ?{pred}", (agent_id, *tparams)
+            )
             removed = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
-            await db.execute("DELETE FROM person_profiles WHERE agent_id = ?", (agent_id,))
-            await db.execute("DELETE FROM jargon_entries WHERE agent_id = ?", (agent_id,))
+            await db.execute(
+                f"DELETE FROM person_profiles WHERE agent_id = ?{pred}", (agent_id, *tparams)
+            )
+            await db.execute(
+                f"DELETE FROM jargon_entries WHERE agent_id = ?{pred}", (agent_id, *tparams)
+            )
             await db.commit()
         logger.info("记忆命名空间已清空", agent_id=agent_id, episodes_removed=removed)
         return removed
 
+    async def get_episode_meta_by_ids(self, memory_ids: list[str]) -> list[dict]:
+        """U4: 按 ID 批量读 episodes 元数据列 (供 consolidator 替代裸 SQL)。
+
+        经租户作用域 (内层投影含租户列), IN 子句分块 (每批 ≤500, Fix-67:
+        SQLite 绑定变量上限)。返回 dict 列表 (id/created_at/importance/frozen/
+        protected/user_id/group_id), 顺序不保证 (调用方自行按 id 索引)。
+        """
+        ordered_ids = [str(mid) for mid in memory_ids if mid]
+        if not ordered_ids:
+            return []
+        out: list[dict] = []
+        for i in range(0, len(ordered_ids), 500):
+            chunk = ordered_ids[i : i + 500]
+            placeholders = ",".join("?" for _ in chunk)
+            query, params = self._tenant_scope(
+                f"SELECT id, created_at, importance, frozen, protected, user_id, group_id, "
+                f"organization_id, tenant_id FROM episodes WHERE id IN ({placeholders})",
+                chunk,
+            )
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                try:
+                    rows = await db.execute_fetchall(query, params)
+                except Exception as exc:  # noqa: BLE001 单块失败隔离, 不拖垮整轮
+                    logger.warning("episode 元数据分块查询失败, 跳过该块", error=str(exc), chunk_size=len(chunk))
+                    continue
+            out.extend(
+                {
+                    "id": str(row["id"]),
+                    "created_at": int(row["created_at"] or 0),
+                    "importance": float(row["importance"] or 0.5),
+                    "frozen": int(row["frozen"] or 0),
+                    "protected": int(row["protected"] or 0),
+                    "user_id": str(row["user_id"] or ""),
+                    "group_id": str(row["group_id"] or ""),
+                }
+                for row in rows
+            )
+        return out
+
     async def get_person_profile(self, agent_id: str, person_id: str) -> dict | None:
+        # U4: 读经租户作用域 (SELECT * 投影含租户列供 enforce 外层过滤)。
+        query, params = self._tenant_scope(
+            "SELECT * FROM person_profiles WHERE agent_id = ? AND person_id = ?",
+            [agent_id, person_id],
+        )
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM person_profiles WHERE agent_id = ? AND person_id = ?",
-                (agent_id, person_id),
-            )
+            cursor = await db.execute(query, params)
             row = await cursor.fetchone()
         return None if row is None else self._profile_row_to_dict(row)
 
@@ -382,13 +436,15 @@ class MetadataStore:
         person_id = str(profile.get("person_id", "")).strip()
         if not person_id:
             raise ValueError("person profile 缺少 person_id")
+        organization_id, tenant_id = self._tenant_row_values()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 """
                 INSERT OR REPLACE INTO person_profiles (
                     agent_id, person_id, name, profile_text, traits, relationship_depth,
-                    interaction_count, first_seen, last_seen, embedding_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    interaction_count, first_seen, last_seen, embedding_hash,
+                    organization_id, tenant_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     agent_id,
@@ -401,6 +457,8 @@ class MetadataStore:
                     profile.get("first_seen"),
                     profile.get("last_seen"),
                     profile.get("embedding_hash"),
+                    organization_id,
+                    tenant_id,
                 ),
             )
             await db.commit()
@@ -431,13 +489,16 @@ class MetadataStore:
             raise ValueError("person_id 不能为空")
         ts = int(now if now is not None else _unix_now())
         depth_step = float(relationship_depth_step or 0.0)
+        # U4: INSERT 路径打租户标; ON CONFLICT DO UPDATE 不动租户列 (保留原标)。
+        organization_id, tenant_id = self._tenant_row_values()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 """
                 INSERT INTO person_profiles (
                     agent_id, person_id, name, profile_text, traits, relationship_depth,
-                    interaction_count, first_seen, last_seen, embedding_hash
-                ) VALUES (?, ?, ?, '', '[]', ?, 1, ?, ?, NULL)
+                    interaction_count, first_seen, last_seen, embedding_hash,
+                    organization_id, tenant_id
+                ) VALUES (?, ?, ?, '', '[]', ?, 1, ?, ?, NULL, ?, ?)
                 ON CONFLICT(agent_id, person_id) DO UPDATE SET
                     interaction_count = interaction_count + 1,
                     relationship_depth = MIN(1.0, relationship_depth + ?),
@@ -450,6 +511,8 @@ class MetadataStore:
                     depth_step,
                     ts,
                     ts,
+                    organization_id,
+                    tenant_id,
                     depth_step,
                     ts,
                 ) + ((name,) if name is not None else ()),
@@ -460,33 +523,47 @@ class MetadataStore:
         clean_word = str(word or "").strip()
         if not clean_word:
             raise ValueError("行话 word 不能为空")
+        # U4: INSERT 路径打租户标; ON CONFLICT DO UPDATE 不动租户列 (保留原标)。
+        organization_id, tenant_id = self._tenant_row_values()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 """
-                INSERT INTO jargon_entries (agent_id, word, meaning, context, usage_count, created_at)
-                VALUES (?, ?, ?, ?, 1, ?)
+                INSERT INTO jargon_entries (
+                    agent_id, word, meaning, context, usage_count, created_at,
+                    organization_id, tenant_id
+                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)
                 ON CONFLICT(agent_id, word) DO UPDATE SET
                     meaning = excluded.meaning,
                     context = excluded.context,
                     usage_count = jargon_entries.usage_count + 1
                 """,
-                (agent_id, clean_word, str(meaning), str(context or ""), int(time.time())),
+                (agent_id, clean_word, str(meaning), str(context or ""), int(time.time()),
+                 organization_id, tenant_id),
             )
             await db.commit()
 
     async def list_jargon(self, agent_id: str) -> list[dict]:
+        # U4: 读经租户作用域 (SELECT * 投影含租户列), 返回仍只含业务键。
+        query, params = self._tenant_scope(
+            """
+            SELECT * FROM jargon_entries
+            WHERE agent_id = ?
+            ORDER BY usage_count DESC, word ASC
+            """,
+            [agent_id],
+        )
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            rows = await db.execute_fetchall(
-                """
-                SELECT word, meaning, context, usage_count
-                FROM jargon_entries
-                WHERE agent_id = ?
-                ORDER BY usage_count DESC, word ASC
-                """,
-                (agent_id,),
-            )
-        return [dict(row) for row in rows]
+            rows = await db.execute_fetchall(query, params)
+        return [
+            {
+                "word": row["word"],
+                "meaning": row["meaning"],
+                "context": row["context"],
+                "usage_count": row["usage_count"],
+            }
+            for row in rows
+        ]
 
     async def update_episode_summary(self, agent_id: str, episode_id: str, summary: str) -> bool:
         """更新某 episode 的 summary 列 (R4-② 中期记忆压缩落盘)。

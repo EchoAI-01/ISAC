@@ -730,6 +730,16 @@ class Reranker:
         """重排序模型是否可用"""
 ```
 
+**多租户隔离 (O1/U4 机制强制)**:
+
+隔离由三层机制叠加, 全部经唯一机制入口 `TenantBoundDB` (`memory/storage/tenant_bound.py`), 调用方无法自行拼装谓词绕过:
+
+1. **命名空间前缀**: `memory_factory` 对 namespace 应用 `guard.namespace_for()` (非默认租户加 `org:tenant:` 前缀), episodes/profile/jargon 按键天然分区; 写/读/整合/注入/工具五处键口径统一为 `pipeline.namespace` (U4)。
+2. **行级租户标 + 作用域**: 五张记忆表 (episodes/person_profiles/jargon_entries/memory_revisions/memory_audit) 均带 `organization_id`/`tenant_id` 列; 写入经 `row_values()` 打标, SELECT 经 `scoped()` (enforce 子查询包裹, 防 AND/OR 优先级绕过), UPDATE/DELETE 经 `predicate()` 规范谓词。
+3. **审计闭环**: 治理操作 (freeze/protect/correct/delete/restore/export) 落 memory_audit 带租户标, 跨租户审计不可见。
+
+`tenancy.enabled=false` 或默认租户时全部机制直通 (单租户零行为变化)。
+
 ---
 
 ### 3.7 Gating System — 门控

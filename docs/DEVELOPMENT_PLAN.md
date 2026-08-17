@@ -1348,11 +1348,11 @@ v1.0 GA = 以下全部满足:
   - **依赖**: U0。
   - **当前**: 未开始。
 
-- [ ] **U4 租户机制强制 (半墙 → 整墙)**
+- [x] **U4 租户机制强制 (半墙 → 整墙)**
   - **目标**: 隔离从"调用方自觉"升级为"机制强制": TenantBound 连接包装层自动注入租户谓词 (替换逐处子查询, 调用方无法绕过); person_profiles/jargon_entries/memory_revisions/memory_audit 补 tenant_id 列 + 迁移脚本; QueryMemoryTool 改 master_id 检索 (修私聊工具召回系统性漏); 租户前缀/自定义 namespace 下 consolidator-manager-injector 三处键统一。
   - **验收**: 两租户共库全场景零串档 (检索/治理/画像/行话/工具召回集成测试); 审计确认无裸 SQL 绕过点; `tenancy.enabled=false` 时零行为变化。
   - **依赖**: U0 (Fix-85 是其前哨)。
-  - **当前**: 未开始。
+  - **当前**: **已完成 (2026-08-17)**。①**TenantBoundDB 机制强制层** (memory/storage/tenant_bound.py): 租户读写原语唯一入口 —— `scoped()` SELECT 自动 enforce 子查询包裹、`predicate()` UPDATE/DELETE 规范谓词片段、`row_values()` INSERT 打标、`connect()` 连接收口; MetadataStore._tenant_scope/_tenant_row_values 与 MemoryGovernor._tenant_predicate 全部委托该层 (谓词逻辑唯一实现, 调用方无法自行拼装绕过)。②**四表补租户列**: person_profiles/jargon_entries/memory_revisions/memory_audit 经 _ensure_column 迁移补 organization_id/tenant_id (默认 'default', 存量不需回填); profile/jargon 写入打标 + 读取经租户作用域; governor 审计/revision 行打租户标, list_audit 跨租户不可见, 治理 SELECT 改走 scoped()。③**QueryMemoryTool master_id**: user_id 取 user_profile.user_id (与 _write_memory 落盘口径一致, 修私聊工具召回系统性漏); query_person_profile 同步 (person_id 回落链 + namespace 键)。④**三处键统一**: manager._update_person_profile 与三个注入器 (person_profile/jargon/mid_term) 及两工具的 agent 键统一为 pipeline.namespace (租户前缀/自定义 namespace 下与 consolidator 写侧同键; 默认单租户零变化); 顺带清偿两处裸 SQL 绕过点 —— consolidator._fetch_episode_meta 改经 metadata.get_episode_meta_by_ids (租户作用域内分块), routes_memory 控制面三端点改经 store._tenant_db.scoped()。审计测试常驻 (允许清单外 isac/ 零 aiosqlite.connect 记忆库直连)。测试: U4 专项单测 12 例 (三态原语/四表隔离/delete 谓词双保险/meta 作用域/审计行打标/默认租户零行为/工具取键口径/绕过点审计) + test_p5 集成 3 例 (画像行话元数据跨租户不可见/键统一写读一致/master_id 召回回归)。全量单测 1770 通过+1 skip, integration 100 通过, ruff/mypy 全绿。
 
 - [ ] **U5 工具权限管线 + HITL 卡片审批**
   - **目标**: 工具权限从静态 scope 表升级为四段管线: pre-execute (allow/deny/ask waterfall) → 单调 guard (拒绝不可翻回) → 执行 → post 审计留痕 (决策 + 决策者 + 理由, 经 U1 事件表); ask 档落 IM 审批卡片 (人点同意/拒绝, 超时 fail-closed); 决策理由词汇表 (规范值 + drift test); mcp:/compat/native 统一走命名空间注册管线 (Fix-88 机制化)。
