@@ -139,7 +139,7 @@
 
 **剩余 (~40 项 Minor)**: 另立批次, 优先级让位于 N2 环境准入与 N4 前端轨道。
 
-### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1~6 全部完成 (全量 2062 通过), 第三轮清零**
+### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1~6 完成 (全量 2062 通过): Critical/Major 清零, Minor 余 9 项另立批次**
 
 **方法**: U0-U9 架构演进后按同规格再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 主审逐条回码复核。去重后 **1 Critical + 21 Major + 44 Minor**。
 
@@ -208,7 +208,9 @@
 - [x] **Fix-128** 插件工具命名空间收紧 —— 跳过条件从"名字含任意 ':'"改为"名字已含**本源**前缀 `<source>:`"; 此前插件用 `mcp:x:y`/`别的插件:tool` 这类名字可整体绕过命名空间, 冒充 MCP 工具或顶替其他插件的已命名工具。生产 MCP 桥接以 source=builtin 注册不受影响。
 - [x] **Fix-129** host 插件工具执行超时 —— AstrBot `FunctionToolAdapter` / MaiBot `MaiBotActionAdapter` 执行受 timeout 约束 (默认 60s 可配); 异步直接 wait_for, 同步经 to_thread 移出事件循环再限时, 挂死的插件函数不再无限阻塞 Agent Loop。
 
-顺带: Fix-120 把分页重建移入 `DenyGuard.restore_from_store`, bootstrap `_start_session_event_store` 精简后维持 ≤500 行红线; host 适配器超时下限 0.01s 便于测试注入 (生产默认 60s)。新增 21 例批 6 回归测试 (并更新 Fix-88 命名空间既有测试以反映加固语义)。**全量 2062 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。**第三轮审查 1 Critical + 21 Major + 44 Minor 已全部清零** (余 audit.ndjson 轮转为运维配置项, 另立)。
+顺带: Fix-120 把分页重建移入 `DenyGuard.restore_from_store`, bootstrap `_start_session_event_store` 精简后维持 ≤500 行红线; host 适配器超时下限 0.01s 便于测试注入 (生产默认 60s)。新增 21 例批 6 回归测试 (并更新 Fix-88 命名空间既有测试以反映加固语义)。**全量 2062 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。
+
+**第三轮进度小结**: 1 Critical + 21 Major 已全部清零, 44 Minor 已清绝大部分 (批 1~6 合计 Fix-89~129 共 41 项)。剩余 Minor 另立批次: ① subagent `_runs`/journal 无界增长; ② 生产者去重表无界; ③ event_store append 后 `SELECT MAX(seq)` 回读竞态; ④ 隔离插件 manifest.name≠目录名时 reload/uninstall 回退路径; ⑤ upload 安装 zip_b64 无大小上限; ⑥ MCP 路由/绑定变更未持久化; ⑦ gating idle-backoff 死代码; ⑧ DenyGuard `_denials` 无界 (单调拒绝安全约束, 逐出即翻回, 需权衡); ⑨ audit.ndjson 无轮转 (运维配置项)。
 
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 
