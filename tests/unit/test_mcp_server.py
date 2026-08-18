@@ -443,3 +443,73 @@ async def test_tools_call_scope_enforced_with_parsed_tokens(tmp_path) -> None:
         "params": {"name": "agent_create", "arguments": {}},
     })
     assert resp2 is not None and resp2["error"]["code"] == -32001
+
+
+# ── Fix-93: MCP 写工具审计留痕 ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mcp_write_tools_are_audited(tmp_path) -> None:
+    """Fix-93: MCP 写工具 (agent_create 等) 成功后必须经 AuditLog 留痕 ——
+    此前 11 个写工具完全绕过审计, MCP 通道成为无追溯的写后门。"""
+    from isac.control.audit import AuditLog
+
+    services = {
+        "global_config": {},
+        "provider_manager": _StubProviderManager(),
+        "memory_factory": lambda namespace: _StubMemory(namespace),
+    }
+    agent_manager = AgentManager(services)
+    audit_log = AuditLog(log_path=str(tmp_path / "audit.ndjson"))
+    server = ISACMCPServer(
+        services=services,
+        api_token="mcp-secret",
+        agent_manager=agent_manager,
+        audit_log=audit_log,
+    )
+    resp = await server._handle_request({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {
+            "name": "agent_create",
+            "arguments": {"agent_id": "audited-agent", "display_name": "A"},
+            "meta": {"authorization": "Bearer mcp-secret"},
+        },
+    })
+    assert resp is not None and "result" in resp
+    # 审计已记录: action=agent_create, target=agent_id, method=MCP
+    entries = audit_log.query(action="agent_create")
+    assert entries and entries[0]["target"] == "audited-agent"
+    assert entries[0]["method"] == "MCP"
+    assert entries[0]["actor"].startswith("mcp:")
+
+
+@pytest.mark.asyncio
+async def test_mcp_audit_failure_does_not_block_tool(tmp_path) -> None:
+    """Fix-93: 审计写入异常不得阻塞已成功的工具结果返回。"""
+    services = {
+        "global_config": {},
+        "provider_manager": _StubProviderManager(),
+        "memory_factory": lambda namespace: _StubMemory(namespace),
+    }
+    agent_manager = AgentManager(services)
+
+    class _BrokenAudit:
+        async def record(self, **kwargs):
+            raise RuntimeError("audit backend down")
+
+    server = ISACMCPServer(
+        services=services,
+        api_token="mcp-secret",
+        agent_manager=agent_manager,
+        audit_log=_BrokenAudit(),
+    )
+    resp = await server._handle_request({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {
+            "name": "agent_create",
+            "arguments": {"agent_id": "still-works", "display_name": "A"},
+            "meta": {"authorization": "Bearer mcp-secret"},
+        },
+    })
+    # 审计挂了但工具结果正常返回
+    assert resp is not None and "result" in resp

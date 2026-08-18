@@ -5,6 +5,7 @@ Bearer Token 认证 (依赖注入) + 审计日志 (写操作记录) + AgentConfi
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +16,63 @@ if TYPE_CHECKING:
     from isac.runtime.manager import AgentManager
 
 logger = get_logger(__name__)
+
+# Fix-91: 敏感配置键判定 + 脱敏哨兵。AgentConfig 的 llm/persona/gating/conversation
+# 是自由 dict, 部署方可能把 api_key/secret/token 放进 (ProviderManager 明确消费
+# llm.api_key)。GET /agents/{id}/config 若原样回显, 持窄 scope agent:read token 的
+# 集成方即可读走全部 Agent 的 LLM 凭据明文。序列化前按值替换为哨兵。
+_SENSITIVE_KEY_PATTERN = re.compile(
+    r"(api[_-]?key|apikey|secret|token|password|passwd|credential|private[_-]?key)",
+    re.IGNORECASE,
+)
+REDACTED_SENTINEL = "__ISAC_REDACTED__"
+
+
+def _is_sensitive_key(key: str) -> bool:
+    return bool(_SENSITIVE_KEY_PATTERN.search(str(key or "")))
+
+
+def _redact_sensitive(data: Any) -> Any:
+    """深拷贝并把敏感键的值替换为哨兵 (只读回显用, 不改原对象)。"""
+    if isinstance(data, dict):
+        return {
+            k: (REDACTED_SENTINEL if _is_sensitive_key(k) and v not in (None, "") else _redact_sensitive(v))
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_redact_sensitive(item) for item in data]
+    return data
+
+
+def _restore_redacted(merged: Any, original: Any) -> Any:
+    """PATCH 合并后, 把客户端回传的哨兵值还原为原配置的真实值。
+
+    WebUI 编辑流程是 GET (拿到脱敏值) → 改别的字段 → PATCH 回传整个 dict; 若不做
+    还原, 哨兵值会覆盖真实 api_key。规则: 敏感键上, 传回的是哨兵 → 用原值;
+    传回的是新值 (客户端真要改密钥) → 保留新值。非敏感键原样保留 merged。
+    列表按 merged 逐元素递归 (original 按索引对齐, 缺位传 None) —— 不能用
+    zip(merged, original): 两者不等长时 (如 trigger_words 由 [] 改 ["hi"]) 会按
+    短列表截断, 丢更新。
+    """
+    if isinstance(merged, dict):
+        original_dict = original if isinstance(original, dict) else {}
+        restored: dict[Any, Any] = {}
+        for k, v in merged.items():
+            if _is_sensitive_key(k):
+                if v == REDACTED_SENTINEL:
+                    restored[k] = original_dict.get(k)
+                else:
+                    restored[k] = v
+            else:
+                restored[k] = _restore_redacted(v, original_dict.get(k))
+        return restored
+    if isinstance(merged, list):
+        original_list = original if isinstance(original, list) else []
+        return [
+            _restore_redacted(item, original_list[i] if i < len(original_list) else None)
+            for i, item in enumerate(merged)
+        ]
+    return merged
 
 
 def build_router(
@@ -163,6 +221,9 @@ async def _do_patch_agent(
         for k, v in payload.items():
             if k in merged and k not in ("agent_id", "revision"):
                 merged[k] = v
+        # Fix-91: 还原哨兵 —— GET 已把敏感键脱敏为哨兵, WebUI 编辑回传时若原样
+        # 带回哨兵, 不能让它覆盖真实凭据; 仅当客户端真传了新值才更新敏感键。
+        merged = _restore_redacted(merged, asdict(instance.config))
         try:
             new_config = AgentConfig(**merged)
         except (ValueError, TypeError) as exc:
@@ -226,7 +287,12 @@ async def _do_create_agent(agent_manager: AgentManager, config: dict) -> Any:
 
 
 async def _get_agent_config(agent_manager: AgentManager, agent_id: str) -> dict:
-    """R2: 返回全量 AgentConfig (asdict) + 真实 revision; Agent 不存在抛 404。"""
+    """R2: 返回全量 AgentConfig (asdict) + 真实 revision; Agent 不存在抛 404。
+
+    Fix-91: 回显前把敏感键 (llm.api_key 等) 替换为哨兵 —— 此前原样返回
+    asdict(config), 持窄 scope agent:read token 的集成方可读走全部 Agent 的 LLM
+    凭据明文。PATCH 侧经 _restore_redacted 保证哨兵不会覆盖真实值。
+    """
     from dataclasses import asdict
 
     from fastapi import HTTPException
@@ -234,7 +300,7 @@ async def _get_agent_config(agent_manager: AgentManager, agent_id: str) -> dict:
     instance = await agent_manager.get(agent_id)
     if instance is None:
         raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
-    return asdict(instance.config)
+    return _redact_sensitive(asdict(instance.config))
 
 
 async def _require_agent(

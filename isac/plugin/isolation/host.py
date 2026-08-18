@@ -1,10 +1,13 @@
 """PluginIsolationHost: 插件进程隔离宿主 (O2, PLUGIN_COMPATIBILITY.md)。
 
-O2 实现: 用 multiprocessing.Process spawn 子进程, stdin/stdout JSON-RPC
-IPC; spawn 时设资源限额 (resource.setrlimit CPU/RSS/NOFILE, POSIX only); call
-编码 IPCEnvelope → JSON → 管道发送 → 等待 result/error → 解码; 子进程崩溃
-自动重启 (最多 max_restart_attempts 次, 默认 3)。默认不接管现有 in-process
-loader (loader.py 不变), enabled=False 时主链路零行为变化。
+O2 实现: 用 multiprocessing.Process spawn 子进程, socketpair 上长度前缀 JSON
+字节帧 IPC (Fix-89: 此前用 multiprocessing.Pipe —— recv() 是 pickle 反序列化,
+承载不可信插件代码的隔离子进程可构造恶意 pickle 载荷在宿主 recv 时执行任意代码,
+沙箱逃逸; 现传输层只读字节 + json.loads, 解码路径零代码执行); spawn 时设资源
+限额 (resource.setrlimit CPU/RSS/NOFILE, POSIX only); call 编码 IPCEnvelope →
+JSON 帧 → 发送 → 等待 result/error → 解码; 子进程崩溃自动重启 (最多
+max_restart_attempts 次, 默认 3)。默认不接管现有 in-process loader (loader.py
+不变), enabled=False 时主链路零行为变化。
 
 CR3-H2: 子进程 worker 不再是纯 echo 桩 —— kind="load" 让隔离子进程用
 PluginLoader 真实加载插件入口 (顶层代码在子进程内执行, 不污染宿主),
@@ -17,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import multiprocessing as mp
+import socket
 import sys
 from typing import Any
 
@@ -43,6 +47,57 @@ DEFAULT_IPC_TIMEOUT_SECONDS = 30.0
 
 # 可 JSON 序列化的原生类型 (worker 方法返回值超出此集合时降级为 str)
 _JSON_SAFE_TYPES = (str, int, float, bool, type(None), list, dict)
+
+# Fix-89: IPC 单帧上限。长度前缀来自对端 (隔离子进程跑不可信插件代码),
+# 恶意声明超大长度会让读取侧按长度预分配/阻塞 → 读前强制上限, 超限视为
+# 协议违规 (宿主按崩溃重启处理)。插件载荷是 JSON 结果/错误文本, 16MB 足够。
+_MAX_FRAME_BYTES = 16 * 1024 * 1024
+
+
+class _JsonFrameTransport:
+    """Fix-89: 长度前缀 JSON 字节帧传输 (替代 pickle 语义的 multiprocessing.Pipe)。
+
+    威胁模型: 隔离子进程承载不可信插件代码, 对管道另一端写入的内容完全可控。
+    multiprocessing.Connection.recv() 是 pickle 反序列化 —— 恶意插件直接写构造
+    好的 pickle 字节流 (如带 __reduce__ 的对象), 宿主 recv 时即执行任意代码,
+    应用层的 JSON 协议在 pickle 之后才生效, 不构成防护 (已实测复现)。
+    本传输层只读裸字节: 4 字节大端长度 + UTF-8 JSON, 解码仅 json.loads,
+    路径上无任何代码执行点。send(dict)/recv()->dict 的接口形状与旧 Pipe 用法
+    对齐 (序列化职责移入传输层), 宿主/worker 两侧共用。
+    """
+
+    def __init__(self, sock: socket.socket) -> None:
+        self._sock = sock
+        # 缓冲读: recv 在 to_thread 内阻塞等待, makefile 提供 read(n) 精确读语义
+        self._reader = sock.makefile("rb")
+
+    def send(self, data: dict[str, Any]) -> None:
+        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        if len(payload) > _MAX_FRAME_BYTES:
+            raise ValueError(f"IPC 帧超限 ({len(payload)} > {_MAX_FRAME_BYTES})")
+        self._sock.sendall(len(payload).to_bytes(4, "big") + payload)
+
+    def recv(self) -> dict[str, Any]:
+        header = self._reader.read(4)
+        if len(header) < 4:
+            raise EOFError("IPC 连接已关闭")
+        length = int.from_bytes(header, "big")
+        if length > _MAX_FRAME_BYTES:
+            # 对端声明非法长度 (恶意/损坏): 不能按其读取, 视为协议违规
+            raise ValueError(f"IPC 帧长度异常: {length}")
+        body = self._reader.read(length)
+        if len(body) < length:
+            raise EOFError("IPC 连接意外中断")
+        return json.loads(body.decode("utf-8"))  # type: ignore[no-any-return]
+
+    def close(self) -> None:
+        try:
+            self._reader.close()
+        finally:
+            try:
+                self._sock.close()
+            except OSError:
+                pass
 
 
 # 默认资源限额 (POSIX; 可经 PluginIsolationHost(rlimits=...) 覆盖)
@@ -113,21 +168,24 @@ def _worker_call(state: dict[str, Any], payload: dict[str, Any]) -> dict[str, An
     return {"result": result}
 
 
-def _plugin_worker(plugin_id: str, pipe_conn: Any, rlimits: dict[str, tuple[int, int]] | None = None) -> None:
+def _plugin_worker(
+    plugin_id: str, sock: socket.socket, rlimits: dict[str, tuple[int, int]] | None = None
+) -> None:
     """子进程入口: 循环处理 load/call 请求 (CR3-H2: 真实加载插件, echo 兼容)。
 
-    读管道一条 JSON → 处理 → 写回一条 JSON。业务异常回 kind=error 不崩溃;
-    管道断开 (EOFError) 退出。资源限额见 _apply_rlimits (POSIX only, C3 可配)。
+    读 JSON 帧一条 → 处理 → 写回 JSON 帧一条 (Fix-89: 经 _JsonFrameTransport
+    字节帧, 不再经 pickle)。业务异常回 kind=error 不崩溃; 连接断开 (EOFError)
+    退出。资源限额见 _apply_rlimits (POSIX only, C3 可配)。
     """
     _apply_rlimits(rlimits)
+    transport = _JsonFrameTransport(sock)
     state: dict[str, Any] = {}
     while True:
         correlation_id = ""
         try:
-            line = pipe_conn.recv()
-            if line is None:
+            env = transport.recv()
+            if env is None:
                 break
-            env = json.loads(line) if isinstance(line, str) else line
             correlation_id = str(env.get("correlation_id", "") or "")
             kind = str(env.get("kind", "call") or "call")
             payload = env.get("payload", {}) or {}
@@ -149,21 +207,18 @@ def _plugin_worker(plugin_id: str, pipe_conn: Any, rlimits: dict[str, tuple[int,
                     "payload": {"error": str(exc)},
                     "correlation_id": correlation_id,
                 }
-            pipe_conn.send(json.dumps(response, ensure_ascii=False))
+            transport.send(response)
         except EOFError:
             break
         except Exception as exc:  # noqa: BLE001 协议层异常: 尽力回 error, 失败则退出
             try:
-                pipe_conn.send(
-                    json.dumps(
-                        {
-                            "kind": "error",
-                            "plugin_id": plugin_id,
-                            "payload": {"error": str(exc)},
-                            "correlation_id": correlation_id,
-                        },
-                        ensure_ascii=False,
-                    )
+                transport.send(
+                    {
+                        "kind": "error",
+                        "plugin_id": plugin_id,
+                        "payload": {"error": str(exc)},
+                        "correlation_id": correlation_id,
+                    }
                 )
             except Exception:  # noqa: BLE001
                 break
@@ -203,7 +258,13 @@ class PluginIsolationHost:
         self._needs_reload: bool = False
 
     async def spawn(self) -> None:
-        """启动隔离子进程 (multiprocessing.Process + Pipe + 资源限额)."""
+        """启动隔离子进程 (multiprocessing.Process + socketpair 字节帧 IPC + 资源限额).
+
+        Fix-89: 传输从 multiprocessing.Pipe (pickle) 换成 socketpair +
+        _JsonFrameTransport (长度前缀 JSON 字节帧) —— Pipe.recv 的 pickle
+        反序列化是沙箱逃逸点 (子进程可控字节流 → 宿主 RCE)。socket 对象经
+        multiprocessing.reduction 的 fd 传递机制作为 Process 参数送入子进程。
+        """
         if self._alive and self._process is not None and self._process.is_alive():
             return
         # CR2-Fix-20: 此前用 fork (POSIX) 减少 spawn 开销; fork 会让子进程继承
@@ -212,18 +273,20 @@ class PluginIsolationHost:
         # Python 解释器, 只继承 target/args 显式传入的内容; 要求目标函数可被
         # pickle, _plugin_worker 是模块级函数, 满足要求。
         self._ctx = mp.get_context("spawn")
-        self._parent_conn, self._child_conn = self._ctx.Pipe()
+        parent_sock, child_sock = socket.socketpair()
+        self._parent_conn = _JsonFrameTransport(parent_sock)
+        self._child_conn = child_sock  # 仅用于 start 后关闭父侧副本 (C5 同构)
         self._process = self._ctx.Process(
             target=_plugin_worker,
-            args=(self.plugin_id, self._child_conn, self._rlimits),
+            args=(self.plugin_id, child_sock, self._rlimits),
             daemon=True,
         )
         self._process.start()
         self._alive = True
-        # N5b 批次C C5: 父侧 close _child_conn (子进程经 pickle 持自己的端; 父持有
+        # N5b 批次C C5: 父侧 close child 端 (子进程经 fd 传递持自己的副本; 父持有
         # child 端 FD 会导致子退出时父端不释放 EOF 不传播, respawn/kill 泄漏 FD)。
         try:
-            self._child_conn.close()
+            child_sock.close()
         except Exception:  # noqa: BLE001
             pass
         logger.info(
@@ -314,12 +377,12 @@ class PluginIsolationHost:
     async def _ipc_roundtrip(self, envelope: IPCEnvelope) -> dict[str, Any]:
         """C4: 串行化发送 + 接收 + 校验 correlation_id (须在 _lock 内调用)。"""
         try:
-            self._parent_conn.send(json.dumps({
+            self._parent_conn.send({
                 "kind": envelope.kind,
                 "plugin_id": envelope.plugin_id,
                 "payload": envelope.payload,
                 "correlation_id": envelope.correlation_id,
-            }))
+            })
         except (BrokenPipeError, OSError) as exc:
             # 管道断 = 子进程崩溃, 触发重启
             logger.warning("IPC 管道断, 触发重启", plugin_id=self.plugin_id, error=str(exc))
@@ -329,10 +392,10 @@ class PluginIsolationHost:
         try:
             # Fix-77: 加超时 —— 子进程挂死 (插件死锁/死循环且不退出) 时 recv
             # 永久阻塞, 且 _lock 串行化让该插件后续所有 call 排队挂死。超时按
-            # 崩溃处理: _on_crash terminate 挂死进程 (管道随之关闭, 被阻塞的
-            # recv 线程收到 EOF/OSError 自行退出 —— to_thread 任务无法取消,
-            # 但线程会随管道关闭而终结) + respawn 新子进程。
-            raw = await asyncio.wait_for(
+            # 崩溃处理: _on_crash 杀挂死进程 (连接随之关闭, 被阻塞的 recv 线程
+            # 收到 EOF/OSError 自行退出 —— to_thread 任务无法取消, 但线程会随
+            # 连接关闭而终结) + respawn 新子进程。
+            data = await asyncio.wait_for(
                 asyncio.to_thread(self._parent_conn.recv), timeout=self._ipc_timeout
             )
         except TimeoutError as exc:
@@ -347,9 +410,14 @@ class PluginIsolationHost:
         except EOFError as exc:
             await self._on_crash()
             raise RuntimeError(f"插件 {self.plugin_id} 子进程已退出") from exc
-        data = json.loads(raw) if isinstance(raw, str) else raw
-        # C4: 校验响应 correlation_id 匹配 (不匹配说明管道残留/并发错配, 视为崩溃重置)
-        resp_corr = data.get("correlation_id", "")
+        except (ValueError, OSError) as exc:
+            # Fix-89: 帧长度异常/JSON 解析失败/连接重置 —— 对端是不可信插件
+            # 代码, 协议违规一律按崩溃重启, 不消费其内容。
+            logger.warning("IPC 协议违规, 触发重启", plugin_id=self.plugin_id, error=str(exc))
+            await self._on_crash()
+            raise RuntimeError(f"插件 {self.plugin_id} IPC 协议违规, 子进程已重启") from exc
+        # C4: 校验响应 correlation_id 匹配 (不匹配说明残留/并发错配, 视为崩溃重置)
+        resp_corr = str(data.get("correlation_id", "") or "")
         if resp_corr and resp_corr != envelope.correlation_id:
             logger.warning(
                 "IPC 响应 correlation_id 不匹配", plugin_id=self.plugin_id,
@@ -397,22 +465,32 @@ class PluginIsolationHost:
                 if self._process.is_alive():
                     self._process.terminate()
                     await asyncio.to_thread(self._process.join, 1.0)
+                    # 第三轮审查 Major: SIGKILL 兜底 (与 kill() 对齐) —— 插件可在
+                    # worker 内捕获/忽略 SIGTERM, terminate 后仍存活: 继续持有旧
+                    # 连接写端使被超时放弃的 recv 线程永久阻塞, 自身成为孤儿进程。
+                    # 每次 IPC 超时都可触发一轮, 不兜底 = 可被无限泄漏。
+                    if self._process.is_alive():
+                        self._process.kill()
+                        await asyncio.to_thread(self._process.join, 1.0)
                 self._process.close()
         except Exception:  # noqa: BLE001
             pass
         self._close_conns()
         if self._ctx is None:
             self._ctx = mp.get_context("spawn")
-        self._parent_conn, self._child_conn = self._ctx.Pipe()
+        # Fix-89: respawn 同样用 socketpair 字节帧 (不再用 pickle 语义的 Pipe)
+        parent_sock, child_sock = socket.socketpair()
+        self._parent_conn = _JsonFrameTransport(parent_sock)
+        self._child_conn = child_sock
         self._process = self._ctx.Process(
             target=_plugin_worker,
-            args=(self.plugin_id, self._child_conn, self._rlimits),
+            args=(self.plugin_id, child_sock, self._rlimits),
             daemon=True,
         )
         self._process.start()
         self._alive = True
         try:
-            self._child_conn.close()
+            child_sock.close()
         except Exception:  # noqa: BLE001
             pass
         # C3: respawn 后 worker state 已重置 (空 plugin), 标记下次 call 重载插件

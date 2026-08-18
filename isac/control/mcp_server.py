@@ -83,6 +83,7 @@ class ISACMCPServer:
         plugin_manager: PluginManager | None = None,
         parsed_tokens: list[Any] | None = None,
         agents_dir: str = "data/agents",
+        audit_log: Any | None = None,
     ):
         self.services = services
         self.api_token = api_token
@@ -97,6 +98,10 @@ class ISACMCPServer:
         # C2: parsed_tokens 为 None (未配置 tokens[]) 时回退到扁平 api_token,
         # 与 HTTP 端点行为一致 (向后兼容默认行为不变); 非 None 时按 scope 校验。
         self._parsed_tokens = parsed_tokens
+        # Fix-93: 注入 AuditLog (与 HTTP 控制面同实例) —— 此前 11 个写工具完全
+        # 绕过审计 (agent_update_config 甚至显式传 audit_log=None 给 _do_patch_agent),
+        # 使 MCP 通道成为无追溯的写后门。每次写工具成功后经 _audit_write 留痕。
+        self._audit_log = audit_log
         self._initialized = False
 
     async def serve_stdio(
@@ -278,11 +283,21 @@ class ISACMCPServer:
             raise MCPError(-32003, f"Forbidden: missing scope {required}")
 
     async def _call_tool(self, params: dict[str, Any]) -> dict[str, Any]:
-        """调用 MCP 工具, 委托到 AgentManager/Router/Bus。"""
+        """调用 MCP 工具, 委托到 AgentManager/Router/Bus。
+
+        Fix-93: 工具执行成功后统一经 _audit_write 留痕 (覆盖全部 11 个写工具,
+        含经 _call_r2_tools 的分支); 审计失败不阻塞工具结果。
+        """
         name = params.get("name", "")
         args = params.get("arguments", {}) or {}
         # C2: parsed_tokens 启用时按 tool→scope 映射校验 (抽 helper 降复杂度)
         await self._check_scope_if_needed(name, params)
+        result = await self._call_tool_impl(name, args)
+        await self._audit_write(name, args, params)
+        return result
+
+    async def _call_tool_impl(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """工具执行主体 (抽自 _call_tool, 供其在成功后统一审计)。"""
         if name == "agent_create" and self._agent_manager is not None:
             # CR3-L1: MCP 自动化创建同样走受限默认配置 (bash/task deny +
             # plugins_deny=["*"]), 调用方 arguments 里的能力字段被丢弃并告警。
@@ -314,6 +329,40 @@ class ISACMCPServer:
         if extra is not None:
             return extra
         raise MCPError(-32602, f"Unknown tool or missing dependency: {name}")
+
+    async def _audit_write(self, name: str, args: dict[str, Any], params: dict[str, Any]) -> None:
+        """Fix-93: MCP 写工具审计留痕 (与 HTTP 控制面 _audit 同口径)。
+
+        actor 用 token 指纹 (不回显原 token); target 优先取 agent_id, 缺省 platform。
+        审计失败仅记日志, 不影响已成功的工具结果返回。
+        """
+        if self._audit_log is None:
+            return
+        try:
+            target = str(args.get("agent_id", "") or args.get("platform", "") or "")
+            await self._audit_log.record(
+                actor=self._token_fingerprint(params),
+                method="MCP",
+                path=f"mcp://{name}",
+                action=name,
+                target=target,
+                detail=json.dumps(args, ensure_ascii=False)[:500],
+                status_code=200,
+            )
+        except Exception:  # noqa: BLE001 审计失败不阻塞工具结果
+            logger.warning("MCP 工具审计写入失败", tool=name, exc_info=True)
+
+    def _token_fingerprint(self, params: dict[str, Any]) -> str:
+        """Fix-93: 从请求提取 token 并返回短指纹 (审计标识来源, 不泄露原 token)。"""
+        import hashlib
+
+        auth_header = str((params.get("meta") or {}).get("authorization", "") or "")
+        from isac.control.auth import extract_bearer
+
+        token = extract_bearer(auth_header)
+        if not token:
+            return "mcp:anonymous"
+        return f"mcp:{hashlib.sha256(token.encode('utf-8')).hexdigest()[:8]}"
 
     async def _send_error(self, writer: asyncio.StreamWriter, request_id: Any, code: int, message: str) -> None:
         response = self._error_response(request_id, code, message)

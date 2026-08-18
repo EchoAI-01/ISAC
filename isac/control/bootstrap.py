@@ -108,6 +108,13 @@ async def _register_control_plane(
         # 不挂载, 零行为变化)。启用时构造并注入, WorkflowEngine 按 base_dir 持久化实例。
         # S5 激活: 同时注入生产 action_handler + condition_evaluator + 声明式加载。
         workflow_engine = _build_workflow_engine(control_config, agent_manager)
+        # Fix-93: 构造**共享** AuditLog 实例 —— 同时注入 HTTP 控制面与 MCP Server,
+        # 使两条写通道审计进同一内存缓冲/NDJSON 文件 (此前 MCP 完全绕过审计)。
+        from isac.control.audit import AuditLog
+
+        shared_audit_log = AuditLog(
+            log_path=control_config.get("audit_log_path", "data/audit.ndjson")
+        )
         app = create_control_app(
             agent_manager,
             router,
@@ -131,6 +138,7 @@ async def _register_control_plane(
             webhook_manager=webhook_manager,
             tenant_manager=(services or {}).get("tenant_manager"),
             services=services or {},
+            audit_log=shared_audit_log,
         )
         host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
         port = int(control_config.get("port", 8765))
@@ -159,7 +167,11 @@ async def _register_control_plane(
         runtime.register_lifecycle("control_plane", _start_control, _stop_control)
         logger.info("控制面已注册", host=host, port=port)
         # R2-④: MCP Server stdio 启动点 (抽到 helper 降 _register_control_plane 复杂度)
-        _register_mcp_server(runtime, control_config, services, agent_manager, router, bus, plugin_manager)
+        # Fix-93: 注入共享 AuditLog, MCP 写工具与 HTTP 控制面统一审计。
+        _register_mcp_server(
+            runtime, control_config, services, agent_manager, router, bus, plugin_manager,
+            audit_log=shared_audit_log,
+        )
     except Exception as exc:
         logger.error("控制面注册失败 (不阻塞数据面)", error=str(exc), exc_info=True)
 

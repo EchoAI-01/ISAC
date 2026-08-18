@@ -69,14 +69,14 @@ async def test_ipc_roundtrip_rejects_mismatched_correlation_id(monkeypatch: pyte
     host._alive = True  # noqa: SLF001
 
     class _Conn:
-        sent: list[str] = []
+        sent: list[dict] = []
 
-        def send(self, data: str) -> None:
+        def send(self, data: dict) -> None:
             _Conn.sent.append(data)
 
-        def recv(self) -> str:
+        def recv(self) -> dict:
             # 返回一个 correlation_id 不匹配的响应
-            return '{"correlation_id": "corr-wrong", "kind": "result", "plugin_id": "p1", "payload": {}}'
+            return {"correlation_id": "corr-wrong", "kind": "result", "plugin_id": "p1", "payload": {}}
 
     host._parent_conn = _Conn()  # noqa: SLF001
     crashed: list[bool] = []
@@ -100,11 +100,11 @@ async def test_ipc_roundtrip_accepts_matching_correlation_id(monkeypatch: pytest
     host._alive = True  # noqa: SLF001
 
     class _Conn:
-        def send(self, data: str) -> None:
+        def send(self, data: dict) -> None:
             pass
 
-        def recv(self) -> str:
-            return '{"correlation_id": "corr-1", "kind": "result", "plugin_id": "p1", "payload": {"echo": "ok"}}'
+        def recv(self) -> dict:
+            return {"correlation_id": "corr-1", "kind": "result", "plugin_id": "p1", "payload": {"echo": "ok"}}
 
     host._parent_conn = _Conn()  # noqa: SLF001
     monkeypatch.setattr(host, "_on_crash", _noop_async)  # 不应被调
@@ -134,12 +134,12 @@ async def test_ipc_roundtrip_timeout_treated_as_crash(monkeypatch: pytest.Monkey
     host._alive = True  # noqa: SLF001
 
     class _Conn:
-        def send(self, data: str) -> None:
+        def send(self, data: dict) -> None:
             pass
 
-        def recv(self) -> str:
+        def recv(self) -> dict:
             _t.sleep(1.0)  # 模拟挂死: 远超超时
-            return "{}"
+            return {}
 
     host._parent_conn = _Conn()  # noqa: SLF001
     monkeypatch.setattr(host, "_on_crash", _fake_crash)
@@ -148,3 +148,60 @@ async def test_ipc_roundtrip_timeout_treated_as_crash(monkeypatch: pytest.Monkey
     with pytest.raises(RuntimeError, match="超时"):
         await host._ipc_roundtrip(env)  # noqa: SLF001
     assert crashed == [True]  # 已按崩溃触发重启
+
+
+# ── Fix-89: 传输层去 pickle 化 (沙箱逃逸 C1) ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_transport_rejects_pickle_payload_without_executing() -> None:
+    """Fix-89 (C1): 对端写入构造好的 pickle 字节流 (带 __reduce__ 执行载荷) 时,
+    宿主侧 recv 只做字节读取 + json.loads, 绝不反序列化执行 —— 旧 Pipe 实现
+    recv 即 pickle.loads, 恶意插件借此沙箱逃逸 RCE。"""
+    import asyncio
+    import pickle
+    import socket as _socket
+
+    from isac.plugin.isolation.host import _JsonFrameTransport
+
+    marker: list[str] = []
+
+    class _Evil:
+        def __reduce__(self) -> tuple:
+            return (marker.append, ("EXECUTED",))
+
+    parent_sock, child_sock = _socket.socketpair()
+    try:
+        transport = _JsonFrameTransport(parent_sock)
+
+        async def _recv() -> None:
+            await asyncio.to_thread(transport.recv)
+
+        # 恶意对端: 不走 JSON 协议, 直接写 pickle 字节 (长度前缀按 pickle 长度给)
+        evil_bytes = pickle.dumps(_Evil())
+        child_sock.sendall(len(evil_bytes).to_bytes(4, "big") + evil_bytes)
+
+        with pytest.raises(ValueError):  # pickle 头不是合法 JSON → 解析失败
+            await asyncio.wait_for(_recv(), timeout=2.0)
+        assert marker == []  # __reduce__ 载荷未在任何进程执行
+    finally:
+        parent_sock.close()
+        child_sock.close()
+
+
+def test_transport_rejects_oversized_length_claim() -> None:
+    """Fix-89: 对端声明超大帧长度 → 读前即拒 (不按长度预分配/阻塞)。"""
+    import socket as _socket
+
+    from isac.plugin.isolation.host import _MAX_FRAME_BYTES, _JsonFrameTransport
+
+    parent_sock, child_sock = _socket.socketpair()
+    try:
+        transport = _JsonFrameTransport(parent_sock)
+        # 声明一个超过上限的长度 (载荷本体不需要真的发)
+        child_sock.sendall((_MAX_FRAME_BYTES + 1).to_bytes(4, "big"))
+        with pytest.raises(ValueError, match="长度异常"):
+            transport.recv()
+    finally:
+        parent_sock.close()
+        child_sock.close()

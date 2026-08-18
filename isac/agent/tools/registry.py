@@ -302,9 +302,12 @@ class ToolRegistry:
                 content=f"工具 {tool_name} 需人工审批但审批服务未启用, 已拒绝执行。", is_error=True,
             )
         args_summary = self._summarize_args(tool_call.arguments)
+        _session = agent_context.session if agent_context is not None else None
         verdict, req = await approval_gate.request(
             session_key, tool_name, args_summary,
             send_card=self._make_card_sender(agent_context, services),
+            # Fix-90: 记录发起会话的用户, IM 回流裁决时校验来源身份
+            requester_user_id=getattr(_session, "user_id", "") or "",
         )
         if verdict == VERDICT_APPROVED:
             return DECISION_ASK_APPROVED, req.decider or DECIDER_HUMAN, REASON_HUMAN_APPROVED

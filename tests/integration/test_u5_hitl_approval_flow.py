@@ -202,3 +202,43 @@ async def test_hitl_stale_approval_code_continues_as_message(tmp_path: Path) -> 
     # 未被拦截 → 正常对话回合产生回复
     assert any(r.content == "收到" for r in h["channel"].replies)
     await h["store"].stop()
+
+
+def _msg_from(content: str, *, msg_id: str, user_id: str) -> ISACMessage:
+    segments = [MessageSegment(type="at", data={}), MessageSegment(type="text", data={"text": content})]
+    return ISACMessage(
+        msg_id=msg_id, platform="fake", timestamp=1, user_id=user_id, user_name=user_id,
+        group_id="g1", content=content, segments=segments,
+    )
+
+
+@pytest.mark.asyncio
+async def test_hitl_approval_third_party_cannot_decide(tmp_path: Path) -> None:
+    """Fix-90: 审批卡片 (含审批码) 发回原会话, 群内其他成员可见 —— 非发起人
+    回复 '同意 <审批码>' 不得裁决 (此前 decide 只按审批码查表 → HITL 门旁路),
+    该回复按普通消息继续路由, 审批仍等待真正发起人。"""
+    h = await _build_hitl_harness(tmp_path)
+    provider, channel, gate = h["provider"], h["channel"], h["gate"]
+    # 三条脚本回复: ① u1 回合的 tool_call (触发审批); ② mallory 抢答消息未被
+    # 拦截后按普通消息触发的回合消费; ③ u1 批准后工具执行完的收尾回复。
+    provider.queue_reply(make_tool_call_response("query_memory", arguments={"query": "项目进度"}))
+    provider.queue_reply(make_final_reply("这是给 mallory 的回复"))
+    provider.queue_reply(make_final_reply("查到了"))
+
+    turn_task = asyncio.create_task(_run(h, _msg("@bot 查下记忆", msg_id="m1")))
+    approval_id = await _wait_pending(gate)
+
+    # 群内另一成员 mallory 抢答同意 → 不得裁决 (来源用户非发起人), 按普通消息路由
+    await asyncio.wait_for(
+        _run(h, _msg_from(f"同意 {approval_id}", msg_id="m2", user_id="mallory")), timeout=5.0
+    )
+    pending = gate.pending_requests()
+    assert pending and pending[0]["approval_id"] == approval_id  # 未被 mallory 裁决
+    assert any(r.content == "这是给 mallory 的回复" for r in channel.replies)
+
+    # 真正发起人 u1 同意 → 放行, 工具执行, 最终回复送达
+    await _run(h, _msg(f"同意 {approval_id}", msg_id="m3"))
+    await asyncio.wait_for(turn_task, timeout=5.0)
+    await h["am"].drain_background_tasks(timeout_seconds=2.0)
+    assert any(r.content == "查到了" for r in channel.replies)
+    await h["store"].stop()

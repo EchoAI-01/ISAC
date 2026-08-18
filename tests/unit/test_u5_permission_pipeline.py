@@ -205,6 +205,67 @@ async def test_approval_decide_unknown_returns_false() -> None:
     assert gate.decide("nonexistent", VERDICT_APPROVED) is False
 
 
+# ── Fix-90: IM 审批回流来源鉴权 ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_approval_decide_rejects_other_conversation() -> None:
+    """Fix-90: 审批卡片 (含审批码) 发回原会话, 群内任何成员可见; 其他会话的
+    用户得知审批码后不得裁决 (此前 decide 只按审批码查表 → HITL 门旁路)。"""
+    gate = ApprovalGate(timeout_seconds=5.0)
+
+    async def approver() -> None:
+        for _ in range(50):
+            pending = gate.pending_requests()
+            if pending:
+                aid = pending[0]["approval_id"]
+                # 来源会话不匹配 (另一个会话) → 拒绝裁决
+                assert gate.decide(
+                    aid, VERDICT_APPROVED, decider="human:fake:evil",
+                    conversation="fake:group:g_other", user_id="evil",
+                ) is False
+                # 同会话但非发起人 (群内其他成员) → 拒绝裁决
+                assert gate.decide(
+                    aid, VERDICT_APPROVED, decider="human:fake:bystander",
+                    conversation="fake:group:g1", user_id="bystander",
+                ) is False
+                # 同会话 + 发起人 → 放行
+                assert gate.decide(
+                    aid, VERDICT_APPROVED, decider="human:fake:u1",
+                    conversation="fake:group:g1", user_id="u1",
+                ) is True
+                return
+            await asyncio.sleep(0.01)
+
+    task = asyncio.create_task(approver())
+    verdict, req = await gate.request(
+        SESSION_KEY, "bash", "{}", requester_user_id="u1",
+    )
+    await task
+    assert verdict == VERDICT_APPROVED
+    assert req.decider == "human:fake:u1"
+
+
+@pytest.mark.asyncio
+async def test_approval_decide_control_plane_path_unchanged() -> None:
+    """Fix-90 回归: 控制面路径不传 conversation/user_id (其鉴权由 token scope
+    承担), decide 行为不变。"""
+    gate = ApprovalGate(timeout_seconds=5.0)
+
+    async def approver() -> None:
+        for _ in range(50):
+            pending = gate.pending_requests()
+            if pending:
+                assert gate.decide(pending[0]["approval_id"], VERDICT_APPROVED) is True
+                return
+            await asyncio.sleep(0.01)
+
+    task = asyncio.create_task(approver())
+    verdict, _req = await gate.request(SESSION_KEY, "bash", "{}", requester_user_id="u1")
+    await task
+    assert verdict == VERDICT_APPROVED
+
+
 # ── 四段管线 (ToolRegistry.execute) ──────────────────────────
 
 

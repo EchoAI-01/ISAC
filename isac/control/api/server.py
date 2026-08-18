@@ -248,6 +248,7 @@ def create_control_app(
     webhook_manager: Any = None,
     tenant_manager: Any = None,
     services: dict[str, Any] | None = None,
+    audit_log: Any = None,
 ) -> Any:
     """创建 FastAPI 应用 (延迟导入 fastapi, 未安装时给出友好错误)。
 
@@ -312,7 +313,10 @@ def create_control_app(
     # 之前就被拒绝 (401) —— 见 make_token_only_dependency 文档字符串。
     # 无 api_token/tokens 时 setup_manager 决定首登态 428 或纯开发模式 anonymous。
     auth_dependency = _build_auth_dependency(api_token, parsed_tokens, session_secret, setup_manager)
-    audit_log = AuditLog(log_path=config.get("audit_log_path", "data/audit.ndjson"))
+    # Fix-93: 允许接线方注入共享 AuditLog 实例 (与 MCP Server 同一实例, 审计统一);
+    # 未注入时按 audit_log_path 自建 (向后兼容既有调用方/测试 fixture)。
+    if audit_log is None:
+        audit_log = AuditLog(log_path=config.get("audit_log_path", "data/audit.ndjson"))
     agents_dir = config.get("agents_dir", "data/agents")
     routing_rules_path = config.get("routing_rules_path", "data/routing.jsonc")
     links_path = config.get("links_path", "data/links.jsonc")

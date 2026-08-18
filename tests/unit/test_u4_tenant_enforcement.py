@@ -218,7 +218,8 @@ def test_no_raw_sql_bypass_in_memory_domain() -> None:
         # 非记忆域 (网关/控制面/会话事件等各自的库)
         root / "artifacts" / "store.py",
         root / "control" / "api" / "routes_providers.py",
-        root / "control" / "api" / "routes_sessions.py",
+        # Fix-94: routes_sessions.py 改经 store._tenant_db.scoped() 后不再裸连,
+        # 从允许清单移除以收紧守卫 (再引入 aiosqlite.connect 会被本测试拦下)。
         root / "gateway" / "identity" / "resolver.py",
         root / "gateway" / "session.py",
         root / "gateway" / "user_mapper.py",
@@ -312,3 +313,27 @@ async def test_query_person_profile_tool_key_unification() -> None:
     await QueryPersonProfileTool().execute(ctx)
     assert captured["agent_id"] == "acme:t1:agent1"  # namespace 键 (非裸 agent_id)
     assert captured["person_id"] == "master_u1"  # master_id (非平台 id)
+
+
+@pytest.mark.asyncio
+async def test_session_messages_endpoint_tenant_scoped(tmp_path: Path) -> None:
+    """Fix-94: /sessions/{id}/messages 的底层查询必须走租户作用域 —— 此前裸 SQL
+    直连 episodes, 多租户共库时任一租户可遍历 session_id 读到其他租户的会话原文。"""
+    from isac.control.api.routes_sessions import _query_episodes_by_session
+
+    store_a = _make_store(tmp_path, "acme", "t1")
+    store_b = _make_store(tmp_path, "globex", "t2")
+    await store_a.init_schema()
+
+    # 租户 A 写入带 session_id 的 episode
+    await store_a.store_episode(
+        "agent_x",
+        {"session_id": "sess-shared", "user_id": "u1", "content": "租户 A 的机密会话"},
+    )
+
+    # 租户 A 自己能读到
+    rows_a = await _query_episodes_by_session(store_a, "sess-shared", 10)
+    assert [r["content"] for r in rows_a] == ["租户 A 的机密会话"]
+    # 租户 B 即使知道同一 session_id 也读不到 (租户谓词机制拦截)
+    rows_b = await _query_episodes_by_session(store_b, "sess-shared", 10)
+    assert rows_b == []

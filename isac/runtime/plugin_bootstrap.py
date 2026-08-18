@@ -27,6 +27,7 @@ def _register_mcp_server(
     router: MessageRouter,
     bus: InterAgentBus,
     plugin_manager: Any,
+    audit_log: Any = None,
 ) -> None:
     """R2-④: MCP Server 生产启动点 (control.mcp_server.enabled, 默认关闭零行为变化)。
 
@@ -51,6 +52,8 @@ def _register_mcp_server(
         bus=bus,
         plugin_manager=plugin_manager,
         agents_dir=str(control_config.get("agents_dir", "data/agents")),
+        # Fix-93: 注入共享 AuditLog, 11 个写工具成功后统一留痕 (此前绕过审计)。
+        audit_log=audit_log,
     )
 
     async def _start_mcp() -> None:

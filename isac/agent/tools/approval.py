@@ -50,6 +50,10 @@ class ApprovalRequest:
     created_at: float
     future: asyncio.Future
     decider: str = ""  # decide 时回填 (human:<来源>)
+    # Fix-90: 发起审批的会话用户 —— IM 回流裁决时校验来源身份, 防群内其他
+    # 成员 (或拿到审批码的任意会话) 越权批准。空串 = 未知来源 (兼容旧调用),
+    # 此时 IM 回流仅校验会话归属不校验用户。
+    requester_user_id: str = ""
     _meta: dict[str, Any] = field(default_factory=dict)
 
 
@@ -85,11 +89,13 @@ class ApprovalGate:
         tool_name: str,
         args_summary: str = "",
         send_card: Any = None,
+        requester_user_id: str = "",
     ) -> tuple[str, ApprovalRequest]:
         """发起一次审批等待, 返回 (verdict, request)。
 
         verdict ∈ approved/rejected/timeout。send_card: 可选 async callable(card_text),
         投递失败不阻塞等待 (卡片发不出时人仍可能经控制面审批)。
+        Fix-90: requester_user_id 记录发起会话的用户, 供 IM 回流裁决鉴权。
         """
         loop = asyncio.get_running_loop()
         req = ApprovalRequest(
@@ -99,6 +105,7 @@ class ApprovalGate:
             args_summary=args_summary[:500],
             created_at=time.time(),
             future=loop.create_future(),
+            requester_user_id=str(requester_user_id or ""),
         )
         self._pending[req.approval_id] = req
         logger.info(
@@ -118,15 +125,45 @@ class ApprovalGate:
         finally:
             self._pending.pop(req.approval_id, None)
 
-    def decide(self, approval_id: str, verdict: str, decider: str = "") -> bool:
+    def decide(
+        self,
+        approval_id: str,
+        verdict: str,
+        decider: str = "",
+        *,
+        conversation: str = "",
+        user_id: str = "",
+    ) -> bool:
         """对 pending 审批做出决定 (approved/rejected)。
 
         未知/已过期/已决定的审批码返回 False (调用方据此判定是否按普通消息处理)。
+
+        Fix-90 (IM 回流鉴权): 审批卡片发回原会话, 群聊中所有成员可见审批码 ——
+        此前任何来源凭审批码即可裁决 (HITL 门旁路)。现调用方传入来源信息:
+        - ``conversation``: 来源会话的 ``platform:group:<gid>`` / ``platform:user:<uid>``
+          (session_key 去掉 agent_id 前缀的会话部分), 必须与审批请求所属会话一致;
+        - ``user_id``: 来源用户, 请求记录了发起人时 (requester_user_id 非空) 必须一致。
+        任一校验不通过返回 False (按普通消息处理)。控制面路径不传这两个参数
+        (其鉴权由 Bearer token + tools:write scope 承担), 行为不变。
         """
         req = self._pending.get(str(approval_id or "").strip())
         if req is None or req.future.done():
             return False
         if verdict not in (VERDICT_APPROVED, VERDICT_REJECTED):
+            return False
+        if conversation:
+            req_conversation = self._conversation_of(req.session_key)
+            if req_conversation != conversation:
+                logger.warning(
+                    "审批裁决被拒: 来源会话不匹配",
+                    approval_id=req.approval_id, expected=req_conversation, got=conversation,
+                )
+                return False
+        if user_id and req.requester_user_id and user_id != req.requester_user_id:
+            logger.warning(
+                "审批裁决被拒: 来源用户非发起人",
+                approval_id=req.approval_id, requester=req.requester_user_id, got=user_id,
+            )
             return False
         req.decider = decider or "human"
         req.future.set_result(verdict)
@@ -134,6 +171,12 @@ class ApprovalGate:
             "工具审批已决定", approval_id=req.approval_id, verdict=verdict, decider=req.decider
         )
         return True
+
+    @staticmethod
+    def _conversation_of(session_key: str) -> str:
+        """session_key (``agent_id:platform:<target>``) 的会话部分 (去 agent_id 前缀)。"""
+        parts = str(session_key or "").split(":", 1)
+        return parts[1] if len(parts) == 2 else ""
 
     @staticmethod
     def parse_reply(content: str) -> tuple[str, str] | None:
