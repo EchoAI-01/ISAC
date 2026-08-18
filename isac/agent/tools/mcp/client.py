@@ -282,7 +282,15 @@ class MCPClient:
                     break
                 response = json.loads(line.decode("utf-8"))
                 request_id = response.get("id")
-                fut = self._pending.pop(int(request_id), None) if request_id is not None else None
+                # Fix-124: id 非数字 (脏响应/非规范 server) 时 int() 会抛异常 —— 此前冒泡
+                # 到下方宽 except 被误记为"非 JSON 行"。显式捕获, 非数字 id 只是匹配不到
+                # 在途请求, 跳过即可, 不影响 reader 继续消费。
+                fut = None
+                if request_id is not None:
+                    try:
+                        fut = self._pending.pop(int(request_id), None)
+                    except (TypeError, ValueError):
+                        fut = None
                 if fut is not None and not fut.done():
                     fut.set_result(response)
             except asyncio.CancelledError:

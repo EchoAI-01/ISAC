@@ -2,6 +2,19 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 6 清偿 (Fix-120~129: 工具/Agent + 资源边界卫生, 全量 2062 通过), 第三轮清零**。
+> **Fix-120** DenyGuard 重建扫全量事件流 (`restore_from_store` 按 seq 分页) —— 此前只取每分区最近 500 条, 较早的 DENIED 事件重启后丢失、被拒工具翻回放行 (瓦解 U5 单调拒绝不变量)。
+> **Fix-121** `generate_image` 的 `n` 夹到 [1,10], 修 0/负数/超大值造成空调用或批量生成放大。
+> **Fix-122** bash 工具 stderr 与 stdout 同口径截断 (MAX_OUTPUT_CHARS), 修海量报错无上限进工具结果膨胀 prompt。
+> **Fix-123** Agent Loop tool_calls 分支 assistant 消息 content None 归一为 "" (对齐 R17)。
+> **Fix-124** MCP client stdio reader 对响应 id 非数字显式捕获, 不再冒泡到宽 except 被误记为"非 JSON 行"。
+> **Fix-125** `SystemPromptBuilder` 会话频率表按 session 数封顶 (默认 1000, 逐出最旧), 修长期运行无界增长。
+> **Fix-126** `SessionWriteGate.reserve` 顺带全量回收过期/已消费/已取消租约 (`_purge_stale`), `_active` 不再残留无人触及的过期条目。
+> **Fix-127** J4 5 个 SubAgent 工具补 `_required_service` 映射 → subagent_supervisor, 修 restricted 无映射等效 allow。
+> **Fix-128** 插件工具命名空间收紧 —— 仅名字已含本源前缀才跳过, 修 `mcp:x:y`/`别的插件:tool` 含 ':' 即整体绕过命名空间的冒充漏洞 (生产 MCP 以 builtin 注册不受影响)。
+> **Fix-129** host 插件工具 (AstrBot/MaiBot) 执行受超时约束 (默认 60s 可配), 异步 wait_for / 同步 to_thread 限时, 挂死插件函数不再无限阻塞 Agent Loop。
+> 顺带: Fix-120 分页重建移入 `DenyGuard.restore_from_store`, bootstrap 维持 ≤500 行红线; 新增 21 例批 6 回归测试 (并更新 Fix-88 命名空间既有测试以反映加固语义)。**全量 2062 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。**第三轮审查 1 Critical + 21 Major + 44 Minor 全部清零** (余 audit.ndjson 轮转为运维配置项, 另立)。
+>
 > ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 5 清偿 (Fix-111~119: 正确性 + 会话内核, 全量 2041 通过)**。
 > **Fix-111** A2A `bus.send` 补投递超时 (默认 60s, `asyncio.wait_for` 到期取消投递并抛 `InterAgentTimeoutError`) + 递归深度保护 (contextvar 沿投递链传播, 默认 8 层, 超限抛 `InterAgentRecursionError`) —— 修目标 Agent 挂起则发起方无限等待、A↔B 互调链无限嵌套耗尽资源。
 > **Fix-112** `observe_message` 旁听记忆 `episode.user_id` 改用归一 master_id (与 `_write_memory` 口径一致), 修旁听/主写键分裂致按 master_id 检索召回不到旁听记忆; user_profile 为 None 回退平台 id。

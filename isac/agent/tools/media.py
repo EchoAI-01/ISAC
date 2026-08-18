@@ -183,7 +183,13 @@ class GenerateImageTool(_MediaToolBase):
         self, provider: Any, context: ToolContext, artifact_store: Any
     ) -> ToolResult:
         prompt = str(context.args.get("prompt", ""))
-        n = int(context.args.get("n", 1) or 1)
+        # Fix-121: n 夹到 schema 声明的 [1,10] —— LLM 可能传 0/负数/超大值, 不夹则
+        # 0 张无意义调用、超大值触发批量生成造成成本/资源放大。非数字回落 1。
+        try:
+            n = int(context.args.get("n", 1) or 1)
+        except (TypeError, ValueError):
+            n = 1
+        n = max(1, min(n, 10))
         refs = await provider.generate(prompt, n=n)
         return ToolResult(content=_format_artifact_refs(refs), is_error=False)
 

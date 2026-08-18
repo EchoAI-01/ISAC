@@ -385,11 +385,33 @@ def test_fix88_builtin_tool_not_prefixed() -> None:
 
 
 def test_fix88_already_namespaced_not_double_prefixed() -> None:
-    """已含 ':' 的名字 (如 mcp:server:tool) 不二次加前缀。"""
+    """名字已含**自身来源**前缀 (<source>:...) 时不二次加前缀 (重注册幂等)。"""
+    registry = ToolRegistry()
+    registry.register(_NamedTool("p1:tool"), source="p1")
+    assert registry.get("p1:tool") is not None
+    assert registry.get("p1:p1:tool") is None
+
+
+def test_fix128_colon_name_not_own_namespace_still_prefixed() -> None:
+    """Fix-128: 含 ':' 但非本源前缀的名字 (如冒充 mcp:/别的插件) 仍被加前缀隔离。
+
+    此前"含 ':' 即跳过"让插件用 ``mcp:srv:tool`` / ``别的插件:tool`` 这类名字整体绕过
+    命名空间, 可冒充 MCP 工具或顶替其他插件的已命名工具; 现在一律收进本源命名空间。
+    """
     registry = ToolRegistry()
     registry.register(_NamedTool("mcp:srv:tool"), source="p1")
+    # 不再原样保留 "mcp:srv:tool" (防冒充), 隔离到 p1 命名空间
+    assert registry.get("mcp:srv:tool") is None
+    assert registry.get("p1:mcp:srv:tool") is not None
+    assert registry.source_of("p1:mcp:srv:tool") == "p1"
+
+
+def test_fix128_builtin_mcp_bridge_name_not_prefixed() -> None:
+    """Fix-128 不影响生产 MCP 路径: MCP 桥接以 source=builtin 注册, 名字原样保留。"""
+    registry = ToolRegistry()
+    registry.register(_NamedTool("mcp:srv:tool"))  # source=builtin (assembly 不传 source)
     assert registry.get("mcp:srv:tool") is not None
-    assert registry.get("p1:mcp:srv:tool") is None
+    assert registry.source_of("mcp:srv:tool") == "builtin"
 
 
 @pytest.mark.asyncio

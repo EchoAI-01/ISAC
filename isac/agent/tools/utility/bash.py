@@ -114,6 +114,10 @@ class BashTool(Tool):
         err = stderr.decode("utf-8", errors="replace")
         if len(out) > MAX_OUTPUT_CHARS:
             out = out[:MAX_OUTPUT_CHARS] + f"...[truncated, total {len(out)} chars]"
+        # Fix-122: stderr 与 stdout 同口径截断 —— 此前 stderr 无上限, 编译/依赖安装的
+        # 海量报错会原样进工具结果 → 膨胀 prompt 甚至溢出 context window (C4 同源)。
+        if len(err) > MAX_OUTPUT_CHARS:
+            err = err[:MAX_OUTPUT_CHARS] + f"...[truncated, total {len(err)} chars]"
         parts = [f"exit={proc.returncode}", f"stdout:\n{out}"]
         if err.strip():
             parts.append(f"stderr:\n{err}")

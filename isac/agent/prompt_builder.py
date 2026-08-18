@@ -38,6 +38,20 @@ class SystemPromptBuilder:
         # session_id -> {injector.key -> 距上次触发的新消息数}
         self._messages_since_trigger: dict[str, dict[str, int]] = {}
 
+    # Fix-125: 频率状态表的会话数软上限 —— 长期运行下 session_id 只增不减会无界增长。
+    # 超限按插入顺序 (dict 保序) 逐出最旧会话; 被逐会话只是丢失冷却状态 (下次触发
+    # 视为"首次", 注入器可能更易触发一次), 不影响正确性, 换取内存有界。
+    _MAX_TRACKED_SESSIONS = 1000
+
+    def _bound_tracking(self, session_id: str) -> None:
+        """Fix-125: 两张会话频率表超上限时逐出最旧条目 (保留当前处理的 session)。"""
+        for table in (self._last_trigger_at, self._messages_since_trigger):
+            while len(table) > self._MAX_TRACKED_SESSIONS:
+                oldest = next(iter(table))
+                if oldest == session_id:
+                    break  # 不逐出正在处理的会话
+                table.pop(oldest, None)
+
     def register(self, injector: PromptInjector, *, source: str | None = None) -> None:
         """注册注入器。"""
         self._injectors.append(injector)
@@ -111,9 +125,11 @@ class SystemPromptBuilder:
     def _mark_triggered(self, injector: PromptInjector, session_id: str) -> None:
         self._last_trigger_at.setdefault(session_id, {})[injector.key] = time.monotonic()
         self._messages_since_trigger.setdefault(session_id, {})[injector.key] = 0
+        self._bound_tracking(session_id)
 
     def notify_new_message(self, session_id: str) -> None:
         """会话收到新消息时调用，用于该 session 下 max_new_messages 计数。"""
         counters = self._messages_since_trigger.setdefault(session_id, {})
         for injector in self._injectors:
             counters[injector.key] = counters.get(injector.key, 0) + 1
+        self._bound_tracking(session_id)

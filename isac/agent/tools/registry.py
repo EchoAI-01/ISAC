@@ -107,12 +107,17 @@ class ToolRegistry:
 
         U0 Fix-88: 插件来源 (effective_source != "builtin") 的工具自动加
         ``<plugin>:`` 前缀 (包装为 _NamespacedTool), 确定性命名空间隔离, 防同名覆盖
-        内置工具。已含 ":" 的名字 (如 mcp:server:tool / 已包装) 跳过, 避免二次前缀;
-        builtin 工具不加。前缀用 effective_source, 与 source 追踪键一致, 故
+        内置工具。builtin 工具不加。前缀用 effective_source, 与 source 追踪键一致, 故
         tools_policy/EnableMatrix/deregister_by_source 的键统一为 ``<plugin>:<tool>``。
+
+        Fix-128: 跳过条件从"名字含任意 ':'"收紧为"名字已含**本插件自己的**前缀
+        ``<effective_source>:``" —— 此前恶意/失误的插件工具把 ':' 写进名字 (如
+        ``mcp:fake:tool`` / ``别的插件:tool``) 即可整体绕过命名空间, 冒充 MCP 工具或
+        顶替其他插件的已命名工具。现在只有已被同源包装过 (重注册) 才跳过, 其余一律
+        加前缀。MCP 桥接工具以 source="builtin" 注册 (assembly 不传 source), 不受影响。
         """
         effective_source = source or self._current_source or "builtin"
-        if effective_source != "builtin" and ":" not in tool.name:
+        if effective_source != "builtin" and not tool.name.startswith(f"{effective_source}:"):
             tool = _NamespacedTool(effective_source, tool)
         if tool.name in self._tools:
             logger.warning("工具重复注册，已覆盖", tool=tool.name)
@@ -513,5 +518,15 @@ class ToolRegistry:
             "handoff_conversation": "mesh_action_broker",
             "list_available_agents": "mesh_action_broker",
             "memory_query_agent": "mesh_action_broker",
+            # Fix-127: J4 的 5 个 SubAgent 工具 DEFAULT_POLICY 为 restricted, 但此前无
+            # 映射 → restricted 门 `if required:` 为假直接放行, 等效 allow (与"受限"语义
+            # 矛盾, 同 Fix-87 修 mcp:* 前的病灶)。它们统一经 subagent_supervisor 服务键
+            # 取后端 (subagent.py _SupervisorToolBase._supervisor), 补映射后未注入
+            # Supervisor 的 Agent 调用即被拒。
+            "delegate_task": "subagent_supervisor",
+            "list_subagents": "subagent_supervisor",
+            "subagent_status": "subagent_supervisor",
+            "subagent_log": "subagent_supervisor",
+            "cancel_subagent": "subagent_supervisor",
         }
         return mapping.get(tool_name)

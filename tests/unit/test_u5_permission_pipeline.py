@@ -525,11 +525,22 @@ def test_namespace_pipeline_invariant_non_builtin_prefixed() -> None:
 
 
 def test_namespace_pipeline_mcp_already_namespaced_not_double_prefixed() -> None:
-    """已含 ':' 的名字 (mcp:server:tool) 不二次前缀。"""
+    """名字已含**自身来源**前缀时不二次前缀; 含 ':' 但非本源前缀仍被隔离 (Fix-128)。
+
+    生产 MCP 桥接以 source=builtin 注册 (assembly 不传 source), 名字原样保留; 插件来源
+    注册 ``mcp:server:tool`` 这类含 ':' 的名字不再整体绕过命名空间 (防冒充), 收进本源。
+    """
     registry = ToolRegistry()
-    registry.register(_PluginTool("mcp:server:tool"), source="mcp_bridge")
-    assert registry.get("mcp:server:tool") is not None
-    assert registry.get("mcp_bridge:mcp:server:tool") is None  # 未二次前缀
+    # 自身前缀 (重注册幂等): 不二次前缀
+    registry.register(_PluginTool("mcp_bridge:tool"), source="mcp_bridge")
+    assert registry.get("mcp_bridge:tool") is not None
+    assert registry.get("mcp_bridge:mcp_bridge:tool") is None
+
+    # Fix-128: 含 ':' 但非本源前缀 (冒充 mcp:) → 仍被加前缀隔离
+    registry2 = ToolRegistry()
+    registry2.register(_PluginTool("mcp:server:tool"), source="mcp_bridge")
+    assert registry2.get("mcp:server:tool") is None  # 不原样保留 (防冒充)
+    assert registry2.get("mcp_bridge:mcp:server:tool") is not None
 
 
 # ── 控制面审批路由 ───────────────────────────────────────────

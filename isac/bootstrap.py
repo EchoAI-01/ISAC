@@ -75,15 +75,14 @@ def _ensure_data_dirs() -> None:
 async def _start_session_event_store(store: Any, deny_guard: Any = None) -> None:
     """U1: 会话事件存储启动 —— 建表 + 逐分区 torn-tail 修复 (抽自 main 降 C901)。
 
-    U5: deny_guard 注入时同步从事件流重建单调拒绝账本 (tool.outcome=DENIED) ——
-    拒绝跨进程重启仍不可翻回。
+    U5/Fix-120: deny_guard 注入时经 ``restore_from_store`` 从事件流**全量**重建单调
+    拒绝账本 (分页扫全量, 不受"最近 N 条"窗口截断) —— 拒绝跨进程重启仍不可翻回。
     """
     await store.start()
     for key in await store.list_session_keys():
         await store.repair_torn_tail(key)
-        if deny_guard is not None:
-            events = await store.fetch_recent(key, limit=500)
-            deny_guard.restore_from_events(key, events)
+    if deny_guard is not None:
+        await deny_guard.restore_from_store(store)
 
 
 async def _close_storage_stores(services: dict[str, Any]) -> None:
