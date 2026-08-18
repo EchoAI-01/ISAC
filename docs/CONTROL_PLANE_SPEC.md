@@ -52,6 +52,7 @@
 | ProviderResource | `/providers/{id}` | Provider 配置摘要、模型能力与健康状态 |
 | ModelResource | `/models/{provider}/{model}` | 模态、operation、限制、成本/延迟层级与健康状态 |
 | ArtifactResource | `/artifacts/{id}` | 多模态生成结果的元数据、权限与生命周期 |
+| GlobalConfigResource | `/config/global` | 全局配置 (持久化覆盖层 + 热重载, N1e) |
 
 ---
 
@@ -189,6 +190,53 @@
 不泄露堆栈。错误响应形状以 `scripts/export_openapi.py` 导出的
 `docs/api/openapi.json` 契约基线为准。
 
+### 3.7 全局配置 (N1e)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/config/global` | 有效全局配置 (敏感键脱敏) + override revision |
+| PATCH | `/config/global` | 部分更新全局配置 (深合并, If-Match 乐观锁) |
+| POST | `/config/global/reload` | 从磁盘重读 config.jsonc + override 并热应用 |
+
+持久化模型: `data/config.jsonc` 带注释, 控制面**不整体回写** (会丢注释), 写入
+独立覆盖层 `data/config.override.json` (机器所有, 原子写, 含 `__revision__`)。
+加载序: 内置默认 ← config.jsonc (用户手编) ← config.override.json (控制面写入)
+← 环境变量 ← CLI。PATCH 语义: 深合并部分更新; 叶值 `null` = 撤销该覆盖项
+(回落 config.jsonc/默认); GET 回传的脱敏哨兵 = 未修改, 剥离不落盘。
+
+PATCH 请求:
+
+```json
+{
+    "llm": {"model": "deepseek-chat"},
+    "mcp": {"servers": {"echo": {"transport": "stdio", "command": "echo-server"}}}
+}
+```
+
+PATCH 响应 (§8.2 规则 6: applied/reload_required/restart_required 严格区分):
+
+```json
+{
+    "applied": ["llm", "mcp"],
+    "reload_required": [],
+    "restart_required": ["control"],
+    "reloaded_agents": ["tech_agent"],
+    "reload_errors": {},
+    "revision": 3
+}
+```
+
+热重载边界: `applied` 节原地更新 services 持有的 global_config dict 并同步重建
+运行中 Agent (本请求内完成, 故 `reload_required` 恒空); `control`/`channels`/
+`logging`/`debug`/`log_level` 在 bootstrap 构造服务端点, 运行中不可重建 → 持久化
+但列入 `restart_required`, 下次重启生效。单个 Agent 重建失败保留旧实例并记入
+`reload_errors` (通用消息, 明细落服务端日志与审计)。
+
+乐观锁: `If-Match` (Header 优先, 回退 query) 与当前 override revision 不符 →
+409 `CONFIG_CONFLICT` (含 `current_revision`)。校验失败 (schema 硬错误) → 400
+`INVALID_CONFIG` 且不落盘。权限 scope: `config:read` / `config:write` ("*" 通配)。
+审计只记录变更的顶层节名, 绝不记录值 (值可能含凭据)。
+
 ---
 
 ## 四、MCP Server 工具规范
@@ -300,7 +348,9 @@ timestamp + "." + raw_body
         "webhook:read",
         "webhook:write",
         "tenant:read",
-        "tenant:write"
+        "tenant:write",
+        "config:read",
+        "config:write"
     ]
 }
 ```
@@ -487,6 +537,7 @@ WebUI 的 Sessions & Tasks 页面应展示父 Agent、task_id、状态、阶段�
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-08-18 | Architect | N1e 全局配置持久化 + 热重载: 新增 §3.7 `/config/global` GET/PATCH/reload 端点 (override 覆盖层 + If-Match 乐观锁 + applied/restart_required 区分), §6.1 补 `config:read`/`config:write` scope |
 | 2026-07-24 | Architect | 新增 SubAgent 任务创建、状态、日志、证据与取消 API，补充 scope、隐私和 WebUI 时间线要求 |
 | 2026-07-23 | Architect | 新增 WebUI v2 信息架构、配置编辑事务、实时事件、权限、安全、响应式与无障碍约束 |
 | 2026-07-23 | Architect | 新增模型用量资源、查询 API、权限与隐私边界，支持按 Provider/模型/Agent/模态聚合 Token、非 Token 单位与估算成本 |

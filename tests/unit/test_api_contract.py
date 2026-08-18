@@ -54,6 +54,8 @@ def _make_full_app() -> object:
         identity_resolver=mock,
         vector_resolver=mock,
         channel_registry=mock,
+        # N1e: 注入 global_config 使 /config/global 系列端点进契约 (与导出脚本一致)。
+        services={"global_config": {}},
     )
 
 

@@ -2,6 +2,12 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— N1e 全局配置持久化 + 热重载完成 (N1d 唯一留档项落地, 全量 2098 通过)**。
+> **持久化**: `data/config.jsonc` 带注释不整体回写, 控制面写入独立覆盖层 `data/config.override.json` (机器所有, 原子写, 含 `__revision__`); 加载序扩展为 默认 ← config.jsonc ← override ← 环境变量 (env 仍最高优先级)。`load_config` 增 `override_path`/`overrides` 参数; 新增 `deep_merge_config` (null 叶 = 删键) + `save/load_config_overrides`。
+> **端点** (scope `config:read`/`config:write`, 审计只记节名不记值): `GET /api/v1/config/global` (Fix-91 同口径脱敏 + revision); `PATCH /api/v1/config/global` (深合并部分更新 + 哨兵剥离 + If-Match 乐观锁 409 + 候选全链校验先行不落盘 + null 撤销覆盖项); `POST /api/v1/config/global/reload` (手编 config.jsonc 免重启生效)。
+> **热重载** (§8.2 规则 6 不假装热更成功): `applied` 节原地更新 services 持有的 global_config dict (同一对象, 持有者引用不变) + 同步重建运行中 Agent (复用既有 reload_config 路径, 单 Agent 失败保留旧实例记 `reload_errors`); `control`/`channels`/`logging`/`debug`/`log_level` 持久化但列 `restart_required`; `reload_required` 恒空 (重建在请求内完成)。secret: 前缀仅内存候选解析, override 落盘保留原值不落明文。
+> 顺带: CONTROL_PLANE_SPEC 新增 §3.7 + scope 扩列; openapi.json 基线重导出 (55→57 路径); 新增 20 例测试 (`test_global_config_persistence.py`)。**全量 2098 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿 (bootstrap 499 行)。
+>
 > ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 7 清偿 (Fix-130~137: 剩余 Minor 清零, 全量 2078 通过), 第三轮 Critical/Major/Minor 代码级全清**。
 > **Fix-130** `SubAgentSupervisor._runs` 内存索引封顶 (默认 500), 超限只淘汰最旧**终态** run (活跃 run 绝不淘), 终态已落 Journal 可回读。
 > **Fix-131** 主动任务生产者四处去重标记表 LRU 封顶 (默认 1000 会话), 修按 session_id 无界增长。

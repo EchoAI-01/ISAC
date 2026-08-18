@@ -390,6 +390,24 @@ def create_control_app(
         session_event_store=(services or {}).get("session_event_store"),
     )
 
+    # J3-2 配置编辑事务 + N1e 全局配置持久化/热重载路由。validate/diff 无外部依赖
+    # 恒挂载; /config/global 系列仅在 services 注入了 global_config 时挂载
+    # (生产 bootstrap 恒注入; 最小测试桩缺注入时行为退回 N1e 之前)。
+    from isac.control.api import routes_config
+
+    app.include_router(
+        routes_config.build_router(
+            auth_dependency=auth_dependency,
+            agent_manager=agent_manager,
+            global_config=(services or {}).get("global_config"),
+            config_path=config.get("config_path", "data/config.jsonc"),
+            override_path=config.get("config_override_path", "data/config.override.json"),
+            audit_log=audit_log,
+            scope_dependency=scope_dependency,
+        ),
+        prefix="/api/v1",
+    )
+
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
     # Fix-107: /api/v1/audit 基线认证 + scope 模型生效时要求 "*" (见 _audit_read_deps)。
     audit_read_deps = _audit_read_deps(auth_dependency, scope_dependency)
@@ -624,13 +642,6 @@ def _mount_optional_routers(
             ),
             prefix="/api/v1",
         )
-    # J3-2: 配置编辑事务路由 (无条件挂载; validate/diff 不依赖外部服务)
-    from isac.control.api import routes_config
-
-    app.include_router(
-        routes_config.build_router(auth_dependency=auth_dependency),
-        prefix="/api/v1",
-    )
     # J3-3: Sessions 路由 (session_manager 注入时挂载)
     if session_manager is not None:
         from isac.control.api import routes_sessions

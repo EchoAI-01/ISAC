@@ -57,6 +57,8 @@ def main() -> int:
         identity_resolver=mock,
         vector_resolver=mock,
         channel_registry=mock,
+        # N1e: 注入 global_config 使 /config/global 系列端点进入契约基线。
+        services={"global_config": {}},
     )
     schema = app.openapi()
     out = Path(__file__).resolve().parents[1] / "docs" / "api" / "openapi.json"

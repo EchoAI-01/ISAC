@@ -120,7 +120,8 @@ async def main() -> None:
     - 之前 main 调 channel_registry.start_all() 后直接返回, 后台 task 随事件循环
       结束被取消的 bug 已修 (CODE_REVIEW_REPORT.md #12/#13)
     """
-    global_config = load_config(DATA_DIR / "config.jsonc")
+    # N1e: override_path 载入控制面写入的全局配置覆盖层 (加载序: 默认 ← config.jsonc ← override ← 环境变量)。
+    global_config = load_config(DATA_DIR / "config.jsonc", override_path=DATA_DIR / "config.override.json")
     # T2: 首启自动创建 data/ 及被引用子目录。此前各组件惰性自建 (path.parent.mkdir),
     # 但无统一入口, 首启日志零反馈、目录结构不透明。集中创建双保险 (各组件既有惰性
     # mkdir 保留, 零冲突)。

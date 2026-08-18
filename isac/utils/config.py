@@ -27,6 +27,14 @@ except ImportError:  # pragma: no cover
 
 CONFIG_VERSION = "1.0.0"
 
+# N1e: 全局配置持久化 + 热重载。data/config.jsonc 带注释 (json5), 控制面整体回写
+# 会丢注释, 故控制面写入**独立 override 文件** (机器所有, 纯 JSON, 原子写),
+# 加载序变为: 内置默认 ← config.jsonc (用户手编) ← override (控制面写入)
+# ← 环境变量 ← CLI。override 中叶值为 null 表示"删除该覆盖项"。
+CONFIG_OVERRIDE_FILENAME = "config.override.json"
+# override 文件顶层保留键: 乐观锁 revision (J3-2 同构), 合并进有效配置前剔除。
+OVERRIDE_REVISION_KEY = "__revision__"
+
 
 def _to_bool(value: str) -> bool:
     """把环境变量字符串转成真布尔值 (裸字符串 "false"/"0" 不能被当真值)。"""
@@ -101,8 +109,72 @@ def _set_nested(config: dict[str, Any], dotted_key: str, value: Any) -> None:
     node[keys[-1]] = value
 
 
-def load_config(path: str | Path) -> dict[str, Any]:
-    """加载配置文件，依次应用默认值、文件、环境变量。"""
+def deep_merge_config(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """深合并 patch 到 base (返回新 dict, 不改原对象)。
+
+    - dict × dict: 递归合并;
+    - 其他类型 (含 list): patch 整体覆盖 base;
+    - patch 叶值为 None: 删除 base 对应键 (override 语义下 = 撤销该覆盖项)。
+    """
+    result = dict(base)
+    for key, value in patch.items():
+        if value is None:
+            result.pop(key, None)
+        elif isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = deep_merge_config(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def load_config_overrides(path: str | Path) -> tuple[dict[str, Any], int]:
+    """读取 override 文件; 返回 (纯配置 dict, revision)。
+
+    文件不存在 → ({}, 0)。文件损坏 (非法 JSON/revision 非整数) 抛 ValueError,
+    由调用方决定降级策略 (控制面端点转 400, 启动加载不吞错)。
+    """
+    file_path = Path(path)
+    if not file_path.exists():
+        return {}, 0
+    raw = _parse_jsonc(file_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"配置 override 文件顶层必须是对象: {file_path}")
+    revision_raw = raw.pop(OVERRIDE_REVISION_KEY, 0)
+    try:
+        revision = int(revision_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"配置 override 文件 {OVERRIDE_REVISION_KEY} 非整数: {file_path}") from exc
+    return raw, revision
+
+
+def save_config_overrides(path: str | Path, patch: dict[str, Any]) -> int:
+    """把 patch 深合并进 override 文件 (read-modify-write), revision +1, 原子写。
+
+    patch 叶值 None = 删除既有覆盖项。返回新 revision (供 If-Match 乐观锁)。
+    """
+    from isac.utils.fs import atomic_write_text
+
+    current, revision = load_config_overrides(path)
+    merged = deep_merge_config(current, patch)
+    new_revision = revision + 1
+    payload = {**merged, OVERRIDE_REVISION_KEY: new_revision}
+    atomic_write_text(Path(path), json.dumps(payload, ensure_ascii=False, indent=2))
+    logger.info("全局配置 override 已保存", path=str(path), revision=new_revision)
+    return new_revision
+
+
+def load_config(
+    path: str | Path,
+    override_path: str | Path | None = None,
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """加载配置文件，依次应用默认值、文件、override、环境变量。
+
+    N1e: override 来源二选一 —— ``overrides`` 直接传 dict (控制面 PATCH 校验
+    候选用, 不落盘); 否则 ``override_path`` 存在时读文件深合并。两者都给了以
+    ``overrides`` 为准。加载序 (SPECIFICATION.md 3.2 + N1e): 内置默认 →
+    config.jsonc → override → 环境变量 (部署覆盖仍最高优先级)。
+    """
     # T2: 深拷贝 DEFAULT_CONFIG。此前 dict(DEFAULT_CONFIG) 是浅拷贝, 嵌套 dict
     # (control/channels/llm/...) 仍引用全局 DEFAULT_CONFIG 的同一子对象; _set_nested
     # 原地改 config["control"]["enabled"] 会污染全局默认值, 让后续 load_config 调用
@@ -114,6 +186,11 @@ def load_config(path: str | Path) -> dict[str, Any]:
         config.update(_parse_jsonc(file_path.read_text(encoding="utf-8")))
     else:
         logger.warning("配置文件不存在，使用默认值", path=str(file_path))
+
+    if overrides is None and override_path is not None:
+        overrides, _ = load_config_overrides(override_path)
+    if overrides:
+        config = deep_merge_config(config, overrides)
 
     for env_key, (config_key, convert) in ENV_MAPPING.items():
         if env_key in os.environ:
