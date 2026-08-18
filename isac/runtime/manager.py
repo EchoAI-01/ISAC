@@ -114,17 +114,17 @@ class AgentManager:
         instance.status = "running"
         # P1(L3): conversation 启用时随 Agent 启动主动任务调度循环 (assembly 仅在
         # conversation.enabled=true 时构造 scheduler, 默认 None 零行为变化)。
-        scheduler = instance.services.get("proactive_scheduler")
+        scheduler = instance.services.proactive_scheduler
         if scheduler is not None:
             await scheduler.start(self._on_proactive_wake)
         # S2: 后台记忆整合循环 (默认未构造 → None → 不启动, 零行为变化)。
-        consolidator = instance.services.get("memory_consolidator")
+        consolidator = instance.services.memory_consolidator
         if consolidator is not None:
             await consolidator.start()
         # N5b 批次D 项2: stop→start 重连 MCP。stop 时 _disconnect_mcp_clients 断开,
         # start 时对已 disconnect 的 client 重 connect (bridge 持同一 client 引用,
         # 重连后 call_tool 可用, 无需 deregister/re-register 工具)。失败不阻塞启动。
-        for client in (instance.services.get("mcp_clients") or []):
+        for client in (instance.services.mcp_clients or []):
             if not getattr(client, "_connected", False):
                 try:
                     await client.connect()
@@ -140,10 +140,10 @@ class AgentManager:
     async def stop(self, agent_id: str) -> None:
         instance = self._require(agent_id)
         instance.status = "stopped"
-        scheduler = instance.services.get("proactive_scheduler")
+        scheduler = instance.services.proactive_scheduler
         if scheduler is not None:
             await scheduler.stop()
-        consolidator = instance.services.get("memory_consolidator")
+        consolidator = instance.services.memory_consolidator
         if consolidator is not None:
             await consolidator.stop()
         # R3: 断开 MCPClient (子进程/HTTP 连接), 异常隔离不阻塞停止。
@@ -157,10 +157,10 @@ class AgentManager:
         instance = self._require(agent_id)
         del self._agents[agent_id]
         self._config_locks.pop(agent_id, None)
-        scheduler = instance.services.get("proactive_scheduler")
+        scheduler = instance.services.proactive_scheduler
         if scheduler is not None:
             await scheduler.stop()
-        consolidator = instance.services.get("memory_consolidator")
+        consolidator = instance.services.memory_consolidator
         if consolidator is not None:
             await consolidator.stop()
         # R3: 断开 MCPClient (子进程/HTTP 连接), 异常隔离不阻塞销毁。
@@ -180,10 +180,10 @@ class AgentManager:
     async def _disconnect_mcp_clients(self, instance: Any) -> None:
         """R3: 断开该 Agent 的所有 MCPClient (避免子进程/HTTP 连接泄漏)。
 
-        assemble_agent 把构造并 connect 的 MCPClient 存 instance.services[
-        "mcp_clients"]; stop/destroy 时逐个 disconnect, 异常隔离不阻塞停止。
+        assemble_agent 把构造并 connect 的 MCPClient 存入 per-Agent 服务的
+        `mcp_clients` 键; stop/destroy 时逐个 disconnect, 异常隔离不阻塞停止。
         """
-        mcp_clients = instance.services.get("mcp_clients")
+        mcp_clients = instance.services.mcp_clients
         if not mcp_clients:
             return
         for client in mcp_clients:
@@ -318,10 +318,10 @@ class AgentManager:
         old_instance = self._require(agent_id)
         was_running = old_instance.status == "running"
         # P1: 停掉旧实例的主动调度循环 (新实例随 running 状态重启自己的)
-        old_scheduler = old_instance.services.get("proactive_scheduler")
+        old_scheduler = old_instance.services.proactive_scheduler
         if old_scheduler is not None:
             await old_scheduler.stop()
-        old_consolidator = old_instance.services.get("memory_consolidator")
+        old_consolidator = old_instance.services.memory_consolidator
         if old_consolidator is not None:
             await old_consolidator.stop()
         # Q0: 失效独立 Provider 缓存, PATCH 修改 llm 后 for_agent 才会按新配置重建
@@ -334,10 +334,10 @@ class AgentManager:
         instance.status = "running" if was_running else "stopped"
         self._agents[agent_id] = instance
         if was_running:
-            new_scheduler = instance.services.get("proactive_scheduler")
+            new_scheduler = instance.services.proactive_scheduler
             if new_scheduler is not None:
                 await new_scheduler.start(self._on_proactive_wake)
-            new_consolidator = instance.services.get("memory_consolidator")
+            new_consolidator = instance.services.memory_consolidator
             if new_consolidator is not None:
                 await new_consolidator.start()
         logger.info("Agent 配置已重载", agent_id=agent_id)
@@ -550,7 +550,7 @@ class AgentManager:
         缓存两次: 突发合并把重复条目一起喂给 LLM, 且末条的 drain 非空导致重复
         回复。msg_id 在 replace 后保持不变, 是稳定去重键 (为空时回退身份比较)。
         """
-        conv_registry = instance.services.get("conversation_registry")
+        conv_registry = instance.services.conversation_registry
         if conv_registry is None or not self._conversation_enabled():
             return None
         conv_runtime = conv_registry.get(instance.agent_id, session.session_id)
@@ -671,7 +671,7 @@ class AgentManager:
                 "gating": instance.gating,
                 "agent_manager": self,
                 "session_mgr": self._services.session_mgr,
-                "bus": instance.services.get("bus") or self._services.bus,
+                "bus": instance.services.bus or self._services.bus,
                 "agent_id": instance.agent_id,
             },
         )
@@ -929,7 +929,7 @@ class AgentManager:
         instance = self._agents.get(agent_id)
         if instance is None or instance.status != "running":
             return
-        registry = instance.services.get("conversation_registry")
+        registry = instance.services.conversation_registry
         if registry is None:
             return
         runtime = registry.get(agent_id, session_id)
@@ -953,7 +953,7 @@ class AgentManager:
         if session is None:
             logger.info("主动任务的会话不存在, 跳过", task_id=task.task_id, session_id=task.session_id)
             return
-        registry = instance.services.get("conversation_registry")
+        registry = instance.services.conversation_registry
         runtime = registry.get(task.agent_id, session.session_id) if registry is not None else None
         if runtime is not None and runtime.state is ConversationState.WAITING:
             runtime.resolve_wait(WaitEndReason.PROACTIVE)
@@ -1350,10 +1350,10 @@ class AgentManager:
         SessionManager 是内存实现, session_id 每次重启都会重新生成, 用它作键的
         快照重启后永远无法命中; RecoveryInjector 按同一公式重建键匹配。
         """
-        store = instance.services.get("conversation_state_store")
+        store = instance.services.conversation_state_store
         if store is None:
             return
-        registry = instance.services.get("conversation_registry")
+        registry = instance.services.conversation_registry
         runtime = (
             registry.get(instance.agent_id, session.session_id) if registry is not None else None
         )
@@ -1562,7 +1562,7 @@ class AgentManager:
         主链路保持零行为变化。sender 每次调用都重新绑定, 因为同一 session 后续消息
         可能来自不同的 Channel 连接。
         """
-        factory = instance.services.get("progress_reporter_factory")
+        factory = instance.services.progress_reporter_factory
         if factory is None:
             return None
         reporter = instance.progress_reporters.get(session_id)

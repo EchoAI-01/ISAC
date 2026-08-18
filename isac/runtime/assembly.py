@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from isac.agent.hooks import AgentHooks
 from isac.agent.injectors.attention_drift import AttentionDriftInjector
@@ -81,6 +81,7 @@ from isac.runtime.conversation import (
 )
 from isac.runtime.instance import AgentInstance
 from isac.runtime.progress import build_progress_reporter
+from isac.runtime.services import ServiceContainer
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -201,7 +202,7 @@ def _register_compress_listener(hooks: AgentHooks, consolidator: MemoryConsolida
 async def _setup_conversation_runtime(
     config: AgentConfig,
     global_config: dict,
-    agent_services: dict[str, Any],
+    agent_services: ServiceContainer,
     prompt_builder: SystemPromptBuilder,
     memory: Any = None,
 ) -> None:
@@ -285,7 +286,7 @@ def _register_media_tools(config: AgentConfig, tools: ToolRegistry) -> None:
 
 
 def _merge_shared_plugin_tools(
-    services: dict[str, Any], tools: ToolRegistry, prompt_builder: SystemPromptBuilder
+    services: ServiceContainer, tools: ToolRegistry, prompt_builder: SystemPromptBuilder
 ) -> None:
     """R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry。
 
@@ -295,33 +296,33 @@ def _merge_shared_plugin_tools(
     调 adapter.adapt 注册到共享表 (_fire_plugin_on_load 收集)。默认无插件时空操作。
     shared_commands 合并由调用方在 commands 构造后单独处理 (commands 此处尚未构造)。
     """
-    shared_tools = services.get("plugin_tools")
+    shared_tools = services.plugin_tools
     if shared_tools is not None:
         for _name, _tool in shared_tools._tools.items():  # noqa: SLF001
             # T6: 透传共享表来源, 让 per-Agent registry 也带 source 追踪,
             # 否则热重载 deregister_by_source 在运行中 Agent 不生效。
             _src = shared_tools._source.get(_name, "builtin")  # noqa: SLF001
             tools.register(_tool, source=_src)
-    shared_prompt = services.get("plugin_prompt_builder")
+    shared_prompt = services.plugin_prompt_builder
     if shared_prompt is not None:
         for _inj in shared_prompt._injectors:  # noqa: SLF001
             prompt_builder.register(_inj)
 
 
 async def _wire_mcp_clients(
-    config: AgentConfig, services: dict[str, Any], tools: ToolRegistry
+    config: AgentConfig, services: ServiceContainer, tools: ToolRegistry
 ) -> list[Any]:
     """R3: 按 AgentConfig.mcp_servers 构造并连接 MCPClient, MCP 工具注册进 tools。
 
-    AgentConfig.mcp_servers (允许名列表) 查全局 services["mcp_servers"] (build_services
+    AgentConfig.mcp_servers (允许名列表) 查全局 `mcp_servers` 键 (build_services
     注入, config.jsonc 顶层 mcp.servers 节)。逐 server 构造 MCPClient + connect +
     list_tools, MCPToolBridge (Tool 子类, client.py:268) 注册进 per-Agent tools。
-    返回 MCPClient 实例列表 (供 agent_services["mcp_clients"] 存储, stop/destroy 时
+    返回 MCPClient 实例列表 (供 per-Agent `mcp_clients` 键存储, stop/destroy 时
     disconnect)。默认 mcp_servers=[] 或无全局定义时返回空列表, 零行为变化。
     逐 server 错误隔离, 失败不阻塞 Agent 启动。
     """
     mcp_clients: list[Any] = []
-    mcp_servers_def = services.get("mcp_servers", {})
+    mcp_servers_def = services.mcp_servers or {}
     if not config.mcp_servers or not mcp_servers_def:
         return mcp_clients
     from isac.agent.tools.mcp.client import MCPClient
@@ -362,7 +363,7 @@ async def _wire_mcp_clients(
 
 
 def _merge_shared_plugin_commands(
-    services: dict[str, Any], commands: CommandRegistry
+    services: ServiceContainer, commands: CommandRegistry
 ) -> None:
     """R3: 合并进程级共享插件 commands 进 per-Agent CommandRegistry。
 
@@ -370,7 +371,7 @@ def _merge_shared_plugin_commands(
     (commands 在 tools 之后定义, 故不能并入 _merge_shared_plugin_tools)。
     默认无插件时空操作。
     """
-    shared_commands = services.get("plugin_commands")
+    shared_commands = services.plugin_commands
     if shared_commands is not None:
         for _cmd in shared_commands._commands.values():  # noqa: SLF001
             commands.register(_cmd)
@@ -451,7 +452,7 @@ def _merged_gating_config(global_config: dict[str, Any], agent_gating: dict[str,
 
 
 def _build_gating_judge_fn(
-    global_config: dict[str, Any], agent_gating: dict[str, Any] | None, services: dict[str, Any]
+    global_config: dict[str, Any], agent_gating: dict[str, Any] | None, services: ServiceContainer
 ) -> Any:
     """U3: llm-judge/hybrid 档时构造门控相关性判定函数; 其余档/无 provider 返回 None。
 
@@ -464,7 +465,7 @@ def _build_gating_judge_fn(
     strategy = str(merged.get("strategy") or "keywords").strip().lower()
     if strategy not in ("llm-judge", "hybrid"):
         return None
-    provider_manager = services.get("provider_manager")
+    provider_manager = services.provider_manager
     if provider_manager is None:
         return None
     provider = getattr(provider_manager, "_fallback", None) or getattr(provider_manager, "_primary", None)
@@ -496,6 +497,11 @@ def _build_gating_judge_fn(
     return judge_fn
 
 
+def _as_container(services: dict[str, Any]) -> ServiceContainer:
+    """Z1-B: 测试夹具可能传裸 dict, 归一化为 ServiceContainer 供属性访问。"""
+    return services if isinstance(services, ServiceContainer) else ServiceContainer(services)
+
+
 async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> AgentInstance:
     """按配置组装一个 AgentInstance。
 
@@ -506,7 +512,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     [已完成] memory_factory / 人格注入器 / 记忆注入器 / BehaviorLearner hooks / SubAgent 工具;
     待落地: attention_drift/expression_style/mood/skill_selector 注入器接入 PersonaManager。
     """
-    global_config: dict = services.get("global_config", {})
+    services = _as_container(services)
+    global_config: dict = services.global_config or {}
 
     # E4 启用矩阵: Agent ∩ Channel ∩ 全局; Channel 覆盖来自 global_config.channels
     channel_overrides: dict = {}
@@ -531,10 +538,10 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     prompt_builder.register(ModelCapabilitiesInjector(_media_caps))
 
     hooks = AgentHooks()
-    # CR3-H2: 插件经 on_load 注册到进程级共享注册表 (services["plugin_agent_hooks"],
+    # CR3-H2: 插件经 on_load 注册到进程级共享注册表 (`plugin_agent_hooks` 键,
     # main._fire_plugin_on_load 构造) 的钩子, 合并进本 Agent 的私有 hooks
     # (保留 priority; 同仓读内部结构, AgentHooks._hooks 即注册表本体)。
-    plugin_hooks: AgentHooks | None = services.get("plugin_agent_hooks")
+    plugin_hooks: AgentHooks | None = services.plugin_agent_hooks
     if plugin_hooks is not None:
         for point, entries in plugin_hooks._hooks.items():  # noqa: SLF001
             for priority, _seq, fn in entries:
@@ -587,7 +594,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry (同 plugin_agent_hooks
     # 合并模式; shared_commands 合并见下方 commands 定义后) + MCPClient 按
     # AgentConfig.mcp_servers 构造+connect+list_tools 注册 MCP 工具进 tools。client
-    # 存 agent_services["mcp_clients"] 供 stop/destroy disconnect。默认空, 零行为变化。
+    # 存 per-Agent 服务的 mcp_clients 键供 stop/destroy disconnect。默认空, 零行为变化。
     _merge_shared_plugin_tools(services, tools, prompt_builder)
     mcp_clients = await _wire_mcp_clients(config, services, tools)
 
@@ -605,18 +612,19 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     commands.register(FocusCommand())
     commands.register(MuteCommand())
     commands.register(UnmuteCommand())
-    # R3: 合并进程级共享插件命令 (services["plugin_commands"]) 进 per-Agent
+    # R3: 合并进程级共享插件命令 (plugin_commands 共享键) 进 per-Agent
     # CommandRegistry, 同 plugin_agent_hooks 合并模式。默认空。
     _merge_shared_plugin_commands(services, commands)
 
-    provider_manager = services["provider_manager"]
+    # build_services 恒注册 provider_manager/memory_factory (装配层不变量, cast 收敛)。
+    provider_manager = cast(Any, services.provider_manager)
     llm = provider_manager.for_agent(config)
-    memory = services["memory_factory"](config.effective_memory_namespace)
+    memory = cast(Any, services.memory_factory)(config.effective_memory_namespace)
     prompt_builder.register(PersonProfileInjector(memory))
     prompt_builder.register(JargonInjector(memory))
     prompt_builder.register(HeuristicMemoryInjector(memory))
     prompt_builder.register(MidTermMemoryInjector(memory))
-    agent_services = {**services, "memory": memory}
+    agent_services = ServiceContainer({**services, "memory": memory})
     # R3: MCPClient 引用 (上方构造) 存入 services, 供 AgentManager.stop/destroy
     # 与 _shutdown_message_pipeline 调 disconnect (避免子进程/HTTP 连接泄漏)。
     agent_services["mcp_clients"] = mcp_clients
@@ -654,7 +662,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # P2: 注入 MeshActionBroker —— 4 个 A2A 工具 (notify/handoff/list/memory_query)
     # 的 restricted 门要求该服务存在, 此前生产零注入点使它们恒返回"未接入"。
     # 策略随 Link 配置 (broker.policy_for 按对端解析), 不再依赖单值 mesh_link_policy。
-    bus = services.get("bus")
+    bus = services.bus
     if bus is not None:
         from isac.runtime.mesh.actions import MeshActionBroker
 
