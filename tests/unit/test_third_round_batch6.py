@@ -81,9 +81,9 @@ async def test_deny_guard_restore_scans_beyond_recent_window() -> None:
     guard = DenyGuard()
     await guard.restore_from_store(_FakeStore(events), page_size=page)
 
-    assert guard.is_denied("k1", "early_evil")  # 早期拒绝不再丢
-    assert guard.is_denied("k1", "late_evil")
-    assert not guard.is_denied("k1", "never_denied")
+    assert await guard.is_denied("k1", "early_evil")  # 早期拒绝不再丢
+    assert await guard.is_denied("k1", "late_evil")
+    assert not await guard.is_denied("k1", "never_denied")
 
 
 # ── Fix-121: generate_image n 夹取 ───────────────────────────────

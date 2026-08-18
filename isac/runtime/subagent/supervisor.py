@@ -28,6 +28,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Fix-130: _runs 内存索引默认上限。到达终态的 run 已落 Journal (持久化可回读),
+# 内存索引只保留最近这么多条, 防长期运行无界增长。
+DEFAULT_MAX_TRACKED_RUNS = 500
+
 
 class SubAgentSupervisor:
     """子任务监督器。"""
@@ -40,6 +44,7 @@ class SubAgentSupervisor:
         runner_factory: Callable[[SubAgentTask], Awaitable[SubAgentResult]] | None = None,
         cancel_grace_seconds: float = 0.5,
         max_concurrent: int = 4,
+        max_tracked_runs: int = DEFAULT_MAX_TRACKED_RUNS,
     ) -> None:
         self._journal = journal
         # 父 Agent / 全局默认策略, 与任务策略求交集得到生效权限。
@@ -49,6 +54,11 @@ class SubAgentSupervisor:
         self._runner_factory = runner_factory
         self._cancel_grace_seconds = cancel_grace_seconds
         self._runs: dict[str, SubAgentRun] = {}
+        # Fix-130: _runs 内存索引上限 —— 长期运行下每个 submit 都新增一条 run 且从不
+        # 淘汰, 无界增长。到达终态的 run 已落 Journal (持久化, 可经 fetch_log/restore
+        # 读回), 内存索引只保留最近 max_tracked_runs 条; 超限时按 finished_at 从最旧
+        # 终态 run 开始淘汰 (活跃 run 绝不淘汰)。<=0 表示不限制 (向后兼容)。
+        self._max_tracked_runs = max(0, int(max_tracked_runs))
         # 后台 task 索引 (task_id → asyncio.Task), 用于 cancel 传播
         self._tasks: dict[str, asyncio.Task[Any]] = {}
         # Q5: 并发上限 (信号量), 防止短时间大量 submit 把父 Agent 的 LLM 调用
@@ -195,6 +205,9 @@ class SubAgentSupervisor:
             run.tokens_used = int(getattr(usage, "total_tokens", 0) or 0)
         if evidence_refs is not None:
             run.evidence_refs = list(evidence_refs)
+        # Fix-130: 到达终态时顺带淘汰超上限的旧终态 run (活跃 run 不受影响)。
+        if finished:
+            self._prune_terminal_runs()
         if self._journal is None:
             return
         try:
@@ -215,6 +228,27 @@ class SubAgentSupervisor:
             timestamp=int(time.time()),
             summary=summary,
         )
+
+    def _prune_terminal_runs(self) -> None:
+        """Fix-130: _runs 超上限时淘汰最旧的**终态** run (活跃 run 绝不动)。
+
+        终态 run 已落 Journal, 内存索引淘汰后仍可经 fetch_log/restore_interrupted
+        回读, 不丢数据。max_tracked_runs<=0 时不限制 (向后兼容)。终态 run 不足时
+        只淘汰现有终态条目, 允许短暂超出上限 (等更多 run 到终态再收敛), 绝不误删
+        queued/running 活跃任务。
+        """
+        if self._max_tracked_runs <= 0 or len(self._runs) <= self._max_tracked_runs:
+            return
+        terminal = [
+            (task_id, run)
+            for task_id, run in self._runs.items()
+            if run.status in TERMINAL_STATUSES
+        ]
+        # 最旧在前 (finished_at 缺省回落 updated_at)
+        terminal.sort(key=lambda kv: kv[1].finished_at or kv[1].updated_at)
+        excess = len(self._runs) - self._max_tracked_runs
+        for task_id, _run in terminal[:excess]:
+            self._runs.pop(task_id, None)
 
     async def get_status(self, task_id: str, requester: AgentContext | None = None) -> SubAgentRun | None:
         """查询子任务状态; 不存在返回 None。"""
@@ -260,6 +294,7 @@ class SubAgentSupervisor:
         run.status = "cancelled"
         run.updated_at = int(time.time())
         run.finished_at = run.updated_at
+        self._prune_terminal_runs()  # Fix-130: cancel 也直达终态, 顺带淘汰超限旧终态 run
         if self._journal is not None:
             await self._journal.upsert_run(run)
         # J4-1: 取消传播到后台 task (asyncio.Task.cancel → runner 收到 CancelledError)

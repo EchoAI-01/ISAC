@@ -319,7 +319,19 @@ class PluginInstaller:
         return list(data.get("plugins", [])) if isinstance(data, dict) else []
 
     async def _write_b64_temp(self, b64: str) -> tuple[Path, Path]:
-        """base64 解码 zip 写到临时目录, 返回 (zip_path, owning_tmp_dir)。"""
+        """base64 解码 zip 写到临时目录, 返回 (zip_path, owning_tmp_dir)。
+
+        Fix-133: 上传体积封顶 (对齐 URL 安装的 MAX_PLUGIN_DOWNLOAD_BYTES) —— 此前
+        zip_b64 无大小校验, 超大 base64 会整体解码进内存 (解码后仍驻留), 可被用来
+        打爆进程内存。先按 b64 字符串长度做快速预检 (base64 约 4/3 膨胀, 用解码上限
+        反推), 解码后再复核真实字节数, 超限拒绝。
+        """
+        max_decoded = MAX_PLUGIN_DOWNLOAD_BYTES
+        # base64 编码长度 ≈ 解码字节数 * 4/3 (+padding); 用上限反推 b64 长度上限做预检
+        if len(b64) > (max_decoded // 3 + 1) * 4:
+            raise ValueError(
+                f"upload zip_b64 过大 (> {max_decoded} 字节解码上限), 已拒绝"
+            )
         tmp_dir = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="isac_plugin_up_"))
         zip_path = tmp_dir / "plugin.zip"
         try:
@@ -327,5 +339,8 @@ class PluginInstaller:
         except Exception as exc:
             await asyncio.to_thread(shutil.rmtree, tmp_dir, ignore_errors=True)
             raise ValueError(f"zip_b64 解码失败: {exc}") from exc
+        if len(raw) > max_decoded:
+            await asyncio.to_thread(shutil.rmtree, tmp_dir, ignore_errors=True)
+            raise ValueError(f"upload zip 解码后 {len(raw)} 字节超过上限 {max_decoded}, 已拒绝")
         await asyncio.to_thread(zip_path.write_bytes, raw)
         return zip_path, tmp_dir

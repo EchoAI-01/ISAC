@@ -489,7 +489,6 @@ class AgentManager:
         if result.content:
             # 话轮调度: 记录本轮回复, 更新滑窗频率与存在感数据。
             turn_scheduler.record_reply()
-            instance.gating.get_idle_backoff(session.session_id).record_reply()
             # U1: 回复成功 → turn.completed 事件落盘 (下一回合的历史窗口可见);
             # 返回的 seq 供 episodes 事件投影定位本回合事件对。
             turn_seq = await self._record_turn_completed(instance, message, result.content)
@@ -629,7 +628,6 @@ class AgentManager:
         if cmd_result is None:
             return None, None
         turn_scheduler.record_reply()
-        instance.gating.get_idle_backoff(session.session_id).record_reply()
         drained = self._drain_pending(conv_runtime, message)
         interrupted = [m for m in drained if not str(m.content or "").startswith("/")]
         if not interrupted:

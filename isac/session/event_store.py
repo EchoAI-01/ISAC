@@ -89,19 +89,18 @@ class SessionEventStore:
         event = self._sanitize(event)
         payload_json = json.dumps(event.payload, ensure_ascii=False)
         if event.seq <= 0:
+            # Fix-132: seq 分配改用 INSERT...SELECT ... RETURNING seq —— 由同一条语句
+            # 返回本次 INSERT 实际分配的 seq。此前是 INSERT 后再单独 SELECT MAX(seq)
+            # 回读: 两条语句之间若另一协程对同分区并发 append, MAX(seq) 会读到对方的
+            # seq, 本事件拿到错误的 seq (回读竞态)。RETURNING 原子返回本行 seq, 无间隙。
             cursor = await self._db.execute(
                 "INSERT INTO session_events (session_key, seq, event_type, timestamp, payload) "
                 "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ? "
-                "FROM session_events WHERE session_key = ?",
+                "FROM session_events WHERE session_key = ? "
+                "RETURNING seq",
                 (event.session_key, event.event_type, event.timestamp, payload_json, event.session_key),
             )
-            # 取回刚分配的 seq (该分区当前最大 seq)。
-            seq_cursor = await self._db.execute(
-                "SELECT MAX(seq) FROM session_events WHERE session_key = ?",
-                (event.session_key,),
-            )
-            row = await seq_cursor.fetchone()
-            await seq_cursor.close()
+            row = await cursor.fetchone()
             await cursor.close()
             event.seq = int(row[0]) if row and row[0] is not None else 0
         else:

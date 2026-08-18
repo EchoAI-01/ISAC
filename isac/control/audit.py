@@ -17,6 +17,12 @@ from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Fix-134: 审计 NDJSON 单文件上限与保留份数 —— 此前 audit.ndjson 只追加不轮转,
+# 长期运行无界增长占满磁盘。超限后滚动为 audit.ndjson.1/.2/… (超出 backup_count 的
+# 最旧份删除), 主文件重新计数。轮转是运维卫生, 不影响审计内容 (旧份仍可查)。
+DEFAULT_AUDIT_MAX_BYTES = 10 * 1024 * 1024  # 10MB
+DEFAULT_AUDIT_BACKUP_COUNT = 3
+
 
 class AuditLog:
     """控制面审计日志。
@@ -25,10 +31,19 @@ class AuditLog:
     (一行一条 JSON, 便于后续查询)。
     """
 
-    def __init__(self, log_path: str | Path | None = None, in_memory_size: int = 1000) -> None:
+    def __init__(
+        self,
+        log_path: str | Path | None = None,
+        in_memory_size: int = 1000,
+        max_bytes: int = DEFAULT_AUDIT_MAX_BYTES,
+        backup_count: int = DEFAULT_AUDIT_BACKUP_COUNT,
+    ) -> None:
         self.log_path = Path(log_path) if log_path else None
         self._buffer: deque[dict[str, Any]] = deque(maxlen=in_memory_size)
         self._lock = asyncio.Lock()
+        # Fix-134: 轮转参数 (非正值回落到默认, 保证至少能轮转)。
+        self._max_bytes = max(1024, int(max_bytes))
+        self._backup_count = max(1, int(backup_count))
 
     async def record(
         self,
@@ -74,10 +89,44 @@ class AuditLog:
         """追加到 NDJSON 文件 (同步 IO, 但只写一行, 阻塞时间很短)。"""
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
+            self._rotate_if_needed()  # Fix-134: 超限先滚动, 再写新行
             with self.log_path.open("a", encoding="utf-8") as fp:  # type: ignore[union-attr]
                 fp.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except Exception as exc:  # noqa: BLE001 审计失败不应影响主流程
             logger.warning("审计日志写入失败", error=str(exc))
+
+    def _rotate_if_needed(self) -> None:
+        """Fix-134: 主文件超 max_bytes 时滚动为编号备份 (同步 IO, 调用方已在线程池)。
+
+        audit.ndjson → audit.ndjson.1, 既有 .1 → .2 … 依次后移, 超过 backup_count
+        的最旧份删除。任一文件不存在/移动失败都静默跳过 (轮转失败不阻塞写入,
+        最坏退化为不轮转)。
+        """
+        assert self.log_path is not None
+        try:
+            if not self.log_path.exists() or self.log_path.stat().st_size < self._max_bytes:
+                return
+        except OSError:
+            return
+        # 先删超出保留数的最旧份, 再从最旧到最新依次后移
+        oldest = self.log_path.with_name(f"{self.log_path.name}.{self._backup_count}")
+        try:
+            if oldest.exists():
+                oldest.unlink()
+        except OSError:
+            pass
+        for idx in range(self._backup_count - 1, 0, -1):
+            src = self.log_path.with_name(f"{self.log_path.name}.{idx}")
+            dst = self.log_path.with_name(f"{self.log_path.name}.{idx + 1}")
+            try:
+                if src.exists():
+                    src.rename(dst)
+            except OSError:
+                continue
+        try:
+            self.log_path.rename(self.log_path.with_name(f"{self.log_path.name}.1"))
+        except OSError as exc:
+            logger.warning("审计日志轮转失败, 继续追加原文件", error=str(exc))
 
     def query(
         self,

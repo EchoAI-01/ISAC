@@ -159,7 +159,7 @@ async def test_hitl_approval_full_loop_rejected(tmp_path: Path) -> None:
 
     # LLM 收到工具被拒错误后仍给出最终回复; guard 已登记拒绝
     assert any(r.content == "好的不查了" for r in h["channel"].replies)
-    assert guard.is_denied(SESSION_KEY, "query_memory") is True
+    assert await guard.is_denied(SESSION_KEY, "query_memory") is True
     events = await store.fetch(SESSION_KEY)
     denied = [
         e for e in events
@@ -181,7 +181,7 @@ async def test_hitl_approval_full_loop_timeout(tmp_path: Path) -> None:
     await h["am"].drain_background_tasks(timeout_seconds=2.0)
 
     assert any(r.content == "超时没查成" for r in h["channel"].replies)
-    assert guard.is_denied(SESSION_KEY, "query_memory") is True
+    assert await guard.is_denied(SESSION_KEY, "query_memory") is True
     events = await store.fetch(SESSION_KEY)
     denied = [
         e for e in events
