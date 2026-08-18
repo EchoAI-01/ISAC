@@ -61,3 +61,22 @@ class DenyGuard:
         if restored:
             logger.info("DenyGuard 已从事件流重建拒绝记录", session_key=session_key, count=restored)
         return restored
+
+    async def restore_from_store(self, store: Any, *, page_size: int = 1000) -> None:
+        """Fix-120: 从事件存储**全量**重建拒绝账本 (逐分区分页扫描)。
+
+        单调拒绝是安全不变量, 重建必须扫全量事件流 —— 此前启动只取每分区最近 500 条,
+        长会话里较早的 DENIED 事件落在窗口之外, 重启后该拒绝丢失、被拒工具翻回放行,
+        瓦解 U5 的核心保证。现按 seq 分页 (page_size 只控制单次内存占用) 顺序扫完整个
+        分区; 拒绝记录幂等 (set), 重复扫描无害。store 需提供 list_session_keys/fetch。
+        """
+        for session_key in await store.list_session_keys():
+            after_seq = 0
+            while True:
+                events = await store.fetch(session_key, after_seq=after_seq, limit=page_size)
+                if not events:
+                    break
+                self.restore_from_events(session_key, events)
+                after_seq = events[-1].seq
+                if len(events) < page_size:
+                    break  # 最后一页, 该分区已扫完

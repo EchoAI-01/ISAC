@@ -147,7 +147,10 @@ class ISACAgentLoop:
                 messages.append(
                     {
                         "role": "assistant",
-                        "content": response.content,
+                        # Fix-123: 纯 tool_call 响应里 content 可能为 None —— 与 R17 对
+                        # final 响应的归一化同口径, 归一为 "" 防下游 f-string/序列化/
+                        # 部分 Provider 对 assistant.content=null 报 TypeError 或 400。
+                        "content": response.content or "",
                         "tool_calls": [
                             {
                                 "id": tool_call.id,

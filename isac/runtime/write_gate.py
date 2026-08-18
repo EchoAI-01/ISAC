@@ -75,6 +75,21 @@ class SessionWriteGate:
         ):
             self._active.pop(session_key, None)
 
+    def _purge_stale(self) -> None:
+        """Fix-126: 回收**全部**已过期/已消费/已取消的租约 (不限当前 key)。
+
+        此前 `_purge_session` 只清被 reserve/active 显式触及的 key —— 一个会话的租约
+        若过期后再无人 reserve/active 它, 该条目永久驻留 `_active`, 长期运行无界增长。
+        每次 reserve 顺带全量清扫, 让 `_active` 只保留真正活跃的租约 (数量有界)。
+        """
+        now = self._now()
+        stale = [
+            key for key, reservation in self._active.items()
+            if reservation.expired(now) or reservation.consumed or reservation.cancelled
+        ]
+        for key in stale:
+            self._active.pop(key, None)
+
     def reserve(
         self,
         session_key: str,
@@ -86,6 +101,7 @@ class SessionWriteGate:
         if source not in _ALLOWED_SOURCES:
             logger.warning("会话写入来源未登记, 拒绝预约", session_key=session_key, source=source)
             return None
+        self._purge_stale()  # Fix-126: 全量回收陈旧租约, 保持 _active 有界
         self._purge_session(session_key)
         if session_key in self._active:
             existing = self._active[session_key]
