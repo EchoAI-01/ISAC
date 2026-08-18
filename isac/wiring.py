@@ -461,7 +461,7 @@ def build_services(global_config: dict[str, Any]) -> ServiceContainer:
         "metrics": metrics,
         "storage_start": _storage_start if memory_config.get("enabled") else _noop_start,
         # CR3: 记忆存储句柄 (memory 未启用时为 None)。此前 services 里根本没有
-        # "metadata_store" 键, _register_control_plane 的 services.get() 恒 None,
+        # "metadata_store" 键, _register_control_plane 按字符串键取值恒 None,
         # routes_memory / routes_memory_admin / routes_sessions 在生产从未挂载。
         "metadata_store": metadata_store,
         "sparse_indexes": sparse_indexes,

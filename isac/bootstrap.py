@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from isac.channel.model import ISACMessage
 from isac.channel.registration import _ensure_default_routing, _register_channel_adapters
@@ -34,6 +34,7 @@ from isac.runtime.application import ApplicationRuntime
 from isac.runtime.bus import InterAgentBus, InterAgentLink, InterAgentMessage
 from isac.runtime.manager import AgentManager, ensure_default_agent, load_persisted_agents
 from isac.runtime.mesh.query import _answer_memory_query
+from isac.runtime.services import ServiceContainer
 from isac.utils.config import load_config
 from isac.utils.logger import get_logger, setup_logger
 from isac.utils.security import resolve_secrets_in_config
@@ -85,13 +86,13 @@ async def _start_session_event_store(store: Any, deny_guard: Any = None) -> None
         await deny_guard.restore_from_store(store)
 
 
-async def _close_storage_stores(services: dict[str, Any]) -> None:
+async def _close_storage_stores(services: ServiceContainer) -> None:
     """C1: shutdown 时关闭 VectorStore/GraphStore 持久连接, 防 WAL/SHM 残留 + FD 泄漏。
 
     此前 storage lifecycle 的 stop 是 _noop_start, 持久连接在进程退出前不显式 close,
     嵌入启用时长期运行会让 vectors-<ns>.db 的 WAL/SHM 文件残留 + aiosqlite FD 泄漏。
     """
-    vs_dict = services.get("vector_stores") or {}
+    vs_dict = services.vector_stores or {}
     for ns, store in vs_dict.items():
         close = getattr(store, "close", None)
         if callable(close):
@@ -99,7 +100,7 @@ async def _close_storage_stores(services: dict[str, Any]) -> None:
                 await close()
             except Exception as exc:  # noqa: BLE001
                 logger.warning("VectorStore close 失败, 已忽略", namespace=ns, error=str(exc))
-    gs = services.get("graph_store")
+    gs = services.graph_store
     if gs is not None:
         close = getattr(gs, "close", None)
         if callable(close):
@@ -154,8 +155,8 @@ async def main() -> None:
 
     # ── Provider ────────────────────────────────────────────
     services = build_services(global_config)
-    metrics: MetricsCollector = services.metrics
-    register_llm_provider(services.provider_manager, global_config.get("llm", {}))
+    metrics = cast(MetricsCollector, services.metrics)
+    register_llm_provider(cast(Any, services.provider_manager), global_config.get("llm", {}))
     # U7: 能力快照接线 (model_router 注入 + primary LLM 描述符注册, 见函数 docstring)
     _wire_llm_capabilities(services, global_config)
 
@@ -163,7 +164,7 @@ async def main() -> None:
     agent_manager = AgentManager(services)
     from isac.runtime.subagent.runner import configure_subagent_runner
 
-    configure_subagent_runner(services["subagent_supervisor"], agent_manager)
+    configure_subagent_runner(services.subagent_supervisor, agent_manager)
     bus = InterAgentBus()
     # 互联投递专用 SessionManager: P2 起进程内共享一个实例 (此前每次投递新建,
     # 跨 Agent 会话永不复用, 目标 Agent 每条互联消息都像陌生会话)。
@@ -293,15 +294,15 @@ async def main() -> None:
     # 处理完时先被关掉。启动侧 channels 最后 start 也更合理 (一切就绪才开闸)。
     control_config = global_config.get("control", {}) or {}
     if control_config.get("enabled"):
-        # CR3: session_mgr/event_bus 此前经 services.get() 取值恒 None (键根本
-        # 不存在), routes_sessions/routes_events 在生产从未挂载; 现在把 main()
-        # 内已构造的真实实例直接传入。
+        # CR3: session_mgr/event_bus 此前经字符串键取值恒 None (键根本不存在),
+        # routes_sessions/routes_events 在生产从未挂载; 现在把 main() 内已构造的
+        # 真实实例直接传入。
         await _register_control_plane(
             runtime, control_config, agent_manager, router, bus, metrics,
-            services.get("usage_store"), services.get("subagent_supervisor"),
+            services.usage_store, services.subagent_supervisor,
             services.provider_manager, services.model_catalog,
             services.artifact_store,
-            session_mgr, services.get("metadata_store"),
+            session_mgr, services.metadata_store,
             event_bus,
             webhook_manager,
             services=services,
@@ -314,7 +315,7 @@ async def main() -> None:
     )
     # K2: Provider (httpx.AsyncClient 连接池) 在 shutdown 时 aclose, 避免连接泄漏;
     # 启动无需动作 (httpx.AsyncClient 惰性创建, 首次 chat 时才建池)。
-    provider_manager = services.provider_manager
+    provider_manager = cast(Any, services.provider_manager)
     runtime.register_lifecycle(
         "providers",
         _noop_start,
@@ -324,7 +325,7 @@ async def main() -> None:
     # K3: 先执行 storage schema init/migration (MetadataStore + VectorStore), 保证
     # 后续 load_persisted_agents 创建 Agent 时 warm_up_sparse_index 能从 SQLite 读数据;
     # 再注册到 runtime 的 LIFO 关闭链 (storage 关闭时无显式动作, aiosqlite 每次连接即关)。
-    storage_start = services["storage_start"]
+    storage_start = services.storage_start
     await storage_start()
 
     # C1: shutdown 时关闭 VectorStore/GraphStore 持久连接, 防 WAL/SHM 残留 + FD 泄漏。
@@ -402,7 +403,7 @@ async def main() -> None:
         logger.info("ISAC 已退出")
 
 
-def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
+def _register_usage_lifecycle(runtime: ApplicationRuntime, services: ServiceContainer) -> None:
     """J1: 仅在启用计量时注册用量存储 + 周期性 flush 的生命周期。
 
     未启用计量 (usage_store 为 None) 时直接返回, 不注册任何生命周期, 主链路零变化。
@@ -410,10 +411,10 @@ def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, A
     stop: 先停周期任务 (内部已含最终 flush) 再关连接, 顺序反过来会导致最后一批
     缓冲事件在落库前连接已关闭而丢失。
     """
-    usage_store = services.get("usage_store")
+    usage_store = services.usage_store
     if usage_store is None:
         return
-    usage_recorder = services.get("usage_recorder")
+    usage_recorder = services.usage_recorder
 
     async def _usage_start() -> None:
         await usage_store.start()
@@ -428,24 +429,24 @@ def _register_usage_lifecycle(runtime: ApplicationRuntime, services: dict[str, A
     runtime.register_lifecycle("usage_store", _usage_start, _usage_stop)
 
 
-def _register_subagent_lifecycle(runtime: ApplicationRuntime, services: dict[str, Any]) -> None:
+def _register_subagent_lifecycle(runtime: ApplicationRuntime, services: ServiceContainer) -> None:
     """J4: 仅在启用 subagent 日志时注册 Journal 生命周期。
 
     未启用 (subagent_journal 为 None) 时直接返回, 不创建任何 DB 文件。
     """
-    journal = services.get("subagent_journal")
+    journal = services.subagent_journal
     if journal is None:
         return
     runtime.register_lifecycle("subagent_journal", journal.start, journal.stop)
 
 
-async def _restore_subagent_interrupts(services: dict[str, Any]) -> None:
+async def _restore_subagent_interrupts(services: ServiceContainer) -> None:
     """J4-3: SubAgent 重启恢复, 把 running/queued 标记为 cancelled。
 
     必须在 runtime.start() 之后调用 (subagent_journal 已 start, DB 连接就绪);
     journal 未启用或 supervisor 不存在时 no-op。
     """
-    supervisor = services.get("subagent_supervisor")
+    supervisor = services.subagent_supervisor
     if supervisor is None:
         return
     try:

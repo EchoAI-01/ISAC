@@ -267,10 +267,10 @@
 
 ### N5 并行线: 剩余架构债与加固 (见缝插针)
 
-- [ ] **Z1** `services` 弱类型 → ServiceContainer 强类型 (建议 N2 期间做, 功能面已稳定)。
-- [ ] **Z2** `main.py` (1518 行) 拆 `isac/bootstrap/` 五模块。
+- [~] **Z1** `services` 弱类型 → ServiceContainer 强类型 —— **批 A 已完成 (2026-08-18)**: 容器属性扩至全部 36 注册键并统一宽容语义 (缺键 None, 与既有防御式取值一致); bootstrap/AgentManager 全局容器访问迁移属性访问 (manager 23 处 + bootstrap 12 处), 生产容器直通同一对象 (后注册键可见), 测试裸 dict 归一化拷贝; 红线棘轮 205→167。剩余: per-Agent `instance.services` 面 (manager/assembly/loop/tools ~120 处) 与 control 路由 `(services or {})` 面另立批 B/C。
+- [x] **Z2** `main.py` 拆分 —— 已由 **U2 收敛 (2026-08-17)**: main.py 82 行薄入口, 装配拆 isac/bootstrap.py + isac/wiring.py + isac/dispatch.py + isac/control/bootstrap.py (各受 ≤500 行红线)。
 - [ ] 同步 IO 异步化 (audit/bus persist/routes_routing 写盘)。
-- [ ] `reload_config` 差量更新 (观察项, 不紧急)。
+- [ ] `reload_config` 差量更新 (观察项, 不紧急; N1e 热重载当前走全重建路径)。
 
 ### N5b 全量审查剩余批次 (2026-08-16 审查发现的 Major/Minor, 各立专项)
 
