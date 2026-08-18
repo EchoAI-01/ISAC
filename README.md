@@ -204,6 +204,12 @@ ISAC 采用**节点制**推进（A/B/C… 里程碑 + P 主链路接线 + Q MVP 
 - **R1–R6 功能广度轮** — 多模态出入站闭环与计量、控制面与 SubAgent 收尾、记忆完整性（行话学习 + COMPRESS 压缩）、Session 持久化 + SecretStore、企业化激活（租户控制面）。
 - **前后端分离后端段** — OpenAPI 契约冻结 + CORS/跨源认证 + 控制面开箱（control 默认开 + 首登强制设密码 + 配置 Schema 端点）。
 
+### ✅ 质量清偿（2026-08-18）
+
+- **三轮全量代码审查修复** — N1b/N1c/N1d 同规格 5 路并行全量审查 + 主审逐条回码复核，累计 Fix-37~137：含沙箱逃逸、协议契约、会话内核竞态、注入防护、资源边界卫生等，Critical/Major/Minor 全部代码级清零。
+- **N1e 全局配置持久化 + 热重载** — 控制面 `GET/PATCH /config/global` + reload 端点（override 覆盖层不破坏 config.jsonc 注释 + If-Match 乐观锁 + applied/restart_required 区分），全局 `mcp.servers` 等定义不再"手编 + 重启"。
+- 当前全量 2098 测试通过，ruff/mypy 全绿，红线（U9 只减不增指标）全绿。
+
 ### 🔨 规划中
 
 - **环境准入项** — Docker 冒烟、browser CI 复核、release checklist、24h soak（见 DEVELOPMENT_PLAN §三之三 N2）。
