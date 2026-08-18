@@ -223,7 +223,22 @@
 
 顺带: 新增 16 例批 7 回归测试。**全量 2078 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。
 
-**第三轮最终小结**: 1 Critical + 21 Major + 44 Minor 已全部完成代码级清零 (批 1~7 合计 Fix-89~137 共 49 项)。唯一留档非代码项: **全局配置无控制面持久化路径** —— `routes_config` 仅有 validate/diff, `data/config.jsonc` 从不被写回, 故全局 `mcp.servers` 等定义只能手工编辑 + 重启 (Agent 级 MCP 绑定 `AgentConfig.mcp_servers` 已经 `save_agent_config` 持久化并经 `reload_config → assemble_agent → _wire_mcp_clients` 热重连)。该项属"全局配置持久化 + 热重载"专门特性 (影响所有全局配置, 非 MCP 独有), 不宜以 MCP-only 写回器草率实现 (config.jsonc 带注释, 整体回写会丢注释), 建议另立节点。
+**第三轮最终小结**: 1 Critical + 21 Major + 44 Minor 已全部完成代码级清零 (批 1~7 合计 Fix-89~137 共 49 项)。唯一留档非代码项: **全局配置无控制面持久化路径** —— `routes_config` 仅有 validate/diff, `data/config.jsonc` 从不被写回, 故全局 `mcp.servers` 等定义只能手工编辑 + 重启 (Agent 级 MCP 绑定 `AgentConfig.mcp_servers` 已经 `save_agent_config` 持久化并经 `reload_config → assemble_agent → _wire_mcp_clients` 热重连)。该项属"全局配置持久化 + 热重载"专门特性 (影响所有全局配置, 非 MCP 独有), 不宜以 MCP-only 写回器草率实现 (config.jsonc 带注释, 整体回写会丢注释), 建议另立节点。→ **已由 N1e 落地 (2026-08-18)**。
+
+### N1e 全局配置持久化 + 热重载 (2026-08-18) — **已完成 (全量 2098 通过)**
+
+**目标**: 清偿 N1d 唯一留档项 —— 全局配置获得控制面持久化路径与热重载, 全局 `mcp.servers`/`llm` 等定义不再"手编 config.jsonc + 重启"。
+
+**持久化模型**: `data/config.jsonc` 带注释, 控制面不整体回写 (会丢注释), 写入独立覆盖层 `data/config.override.json` (机器所有, 纯 JSON, 原子写, 含 `__revision__`)。加载序扩展为: 内置默认 ← config.jsonc (用户手编) ← override (控制面写入) ← 环境变量 ← CLI (SPECIFICATION.md 3.2 语义不变, 环境变量仍最高优先级)。`isac/utils/config.py` 新增 `deep_merge_config` (dict 递归合并 / 非 dict 整体覆盖 / null 叶删键) + `load_config_overrides`/`save_config_overrides` (read-modify-write + revision+1); `load_config` 增 `override_path`/`overrides` 参数; 根 bootstrap 启动加载 override。
+
+**控制面端点** (`routes_config`, scope `config:read`/`config:write`, 审计只记节名不记值):
+- `GET /api/v1/config/global` — 有效配置 (Fix-91 同口径脱敏哨兵) + revision。
+- `PATCH /api/v1/config/global` — 深合并部分更新: 哨兵剥离 (含剥后空 dict 剪枝, 防"全哨兵 patch"绕过无变更检查) → 候选全链 load 校验 (schema 硬失败 400 不落盘) → 持久化 override → 热应用; If-Match 乐观锁 (409 CONFIG_CONFLICT); null 叶 = 撤销覆盖项。
+- `POST /api/v1/config/global/reload` — 磁盘重读热应用 (手编 config.jsonc 免重启)。
+
+**热重载语义** (CONTROL_PLANE_SPEC §8.2 规则 6, 不假装热更成功): `applied` 节原地更新 services 持有的 global_config dict (同一对象 clear+update, 全部持有者立即可见) + 同步重建运行中 Agent (复用既有 `reload_config` 全重建路径, 单 Agent 失败保留旧实例记入 `reload_errors`); `control`/`channels`/`logging`/`debug`/`log_level` 在 bootstrap 构造服务端点不可运行中重建 → 持久化但列 `restart_required`; `reload_required` 恒空 (重建在请求内完成)。secret: 前缀在内存候选经 `_build_secret_store` + `resolve_secrets_in_config` 解析, override 落盘保留原值不落明文。
+
+**契约**: CONTROL_PLANE_SPEC 新增 §3.7 + scope 扩列 (FE0 流程); `docs/api/openapi.json` 基线重导出 (55→57 路径, 仅新增 `/config/global` 与 `/config/global/reload`)。新增 20 例测试 (`test_global_config_persistence.py`)。全量 2098 通过, ruff/mypy (295 源文件)/红线全绿 (bootstrap 499 行)。
 
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 
