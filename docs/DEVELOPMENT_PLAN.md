@@ -152,7 +152,13 @@
 - [x] **Fix-93** MCP 11 写工具审计留痕 (共享 AuditLog)。
 - [x] **Fix-94** /sessions/{id}/messages 租户谓词 (裸 SQL 绕过 U4)。
 
-**批 2 进行中 (平台协议可用性)**: QQ 频道出站 metadata 透传 + 事件去重; 飞书 mentions 解析; Telegram/Discord 超长回复分段; OneBot 入站媒体 loopback 白名单。
+**批 2 已完成 (平台协议可用性, Fix-95~99)**:
+
+- [x] **Fix-95** QQ 官方频道回复/进度帧透传 incoming.metadata (qq_official_source 端点路由凭证)。
+- [x] **Fix-96** QQ webhook 事件级去重 (顶层事件 id LRU+TTL, 防重推重复处理)。
+- [x] **Fix-97** 飞书群 @ 信号恢复 (解析 mentions → at segment, has_at 不再恒 False)。
+- [x] **Fix-98** Telegram/Discord 超长回复分段发送 (text_chunk, 优先换行边界)。
+- [x] **Fix-99** OneBot 入站媒体 loopback 白名单 (global_config inbound_media.allow_loopback)。
 
 **批 3 待清偿 (会话内核正确性)**: U1 打断孤儿事件补偿; /命令打断 drain; ArtifactStore TTL 延长语义; SessionManager 锁回收竞态。其余 Major/Minor 另立批次。
 

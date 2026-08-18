@@ -2,6 +2,14 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 2 清偿 (Fix-95~99: 平台协议可用性, 全量 1995 通过)**。
+> **Fix-95** QQ 官方频道回复出站不带 metadata → source 恒 "" → 100% 走错群端点发送失败; `_send_reply`/进度帧透传 incoming.metadata (qq_official_source)。
+> **Fix-96** QQ webhook 无事件级去重 → 平台重推同一事件被处理两次 (重复回复 + 记忆写两份); 顶层事件 id LRU+TTL 去重表。
+> **Fix-97** 飞书群 @机器人信号丢失 (不解析 mentions、无 at segment) → 门控 has_at 恒 False, 群 @ 基本不回复; 解析 message.mentions 产出 at segment。
+> **Fix-98** Telegram/Discord 超长回复整条提交 → 平台 400 → 回复静默丢失; 新增 text_chunk 按上限分段 (Telegram 4096/Discord 2000, 优先换行边界)。
+> **Fix-99** OneBot/NapCat 同机入站媒体 URL 是 loopback, SSRF 守卫恒拒 → R1-② 闭环在主力平台断链; 新增 global_config inbound_media.allow_loopback (仍逐跳复校验)。
+> 顺带: dispatch.py 触 U2 的 500 行红线 (只减不增), 出站三件套抽到新模块 isac/outbound.py (dispatch re-export 保既有 import 路径)。新增分段/去重/mention/metadata/loopback 回归测试。**全量 1995 通过**, ruff/mypy (295 源文件) 全绿。批 3 (会话内核正确性) 见 DEVELOPMENT_PLAN N1d。
+>
 > ⚠️ **最近更新: 2026-08-18 —— 第三轮全量代码审查批 1 清偿 (Fix-89~94: C1 沙箱逃逸 + 5 项安全治理)**。U0-U9 演进后再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 去重后 1 Critical + 21 Major + 44 Minor。批 1 清偿最高优先级 6 项:
 > **Fix-89 [Critical]** 隔离插件 IPC 用 multiprocessing.Pipe (recv=pickle 反序列化) → 承载不可信插件的子进程可构造恶意 pickle 载荷在宿主 recv 时 RCE, 击穿 U6 信任倒转边界; 已实测复现。换 socketpair + 长度前缀 JSON 字节帧 (_JsonFrameTransport, 解码路径零代码执行) + 帧长上限 16MB; 顺带 _on_crash 补 SIGKILL 兜底 (抗 SIGTERM 插件不再泄漏孤儿进程/阻塞线程)。
 > **Fix-90** IM 审批回流零鉴权 → ApprovalGate.decide 增会话归属 + 发起人校验 (审批码发回群聊, 此前任何成员/得知审批码者均可裁决 ask 档高危工具)。
