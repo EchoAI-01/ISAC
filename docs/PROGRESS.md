@@ -2,6 +2,16 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 4 清偿 (Fix-104~110: 注入安全 + 鉴权/审计加固, 全量 2021 通过)**。
+> **Fix-104** 行话 `context` 与 `meaning` 同为 LLM 归纳产物 (素材是攻击者可控的群聊原文), 此前仅 meaning 过注入防护, context 直接落盘并被 JargonInjector 拼入系统 prompt; 两者同口径 `_sanitize_llm_induction`, 间接 prompt injection 不得经 context 进入。
+> **Fix-105** 中期记忆压缩摘要落盘 `episodes.summary` 前补注入防护 (此前仅去引号/代码块), 该摘要由 MidTermMemoryInjector 注入, 指令前缀行不得经压缩摘要进入系统 prompt (对齐 profile_text 口径)。
+> **Fix-106** `secret:` 前缀覆盖扩面 —— `resolve_secrets_in_config` 增扫 `multimodal_providers[*].api_key` 与 `mcp.servers[*].token`; 此前仅 llm.api_key + llm.multimodal, 用户在这两处写 `secret:xxx` 字面透传致注册失败/鉴权恒错。
+> **Fix-107** GET /api/v1/audit scope 门禁 —— 审计是最敏感数据面, 此前只挂基线认证, tokens[] scope 模型下窄 scope token 也能读全量; 对齐 routes_logs 要求 `*` 通配 scope (未配 tokens[] 行为不变)。
+> **Fix-108** CSRF 空 Bearer 缺口 —— 此前只判 `startswith("bearer ")`, 空 Bearer 也跳过 CSRF, 但空 token 令认证回退会话 Cookie, 构成"空 Bearer 绕过 CSRF + 受害者 Cookie 认证"跨站写组合; 改用 `extract_bearer` 判定仅非空 token 放行。
+> **Fix-109** webhook URL 日志/审计脱敏 —— 订阅 URL 常内嵌凭据 (query token/userinfo), 此前全量写入 audit.ndjson 与运行日志; 新增 `utils/ssrf.redact_url` (掩 userinfo + query, 保留 scheme/host/path), 审计与订阅/派发日志统一脱敏, 投递/存储仍用原 URL。
+> **Fix-110** 插件 install/reload/retry 失败不再回显原始异常 —— git clone stderr 等可含 URL/路径/凭据; `_client_error_message` 仅回显受控 ValueError, 其余掩为通用消息, 明细留服务端审计/日志。
+> 顺带: `create_control_app`/`resolve_secrets_in_config` 触 C901 上限, 抽 `_audit_read_deps`/`_resolve_secret_field` 降复杂度。新增 13 例批 4 回归测试 (注入剥离/secret 覆盖/audit scope/CSRF 空 bearer/URL 脱敏/错误受控)。**全量 2021 通过**, ruff/mypy (295 源文件) 全绿。其余 Major/Minor 见 DEVELOPMENT_PLAN N1d。
+>
 > ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 3 清偿 (Fix-100~103: 会话内核正确性, 全量 2008 通过)**。
 > **Fix-100** U1 打断回合的 user 输入已在 LLM 请求前落盘 (Model-visible ⟺ Logged) 但回复被抑制成孤儿, 接替回合重新 drain 同一 burst 再落一条相同内容 → 历史窗口重复用户内容; 新增 `turn.aborted` ignorable 补偿事件 (payload.aborted_user_seq 指向作废的 user 事件), 回合被打断时 `_record_turn_aborted` 落盘, `SessionHistoryDeriver.fold` 跳过孤儿 user 事件。
 > **Fix-101** /命令短路返回吞掉 Fix-57 回拨的积压 burst —— "问题 Q1 → 被 /cmd 打断 → 命令分支不 drain 即返回"让 Q1 永久滞留缓存 (无回复/无记忆/无历史); 命令分支抽出 `_try_command_shortcut`: 命中命令且 drain 出被打断回拨的非命令输入时接续为本回合 pending 走正常门控→Loop→回复, 无积压时行为不变。

@@ -325,7 +325,8 @@ class CSRFProtectionMiddleware:
     """Fix-17 CSRF 双提交校验 (CONTROL_PLANE_SPEC.md §8.2 第 5 条)。
 
     只对"靠会话 Cookie 完成认证"的写请求生效:
-    - Authorization: Bearer ... 头存在时直接放行 (纯 API 客户端不受影响)。
+    - Authorization: Bearer ... 头存在且 token 非空时直接放行 (纯 API 客户端;
+      Fix-108: 空 Bearer 不放行, 因其会回退 Cookie 认证, 见 __call__ 注释)。
     - 没有会话 Cookie 时也放行 (不是本机制要保护的路径, 下游 auth_dependency
       按自己的规则决定要不要 401)。
     - 会话 Cookie 存在且没有 Bearer 头时, 要求请求头 X-CSRF-Token 与
@@ -361,7 +362,12 @@ class CSRFProtectionMiddleware:
 
         request = Request(scope, receive=receive)
         authorization = request.headers.get("authorization", "")
-        if authorization.lower().startswith("bearer "):
+        # Fix-108: 仅当 Bearer 头携带**非空** token 时才放行 (纯 API 客户端)。此前
+        # 只判 startswith("bearer ") —— 空 Bearer ("Authorization: Bearer ") 也会跳过
+        # CSRF, 但 extract_bearer 对空 token 返回 None, 下游 _resolve_token 会回退用
+        # 会话 Cookie 认证: 攻击者借"空 Bearer 绕过 CSRF + 受害者 Cookie 完成认证"
+        # 组合发起跨站写操作。用 extract_bearer 判定, 与认证侧取 token 的口径严格一致。
+        if extract_bearer(authorization) is not None:
             await self.app(scope, receive, send)
             return
 

@@ -143,6 +143,20 @@ async def _audit_record(
         )
 
 
+def _client_error_message(exc: Exception) -> str:
+    """Fix-110: 插件操作失败时控制返回客户端的错误信息, 不回显内部细节。
+
+    ValueError 是 installer/manager 显式抛出的受控校验/安全错误 (安装源缺 name /
+    SSRF 拒绝 / zip 解码失败等), 消息经人工审定可原样返回; 其余异常 (git clone 的
+    stderr、文件系统/网络堆栈等) 可能含路径/URL/凭据, 返回通用消息, 明细留给服务端
+    审计 (上方 _audit_record 已落 ``failed: {exc}``) 与日志。对齐全局异常处理器
+    "客户端只返回通用消息不泄露内部信息" 的口径。
+    """
+    if isinstance(exc, ValueError):
+        return str(exc)
+    return "插件操作内部错误, 详见服务端日志"
+
+
 async def _activate_and_sync(
     plugin_manager: Any,
     agent_manager: Any,
@@ -170,7 +184,7 @@ async def _handle_install(
     except Exception as exc:  # noqa: BLE001
         await _audit_record(audit_log, "install_plugin", name, f"failed: {exc}", 400)
         raise HTTPException(
-            status_code=400, detail={"code": "INSTALL_FAILED", "message": str(exc)}
+            status_code=400, detail={"code": "INSTALL_FAILED", "message": _client_error_message(exc)}
         ) from exc
     sync_result: dict[str, list[str]] = {}
     if name and not status.startswith("failed"):
@@ -210,7 +224,7 @@ async def _handle_reload(
     except Exception as exc:  # noqa: BLE001
         await _audit_record(audit_log, "reload_plugin", name, f"failed: {exc}", 500)
         raise HTTPException(
-            status_code=500, detail={"code": "RELOAD_FAILED", "message": str(exc)}
+            status_code=500, detail={"code": "RELOAD_FAILED", "message": _client_error_message(exc)}
         ) from exc
     if status in ("not_loaded", "not_found"):
         raise HTTPException(status_code=404, detail={"code": "PLUGIN_NOT_FOUND", "message": status})
@@ -247,7 +261,7 @@ async def _handle_retry(
     except Exception as exc:  # noqa: BLE001
         await _audit_record(audit_log, "retry_plugin", name, f"failed: {exc}", 500)
         raise HTTPException(
-            status_code=500, detail={"code": "RETRY_FAILED", "message": str(exc)}
+            status_code=500, detail={"code": "RETRY_FAILED", "message": _client_error_message(exc)}
         ) from exc
     sync_result: dict[str, list[str]] = {}
     if not status.startswith("failed"):
