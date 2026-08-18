@@ -209,9 +209,10 @@ class GatingSystem:
         if score < self.reply_necessity.threshold:
             return GateDecision.wait()
 
-        # 4. 空闲退避 (按 session 隔离)
-        idle_backoff = self.get_idle_backoff(session_id)
-        if idle_backoff.should_delay(context.pending_count):
-            return GateDecision.delay(idle_backoff.remaining_seconds)
-
+        # Fix-137: 移除反应式门控里的空闲退避判定 (死代码) —— 该判定依赖
+        # IdleBackoffController.record_idle() 累计空闲连击, 但反应式链路从无调用点
+        # (record_idle 恒不被触发) → should_delay 恒 False, 此分支恒不执行。且即便接线,
+        # 对"评分已达标、本该回复"的消息按空闲连击延迟 30~300s 反而伤害体验。主动
+        # 发言的冷却由 ProactiveScheduler.min_interval_seconds 承担, 才是退避语义的正确
+        # 落点。IdleBackoffController 与 get_idle_backoff 作为经隔离单测的组件保留。
         return GateDecision.trigger()

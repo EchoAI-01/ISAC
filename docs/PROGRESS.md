@@ -2,6 +2,17 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 7 清偿 (Fix-130~137: 剩余 Minor 清零, 全量 2078 通过), 第三轮 Critical/Major/Minor 代码级全清**。
+> **Fix-130** `SubAgentSupervisor._runs` 内存索引封顶 (默认 500), 超限只淘汰最旧**终态** run (活跃 run 绝不淘), 终态已落 Journal 可回读。
+> **Fix-131** 主动任务生产者四处去重标记表 LRU 封顶 (默认 1000 会话), 修按 session_id 无界增长。
+> **Fix-132** `event_store.append` 改 `INSERT...SELECT ... RETURNING seq` 原子取回 seq, 消除回读竞态 (并发 append 拿错 seq)。
+> **Fix-133** upload 安装 `zip_b64` 体积封顶 (对齐 100MB), b64 长度预检 + 解码后复核, 防超大串打爆内存。
+> **Fix-134** `audit.ndjson` 尺寸轮转 (默认 10MB / 保留 3 份编号备份), 修只追加不轮转无界增长。
+> **Fix-135** 隔离插件 reload/uninstall 经 `_cached_path_for` 取真实路径 (覆盖 `_loaded` 与 `_iso_hosts` 两种加载), 修 manifest.name≠目录名时误报 not_found/删错目录; `PluginIsolationHost` 补 `plugin_path` 属性。
+> **Fix-136** `DenyGuard._denials` LRU 封顶 + 事件流惰性重建 —— 单调拒绝不因逐出翻回 (仅绑定事件存储时才逐出, 逐出后 `is_denied` 从事件流重建); `is_denied` 改异步。
+> **Fix-137** 反应式门控移除死代码空闲退避判定 (`record_idle` 恒不被触发, `should_delay` 恒 False; 接线反而会延迟合法回复) —— 主动冷却归 `ProactiveScheduler.min_interval_seconds`; 组件保留。
+> 顺带: 新增 16 例批 7 回归测试。**全量 2078 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。**第三轮最终**: 1 Critical + 21 Major + 44 Minor 全部代码级清零 (Fix-89~137 共 49 项); 唯一留档非代码项 = 全局配置无控制面持久化路径 (`mcp.servers` 等全局定义需手编 config.jsonc + 重启; Agent 级 MCP 绑定已持久化 + 热重连), 属"全局配置持久化 + 热重载"专门特性, 建议另立节点, 见 DEVELOPMENT_PLAN N1d 小结。
+>
 > ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 6 清偿 (Fix-120~129: 工具/Agent + 资源边界卫生, 全量 2062 通过)**。
 > **Fix-120** DenyGuard 重建扫全量事件流 (`restore_from_store` 按 seq 分页) —— 此前只取每分区最近 500 条, 较早的 DENIED 事件重启后丢失、被拒工具翻回放行 (瓦解 U5 单调拒绝不变量)。
 > **Fix-121** `generate_image` 的 `n` 夹到 [1,10], 修 0/负数/超大值造成空调用或批量生成放大。

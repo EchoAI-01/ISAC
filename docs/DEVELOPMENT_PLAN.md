@@ -139,7 +139,7 @@
 
 **剩余 (~40 项 Minor)**: 另立批次, 优先级让位于 N2 环境准入与 N4 前端轨道。
 
-### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1~6 完成 (全量 2062 通过): Critical/Major 清零, Minor 余 9 项另立批次**
+### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1~7 全部完成 (全量 2078 通过): Critical/Major/Minor 代码级清零**
 
 **方法**: U0-U9 架构演进后按同规格再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 主审逐条回码复核。去重后 **1 Critical + 21 Major + 44 Minor**。
 
@@ -210,7 +210,20 @@
 
 顺带: Fix-120 把分页重建移入 `DenyGuard.restore_from_store`, bootstrap `_start_session_event_store` 精简后维持 ≤500 行红线; host 适配器超时下限 0.01s 便于测试注入 (生产默认 60s)。新增 21 例批 6 回归测试 (并更新 Fix-88 命名空间既有测试以反映加固语义)。**全量 2062 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。
 
-**第三轮进度小结**: 1 Critical + 21 Major 已全部清零, 44 Minor 已清绝大部分 (批 1~6 合计 Fix-89~129 共 41 项)。剩余 Minor 另立批次: ① subagent `_runs`/journal 无界增长; ② 生产者去重表无界; ③ event_store append 后 `SELECT MAX(seq)` 回读竞态; ④ 隔离插件 manifest.name≠目录名时 reload/uninstall 回退路径; ⑤ upload 安装 zip_b64 无大小上限; ⑥ MCP 路由/绑定变更未持久化; ⑦ gating idle-backoff 死代码; ⑧ DenyGuard `_denials` 无界 (单调拒绝安全约束, 逐出即翻回, 需权衡); ⑨ audit.ndjson 无轮转 (运维配置项)。
+**批 7 已完成 (剩余 Minor 清零, Fix-130~137)**:
+
+- [x] **Fix-130** `SubAgentSupervisor._runs` 内存索引封顶 (`max_tracked_runs`, 默认 500) —— 终态 run 已落 Journal 可回读, 超限按 `finished_at` 从最旧终态淘汰; 活跃 (queued/running) run 绝不淘汰。
+- [x] **Fix-131** 主动任务生产者去重标记表 LRU 封顶 (`_bound_marker`, 默认 1000 会话) —— `IdleReengage`/`DateReminder`/`TopicFollowup`/`MemoryAssociation` 四处按 session_id 累积的标记表此前无界增长; 超限淘汰最旧, 被逐会话最坏重新武装多主动一次, 不影响正确性。
+- [x] **Fix-132** `event_store.append` 改用 `INSERT...SELECT ... RETURNING seq` 原子取回本次分配的 seq —— 消除"INSERT 后单独 SELECT MAX(seq) 回读"之间被并发 append 插队导致拿错 seq 的竞态。
+- [x] **Fix-133** upload 安装 `zip_b64` 体积封顶 —— 对齐 URL 安装的 `MAX_PLUGIN_DOWNLOAD_BYTES` (100MB); 先按 b64 长度预检 (防超大串整体解码进内存), 解码后复核真实字节数, 超限拒绝。
+- [x] **Fix-134** `audit.ndjson` 尺寸轮转 —— 超 `max_bytes` (默认 10MB) 滚动为编号备份 `.1/.2/…` (默认保留 3 份), 主文件重新计数; 此前只追加不轮转无界增长。
+- [x] **Fix-135** 隔离插件 reload/uninstall 真实路径解析 —— 新增 `_cached_path_for` 同时覆盖宿主内 (`_loaded.path`) 与隔离 (`_iso_hosts[].plugin_path`) 两种加载方式; 此前隔离插件不在 `_loaded` → cached_path 恒 None → 回退 `plugins_dir/name`, manifest.name≠目录名时 reload 误报 not_found / uninstall 删错目录。`PluginIsolationHost` 补公开 `plugin_path` 属性。
+- [x] **Fix-136** `DenyGuard._denials` LRU 封顶 + 事件流惰性重建 —— 单调拒绝是安全不变量, 单纯逐出会翻回; 故仅在 `bind_store` 注入事件存储时才逐出, 逐出后经 `is_denied` 从事件流惰性重建该会话拒绝集 (无拒绝缓存空集避免热点会话重复扫)。未绑定存储时不逐出 (绝不丢拒绝)。`is_denied` 改异步。
+- [x] **Fix-137** 反应式门控移除死代码空闲退避判定 —— `IdleBackoffController.record_idle` 在反应式链路从无调用点, `should_delay` 恒 False, evaluate 里的退避分支恒不执行; 且即便接线, 对评分已达标的消息按空闲连击延迟 30~300s 反而伤害体验。移除该分支与两处 `record_reply` 调用; 主动发言冷却由 `ProactiveScheduler.min_interval_seconds` 承担才是退避语义正确落点。`IdleBackoffController`/`get_idle_backoff` 作为经隔离单测的组件保留。
+
+顺带: 新增 16 例批 7 回归测试。**全量 2078 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。
+
+**第三轮最终小结**: 1 Critical + 21 Major + 44 Minor 已全部完成代码级清零 (批 1~7 合计 Fix-89~137 共 49 项)。唯一留档非代码项: **全局配置无控制面持久化路径** —— `routes_config` 仅有 validate/diff, `data/config.jsonc` 从不被写回, 故全局 `mcp.servers` 等定义只能手工编辑 + 重启 (Agent 级 MCP 绑定 `AgentConfig.mcp_servers` 已经 `save_agent_config` 持久化并经 `reload_config → assemble_agent → _wire_mcp_clients` 热重连)。该项属"全局配置持久化 + 热重载"专门特性 (影响所有全局配置, 非 MCP 独有), 不宜以 MCP-only 写回器草率实现 (config.jsonc 带注释, 整体回写会丢注释), 建议另立节点。
 
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 

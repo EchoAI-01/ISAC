@@ -369,6 +369,25 @@ class PluginManager:
         await self._load_entry(entry, report)
         return report.get(entry.name, "unknown")
 
+    def _cached_path_for(self, name: str) -> Path | None:
+        """Fix-135: 解析插件真实目录路径 (宿主内/隔离两种加载方式都覆盖)。
+
+        宿主内插件取 ``_loaded[name].path``; 隔离插件取隔离宿主缓存的 plugin_path
+        (隔离插件在 ``_iso_hosts`` 而不在 ``_loaded``, 此前只查 ``_loaded`` → 隔离插件
+        的 cached_path 恒为 None → reload/uninstall 回退 ``plugins_dir/name``, 在
+        manifest.name≠目录名时 reload 误报 not_found / uninstall 删错目录)。
+        都取不到时返回 None (调用方回退 plugins_dir/name)。
+        """
+        loaded = self._loaded.get(name)
+        if loaded is not None and loaded.path is not None:
+            return Path(loaded.path)
+        host = self._iso_hosts.get(name)
+        if host is not None:
+            iso_path = host.plugin_path
+            if iso_path:
+                return Path(iso_path)
+        return None
+
     async def reload(self, name: str) -> str:
         """T6: 热重载 (unload → 重新 _load_entry)。只管重新加载到 _loaded。
 
@@ -378,10 +397,10 @@ class PluginManager:
         """
         if name not in self.list_loaded():
             return "not_loaded"
-        # N5b 批次C C8: manifest.name 可能≠目录名, 在 unload 删除前缓存真实路径
-        # (loaded.path), 否则 self._plugins_dir / name 指向不存在目录 → reload 误报 not_found。
-        loaded = self._loaded.get(name)
-        cached_path = Path(loaded.path) if (loaded is not None and loaded.path is not None) else None
+        # N5b 批次C C8: manifest.name 可能≠目录名, 在 unload 删除前缓存真实路径,
+        # 否则 self._plugins_dir / name 指向不存在目录 → reload 误报 not_found。
+        # Fix-135: 经 _cached_path_for 同时覆盖宿主内与隔离插件 (隔离插件不在 _loaded)。
+        cached_path = self._cached_path_for(name)
         await self.unload(name)
         if self._plugins_dir is None:
             raise RuntimeError("plugins_dir 未设置, 无法 reload")
@@ -398,10 +417,9 @@ class PluginManager:
 
     async def uninstall(self, name: str) -> str:
         """T6: 卸载 (unload) + 删目录。返回状态字符串。"""
-        # N5b 批次C C8: 在 unload 删除前缓存真实路径 (loaded.path), manifest.name
-        # 可能≠目录名, 否则删错目录或 not_found。
-        loaded = self._loaded.get(name)
-        cached_path = Path(loaded.path) if (loaded is not None and loaded.path is not None) else None
+        # N5b 批次C C8: 在 unload 删除前缓存真实路径, manifest.name 可能≠目录名,
+        # 否则删错目录或 not_found。Fix-135: 经 _cached_path_for 同时覆盖隔离插件。
+        cached_path = self._cached_path_for(name)
         if name in self.list_loaded():
             await self.unload(name)
         if self._plugins_dir is None:

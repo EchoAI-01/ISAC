@@ -118,15 +118,16 @@ def test_pipeline_emitted_reasons_all_in_vocabulary() -> None:
 # ── 单调 DenyGuard ───────────────────────────────────────────
 
 
-def test_deny_guard_monotonic_no_flip_back() -> None:
+@pytest.mark.asyncio
+async def test_deny_guard_monotonic_no_flip_back() -> None:
     """guard 拒绝不可翻回: 登记后 is_denied 恒 True, 无任何撤销 API。"""
     guard = DenyGuard()
-    assert guard.is_denied(SESSION_KEY, "bash") is False
+    assert await guard.is_denied(SESSION_KEY, "bash") is False
     guard.register_denial(SESSION_KEY, "bash")
-    assert guard.is_denied(SESSION_KEY, "bash") is True
+    assert await guard.is_denied(SESSION_KEY, "bash") is True
     # 重复登记幂等; 无 remove/clear 公共方法 (单调性)
     guard.register_denial(SESSION_KEY, "bash")
-    assert guard.is_denied(SESSION_KEY, "bash") is True
+    assert await guard.is_denied(SESSION_KEY, "bash") is True
     assert not hasattr(guard, "remove_denial") and not hasattr(guard, "clear")
 
 
@@ -148,7 +149,7 @@ async def test_deny_guard_restore_from_events(tmp_path: Path) -> None:
         events = await store.fetch(SESSION_KEY)
         guard = DenyGuard()
         assert guard.restore_from_events(SESSION_KEY, events) == 1
-        assert guard.is_denied(SESSION_KEY, "write_file") is True
+        assert await guard.is_denied(SESSION_KEY, "write_file") is True
     finally:
         await store.stop()
 
@@ -397,7 +398,7 @@ async def test_pipeline_ask_rejected_denies_and_guards(tmp_path: Path) -> None:
         )
         await task
         assert result.is_error is True and tool.executed is False
-        assert guard.is_denied(SESSION_KEY, "flag") is True
+        assert await guard.is_denied(SESSION_KEY, "flag") is True
         events = await store.fetch(SESSION_KEY)
         outcome = next(e for e in events if e.event_type == EVENT_TOOL_OUTCOME)
         assert outcome.payload["decision"] == "ask_rejected" and outcome.payload["outcome"] == OUTCOME_DENIED
@@ -424,7 +425,7 @@ async def test_pipeline_ask_timeout_fail_closed(tmp_path: Path) -> None:
             ToolCall(id="c1", name="flag", arguments={}), make_agent_context(), services=services
         )
         assert result.is_error is True and tool.executed is False
-        assert guard.is_denied(SESSION_KEY, "flag") is True
+        assert await guard.is_denied(SESSION_KEY, "flag") is True
         events = await store.fetch(SESSION_KEY)
         outcome = next(e for e in events if e.event_type == EVENT_TOOL_OUTCOME)
         assert outcome.payload["decision"] == "ask_timeout" and outcome.payload["reason"] == "ask_timeout"

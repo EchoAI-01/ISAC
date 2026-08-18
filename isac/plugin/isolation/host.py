@@ -328,6 +328,15 @@ class PluginIsolationHost:
         self._alive = False
         logger.debug("插件子进程已终止", plugin_id=self.plugin_id)
 
+    @property
+    def plugin_path(self) -> str | None:
+        """Fix-135: 隔离插件的真实目录路径 (load_plugin 时缓存)。
+
+        供 PluginManager.reload/uninstall 在 manifest.name≠目录名时定位真实目录
+        (隔离插件不在 _loaded, 此前只能按 plugins_dir/name 回退 → 定位错目录)。
+        """
+        return self._plugin_path
+
     async def load_plugin(self, plugin_path: str) -> IPCEnvelope:
         """让隔离子进程真实加载插件目录 (CR3-H2)。
 

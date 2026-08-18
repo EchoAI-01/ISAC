@@ -226,7 +226,9 @@ class ToolRegistry:
             return gated
 
         # ── 阶段 2: 单调 guard (拒绝不可翻回) ─────────────────
-        if deny_guard is not None and deny_guard.is_denied(session_key, tool.name):
+        # Fix-136: is_denied 改异步 —— 内存缺失的会话可经事件流惰性重建拒绝集,
+        # 使 LRU 逐出不会把"曾被拒"翻回放行。
+        if deny_guard is not None and await deny_guard.is_denied(session_key, tool.name):
             await self._log_tool_event(
                 services, session_key, tool.name, "denied",
                 decision=DECISION_DENY, decider=DECIDER_SYSTEM, reason=REASON_PRIOR_DENIAL,
