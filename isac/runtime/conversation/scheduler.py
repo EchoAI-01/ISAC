@@ -24,6 +24,10 @@ DEFAULT_ALLOWED_SOURCES: frozenset[str] = frozenset({"plugin", "memory", "schedu
 # 默认后台轮询周期; 实际生效需 enabled=True 显式 start()。1 秒兼顾响应性与低开销。
 DEFAULT_POLL_INTERVAL_SECONDS: float = 1.0
 
+# Fix-118: 唤醒回调失败后的最大重投递次数 (含首次)。超过即放弃任务并记日志 ——
+# 既避免瞬时失败 (会话锁竞争/网络抖动) 导致提醒永久丢失, 又防毒任务无限重放。
+MAX_WAKE_RETRIES: int = 3
+
 WakeCallback = Callable[[ProactiveTask], "Awaitable[None]"]
 
 
@@ -132,6 +136,49 @@ class ProactiveScheduler:
             pass
         self._loop_task = None
 
+    async def _produce_tasks(self, now: float) -> None:
+        """R2-2/S1: 让生产者按当前状态产出任务并入队 (从 _loop 抽出, 降圈复杂度)。
+
+        队列满时 enqueue 返回 False, 静默丢弃; 生产者异常不拖垮调度循环。
+        """
+        if self._task_producer is None:
+            return
+        try:
+            for produced in await self._task_producer(now):
+                self.queue.enqueue(produced)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("主动任务生产者异常, 已忽略", error=str(exc))
+
+    async def _fire_task(self, task: ProactiveTask) -> None:
+        """触发一个就绪任务: 转 forced turn + 唤醒 callback (从 _loop 抽出)。
+
+        Fix-118: 唤醒失败不再静默丢任务 —— 任务已被 poll_ready 取出, 吞掉异常即
+        永久丢失 (用户的提醒/主动发言没发出也无从重试)。重新入队; attempts 达
+        MAX_WAKE_RETRIES 才放弃 (防"必然失败"的毒任务无限重放)。enqueue 返回
+        False = 队列已满, 同样只能放弃 (记日志)。
+        """
+        self.to_forced_turn(task)
+        if self._wake_callback is None:
+            return
+        try:
+            await self._wake_callback(task)
+        except Exception as exc:  # noqa: BLE001
+            task.attempts += 1
+            if task.attempts < MAX_WAKE_RETRIES and self.queue.enqueue(task):
+                logger.warning(
+                    "主动任务唤醒回调失败, 已重新入队",
+                    task_id=task.task_id,
+                    attempts=task.attempts,
+                    error=str(exc),
+                )
+            else:
+                logger.warning(
+                    "主动任务唤醒回调失败, 重试耗尽/队列已满, 放弃任务",
+                    task_id=task.task_id,
+                    attempts=task.attempts,
+                    error=str(exc),
+                )
+
     async def _loop(self) -> None:
         """后台调度循环: poll_interval_seconds 周期 poll queue。
 
@@ -149,15 +196,7 @@ class ProactiveScheduler:
                 import time as _time
 
                 now = _time.time()
-                # R2-2: 先让生产者按当前状态产出任务并入队 (队列满时 enqueue 返回
-                # False, 静默丢弃; 生产者异常不拖垮调度循环)。
-                if self._task_producer is not None:
-                    try:
-                        # S1: producer 现在是 async (memory.search await 之)
-                        for produced in await self._task_producer(now):
-                            self.queue.enqueue(produced)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("主动任务生产者异常, 已忽略", error=str(exc))
+                await self._produce_tasks(now)
                 # 鉴权失败的任务也取出来 (随后丢弃), 避免死任务永久占据队列容量。
                 task = self.queue.poll_ready(
                     lambda t: not self.authorize(t) or self.may_fire(now, session_id=t.session_id)
@@ -167,13 +206,7 @@ class ProactiveScheduler:
                 if not self.authorize(task):
                     logger.info("主动任务鉴权失败, 已丢弃", task_id=task.task_id, source=task.source)
                     continue
-                # 触发: 转 forced turn + 唤醒 callback
-                self.to_forced_turn(task)
-                if self._wake_callback is not None:
-                    try:
-                        await self._wake_callback(task)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("主动任务唤醒回调失败, 已吞掉", task_id=task.task_id, error=str(exc))
+                await self._fire_task(task)
         except asyncio.CancelledError:
             logger.debug("主动调度循环已取消", queue_len=len(self.queue))
             raise

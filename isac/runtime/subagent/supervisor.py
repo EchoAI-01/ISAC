@@ -269,7 +269,17 @@ class SubAgentSupervisor:
             try:
                 await asyncio.wait_for(asyncio.shield(bg_task), timeout=self._cancel_grace_seconds)
             except asyncio.CancelledError:
-                pass
+                # Fix-114: 区分两种 CancelledError 来源 ——
+                # ① **后台任务被取消** (cancel 的正常预期结果): shield 把 bg_task 的
+                #    CancelledError 透传出来, 当前任务自身并未被取消 (cancelling()==0),
+                #    吞掉它是正确的;
+                # ② **当前任务自身被取消** (优雅关闭/打断传播): cancelling()>0。此前
+                #    无差别 `pass` 会把这种情况也吞掉, 导致取消协议失效 (该终止的任务
+                #    继续往下执行)。仅对 ② 重新抛出; run 状态已在上方标 cancelled 并落
+                #    journal, 无未完成的清理, 重抛安全。
+                current = asyncio.current_task()
+                if current is not None and current.cancelling() > 0:
+                    raise
             except TimeoutError:
                 run.error_code = "CANCEL_TIMEOUT"
                 run.error_summary = (
