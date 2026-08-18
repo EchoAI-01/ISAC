@@ -89,8 +89,17 @@ def _maybe_consume_approval_reply(
         return False
     approval_id, verdict = parsed
     decider = f"human:{message.platform}:{message.user_id}"
-    if not approval_gate.decide(approval_id, verdict, decider=decider):
-        return False  # 审批码未知/已过期 → 按普通消息继续路由
+    # Fix-90: 来源会话绑定 —— 审批卡片 (含审批码) 发回原会话, 群聊中任何成员
+    # (或得知审批码的其他会话用户) 都可见; 此前 decide 只按审批码查表不校验来源,
+    # HITL 门被旁路。现把来源会话 (platform:group/user:<id>) 与发起人 user_id
+    # 交给 decide 校验: 不匹配的回复按普通消息继续路由, 不消费。
+    target = f"group:{message.group_id}" if message.group_id else f"user:{message.user_id}"
+    conversation = f"{message.platform}:{target}"
+    if not approval_gate.decide(
+        approval_id, verdict, decider=decider,
+        conversation=conversation, user_id=message.user_id,
+    ):
+        return False  # 审批码未知/已过期/来源不匹配 → 按普通消息继续路由
     metrics.counter("isac_messages_dropped_total").inc()
     return True
 

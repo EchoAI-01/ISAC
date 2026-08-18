@@ -53,9 +53,24 @@ async def _do_decide(
         raise _http_exc(status_code=404, detail="审批不存在或已过期")
     if audit_log is not None:
         try:
-            await audit_log(action="approval_decide", detail=f"{approval_id}:{decision}")
-        except Exception:  # noqa: BLE001 审计失败不阻塞审批
-            pass
+            # Fix-92: 此前误把 AuditLog 实例当可调用对象 `audit_log(...)` —— AuditLog
+            # 无 __call__, 每次 decide 都抛 TypeError 又被静默吞掉, 导致 HITL 最关键
+            # 写操作零审计。改为与其他路由一致的 record() 调用。
+            await audit_log.record(
+                actor="authenticated",
+                method="POST",
+                path=f"/api/v1/approvals/{approval_id}/decide",
+                action="approval_decide",
+                target=approval_id,
+                detail=f"decision={decision}",
+                status_code=200,
+            )
+        except Exception:  # noqa: BLE001 审计失败不阻塞审批 (但记日志不再静默)
+            from isac.utils.logger import get_logger
+
+            get_logger(__name__).warning(
+                "审批决策审计写入失败", approval_id=approval_id, decision=decision, exc_info=True
+            )
     return {"approval_id": approval_id, "decision": decision}
 
 
