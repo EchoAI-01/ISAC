@@ -47,9 +47,9 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-后端代码工作已基本收尾: 阶段 0 / FE0 / FE1 / T3-backend / T1/T2/T4 / T6 / R1-R6 全部完成, R7 代码部分完成 (P3/P4/P5 集成测试补齐 + RELEASE_AUDIT 取证 + QUICKSTART); 全量 1739 测试通过、ruff/mypy 全绿 (2026-08-16 实测)。**剩余项几乎全部是环境/凭据依赖与前端轨道**, 下一步行动见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) **§三之三 下一步行动计划 (N1-N5)**:
+后端代码工作已基本收尾: 阶段 0 / FE0 / FE1 / T3-backend / T1/T2/T4 / T6 / R1-R6 全部完成, R7 代码部分完成 (P3/P4/P5 集成测试补齐 + RELEASE_AUDIT 取证 + QUICKSTART); N1b/N1c/N1d 三轮全量代码审查修复清偿完毕 (Fix-37~137, Critical/Major/Minor 代码级清零) + N1e 全局配置持久化与热重载落地; 全量 2098 测试通过、ruff/mypy 全绿、红线全绿 (2026-08-18 实测)。**剩余项几乎全部是环境/凭据依赖与前端轨道**, 下一步行动见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) **§三之三 下一步行动计划 (N1-N5)**:
 
-1. **N1 文档与标记收敛** (进行中) — 三态标记已收敛 (T3-backend/P3-P5/Q4-Q6 升 `[x]`); 剩 README/AGENTS 同步。
+1. **N1 文档与标记收敛** ✅ 已完成 (2026-08-18) — 三态标记收敛 + T7/R7 剩余项逐一挂 RELEASE_AUDIT §三 + README/AGENTS 同步。
 2. **N2 环境准入项清偿** — Docker 冒烟 + browser CI 复核 (I 节点 85%→100%) + release_checklist 七段 + **24h soak** (需 docker daemon/浏览器环境/真实 LLM key)。
 3. **N3 T5 真实 IM 验收** (外部阻塞) — 凭据准备清单先行, OneBot 先行联调, 飞书/QQ 官方/wecom 逐个真机验证。
 4. **N4 前端轨道启动** — API 基线已冻结 (FE0 openapi.json + FE1 CORS + T3-backend setup API + config schema 端点); 技术栈决策 → F1 登录/setup 向导 → F2 十域迁移 (完成后移除内置 WebUI) → F3 实时 → F4 插件市场 UI。
