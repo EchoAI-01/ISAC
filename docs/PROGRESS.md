@@ -2,6 +2,13 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 3 清偿 (Fix-100~103: 会话内核正确性, 全量 2008 通过)**。
+> **Fix-100** U1 打断回合的 user 输入已在 LLM 请求前落盘 (Model-visible ⟺ Logged) 但回复被抑制成孤儿, 接替回合重新 drain 同一 burst 再落一条相同内容 → 历史窗口重复用户内容; 新增 `turn.aborted` ignorable 补偿事件 (payload.aborted_user_seq 指向作废的 user 事件), 回合被打断时 `_record_turn_aborted` 落盘, `SessionHistoryDeriver.fold` 跳过孤儿 user 事件。
+> **Fix-101** /命令短路返回吞掉 Fix-57 回拨的积压 burst —— "问题 Q1 → 被 /cmd 打断 → 命令分支不 drain 即返回"让 Q1 永久滞留缓存 (无回复/无记忆/无历史); 命令分支抽出 `_try_command_shortcut`: 命中命令且 drain 出被打断回拨的非命令输入时接续为本回合 pending 走正常门控→Loop→回复, 无积压时行为不变。
+> **Fix-102** ArtifactStore 同内容重复 put 时 `INSERT OR IGNORE` 连带保留首次 `expires_at`, 首次短 TTL 过期后 (sweep 未及清扫) 再 put 拿到的 ref 已过期、下次 get 直接删文件; 改 `ON CONFLICT DO UPDATE` 令 `expires_at` 只延长不缩短 (0=永不过期优先), kind/mime/metadata 仍首次登记为准 (Fix-69 不变)。
+> **Fix-103** SessionManager Fix-78 per-key 锁"会话没了且锁空闲就删"会在取锁-持锁的 await 空隙误删锁 (该刻 locked()==False 且会话未建), 新来者拿到新锁并行 check-then-create 双创建 session_id; `_key_locks` 升级为引用计数 `{key:(lock,refs)}` + `_held_key_lock` 上下文, 持有期条目不可回收、归零自排空。
+> 顺带: `fold`/`_dispatch_message` 触 ruff C901 上限, 抽辅助方法降复杂度; U1 三历史方法共用 `_history_parts` 收口 services 字符串键访问, U9 红线棘轮 205→204 (只减不增)。新增 13 例批 3 回归测试 (打断孤儿去重/命令接续/TTL 延长/锁引用计数)。**全量 2008 通过**, ruff/mypy (295 源文件) 全绿。其余 Major/Minor 另立批次, 见 DEVELOPMENT_PLAN N1d。
+>
 > ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 2 清偿 (Fix-95~99: 平台协议可用性, 全量 1995 通过)**。
 > **Fix-95** QQ 官方频道回复出站不带 metadata → source 恒 "" → 100% 走错群端点发送失败; `_send_reply`/进度帧透传 incoming.metadata (qq_official_source)。
 > **Fix-96** QQ webhook 无事件级去重 → 平台重推同一事件被处理两次 (重复回复 + 记忆写两份); 顶层事件 id LRU+TTL 去重表。

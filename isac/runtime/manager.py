@@ -424,31 +424,33 @@ class AgentManager:
         turn_scheduler = instance.gating.get_turn_scheduler(session.session_id)
         turn_scheduler.record_window_message()
 
-        # E4: 命令拦截 (在门控前)。/cmd 是用户显式发起, 跳过门控。
-        if instance.commands is not None and message.content.startswith("/"):
-            cmd_result = await self._try_command(instance, message, session, user_profile)
-            if cmd_result is not None:
-                turn_scheduler.record_reply()
-                instance.gating.get_idle_backoff(session.session_id).record_reply()
-                return cmd_result
+        # E4: 命令拦截 (在门控前, 命令即时执行跳过 debounce)。/cmd 是用户显式发起。
+        # Fix-101 落在 _try_command_shortcut 内: 命令命中且存在被打断回拨输入时
+        # 直接给出 pending 并跳过 debounce/drain; 其余情况走下方常规 debounce → drain。
+        pending, cmd_reply = await self._try_command_shortcut(
+            instance, conv_runtime, message, session, user_profile, turn_scheduler
+        )
+        if cmd_reply is not None:
+            return cmd_reply
 
-        if await self._debounce_should_yield(instance, conv_runtime, message):
-            return None
+        if pending is None:
+            if await self._debounce_should_yield(instance, conv_runtime, message):
+                return None
 
-        # MVP-Fix: drain 提到门控之前。此前 ① 门控只评估末条消息 —— 突发里靠前
-        # 消息的 @提及/内容分被丢弃, 整个突发可能一条不回; ② drain 为空时退回用
-        # 本条内容再跑一轮 —— 突发中被别的回合合并处理过的消息会重复回复。
-        # 现在 drain 空即弃权 (根治重复), 门控与 Loop 都基于整个 burst。
-        pending = self._drain_pending(conv_runtime, message)
-        if not pending:
-            # T1: "未回复原因可查"。drain 空是正常拟人合并 (突发被前回合合并处理),
-            # 但此前仅 debug, 用户侧"消息发出去没动静"无法判断原因。升级 info 带
-            # reason 字段, 经 T4 日志台可按 reason=gating_wait 查"未回复原因"。
-            logger.info(
-                "本条消息已被前一回合合并处理, 弃权避免重复回复",
-                agent_id=agent_id, reason="drain_empty",
-            )
-            return None
+            # MVP-Fix: drain 提到门控之前。此前 ① 门控只评估末条消息 —— 突发里靠前
+            # 消息的 @提及/内容分被丢弃, 整个突发可能一条不回; ② drain 为空时退回用
+            # 本条内容再跑一轮 —— 突发中被别的回合合并处理过的消息会重复回复。
+            # 现在 drain 空即弃权 (根治重复), 门控与 Loop 都基于整个 burst。
+            pending = self._drain_pending(conv_runtime, message)
+            if not pending:
+                # T1: "未回复原因可查"。drain 空是正常拟人合并 (突发被前回合合并处理),
+                # 但此前仅 debug, 用户侧"消息发出去没动静"无法判断原因。升级 info 带
+                # reason 字段, 经 T4 日志台可按 reason=gating_wait 查"未回复原因"。
+                logger.info(
+                    "本条消息已被前一回合合并处理, 弃权避免重复回复",
+                    agent_id=agent_id, reason="drain_empty",
+                )
+                return None
 
         # P2: 互联消息 (ask/notify/handoff 经 bus 投递) 已过 Link ACL, 是显式协作
         # 动作, 不适用环境聊天的回复必要性门控 —— 否则 notify/交接摘要可能被静默
@@ -473,17 +475,16 @@ class AgentManager:
         # P1(L2): 积压 >1 条时合并为一轮输入 (带说话人前缀多行)
         user_content = self._merge_pending_content(pending)
         # U1: 事件溯源历史窗口 —— 派生当前 burst 之前的历史 (并把本 burst 落事件)。
-        # 未注入 store/deriver 或关闭时返回 [], 行为与改造前一致 (仅当前 burst)。
-        history_messages = await self._derive_session_history(instance, message, user_content)
+        # 未注入 store/deriver 或关闭时返回 ([], None), 行为与改造前一致 (仅当前 burst)。
+        history_messages, user_event_seq = await self._derive_session_history(
+            instance, message, user_content
+        )
         messages = history_messages + [{"role": "user", "content": user_content}]
         result = await self._run_loop_with_conversation(instance, conv_runtime, messages, agent_context)
         if result.interrupted:
-            logger.info("本轮被新消息打断, 旧回复已抑制", agent_id=agent_id)
-            # Fix-57: 回拨本回合输入的 drain 指针。打断后回复被抑制、不写记忆,
-            # 若指针已越过本回合 burst, 接替回合 drain 取不到 → 用户输入三方皆失。
-            # 回拨后接替回合 (即触发打断的新消息的回合) 会重新 drain 并合并处理。
-            if conv_runtime is not None and pending:
-                conv_runtime.rewind_processed(len(pending))
+            await self._handle_interrupted_turn(
+                instance, conv_runtime, message, pending, user_event_seq
+            )
             return None
         if result.content:
             # 话轮调度: 记录本轮回复, 更新滑窗频率与存在感数据。
@@ -601,6 +602,44 @@ class AgentManager:
             if conv_runtime is not None and conv_runtime.state is ConversationState.THINKING:
                 conv_runtime.transition_to(ConversationState.IDLE)
 
+    async def _try_command_shortcut(
+        self,
+        instance: AgentInstance,
+        conv_runtime: ConversationRuntime | None,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+        turn_scheduler: Any,
+    ) -> tuple[builtins.list[ISACMessage] | None, str | None]:
+        """E4 命令拦截 + Fix-101 接续。返回 (pending, cmd_reply) 三态:
+
+        - (None, None): 非命令/未命中 → 调用方走常规 debounce → drain 路径;
+        - (None, str): 命令命中且无被打断积压 → 调用方直接返回命令回复;
+        - (list, None): 命令命中且存在 Fix-57 回拨的积压输入 → 积压接续为本回合
+          pending, 调用方跳过 debounce/drain 继续正常流程 (门控→Loop→回复)。
+
+        Fix-101: 命令短路返回不得吞掉 Fix-57 回拨的积压 burst —— 此前
+        "问题 Q1 → 被 /cmd 打断 (Q1 回拨缓存) → 命令分支不 drain 即返回"
+        会让 Q1 永久滞留缓存 (无新消息则无回复/无记忆/无历史)。drain 消费缓存:
+        命令消息本身已由 _try_command 处理; 被打断回拨的非命令输入接续为正常回合。
+        """
+        if instance.commands is None or not message.content.startswith("/"):
+            return None, None
+        cmd_result = await self._try_command(instance, message, session, user_profile)
+        if cmd_result is None:
+            return None, None
+        turn_scheduler.record_reply()
+        instance.gating.get_idle_backoff(session.session_id).record_reply()
+        drained = self._drain_pending(conv_runtime, message)
+        interrupted = [m for m in drained if not str(m.content or "").startswith("/")]
+        if not interrupted:
+            return None, cmd_result
+        logger.info(
+            "命令打断了待处理输入, 接续为正常回合",
+            agent_id=instance.agent_id, interrupted=len(interrupted),
+        )
+        return interrupted, None
+
     async def _try_command(
         self,
         instance: AgentInstance,
@@ -717,29 +756,43 @@ class AgentManager:
             instance.agent_id, message.platform, message.user_id, message.group_id
         )
 
+    def _history_parts(
+        self, instance: AgentInstance, message: ISACMessage
+    ) -> tuple[Any, Any, str] | None:
+        """U1/Fix-100: (事件 store, 派生器, session_key) 三元组; 关闭/缺失返回 None。
+
+        三个历史方法 (_derive_session_history / _record_turn_completed /
+        _record_turn_aborted) 共用这一入口, services 字符串键访问收口到一处
+        (U9 红线"残余 services 字符串键访问"棘轮只减不增, 不得逐方法重复取键)。
+        """
+        if not self._session_history_enabled():
+            return None
+        session_key = self._session_key_for(instance, message)
+        if session_key is None:
+            return None
+        return self._services["session_event_store"], self._services["session_history"], session_key
+
     async def _derive_session_history(
         self, instance: AgentInstance, message: ISACMessage, user_content: str
-    ) -> builtins.list[dict]:
+    ) -> tuple[builtins.list[dict], int | None]:
         """U1: 派生当前 burst 之前的会话历史窗口, 并把本 burst 落事件。
 
         "Model-visible ⟺ Logged": 本回合合并后的 user 输入追加为 message.user 事件,
-        且在 LLM 请求 (副作用) 前 flush 落盘。返回的历史窗口不含本 burst (避免与
-        调用方追加的当前 user message 重复)。store/deriver 未注入或关闭时返回 []
-        (零行为变化); 派生异常降级为无历史不阻塞主链路。
+        且在 LLM 请求 (副作用) 前 flush 落盘。返回 (历史窗口, 本 burst user 事件的
+        seq) —— seq 供回合被打断时追加 turn.aborted 补偿事件 (Fix-100)。返回的历史
+        窗口不含本 burst (避免与调用方追加的当前 user message 重复)。store/deriver
+        未注入或关闭时返回 ([], None) (零行为变化); 派生异常降级为无历史不阻塞主链路。
         """
-        if not self._session_history_enabled():
-            return []
-        store = self._services["session_event_store"]
-        deriver = self._services["session_history"]
-        session_key = self._session_key_for(instance, message)
-        if session_key is None:
-            return []
+        parts = self._history_parts(instance, message)
+        if parts is None:
+            return [], None
+        store, deriver, session_key = parts
         from isac.session.models import EVENT_USER_MESSAGE, SessionEvent
 
         try:
             past_events = await store.fetch_recent(session_key, limit=self._session_history_fetch_limit())
             history = deriver.derive_window(past_events)
-            await store.append(
+            user_seq = await store.append(
                 SessionEvent(
                     session_key=session_key,
                     event_type=EVENT_USER_MESSAGE,
@@ -748,10 +801,10 @@ class AgentManager:
                 )
             )
             await store.flush()  # 副作用 (LLM 请求) 前强制落盘
-            return history
+            return history, (int(user_seq) if user_seq and user_seq > 0 else None)
         except Exception as exc:  # noqa: BLE001 历史派生失败不阻塞回复
             logger.warning("会话历史派生失败, 降级为无历史", error=str(exc))
-            return []
+            return [], None
 
     def _session_history_fetch_limit(self) -> int:
         """U1: 派生窗口取最近多少条事件 (窗口轮数 * 每轮事件数的保守上界)。"""
@@ -769,12 +822,12 @@ class AgentManager:
 
         返回事件 seq (episodes 事件投影用); 未启用/落盘失败返回 None (best-effort)。
         """
-        if not reply_content or not self._session_history_enabled():
+        if not reply_content:
             return None
-        store = self._services["session_event_store"]
-        session_key = self._session_key_for(instance, message)
-        if session_key is None:
+        parts = self._history_parts(instance, message)
+        if parts is None:
             return None
+        store, _, session_key = parts
         from isac.session.models import EVENT_TURN_COMPLETED, SessionEvent
 
         try:
@@ -791,6 +844,60 @@ class AgentManager:
         except Exception as exc:  # noqa: BLE001 事件落盘失败不阻塞回复
             logger.warning("turn.completed 事件落盘失败", error=str(exc))
             return None
+
+    async def _handle_interrupted_turn(
+        self,
+        instance: AgentInstance,
+        conv_runtime: ConversationRuntime | None,
+        message: ISACMessage,
+        pending: builtins.list[ISACMessage] | None,
+        user_event_seq: int | None,
+    ) -> None:
+        """回合被打断的补偿处理: 旧回复已抑制, 保住用户输入不三方皆失。
+
+        Fix-57: 回拨本回合输入的 drain 指针。打断后回复被抑制、不写记忆,
+        若指针已越过本回合 burst, 接替回合 drain 取不到 → 用户输入三方皆失。
+        回拨后接替回合 (即触发打断的新消息的回合) 会重新 drain 并合并处理。
+        Fix-100: 本回合的 user 事件已在 LLM 请求前落盘 (Model-visible ⟺ Logged),
+        但回复被抑制成孤儿; 追加 turn.aborted 补偿事件标记作废, fold 时跳过,
+        避免接替回合重复落同一 burst 后历史窗口出现重复用户内容。
+        """
+        logger.info("本轮被新消息打断, 旧回复已抑制", agent_id=instance.agent_id)
+        if conv_runtime is not None and pending:
+            conv_runtime.rewind_processed(len(pending))
+        if user_event_seq is not None:
+            await self._record_turn_aborted(instance, message, user_event_seq)
+
+    async def _record_turn_aborted(
+        self, instance: AgentInstance, message: ISACMessage, aborted_user_seq: int
+    ) -> None:
+        """Fix-100: 回合被打断时追加 turn.aborted 补偿事件 (best-effort)。
+
+        指向被作废的孤儿 message.user 事件 seq (aborted_user_seq) —— 该回合回复被
+        抑制、不写记忆, 但 user 输入事件已在 LLM 请求前落盘; 接替回合重新 drain
+        同一 burst 会再落一条含相同内容的 user 事件。fold 时按本补偿事件跳过孤儿
+        user 事件, 避免后续历史窗口出现重复用户内容。落盘失败仅记日志不阻塞。
+        """
+        if not aborted_user_seq:
+            return
+        parts = self._history_parts(instance, message)
+        if parts is None:
+            return
+        store, _, session_key = parts
+        from isac.session.models import EVENT_TURN_ABORTED, SessionEvent
+
+        try:
+            await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_TURN_ABORTED,
+                    timestamp=int(time.time()),
+                    payload={"aborted_user_seq": aborted_user_seq},
+                )
+            )
+            await store.flush()
+        except Exception as exc:  # noqa: BLE001 补偿事件落盘失败不阻塞主链路
+            logger.warning("turn.aborted 补偿事件落盘失败", error=str(exc))
 
     def _conversation_debounce_seconds(self, instance: AgentInstance) -> float:
         """P1: 读 debounce 静默窗口秒数 (全局 conversation 节 ∪ Agent 级覆盖)。"""

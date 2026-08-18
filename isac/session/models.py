@@ -21,6 +21,12 @@ EVENT_TURN_COMPRESSED = "turn.compressed"
 EVENT_TOOL_CALLED = "tool.called"
 # 工具调用结果 (与 tool.called 配对)。
 EVENT_TOOL_OUTCOME = "tool.outcome"
+# Fix-100: 回合被打断的补偿事件 —— payload.aborted_user_seq 指向被作废的
+# message.user 事件 seq。打断回合的回复被抑制、不写记忆, 但其 user 输入事件已在
+# LLM 请求前落盘 (Model-visible ⟺ Logged); 接替回合重新 drain 同一 burst 会再落
+# 一条含相同内容的 user 事件。fold 时按本事件跳过被作废的孤儿 user 事件, 避免
+# 重复内容进后续历史窗口。登记为 ignorable (旧版本重建安全跳过不崩溃)。
+EVENT_TURN_ABORTED = "turn.aborted"
 # 旧 sessions 数据迁移标记 (scripts/migrate_sessions_to_events.py 写入): 记录 U1 前
 # 既有会话的身份元数据 (legacy session_id / 平台 / 群 / 创建与最后活跃时间),
 # 让事件流成为唯一时间线后仍保有迁移前会话的溯源凭证。不参与历史重建。
@@ -39,8 +45,9 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
 
 # 可忽略事件类型 (重建时安全跳过, 不参与历史折叠)。前向兼容: 新增的辅助事件
 # (如 session.note / typing.indicator) 若对历史重建无意义, 登记于此 —— 旧版本
-# 重建遇到新版本写入的此类事件时忽略而非崩溃。session.migrated 是首个实例。
-IGNORABLE_EVENT_TYPES: frozenset[str] = frozenset({EVENT_SESSION_MIGRATED})
+# 重建遇到新版本写入的此类事件时忽略而非崩溃。session.migrated 是首个实例;
+# turn.aborted (Fix-100 打断补偿) 旧版本忽略时最多回退为孤儿 user 事件可见 (不崩溃)。
+IGNORABLE_EVENT_TYPES: frozenset[str] = frozenset({EVENT_SESSION_MIGRATED, EVENT_TURN_ABORTED})
 
 # torn-tail 修复: 孤儿工具调用 (有 called 无 outcome) 合成的结果标记, 不猜结果。
 OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN"
