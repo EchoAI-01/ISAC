@@ -611,3 +611,53 @@ async def test_start_stop_idempotent_no_port() -> None:
     await adapter.start()
     await adapter.stop()
     await adapter.stop()
+
+
+# ── Fix-96: 事件级去重 ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatch_event_dedup_same_event_id() -> None:
+    """Fix-96: 同一顶层事件 id 的重推只处理一次 —— 此前 QQ 平台重推未确认事件
+    会导致同一消息被处理两次 (重复回复 + 记忆写两份)。"""
+    adapter = _make_adapter()
+    received: list = []
+
+    async def _on_msg(msg) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+
+    def _event(event_id: str) -> dict:
+        return {
+            "op": 0, "id": event_id, "t": "GROUP_AT_MESSAGE_CREATE",
+            "d": {
+                "id": "msg-1", "group_openid": "g1",
+                "content": "你好",
+                "author": {"member_openid": "u1"},
+            },
+        }
+
+    await adapter._dispatch_event(_event("evt-1"))  # noqa: SLF001
+    await adapter._dispatch_event(_event("evt-1"))  # noqa: SLF001 重推, 应被去重
+    assert len(received) == 1
+
+    # 不同事件 id 正常处理
+    await adapter._dispatch_event(_event("evt-2"))  # noqa: SLF001
+    assert len(received) == 2
+
+
+def test_is_duplicate_event_ttl_and_lru() -> None:
+    """Fix-96: 去重表 TTL 过期与 LRU 上限约束 (不无界增长)。"""
+    adapter = QQOfficialAdapter({"enabled": True, "app_id": "x", "secret": "y",
+                                 "webhook_port": 0, "event_dedup_max": 3})
+    assert adapter._is_duplicate_event("a") is False  # noqa: SLF001
+    assert adapter._is_duplicate_event("a") is True  # noqa: SLF001
+    # 超过上限淘汰最旧
+    adapter._is_duplicate_event("b")  # noqa: SLF001
+    adapter._is_duplicate_event("c")  # noqa: SLF001
+    adapter._is_duplicate_event("d")  # noqa: SLF001  → 淘汰 "a"
+    assert len(adapter._seen_event_ids) == 3  # noqa: SLF001
+    assert adapter._is_duplicate_event("a") is False  # noqa: SLF001 "a" 已被淘汰
+    # 空 event_id 不去重
+    assert adapter._is_duplicate_event("") is False  # noqa: SLF001

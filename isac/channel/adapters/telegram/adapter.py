@@ -25,12 +25,16 @@ from typing import TYPE_CHECKING, Any
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage, MessageSegment
+from isac.channel.text_chunk import chunk_text
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+# Fix-98: Telegram 单条文本上限 (sendMessage text 4096 字符)
+_TELEGRAM_MAX_TEXT_CHARS = 4096
 
 
 def _utf16_slice(text: str, offset: int, length: int) -> str:
@@ -92,19 +96,31 @@ class TelegramAdapter(PlatformAdapter):
             self._http_client = None
 
     async def send(self, message: ISACMessage) -> bool:
-        """发送文本消息到 Telegram。"""
+        """发送文本消息到 Telegram。
+
+        Fix-98: Telegram 单条上限 4096 字符, 超长整条提交 → 平台 400 → 回复静默
+        丢失。按上限分段发送 (优先换行边界); 任一段失败整体记 False 但继续发余下段。
+        """
         chat_id = message.group_id or message.user_id
         if not chat_id:
             logger.warning("Telegram send 缺少 chat_id", msg_id=message.msg_id)
             return False
-        params: dict[str, Any] = {
-            "chat_id": chat_id,
-            "text": message.content,
-        }
-        if message.reply_to:
-            params["reply_to_message_id"] = message.reply_to
-        result = await self._call_api("sendMessage", params)
-        return result is not None
+        chunks = chunk_text(str(message.content or ""), _TELEGRAM_MAX_TEXT_CHARS)
+        if not chunks:
+            chunks = [""]
+        ok = True
+        for index, chunk in enumerate(chunks):
+            params: dict[str, Any] = {
+                "chat_id": chat_id,
+                "text": chunk,
+            }
+            # 仅首段带 reply_to (避免每段都挂引用)
+            if index == 0 and message.reply_to:
+                params["reply_to_message_id"] = message.reply_to
+            result = await self._call_api("sendMessage", params)
+            if result is None:
+                ok = False
+        return ok
 
     async def _poll_loop(self) -> None:
         """long polling 主循环, 失败重试。"""

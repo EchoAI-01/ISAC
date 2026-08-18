@@ -35,7 +35,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from typing import Any
 
 import httpx
@@ -63,6 +63,10 @@ _ED25519_SEED_SIZE = 32
 # Fix-24: op=13 验证握手签名 oracle 限流默认值 (见 _handle_validation 说明)。
 _DEFAULT_VALIDATION_RATE_LIMIT = 5
 _DEFAULT_VALIDATION_RATE_WINDOW_SECONDS = 600.0
+# Fix-96: 事件级去重表容量与 TTL —— QQ 平台对未及时确认的事件会重推 (顶层带
+# 事件 id), 无去重时同一消息被处理两次 (重复回复 + 记忆写两份)。LRU + TTL 双限。
+_DEFAULT_EVENT_DEDUP_MAX = 2048
+_DEFAULT_EVENT_DEDUP_TTL_SECONDS = 600.0
 
 
 class QQOfficialAdapter(PlatformAdapter):
@@ -99,6 +103,38 @@ class QQOfficialAdapter(PlatformAdapter):
             or _DEFAULT_VALIDATION_RATE_WINDOW_SECONDS
         )
         self._validation_timestamps: deque[float] = deque()
+        # Fix-96: 事件级去重 (event_id → 首次接收时间); LRU 上限 + TTL 过期双约束。
+        self._seen_event_ids: OrderedDict[str, float] = OrderedDict()
+        self._event_dedup_max = int(
+            config.get("event_dedup_max", _DEFAULT_EVENT_DEDUP_MAX) or _DEFAULT_EVENT_DEDUP_MAX
+        )
+        self._event_dedup_ttl_seconds = float(
+            config.get("event_dedup_ttl_seconds", _DEFAULT_EVENT_DEDUP_TTL_SECONDS)
+            or _DEFAULT_EVENT_DEDUP_TTL_SECONDS
+        )
+
+    def _is_duplicate_event(self, event_id: str) -> bool:
+        """Fix-96: 顶层事件 id 去重。已见 (TTL 内) 返回 True; 首见记录并返回 False。
+
+        空 event_id 不去重 (无法判重, 放行避免误丢)。顺带清理过期条目并按
+        LRU 上限淘汰最旧, 保证表不无界增长。
+        """
+        if not event_id:
+            return False
+        now = time.time()
+        # 惰性清理过期条目 (从最旧开始, 遇未过期即停)
+        while self._seen_event_ids:
+            oldest_id, oldest_ts = next(iter(self._seen_event_ids.items()))
+            if now - oldest_ts < self._event_dedup_ttl_seconds:
+                break
+            self._seen_event_ids.pop(oldest_id, None)
+        if event_id in self._seen_event_ids:
+            self._seen_event_ids.move_to_end(event_id)
+            return True
+        self._seen_event_ids[event_id] = now
+        while len(self._seen_event_ids) > self._event_dedup_max:
+            self._seen_event_ids.popitem(last=False)
+        return False
 
     @property
     def platform_name(self) -> str:
@@ -293,6 +329,12 @@ class QQOfficialAdapter(PlatformAdapter):
 
     async def _dispatch_event(self, payload: dict) -> dict:
         """解析 op=0 事件 → 规范化 ISACMessage → on_message。"""
+        # Fix-96: 事件级去重 —— QQ 对未及时确认的事件重推 (顶层 id 不变), 无去重
+        # 时同一消息被处理两次 (重复回复 + 记忆写两份)。首见才处理, 重推直接 ACK。
+        event_id = str(payload.get("id", "") or "")
+        if self._is_duplicate_event(event_id):
+            logger.debug("QQ 官方重复事件已去重, 跳过", event_id=event_id)
+            return {"opcode": 12}
         event_type = str(payload.get("t", "") or "")
         data = payload.get("d") or {}
         msg = self._build_isac_message(event_type, data)

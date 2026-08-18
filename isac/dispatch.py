@@ -15,7 +15,6 @@ from typing import Any
 from isac.channel.model import ISACMessage
 from isac.channel.registry import ChannelRegistry
 from isac.core.events import EventType
-from isac.core.types import ProgressEvent
 from isac.gateway.event_bus import EventBus
 from isac.gateway.identity.resolver import IdentityResolver
 from isac.gateway.incoming_media import download_inbound_media
@@ -24,6 +23,8 @@ from isac.gateway.models import UserProfile
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
 from isac.observability import MetricsCollector, get_default_metrics
+from isac.outbound import _append_artifact_segments as _append_artifact_segments
+from isac.outbound import _make_progress_sender, _send_reply
 from isac.router.router import MessageRouter
 from isac.runtime.manager import AgentManager
 from isac.utils.logger import get_logger
@@ -114,8 +115,12 @@ async def _download_inbound_media_safe(routed_message: ISACMessage, agent_manage
     uploads_store = getattr(agent_manager, "_services", {}).get("uploads_store")
     if uploads_store is None:
         return
+    # Fix-99: OneBot/NapCat 同机部署的媒体 URL 是 loopback, 默认 SSRF 守卫会拒;
+    # 经 global_config inbound_media.allow_loopback 显式放行 (仍逐跳复校验)。
+    global_config = getattr(agent_manager, "_services", {}).get("global_config", {}) or {}
+    allow_loopback = bool((global_config.get("inbound_media", {}) or {}).get("allow_loopback", False))
     try:
-        await download_inbound_media(routed_message, uploads_store)
+        await download_inbound_media(routed_message, uploads_store, allow_loopback=allow_loopback)
     except Exception as exc:  # noqa: BLE001 入站下载失败不阻塞消息主链路
         logger.warning("入站媒体下载落盘异常, 继续", error=str(exc))
 
@@ -257,114 +262,6 @@ async def _apply_mesh_routing(
             "Mesh 仲裁改写回复者", primary=decision.agent_id, winner=winner, reason=mesh_decision.reason
         )
     return winner or decision.agent_id
-
-
-async def _send_reply(
-    channel_registry: ChannelRegistry,
-    incoming: ISACMessage,
-    reply_text: str,
-    agent_id: str,
-    platform_session_id: str = "",
-    *,
-    artifact_store: Any = None,
-) -> None:
-    """把 Agent 的文本回复经原 Channel 适配器发送。
-
-    Q0: platform_session_id 是 gateway 改写前的适配器侧会话键 (WebChat 客户端
-    的 session_id); 出站按平台键路由, 客户端才能按自己的键轮询到回复。适配器
-    未提供平台键时 (OneBot 等按 group/user 路由的平台) 回退内部 session_id。
-    R1-①: 扫描回复文本中的 ``artifact:<64位hex>`` 引用, 经 ArtifactStore.get_ref
-    取元数据 + MediaResolver.resolve_for_channel 转 Channel segment append 到
-    reply.segments (此前只发文本, 生成的图/语音发不出去)。MediaResolver 不支持的
-    平台 (webchat/telegram/discord) 跳过 segment, 仅文本。
-    """
-    adapter = channel_registry.get(incoming.platform)
-    if adapter is None:
-        logger.warning("未找到对应平台适配器，无法发送回复", platform=incoming.platform, agent_id=agent_id)
-        return
-
-    reply = ISACMessage(
-        msg_id="",  # 发送后由平台分配
-        platform=incoming.platform,
-        timestamp=0,
-        user_id=incoming.user_id,
-        user_name="",  # 发送方是 Bot，无需昵称
-        group_id=incoming.group_id,
-        session_id=platform_session_id or incoming.session_id,
-        content=reply_text,
-        reply_to=incoming.msg_id,
-    )
-    # R1-①: 扫 artifact 引用转 segment (artifact_store 注入时)
-    if artifact_store is not None:
-        await _append_artifact_segments(reply, artifact_store, incoming.platform)
-    success = await adapter.send(reply)
-    if not success:
-        logger.warning("回复发送失败", platform=incoming.platform, agent_id=agent_id)
-    else:
-        logger.info("Agent 回复已发送", agent_id=agent_id, platform=incoming.platform, length=len(reply_text))
-
-
-async def _append_artifact_segments(reply: ISACMessage, artifact_store: Any, platform: str) -> None:
-    """R1-①: 扫回复文本 artifact:<hex> → get_ref → MediaResolver 转 segment。
-
-    逐引用异常隔离 (单个 artifact 解析失败不影响其余)。segment append 到 reply.segments。
-    """
-    import re
-
-    from isac.channel.media_resolver import MediaResolver
-
-    ids = re.findall(r"artifact:([a-f0-9]{64})", reply.content or "")
-    seen: set[str] = set()
-    for aid in ids:
-        if aid in seen:
-            continue
-        seen.add(aid)
-        try:
-            ref = await artifact_store.get_ref(aid)
-            if ref is None:
-                continue
-            segment = MediaResolver.resolve_for_channel(platform, ref)
-            if segment is not None:
-                reply.segments.append(segment)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("artifact 转 segment 失败, 跳过", artifact_id=aid, error=str(exc))
-
-
-def _make_progress_sender(
-    channel_registry: ChannelRegistry, incoming: ISACMessage, agent_id: str, platform_session_id: str = ""
-) -> Callable[[str, ProgressEvent], Awaitable[None]]:
-    """D9: 构造绑定到本次到达消息所属 Channel 的进度 sender。
-
-    与 _send_reply 同构: 按 incoming.platform 找 adapter, 构造一条降级为普通文本的
-    ISACMessage, 附 metadata.message_kind=progress 供 Channel 侧按需特殊处理
-    (WebChat 输出原生 kind 字段, 其余平台按普通文本发送)。找不到 adapter / 发送失败
-    时只记日志, 不得影响主任务 (进度是旁路信号)。
-    Q0: 与 _send_reply 一致改用 platform_session_id (gateway 改写前的平台会话键)
-    路由, WebChat 进度帧此前落在内部 sess_* 键下, 客户端同样轮询不到。
-    """
-
-    async def sender(text: str, event: ProgressEvent) -> None:
-        adapter = channel_registry.get(incoming.platform)
-        if adapter is None:
-            return
-        progress_message = ISACMessage(
-            msg_id="",
-            platform=incoming.platform,
-            timestamp=0,
-            user_id=incoming.user_id,
-            user_name="",
-            group_id=incoming.group_id,
-            session_id=platform_session_id or incoming.session_id,
-            content=text,
-            reply_to=incoming.msg_id,
-            metadata={"message_kind": "progress", "task_id": event.task_id, "progress_stage": event.stage},
-        )
-        try:
-            await adapter.send(progress_message)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("进度通知发送失败, 已忽略", platform=incoming.platform, agent_id=agent_id, error=str(exc))
-
-    return sender
 
 
 def make_message_dispatcher(
