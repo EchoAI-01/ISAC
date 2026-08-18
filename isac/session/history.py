@@ -19,6 +19,7 @@ from typing import Any
 from isac.session.models import (
     EVENT_TOOL_CALLED,
     EVENT_TOOL_OUTCOME,
+    EVENT_TURN_ABORTED,
     EVENT_TURN_COMPLETED,
     EVENT_TURN_COMPRESSED,
     EVENT_USER_MESSAGE,
@@ -57,31 +58,52 @@ class SessionHistoryDeriver:
         压缩处理: turn.compressed 事件的 source_seqs 引用的原始事件被跳过, 由该
         压缩事件的 summary 在压缩事件自身 seq 位置替代。tool.* 事件不进聊天历史
         (仅审计/torn-tail 用), ignorable 事件安全跳过。
+        Fix-100: turn.aborted 事件的 aborted_user_seq 指向被作废的孤儿 user 事件
+        (回合被打断、回复抑制), 一并跳过, 避免接替回合重复落同一 burst 后历史窗口
+        出现重复用户内容。
         """
-        superseded: set[int] = set()
-        for e in events:
-            if e.event_type == EVENT_TURN_COMPRESSED:
-                superseded.update(int(s) for s in e.payload.get("source_seqs", []))
-
+        superseded, aborted_user_seqs = self._collect_superseded(events)
         messages: list[dict[str, Any]] = []
         for e in sorted(events, key=lambda ev: ev.seq):
             if e.seq in superseded:
                 continue
-            if e.event_type == EVENT_USER_MESSAGE:
-                messages.append({"role": "user", "content": str(e.payload.get("content", ""))})
-            elif e.event_type == EVENT_TURN_COMPLETED:
-                messages.append({"role": "assistant", "content": str(e.payload.get("content", ""))})
-            elif e.event_type == EVENT_TURN_COMPRESSED:
-                messages.append({"role": "assistant", "content": str(e.payload.get("summary", ""))})
-            elif e.event_type in (EVENT_TOOL_CALLED, EVENT_TOOL_OUTCOME):
-                continue  # 工具事件不进聊天历史窗口
-            elif e.is_ignorable():
-                continue
-            else:
-                raise UnknownSessionEventError(
-                    f"未知会话事件类型, 拒绝重建: {e.event_type} (seq={e.seq}, session={e.session_key})"
-                )
+            if e.event_type == EVENT_USER_MESSAGE and e.seq in aborted_user_seqs:
+                continue  # Fix-100: 被打断回合的孤儿 user 事件不进历史
+            message = self._event_to_message(e)
+            if message is not None:
+                messages.append(message)
         return messages
+
+    @staticmethod
+    def _collect_superseded(events: list[SessionEvent]) -> tuple[set[int], set[int]]:
+        """预扫描: 压缩替代的 source_seqs 集合 + Fix-100 被作废的孤儿 user seq 集合。"""
+        superseded: set[int] = set()
+        aborted_user_seqs: set[int] = set()
+        for e in events:
+            if e.event_type == EVENT_TURN_COMPRESSED:
+                superseded.update(int(s) for s in e.payload.get("source_seqs", []))
+            elif e.event_type == EVENT_TURN_ABORTED:
+                aborted_seq = e.payload.get("aborted_user_seq")
+                if aborted_seq is not None:
+                    aborted_user_seqs.add(int(aborted_seq))
+        return superseded, aborted_user_seqs
+
+    @staticmethod
+    def _event_to_message(e: SessionEvent) -> dict[str, Any] | None:
+        """单事件 → 聊天消息映射。不进历史窗口返回 None; 未知类型拒绝重建。"""
+        if e.event_type == EVENT_USER_MESSAGE:
+            return {"role": "user", "content": str(e.payload.get("content", ""))}
+        if e.event_type == EVENT_TURN_COMPLETED:
+            return {"role": "assistant", "content": str(e.payload.get("content", ""))}
+        if e.event_type == EVENT_TURN_COMPRESSED:
+            return {"role": "assistant", "content": str(e.payload.get("summary", ""))}
+        if e.event_type in (EVENT_TOOL_CALLED, EVENT_TOOL_OUTCOME, EVENT_TURN_ABORTED):
+            return None  # 工具事件与 Fix-100 补偿标记不进聊天历史窗口
+        if e.is_ignorable():
+            return None
+        raise UnknownSessionEventError(
+            f"未知会话事件类型, 拒绝重建: {e.event_type} (seq={e.seq}, session={e.session_key})"
+        )
 
     # ── 滑动窗口 ──────────────────────────────────────────────
 

@@ -194,16 +194,24 @@ class ArtifactStore:
             # INSERT OR REPLACE 让第二个 put (kind/mime/metadata/TTL 不同) 覆盖
             # DB 行: ① 第一个 ArtifactRef 的 kind/mime/metadata/expires_at 被篡改;
             # ② TTL sweep 按覆盖后的短 TTL 把共享文件删掉, 两个引用同时失效。
-            # 文件字节本就相同 (内容寻址), 元数据以首次登记为准。用 INSERT OR
-            # IGNORE 而非先 SELECT: 并发 put 同内容时两个连接都看到空行再双双
-            # INSERT 会撞 UNIQUE 约束, IGNORE + 写后回读天然竞态安全 (SQLite 写
-            # 串行, 先提交者赢), 且统一走"回读 DB 行构造 ref"一条路径。
+            # 文件字节本就相同 (内容寻址), kind/mime/metadata 以首次登记为准。
+            # Fix-102: 但 expires_at 须**只延长不缩短** —— 此前 INSERT OR IGNORE
+            # 连 TTL 也保留首次值, 首次注册的短 TTL 过期后 (sweep 未及清扫) 再次 put
+            # 同内容拿到的 ref 已过期, 下次 get 直接删文件。用 ON CONFLICT DO UPDATE
+            # 把 expires_at 取两者较长: 0=永不过期优先 (任一为 0 结果即 0), 否则取大。
+            # 并发 put 撞 UNIQUE 由 ON CONFLICT 天然收口 (SQLite 写串行), 统一走
+            # "回读 DB 行构造 ref"一条路径。
             await db.execute(
                 """
-                INSERT OR IGNORE INTO artifacts (
+                INSERT INTO artifacts (
                     artifact_id, kind, mime_type, size_bytes, duration_seconds,
                     created_at, expires_at, uri, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(artifact_id) DO UPDATE SET
+                    expires_at = CASE
+                        WHEN artifacts.expires_at = 0 OR excluded.expires_at = 0 THEN 0
+                        ELSE MAX(artifacts.expires_at, excluded.expires_at)
+                    END
                 """,
                 (
                     artifact_id, kind, mime_type, len(data), duration_seconds,

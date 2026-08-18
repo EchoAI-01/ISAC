@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from isac.channel.model import ISACMessage
@@ -73,16 +75,40 @@ class SessionManager:
         # 每条消息都要排队等别的会话落库。per-key 锁只串行同一会话的首次创建,
         # 不同会话互不阻塞; _registry_lock 仅保护锁注册表本身 (临界区无 I/O)。
         self._registry_lock = asyncio.Lock()
-        self._key_locks: dict[str, asyncio.Lock] = {}
+        # Fix-103: 锁注册表升级为引用计数 {key: (lock, 活跃持有数)}。Fix-78 曾用
+        # "会话已回收且锁空闲 (locked()==False)" 在 _gc_expired 里惰性删锁, 但
+        # "_key_lock(key) 返回锁对象" 与调用方 "async with 真正拿到锁" 之间存在
+        # await 空隙 —— 该时刻锁尚未被持有、会话尚未创建, 恰好满足删锁条件;
+        # 另一协程随后会取到**新建的锁**, 两把锁并行导致同一会话的
+        # check-then-create 失去串行, 双创建 session_id (身份分裂, 其一会被孤立)。
+        # 引用计数保证: 只要有人持有锁引用 (取出到释放全程) 注册表条目绝不删除,
+        # 归零即删 —— 注册表不会无界增长, 也不再依赖 _gc_expired 顺带回收。
+        self._key_locks: dict[str, tuple[asyncio.Lock, int]] = {}
 
-    async def _key_lock(self, key: str) -> asyncio.Lock:
-        """Fix-78: 取 (惰性创建) 某 session_key 的创建锁。"""
+    @asynccontextmanager
+    async def _held_key_lock(self, key: str) -> AsyncIterator[asyncio.Lock]:
+        """Fix-103: 取 (惰性创建) 某 session_key 的创建锁, 引用计数防竞态回收。
+
+        计数在注册表锁临界区内 +1 (此处无 await, 不会被插队), 退出时 -1;
+        归零删除条目。锁对象从取出到释放始终在注册表有登记, 消灭了
+        "已返回未持有" 窗口被 GC 的竞态。
+        """
         async with self._registry_lock:
-            lock = self._key_locks.get(key)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._key_locks[key] = lock
-            return lock
+            entry = self._key_locks.get(key)
+            lock = entry[0] if entry is not None else asyncio.Lock()
+            refs = entry[1] if entry is not None else 0
+            self._key_locks[key] = (lock, refs + 1)
+        try:
+            async with lock:
+                yield lock
+        finally:
+            async with self._registry_lock:
+                entry = self._key_locks.get(key)
+                if entry is not None and entry[0] is lock:
+                    if entry[1] <= 1:
+                        del self._key_locks[key]
+                    else:
+                        self._key_locks[key] = (lock, entry[1] - 1)
 
     def make_session_key(self, agent_id: str, platform: str, user_id: str, group_id: str | None) -> str:
         """生成会话键: agent + 平台 + (群 或 用户)。"""
@@ -100,11 +126,13 @@ class SessionManager:
         时只取该 session_key 的锁, 不同会话并发创建互不阻塞。last_active 更新
         与写穿移出锁 —— 同一会话并发写穿只是 last_active 后写覆盖 (同一 Session
         对象, 值等价), 无需串行。
+        Fix-103: per-key 锁经 _held_key_lock 引用计数持有, 持锁期间注册表条目
+        不可回收, 消灭"锁被 GC 后新来者拿到新锁"的双创建竞态。
         """
         key = self.make_session_key(agent_id, message.platform, message.user_id, message.group_id)
         session = self._sessions.get(key)
         if session is None:
-            async with await self._key_lock(key):
+            async with self._held_key_lock(key):
                 session = self._sessions.get(key)
                 if session is None:
                     session = await self._load_from_db(key)
@@ -156,8 +184,9 @@ class SessionManager:
         """惰性清理 TTL 过期会话 (K7: 防止长期运行内存膨胀)。
 
         R5: 回收时同步删库行 (best-effort, 同步 SQLite 删用 to_thread 包装)。
-        Fix-78: 顺带回收不再使用的 per-key 锁 (会话已回收且锁空闲才删,
-        防止锁注册表随历史会话数无界增长)。
+        Fix-103: 此处**不再**回收 per-key 锁 —— Fix-78 的"会话没了且锁空闲就删"
+        会在取锁-持锁的 await 空隙误删锁 (双创建竞态, 见 _held_key_lock 注释)。
+        锁注册表改由引用计数自治: 持有者退出时归零即删, 无需惰性 GC。
         """
         if self._ttl_seconds <= 0:
             return
@@ -171,14 +200,6 @@ class SessionManager:
                 # best-effort 删库行 (同步, 失败仅记日志; gc 是惰性清理不阻塞主流程)
                 if self._db_path is not None:
                     asyncio.ensure_future(self._delete_from_db(session.session_id))  # noqa: ISC003
-        # Fix-78: 清理无会话对应且空闲的 key 锁
-        if self._key_locks:
-            stale = [
-                k for k, lock in self._key_locks.items()
-                if k not in self._sessions and not lock.locked()
-            ]
-            for k in stale:
-                self._key_locks.pop(k, None)
 
     # ── SQLite 写穿持久化 (R5, 照 UserMapper 同构) ───────────────
 

@@ -139,7 +139,7 @@
 
 **剩余 (~40 项 Minor)**: 另立批次, 优先级让位于 N2 环境准入与 N4 前端轨道。
 
-### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1 完成 (全量 1979 通过), 批 2/批 3 进行中**
+### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1 + 批 2 + 批 3 全部完成 (全量 2008 通过), 剩余 Major/Minor 另立批次**
 
 **方法**: U0-U9 架构演进后按同规格再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 主审逐条回码复核。去重后 **1 Critical + 21 Major + 44 Minor**。
 
@@ -160,7 +160,14 @@
 - [x] **Fix-98** Telegram/Discord 超长回复分段发送 (text_chunk, 优先换行边界)。
 - [x] **Fix-99** OneBot 入站媒体 loopback 白名单 (global_config inbound_media.allow_loopback)。
 
-**批 3 待清偿 (会话内核正确性)**: U1 打断孤儿事件补偿; /命令打断 drain; ArtifactStore TTL 延长语义; SessionManager 锁回收竞态。其余 Major/Minor 另立批次。
+**批 3 已完成 (会话内核正确性, Fix-100~103)**:
+
+- [x] **Fix-100** U1 打断回合孤儿 user 事件补偿 —— 新增 `turn.aborted` 事件类型 (ignorable, 前向兼容); `_derive_session_history` 返回本 burst user 事件 seq, 回合被打断时 `_record_turn_aborted` 追加补偿事件; `SessionHistoryDeriver.fold` 按 `aborted_user_seq` 跳过孤儿 user 事件, 接替回合重复落同一 burst 后历史窗口不出现重复用户内容。
+- [x] **Fix-101** /命令短路不吞 Fix-57 回拨积压 —— 命令分支抽出 `_try_command_shortcut`: 命中命令且 drain 出被打断回拨的非命令输入时, 该输入接续为本回合 pending 走正常门控→Loop→回复 (此前命令短路返回, Q1 永久滞留缓存无回复/无记忆/无历史); 无积压时行为不变直接回命令结果。
+- [x] **Fix-102** ArtifactStore TTL 只延长不缩短 —— 同内容重复 put 由 `INSERT OR IGNORE` 改 `ON CONFLICT DO UPDATE`, `expires_at` 取两者较长 (0=永不过期优先), 修"首次短 TTL 过期后再 put 拿到的 ref 已过期、get 直接删文件"; kind/mime/metadata 仍以首次登记为准 (Fix-69 语义不变)。
+- [x] **Fix-103** SessionManager per-key 锁引用计数 —— `_key_locks` 升级为 `{key: (lock, 引用数)}` + `_held_key_lock` 上下文管理, 消灭 Fix-78 "锁被 GC 后新来者拿新锁"的双创建竞态 (取锁-持锁 await 空隙 `locked()==False` 误删); 锁注册表归零自排空不再依赖 `_gc_expired` 顺带回收。
+
+顺带: `fold`/`_dispatch_message` 触 ruff C901 复杂度上限, 抽 `_collect_superseded`/`_event_to_message`/`_handle_interrupted_turn` 辅助方法; U1 三历史方法共用 `_history_parts` 收口 services 字符串键访问 (U9 红线棘轮 205→204)。新增 13 例批 3 回归测试。**全量 2008 通过**, ruff/mypy (295 源文件) 全绿。其余 Major/Minor 另立批次。
 
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 
