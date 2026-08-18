@@ -29,10 +29,12 @@ logger = get_logger(__name__)
 _LLM_RENDER_TIMEOUT_SECONDS = 3.0
 
 # 终态阶段: 不受最小间隔频控约束, 保证用户能收到收尾信号。
-_TERMINAL_STAGES = frozenset({"tool_failed", "completed", "interrupted"})
+_TERMINAL_STAGES = frozenset({"tool_failed", "completed", "interrupted", "budget_exhausted"})
 # 任务级终结阶段 (与 _TERMINAL_STAGES 不同: tool_failed 只是单步失败, 任务可能
-# 继续尝试别的工具; 只有 completed/interrupted 代表整个任务的故事结束)。
-_TASK_TERMINAL_STAGES = frozenset({"completed", "interrupted"})
+# 继续尝试别的工具; completed/interrupted/budget_exhausted 代表整个任务的故事结束)。
+# Fix-119: budget_exhausted —— Agent Loop 预算耗尽终止时同样需要收尾信号, 此前
+# 该路径无任何终态进度事件, 用户看到任务进度中途"无声消失"。
+_TASK_TERMINAL_STAGES = frozenset({"completed", "interrupted", "budget_exhausted"})
 # 脱敏时从 metadata 中剔除的敏感键 (占位清单, 实现节点接入统一脱敏器/SecretStore)。
 _SENSITIVE_METADATA_KEYS = frozenset(
     {"api_key", "token", "authorization", "cookie", "secret", "password", "arguments"}
@@ -79,6 +81,8 @@ class PersonaProgressRenderer:
         "tool_failed": "{tool} 没跑通, 我再想想别的办法。",
         "completed": "这件事我处理完了。",
         "interrupted": "先停一下, 我看看新消息。",
+        # Fix-119: 预算耗尽的收尾文案 (与 completed 区分: 事情没做完, 是额度用完了)。
+        "budget_exhausted": "这件事有点复杂, 我这轮先到这里, 稍后再继续。",
     }
 
     def __init__(

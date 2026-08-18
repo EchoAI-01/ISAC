@@ -164,13 +164,19 @@ def _resolve_token(
     return verify_session_cookie(session_cookie, session_secret)
 
 
-def make_auth_dependency(expected_token: str, session_secret: bytes | None = None):
+def make_auth_dependency(
+    expected_token: str, session_secret: bytes | None = None, setup_manager: Any = None
+):
     """构造 FastAPI Bearer 认证依赖。
 
     返回可被 Depends() 使用的函数; 认证失败抛 HTTPException(401)。
     expected_token 为空时跳过认证 (开发模式, 不推荐生产使用)。
     session_secret 非 None 时, Authorization Header 缺失时回退校验签名会话
     Cookie (Fix-17), 使同源 WebUI 可以只靠 Cookie 完成认证。
+    setup_manager 非 None 时 (T3-backend): 候选 token 也比对首登密码 hash; 且当
+    "未配置 api_token + setup 未设密码"时返回 428 SETUP_REQUIRED (首登强制设
+    密码, 对标 AstrBot password_change_required)。setup_manager=None 时行为与
+    引入 T3 前完全一致 (向后兼容旧测试)。
     """
     from fastapi import Cookie, Header, HTTPException
 
@@ -178,15 +184,29 @@ def make_auth_dependency(expected_token: str, session_secret: bytes | None = Non
         authorization: str | None = Header(default=None),
         session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ) -> str:
-        if not expected_token:
-            return "anonymous"  # 未配置 token, 开发模式
         token = _resolve_token(authorization, session_cookie, session_secret)
-        if not verify_token(token, expected_token):
+        if expected_token and verify_token(token, expected_token):
+            return "authenticated"
+        if setup_manager is not None:
+            # T3-backend: setup_manager 注入后, 认证只认 api_token 或 setup 密码;
+            # setup 完成且 token 无效 → 401 (不再回退开发模式 anonymous)。
+            if setup_manager.is_password_valid(token):
+                return "authenticated"
+            if setup_manager.is_setup_required:
+                raise HTTPException(
+                    status_code=428,
+                    detail={"code": "SETUP_REQUIRED", "message": "首登未设置密码, 请 POST /api/v1/setup"},
+                )
             raise HTTPException(
                 status_code=401,
                 detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
             )
-        return "authenticated"
+        if not expected_token:
+            return "anonymous"  # 未配置 token 且无 setup_manager, 开发模式
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
+        )
 
     return _verify
 
@@ -226,7 +246,9 @@ def _find_matching_token(tokens: list[TokenScope], token: str | None) -> TokenSc
     return None
 
 
-def make_token_only_dependency(tokens: list[TokenScope], session_secret: bytes | None = None):
+def make_token_only_dependency(
+    tokens: list[TokenScope], session_secret: bytes | None = None, setup_manager: Any = None
+):
     """构造一个只校验 Bearer Token 在 tokens[] 中存在、不检查具体 scope 的依赖。
 
     用于路由级别的基线认证 (等价于 make_auth_dependency, 但按 tokens[] 而不是
@@ -234,6 +256,8 @@ def make_token_only_dependency(tokens: list[TokenScope], session_secret: bytes |
     否则任何不等于旧扁平 api_token 的合法 scoped token 会在到达端点级
     scope_dependency 检查之前就被路由级的旧 make_auth_dependency 拒绝 (401)。
     session_secret 非 None 时同样支持 Fix-17 的会话 Cookie 回退。
+    setup_manager 非 None 时 (T3-backend): 候选 token 也比对首登密码 hash; 且
+    当 setup 未设密码时返回 428 SETUP_REQUIRED (首登强制设密码)。
     """
     from fastapi import Cookie, Header, HTTPException
 
@@ -243,12 +267,20 @@ def make_token_only_dependency(tokens: list[TokenScope], session_secret: bytes |
     ) -> str:
         token = _resolve_token(authorization, session_cookie, session_secret)
         matched = _find_matching_token(tokens, token)
-        if matched is None:
-            raise HTTPException(
-                status_code=401,
-                detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
-            )
-        return matched.token
+        if matched is not None:
+            return matched.token
+        if setup_manager is not None:
+            if setup_manager.is_password_valid(token):
+                return "authenticated"
+            if setup_manager.is_setup_required:
+                raise HTTPException(
+                    status_code=428,
+                    detail={"code": "SETUP_REQUIRED", "message": "首登未设置密码, 请 POST /api/v1/setup"},
+                )
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHORIZED", "message": "无效或缺失 Bearer Token"},
+        )
 
     return _verify
 
@@ -293,7 +325,8 @@ class CSRFProtectionMiddleware:
     """Fix-17 CSRF 双提交校验 (CONTROL_PLANE_SPEC.md §8.2 第 5 条)。
 
     只对"靠会话 Cookie 完成认证"的写请求生效:
-    - Authorization: Bearer ... 头存在时直接放行 (纯 API 客户端不受影响)。
+    - Authorization: Bearer ... 头存在且 token 非空时直接放行 (纯 API 客户端;
+      Fix-108: 空 Bearer 不放行, 因其会回退 Cookie 认证, 见 __call__ 注释)。
     - 没有会话 Cookie 时也放行 (不是本机制要保护的路径, 下游 auth_dependency
       按自己的规则决定要不要 401)。
     - 会话 Cookie 存在且没有 Bearer 头时, 要求请求头 X-CSRF-Token 与
@@ -308,6 +341,10 @@ class CSRFProtectionMiddleware:
 
     _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
     _CSRF_EXEMPT_PATHS = frozenset({"/api/v1/auth/session"})
+    # Fix-47: POST (登录) 与 DELETE (登出) 均豁免。登录端点用请求体 token 做强认证,
+    # 不依赖 Cookie; 进程重启/token 轮换后浏览器带失效旧 Cookie 重新登录, 若被
+    # "Cookie 存在但无 X-CSRF-Token" 拦下会 403, 用户须手动清 Cookie 才能登录。
+    _CSRF_EXEMPT_METHODS = frozenset({"DELETE", "POST"})
 
     def __init__(self, app: Any) -> None:
         self.app = app
@@ -316,7 +353,7 @@ class CSRFProtectionMiddleware:
         if (
             scope["type"] != "http"
             or scope["method"] in self._SAFE_METHODS
-            or (scope["method"] == "DELETE" and scope["path"] in self._CSRF_EXEMPT_PATHS)
+            or (scope["method"] in self._CSRF_EXEMPT_METHODS and scope["path"] in self._CSRF_EXEMPT_PATHS)
         ):
             await self.app(scope, receive, send)
             return
@@ -325,7 +362,12 @@ class CSRFProtectionMiddleware:
 
         request = Request(scope, receive=receive)
         authorization = request.headers.get("authorization", "")
-        if authorization.lower().startswith("bearer "):
+        # Fix-108: 仅当 Bearer 头携带**非空** token 时才放行 (纯 API 客户端)。此前
+        # 只判 startswith("bearer ") —— 空 Bearer ("Authorization: Bearer ") 也会跳过
+        # CSRF, 但 extract_bearer 对空 token 返回 None, 下游 _resolve_token 会回退用
+        # 会话 Cookie 认证: 攻击者借"空 Bearer 绕过 CSRF + 受害者 Cookie 完成认证"
+        # 组合发起跨站写操作。用 extract_bearer 判定, 与认证侧取 token 的口径严格一致。
+        if extract_bearer(authorization) is not None:
             await self.app(scope, receive, send)
             return
 

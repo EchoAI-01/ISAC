@@ -67,7 +67,11 @@ class MCPClient:
             )
         else:
             raise ValueError(f"不支持的 MCP 传输: {self._transport}")
+        # N5b 批次D 项4: MCP 握手 (initialize + initialized)。规范 server 要求握手后
+        # 才响应 tools/list, 未握手则恒 0 工具 (Critical)。先设 _connected=True 让
+        # stdio reader 循环跑 (其 while 条件依赖此标志); 握手失败降级仍 connected。
         self._connected = True
+        await self._handshake()
         logger.info("MCP Client 已连接", server=self.server_name, transport=self._transport)
 
     async def _connect_stdio(self) -> None:
@@ -117,6 +121,7 @@ class MCPClient:
         return [
             MCPToolBridge(
                 client=self,
+                server_name=self.server_name,
                 name=tool.get("name", ""),
                 description=tool.get("description", ""),
                 parameters=tool.get("inputSchema", {"type": "object"}),
@@ -191,6 +196,48 @@ class MCPClient:
             return await self._send_stdio(request, request_id)
         return await self._send_http(request)
 
+    async def _send_notification(self, method: str, params: dict[str, Any]) -> None:
+        """发送 JSON-RPC notification (无 id, 单向, 不等响应)。"""
+        notification = {"jsonrpc": "2.0", "method": method, "params": params}
+        if self._transport == "stdio":
+            if self._process is None or self._process.stdin is None:
+                raise RuntimeError("MCP 子进程未启动")
+            line = (json.dumps(notification, ensure_ascii=False) + "\n").encode("utf-8")
+            self._process.stdin.write(line)
+            await self._process.stdin.drain()
+        else:
+            if self._http_client is None:
+                raise RuntimeError("MCP HTTP 未连接")
+            await self._http_client.post("/", json=notification)
+
+    async def _handshake(self) -> None:
+        """MCP 规范握手: initialize request → 校验 → notifications/initialized。
+
+        规范 server 在收到 initialize + initialized 后才响应 tools/list; 未握手则
+        tools/list 无响应 → 30s 超时 → 0 工具注册 (D4 Critical)。
+        容错: initialize 超时/失败时仅 warning 不 raise (向后兼容非规范 server/自测桩);
+        规范 server 受益于握手, 非规范 server 仍走原降级路径。
+        """
+        try:
+            await asyncio.wait_for(
+                self._send_request("initialize", {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "isac", "version": "1.0.0"},
+                }),
+                timeout=5.0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "MCP initialize 握手未完成 (server 可能非规范, 继续降级)",
+                server=self.server_name, error=str(exc),
+            )
+            return
+        try:
+            await self._send_notification("notifications/initialized", {})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MCP initialized 通知发送失败", server=self.server_name, error=str(exc))
+
     async def _send_stdio(self, request: dict[str, Any], request_id: int) -> dict[str, Any]:
         """stdio 模式: 写入 stdin, 等 stdout 响应。
 
@@ -235,14 +282,26 @@ class MCPClient:
                     break
                 response = json.loads(line.decode("utf-8"))
                 request_id = response.get("id")
-                fut = self._pending.pop(int(request_id), None) if request_id is not None else None
+                # Fix-124: id 非数字 (脏响应/非规范 server) 时 int() 会抛异常 —— 此前冒泡
+                # 到下方宽 except 被误记为"非 JSON 行"。显式捕获, 非数字 id 只是匹配不到
+                # 在途请求, 跳过即可, 不影响 reader 继续消费。
+                fut = None
+                if request_id is not None:
+                    try:
+                        fut = self._pending.pop(int(request_id), None)
+                    except (TypeError, ValueError):
+                        fut = None
                 if fut is not None and not fut.done():
                     fut.set_result(response)
             except asyncio.CancelledError:
                 break
             except Exception as exc:  # noqa: BLE001
-                logger.warning("MCP stdout 读异常", server=self.server_name, error=str(exc))
-                break
+                # N5b 批次D 项5: 脏输出 (非 JSON 行, 如 server 日志/banner) 不应
+                # break 退出 reader —— 否则 _pending 里所有在途 future 永无人 set_result
+                # → _send_stdio wait_for 全部 30s 超时, 此后该 server 所有调用恒超时,
+                # 且 stdout 缓冲无人消费致子进程反压卡死。改为 continue 跳过该行继续读。
+                logger.debug("MCP stdout 跳过非 JSON 行", server=self.server_name, error=str(exc))
+                continue
 
     async def _read_stderr_loop(self) -> None:
         """stdio 模式: 持续消费 stderr, 避免管道缓冲区填满导致子进程阻塞。仅记录日志。"""
@@ -271,12 +330,17 @@ class MCPToolBridge(Tool):
     def __init__(
         self,
         client: MCPClient,
+        server_name: str,
         name: str,
         description: str,
         parameters: dict[str, Any],
     ):
         self._client = client
-        self._name = name
+        self._server_name = server_name
+        # N5b 批次C C9: 注册名加 mcp:{server}:{tool} 前缀, 防同名 MCP 工具顶替内置
+        # 工具 (如 MCP 的 bash/read_file 覆盖内置同名); 调 server 时用原名。
+        self._tool_name = name
+        self._name = f"mcp:{server_name}:{name}"
         self._description = description
         self._parameters = parameters
 
@@ -293,5 +357,5 @@ class MCPToolBridge(Tool):
         return self._parameters
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        """转发到 MCPClient.call_tool。"""
-        return await self._client.call_tool(self._name, dict(context.args))
+        """转发到 MCPClient.call_tool (用原名, 不带 mcp: 前缀)。"""
+        return await self._client.call_tool(self._tool_name, dict(context.args))

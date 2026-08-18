@@ -190,6 +190,36 @@ effective_permission =
 }
 ```
 
+### 5.4 信任分级与隔离默认化 (U6)
+
+**信任分级倒转**: 有 manifest 的原生插件**默认隔离加载** (子进程 PluginIsolationHost,
+资源限额 + IPC 超时), 市场/git/url/upload 安装的插件未显式声明 hosted 即进沙箱。
+
+manifest `trust` 字段两档:
+
+| trust | 加载方式 | 条件 |
+|-------|---------|------|
+| `sandboxed` (缺省) | 子进程隔离 | 无条件, 默认值 |
+| `hosted` | 宿主进程内 | **还需**部署配置 `control.plugins.trust_hosted` 清单按目录名显式确认 (运营方显式确认信任); 未确认仍按 sandboxed 隔离 |
+
+旧 `isolated: true` 字段向后兼容 (等价 sandboxed)。`control.plugins.isolated_plugins`
+(目录名列表或 `"*"`) 仍可强制隔离任何插件, 优先级最高。
+
+**隔离宿主参数**经 `control.plugins.isolation` 节部署配置接线: `rlimits`
+(cpu/nofile/as, POSIX)、`ipc_timeout_seconds`、`max_restart_attempts`。
+
+**兼容层处置决策 (Z3 收敛)**: AstrBot/MaiBot 兼容层插件**无 manifest.jsonc,
+当前隔离机制无法真正隔离** —— 其代码依赖宿主进程内的兼容层 import 沙箱与
+PluginContext 直接桥接, 搬入子进程需要重构整个 adapt 链路。U6 决策为
+**文档化降级承诺** (而非复活 manifest 机制接入隔离):
+
+1. 兼容层插件继续在宿主进程内加载, 启动日志显式告警信任责任在部署方;
+2. 部署方可用 `isolated_plugins` 强制要求隔离兼容层插件 —— 此时**清晰报错拒绝**,
+   不静默退回不受保护加载 (避免"以为隔离了其实没有");
+3. 需要隔离治理的第三方代码建议封装为原生插件 (manifest + ISACPlugin) 或经
+   MCP Server 外置;
+4. 兼容层隔离迁移 (adapt 进子进程) 保留为架构债 (C7), 待后续节点评估。
+
 ---
 
 ## 六、AstrBot 兼容层
@@ -342,4 +372,5 @@ class PluginContext:
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-08-17 | Architect | U6 信任分级倒转: 新增 §5.4 (原生插件默认隔离、trust=hosted 需 trust_hosted 确认、隔离宿主参数部署接线、兼容层降级承诺处置决策) |
 | 2026-07-22 | Architect | 新增插件兼容专项设计，补充三格式识别、兼容范围矩阵、权限模型、生命周期与兼容测试标准 |

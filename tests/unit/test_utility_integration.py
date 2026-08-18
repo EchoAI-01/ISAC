@@ -236,10 +236,13 @@ class TestTaskRunner:
         runner = _FakeRunner()
         registry = ToolRegistry(ToolPermission({"task": "allow"}))
         registry.register(TaskTool())
+        agent_ctx = _make_agent_context()
+        # Fix-68: task_depth/task_max_depth 由 runtime 写入 AgentContext.services
+        agent_ctx.services.update({"task_depth": 0, "task_max_depth": 3})
         result = await registry.execute(
             ToolCall(id="c1", name="task", arguments={"task": "分析这段日志"}),
-            _make_agent_context(),
-            services={"task_runner": runner, "task_depth": 0, "task_max_depth": 3},
+            agent_ctx,
+            services={"task_runner": runner},
         )
         assert result.is_error is False
         assert "子任务结果" in result.content
@@ -249,13 +252,13 @@ class TestTaskRunner:
     async def test_task_blocked_at_max_depth(self) -> None:
         registry = ToolRegistry(ToolPermission({"task": "allow"}))
         registry.register(TaskTool())
+        agent_ctx = _make_agent_context()
+        agent_ctx.services.update({"task_depth": 3, "task_max_depth": 3})
         result = await registry.execute(
             ToolCall(id="c1", name="task", arguments={"task": "再委派一层"}),
-            _make_agent_context(),
+            agent_ctx,
             services={
                 "task_runner": lambda *a, **kw: ToolResult(content="should not be called"),
-                "task_depth": 3,
-                "task_max_depth": 3,
             },
         )
         assert result.is_error is True
@@ -326,7 +329,8 @@ class TestTaskRunner:
         给 task_runner, 不能像修复前那样完全不传——否则 runner 侧无从得知当前
         递归深度, 子任务里再嵌套委派时深度会被当成 0 重新计数。用
         make_task_runner 工厂产出的真实可调用对象 (而非手动 runner.run), 一并
-        覆盖工厂本身的返回值可调用性。"""
+        覆盖工厂本身的返回值可调用性。(Fix-68: depth 键改从 AgentContext.services
+        读取, 与 runtime 写入口径一致。)"""
         depths_seen: list[int] = []
         provider = _PeekThenDoneProvider()
         child_registry = ToolRegistry()
@@ -338,10 +342,12 @@ class TestTaskRunner:
         task_registry = ToolRegistry(ToolPermission({"task": "allow"}))
         task_registry.register(TaskTool())
 
+        agent_ctx = _make_agent_context()
+        agent_ctx.services.update({"task_depth": 2, "task_max_depth": 5})
         result = await task_registry.execute(
             ToolCall(id="c1", name="task", arguments={"task": "委派一层"}),
-            _make_agent_context(),
-            services={"task_runner": runner, "task_depth": 2, "task_max_depth": 5},
+            agent_ctx,
+            services={"task_runner": runner},
         )
 
         assert result.is_error is False

@@ -2,7 +2,7 @@
 
 > 下一代多 Agent AI 社交陪伴 Bot 框架 — 把「AI 社交陪伴」拆成可组合、可替换、可按配置定制的独立子系统。
 
-`v1.0.0-rc.1` · Python 3.12+ · 1387 单元/集成测试通过 · ruff / mypy 全绿 · MIT License
+`v1.0.0-rc.1` · Python 3.12+ · 1568 单元/集成测试通过 · ruff / mypy 全绿 · MIT License
 
 ---
 
@@ -180,7 +180,7 @@ ISAC 定位为 **"主链路 MVP + 待激活子系统"**：单/多 Agent 基础�
 
 ## 开发计划 (Roadmap)
 
-ISAC 采用**节点制**推进（A/B/C… 里程碑 + P 主链路接线 + Q MVP 收尾）。当前进展：
+ISAC 采用**节点制**推进（A/B/C… 里程碑 + P 主链路接线 + Q MVP 收尾 + T 开箱可用 + FE 前后端分离，当前**后端先行**）。当前进展：
 
 ### ✅ 已完成
 
@@ -188,7 +188,8 @@ ISAC 采用**节点制**推进（A/B/C… 里程碑 + P 主链路接线 + Q MVP 
 - **J 模型能力、计量与管理面** — 用量计量、多模态 Provider、WebUI v2、SubAgent Runtime。
 - **K 稳定化** — 应用生命周期、真实 Provider、存储生命周期、配置持久化恢复、端到端集成测试、安全基线、CI/Docker/Playwright 发布准入。
 - **P0–P2 主链路接线** — 消息处理并发化、拟人化运行时激活、Agent Mesh 激活。
-- **Q0–Q1 MVP 收尾** — 开箱可触达（裸部署默认路由 + WebChat 端到端可聊）、记忆写入回路与身份稳定化（"聊 → 重启 → 检索命中"闭环打通）。
+- **Q0–Q2 MVP 收尾** — 开箱可触达、记忆写入回路与身份稳定化（"聊 → 重启 → 检索命中"闭环）、人格差异化。
+- **T1/T2/T4 开箱可用** — 开箱能对话（私聊无条件触发 + 未回复可观测）、零配置启动（默认配置内置）、错误可诊断（中文可操作提示 + `/health` + 实时日志台后端），均经真机冒烟验证（2026-08-04）。
 
 ### ⚙ 已实现，默认关闭待打磨
 
@@ -197,14 +198,28 @@ ISAC 采用**节点制**推进（A/B/C… 里程碑 + P 主链路接线 + Q MVP 
 - **P5 Workflow** — action_handler + 声明式加载 + 条件求值已激活；租户隔离模式与 Agent 工具入口待接线。
 - **平台适配器** — 飞书（AES-256-CBC）、QQ 官方（Ed25519）真实收发已实现，默认关闭。
 
+### ✅ 后端收尾（2026-08-16）
+
+- **T6 插件市场与热重载** — 四源安装（market/git/url/upload）+ 热重载同步运行中 Agent + 失败重试；R3 插件与 MCP 生态激活。
+- **R1–R6 功能广度轮** — 多模态出入站闭环与计量、控制面与 SubAgent 收尾、记忆完整性（行话学习 + COMPRESS 压缩）、Session 持久化 + SecretStore、企业化激活（租户控制面）。
+- **前后端分离后端段** — OpenAPI 契约冻结 + CORS/跨源认证 + 控制面开箱（control 默认开 + 首登强制设密码 + 配置 Schema 端点）。
+
+### ✅ 质量清偿（2026-08-18）
+
+- **三轮全量代码审查修复** — N1b/N1c/N1d 同规格 5 路并行全量审查 + 主审逐条回码复核，累计 Fix-37~137：含沙箱逃逸、协议契约、会话内核竞态、注入防护、资源边界卫生等，Critical/Major/Minor 全部代码级清零。
+- **N1e 全局配置持久化 + 热重载** — 控制面 `GET/PATCH /config/global` + reload 端点（override 覆盖层不破坏 config.jsonc 注释 + If-Match 乐观锁 + applied/restart_required 区分），全局 `mcp.servers` 等定义不再"手编 + 重启"。
+- 当前全量 2098 测试通过，ruff/mypy 全绿，红线（U9 只减不增指标）全绿。
+
 ### 🔨 规划中
 
-- **O4 平台扩展** — 微信（公众号/企业微信）真实连接与收发。
+- **环境准入项** — Docker 冒烟、browser CI 复核、release checklist、24h soak（见 DEVELOPMENT_PLAN §三之三 N2）。
+- **T5 真实 IM 接入验收** — 需用户凭据；OneBot/飞书/QQ 官方/企业微信逐个真机联调。
+- **前端轨道 F1–F4** — 独立项目，围绕冻结的 API 契约开发（登录/setup 向导 → 十域页面 → 实时日志 → 插件市场 UI）。
+- **O4 平台扩展剩余** — 微信公众号（mp）模式（wecom 企业微信已实现）。
 - **O5 多模态** — 视频 Provider 真实端点（选型中）。
 - **流式主链路** — 流式分片合并已修复，主链路启用流式待评估。
-- **插件进程隔离** — `PluginIsolationHost` 机制可用，默认加载路径接管待接线。
 
-> MVP 发布以 **P0–P2 + Q0–Q1** 完成为最低准入线。完整 SOW / 依赖关系见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md)。
+> 发布门：**v1.0 可对话**（T1+T2 ✅）→ **可管理**（后端段 ✅，前端 F1/F2 进行中）→ **可接入**（+T5）→ **可扩展**（R3+T6 ✅）→ **GA**（环境准入 + 前端 F2）。完整 SOW / 依赖关系见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md)（含 §三之三 下一步行动计划），里程碑见 [docs/ROADMAP.md](./docs/ROADMAP.md)。
 
 ---
 

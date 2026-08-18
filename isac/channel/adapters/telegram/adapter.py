@@ -25,12 +25,31 @@ from typing import TYPE_CHECKING, Any
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage, MessageSegment
+from isac.channel.text_chunk import chunk_text
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+# Fix-98: Telegram 单条文本上限 (sendMessage text 4096 字符)
+_TELEGRAM_MAX_TEXT_CHARS = 4096
+
+
+def _utf16_slice(text: str, offset: int, length: int) -> str:
+    """Fix-71: 按 UTF-16 code unit 切片 (Telegram entity 的 offset/length 单位)。
+
+    Bot API 的 MessageEntity offset/length 以 UTF-16 code unit 计, 而 Python str
+    下标是 code point。实体之前或内部出现 BMP 外字符 (emoji 🎉 / CJK 扩展 B 等,
+    占 2 个 UTF-16 unit、1 个 code point) 时, 直接 content[offset:offset+length]
+    会整体错位: mention 截出的文本缺 @ 或截半个词, strip("@") 后得到带空格/残缺
+    的 user_id, @ 判定与后续按名寻人都失效。转 UTF-16 字节再切可精确对齐。
+    """
+    if offset < 0 or length <= 0:
+        return ""
+    units = text.encode("utf-16-le")
+    return units[offset * 2 : (offset + length) * 2].decode("utf-16-le", errors="replace")
 
 
 class TelegramAdapter(PlatformAdapter):
@@ -77,19 +96,31 @@ class TelegramAdapter(PlatformAdapter):
             self._http_client = None
 
     async def send(self, message: ISACMessage) -> bool:
-        """发送文本消息到 Telegram。"""
+        """发送文本消息到 Telegram。
+
+        Fix-98: Telegram 单条上限 4096 字符, 超长整条提交 → 平台 400 → 回复静默
+        丢失。按上限分段发送 (优先换行边界); 任一段失败整体记 False 但继续发余下段。
+        """
         chat_id = message.group_id or message.user_id
         if not chat_id:
             logger.warning("Telegram send 缺少 chat_id", msg_id=message.msg_id)
             return False
-        params: dict[str, Any] = {
-            "chat_id": chat_id,
-            "text": message.content,
-        }
-        if message.reply_to:
-            params["reply_to_message_id"] = message.reply_to
-        result = await self._call_api("sendMessage", params)
-        return result is not None
+        chunks = chunk_text(str(message.content or ""), _TELEGRAM_MAX_TEXT_CHARS)
+        if not chunks:
+            chunks = [""]
+        ok = True
+        for index, chunk in enumerate(chunks):
+            params: dict[str, Any] = {
+                "chat_id": chat_id,
+                "text": chunk,
+            }
+            # 仅首段带 reply_to (避免每段都挂引用)
+            if index == 0 and message.reply_to:
+                params["reply_to_message_id"] = message.reply_to
+            result = await self._call_api("sendMessage", params)
+            if result is None:
+                ok = False
+        return ok
 
     async def _poll_loop(self) -> None:
         """long polling 主循环, 失败重试。"""
@@ -150,7 +181,8 @@ class TelegramAdapter(PlatformAdapter):
             if etype == "mention":
                 offset = int(entity.get("offset", 0))
                 length = int(entity.get("length", 0))
-                mention_text = content[offset : offset + length]
+                # Fix-71: offset/length 是 UTF-16 code unit, 不能按 code point 直切
+                mention_text = _utf16_slice(content, offset, length)
                 segments.append(MessageSegment(type="at", data={"user_id": mention_text.strip("@")}))
         if not segments and content:
             segments.append(MessageSegment(type="text", data={"text": content}))

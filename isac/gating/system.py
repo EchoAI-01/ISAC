@@ -2,10 +2,16 @@
 
 决策流程:
 1. Focus Mode 激活 → TRIGGER
-2. 强制触发 (has_at 或私聊带 mention) → TRIGGER
+2. 强制触发 (has_at 或私聊) → TRIGGER
 3. 回复必要性评分 < 阈值 → WAIT
 4. 空闲退避中 → DELAY(N秒)
 5. 否则 → TRIGGER
+
+T1 (2026-08-04): 私聊无条件强制触发。原条件 `has_at or (is_private and
+has_mention)` 要求私聊里还得"提及机器人名"才回 —— 但私聊本身就是对 Bot 说话,
+私聊"你好"无 mention 时落到 reply_necessity 评分 40 < 阈值 80 → 静默 WAIT,
+真机部署冒烟实证"发消息永远收不到回复"。改为 `has_at or is_private`。群聊
+路径不变 (仍走 score, 需 @/提及/评分)。
 """
 
 from __future__ import annotations
@@ -18,7 +24,9 @@ from typing import Any
 from isac.channel.model import ISACMessage
 from isac.core.types import GatingContext
 from isac.gating.idle_backoff import IdleBackoffController
+from isac.gating.profile import GatingProfile
 from isac.gating.reply_necessity import ReplyNecessityJudge
+from isac.gating.strategy import JudgeFn, build_strategy
 from isac.gating.turn_gates import TurnGates
 from isac.gating.turn_scheduler import TurnScheduler
 from isac.gating.types import GateDecision
@@ -75,12 +83,18 @@ class GatingSystem:
     dict[session_id, ...] 模式)，避免同一 Agent 服务的多个会话共享发言频率/退避状态、
     互相干扰 (CODE_REVIEW_REPORT.md #6)。
 
-    config 覆盖项 (AgentConfig.gating, ARCHITECTURE.md 3.7):
+    config 覆盖项 (AgentConfig.gating + 全局 config.gating, U3 门控策略化):
+      - strategy: off / keywords (默认) / llm-judge / hybrid (内容判定策略档位)
+      - locale: 门控词表语言 (zh_CN 默认 / en_US), 词表来自 locales 双语包
+      - weights: 评分权重覆盖 (base_at/content_question/... 见 GatingProfile)
+      - markers: question/request/consult 词表覆盖 (优先于 locale 词表)
       - reply_necessity_threshold: int  覆盖 REPLY_NECESSITY_THRESHOLD
+      - llm_judge_max_per_minute / hybrid_escalate_band: llm-judge/hybrid 档参数
       - turn_scheduler.max_ratio / window_seconds
       - idle_backoff.base_seconds / cap_seconds
       - turn_gates.trigger_threshold
-    未提供时使用各子系统的框架级默认值 (CODE_REVIEW_REPORT.md #8)。
+    未提供时使用各子系统的框架级默认值 (CODE_REVIEW_REPORT.md #8); zh_CN 默认
+    配置下行为与 U3 前完全一致。
     """
 
     def __init__(
@@ -90,15 +104,23 @@ class GatingSystem:
         turn_scheduler: Callable[[], TurnScheduler] | None = None,
         turn_gates: TurnGates | None = None,
         idle_backoff: Callable[[], IdleBackoffController] | None = None,
+        judge_fn: JudgeFn | None = None,
     ):
         config = config or {}
 
+        # U3: 门控参数画像 (权重 + i18n 词表 + 策略档位)。reply_necessity_threshold
+        # 覆盖保留向后兼容 (显式 config 键优先于 profile 默认)。
+        self.profile = GatingProfile.from_config(config)
+        if config.get("reply_necessity_threshold") is not None:
+            try:
+                self.profile.threshold = int(config["reply_necessity_threshold"])
+            except (TypeError, ValueError):
+                pass
+
         if reply_necessity is None:
-            threshold = config.get("reply_necessity_threshold")
-            reply_necessity = (
-                ReplyNecessityJudge(threshold=int(threshold))
-                if threshold is not None
-                else ReplyNecessityJudge()
+            reply_necessity = ReplyNecessityJudge(
+                profile=self.profile,
+                strategy=build_strategy(self.profile, judge_fn),
             )
         self.reply_necessity = reply_necessity
 
@@ -170,8 +192,10 @@ class GatingSystem:
         if self.focus_mode.is_active(session_id):
             return GateDecision.trigger()
 
-        # 2. 强制触发
-        if context.has_at or (context.is_private and context.has_mention):
+        # 2. 强制触发: 被 @ 或私聊 (私聊本身就是对 Bot 说话, 无条件触发)。
+        # T1: 原条件 `has_at or (is_private and has_mention)` 让私聊普通消息
+        # 落到 score 40 < 80 → 静默 WAIT; 改为私聊无条件触发, 群聊仍需 @/评分。
+        if context.has_at or context.is_private:
             return GateDecision.trigger()
 
         # 3. 回复必要性评分
@@ -185,9 +209,10 @@ class GatingSystem:
         if score < self.reply_necessity.threshold:
             return GateDecision.wait()
 
-        # 4. 空闲退避 (按 session 隔离)
-        idle_backoff = self.get_idle_backoff(session_id)
-        if idle_backoff.should_delay(context.pending_count):
-            return GateDecision.delay(idle_backoff.remaining_seconds)
-
+        # Fix-137: 移除反应式门控里的空闲退避判定 (死代码) —— 该判定依赖
+        # IdleBackoffController.record_idle() 累计空闲连击, 但反应式链路从无调用点
+        # (record_idle 恒不被触发) → should_delay 恒 False, 此分支恒不执行。且即便接线,
+        # 对"评分已达标、本该回复"的消息按空闲连击延迟 30~300s 反而伤害体验。主动
+        # 发言的冷却由 ProactiveScheduler.min_interval_seconds 承担, 才是退避语义的正确
+        # 落点。IdleBackoffController 与 get_idle_backoff 作为经隔离单测的组件保留。
         return GateDecision.trigger()

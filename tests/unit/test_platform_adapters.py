@@ -217,6 +217,46 @@ class TestDiscordAdapter:
         assert msg.content == "hello discord"
 
     @pytest.mark.asyncio
+    async def test_to_isac_message_drops_bot_author_by_bot_flag(self) -> None:
+        """N5b 批次G: author.bot=True 的消息丢弃, 防 REST polling 把 Bot 回复当入站。"""
+        adapter = DiscordAdapter({"bot_token": "fake"})
+        dc_msg = {
+            "id": "bot_reply_1",
+            "timestamp": "2024-01-01T12:00:00.000000+00:00",
+            "author": {"id": "777", "username": "MyBot", "bot": True},
+            "content": "我之前的回复",
+        }
+        assert adapter._to_isac_message(dc_msg, "channel_123") is None
+
+    @pytest.mark.asyncio
+    async def test_to_isac_message_drops_bot_author_by_user_id_match(self) -> None:
+        """N5b 批次G: author.id == 缓存的 _bot_user_id 时丢弃 (start 后 _bot_user_id 已存)。"""
+        adapter = DiscordAdapter({"bot_token": "fake"})
+        adapter._bot_user_id = "777"  # 模拟 start() 已缓存 Bot user_id
+        dc_msg = {
+            "id": "bot_reply_2",
+            "timestamp": "2024-01-01T12:00:01.000000+00:00",
+            "author": {"id": "777", "username": "MyBot"},
+            "content": "我的回复被 poll 回来",
+        }
+        assert adapter._to_isac_message(dc_msg, "channel_123") is None
+
+    @pytest.mark.asyncio
+    async def test_to_isac_message_passes_other_users_when_bot_user_id_set(self) -> None:
+        """N5b 批次G: _bot_user_id 已设但消息来自其他用户时正常通过 (不误杀)。"""
+        adapter = DiscordAdapter({"bot_token": "fake"})
+        adapter._bot_user_id = "777"
+        dc_msg = {
+            "id": "real_user_msg",
+            "timestamp": "2024-01-01T12:00:02.000000+00:00",
+            "author": {"id": "200", "username": "alice"},
+            "content": "hello",
+        }
+        msg = adapter._to_isac_message(dc_msg, "channel_123")
+        assert msg is not None
+        assert msg.user_id == "200"
+
+    @pytest.mark.asyncio
     async def test_start_without_token_raises(self) -> None:
         adapter = DiscordAdapter({})
         with pytest.raises(RuntimeError, match="bot_token"):

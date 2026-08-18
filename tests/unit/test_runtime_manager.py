@@ -230,6 +230,25 @@ async def test_load_persisted_agents_missing_dir_returns_empty(tmp_path) -> None
     assert report == {}
 
 
+# 追踪 _make_memory_backed_manager 创建的持久连接 store, 测试结束统一关闭,
+# 避免 aiosqlite 长连接 GC 报 "Event loop is closed" (阶段 0 / 24h soak 前置)。
+# close() 幂等, destroy(keep_memory=False) 已 purge 的再 close 无副作用。
+_backed_graph_stores: list = []
+_backed_vector_stores: list = []
+
+
+@pytest.fixture(autouse=True)
+async def _close_backed_stores_after_test() -> None:
+    yield
+    for stores in _backed_vector_stores:
+        for store in stores.values():
+            await store.close()
+    for g in _backed_graph_stores:
+        await g.close()
+    _backed_vector_stores.clear()
+    _backed_graph_stores.clear()
+
+
 # ── Fix-26: destroy(keep_memory=False) 真实清理 vector/graph (R7 此前零测试覆盖) ──
 
 
@@ -281,6 +300,8 @@ async def _make_memory_backed_manager(tmp_path):
     manager._services["provider_manager"].register(StubProvider())  # noqa: SLF001
     await manager.create(AgentConfig(agent_id=AGENT_ID))
     await manager.start(AGENT_ID)
+    _backed_graph_stores.append(graph_store)
+    _backed_vector_stores.append(vector_stores)
     return manager, metadata_store, vector_stores, graph_store
 
 

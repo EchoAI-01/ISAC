@@ -42,7 +42,8 @@ import httpx
 from fastapi import Request
 
 from isac.channel.base import PlatformAdapter
-from isac.channel.model import ISACMessage
+from isac.channel.model import ISACMessage, MessageSegment
+from isac.channel.webhook_guard import DEFAULT_MAX_WEBHOOK_BODY_BYTES, read_body_limited
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -72,6 +73,8 @@ class FeishuAdapter(PlatformAdapter):
         self._webhook_host = str(config.get("webhook_host", _DEFAULT_WEBHOOK_HOST) or _DEFAULT_WEBHOOK_HOST)
         self._webhook_port = int(config.get("webhook_port", _DEFAULT_WEBHOOK_PORT) or _DEFAULT_WEBHOOK_PORT)
         self._webhook_path = str(config.get("webhook_path", _DEFAULT_WEBHOOK_PATH) or _DEFAULT_WEBHOOK_PATH)
+        # Fix-76: webhook 请求体体积上限 (验签/解密前先限流读取, 防超大 body 打爆内存)
+        self._max_body_bytes = int(config.get("max_body_bytes", DEFAULT_MAX_WEBHOOK_BODY_BYTES))
         self._running = False
         self._server: Any = None  # uvicorn.Server
         self._serve_task: asyncio.Task[Any] | None = None
@@ -128,16 +131,35 @@ class FeishuAdapter(PlatformAdapter):
                 self._serve_task.cancel()
             self._serve_task = None
 
+    async def _read_body(self, request: Request) -> Any:
+        """Fix-76: 限流读取请求体并解析 JSON; 超限/读取失败/非 JSON 返回 None。
+
+        (从 _handle_event 抽出, 避免其圈复杂度超限。)
+        """
+        try:
+            raw = await read_body_limited(request, self._max_body_bytes)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("飞书 webhook 读取请求体失败", error=str(exc))
+            return None
+        if raw is None:
+            logger.warning("飞书 webhook 请求体超限, 拒绝", limit=self._max_body_bytes)
+            return None
+        try:
+            return json.loads(raw.decode("utf-8")) if raw else {}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("飞书 webhook 收到非 JSON 请求体", error=str(exc))
+            return None
+
     async def _handle_event(self, request: Request) -> dict:
         """Webhook 入站主入口: 校验/解密 → 规范化 → on_message → 200 ``{}``。
 
         任何异常都吞掉并返回 200 ``{}`` (避免飞书重试; 失败的入站消息丢失在
         日志里, 不影响主链路)。所有处理都在 try/except 里, 保证不阻塞响应。
         """
-        try:
-            body = await request.json()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("飞书 webhook 收到非 JSON 请求体", error=str(exc))
+        # Fix-76: 限流读取 —— request.json() 全量读入内存且无上限, 超大
+        # body (含 chunked) 在解密/校验之前即可打爆内存; 超限直接拒绝。
+        body = await self._read_body(request)
+        if body is None:
             return {}
         try:
             payload = self._decode_payload(body)
@@ -246,6 +268,7 @@ class FeishuAdapter(PlatformAdapter):
         message = event.get("message") or {}
         sender = event.get("sender") or {}
         chat_id = str(message.get("chat_id", "") or "")
+        chat_type = str(message.get("chat_type", "") or "")
         open_id = str((sender.get("sender_id") or {}).get("open_id", "") or "")
         message_id = str(message.get("message_id", "") or "")
         msg_type = str(message.get("message_type", "") or "")
@@ -254,14 +277,27 @@ class FeishuAdapter(PlatformAdapter):
         if not open_id:
             logger.warning("飞书事件缺 sender open_id, 丢弃", message_id=message_id)
             return None
+        # N5b 批次G: chat_id 非空≠群聊 —— 飞书 p2p 私聊事件也带 chat_id, 此前一律
+        # group_id=chat_id 把 p2p 误判群聊 (下游 @mention/群上下文/群专属行为误触发)。
+        # 按 chat_type=="group" 判定 (与 telegram 适配器同构)。
+        group_id = chat_id or None
+        if chat_type and chat_type != "group":
+            group_id = None
+        # Fix-97: 解析 message.mentions 产出 at segment —— 此前完全不解析, 群聊
+        # 文本里的 @ 只是 @_user_N 占位符, 下游无任何 at segment → 门控强制触发
+        # 条件 has_at 恒 False, 飞书群 @机器人基本不回复 (私聊靠 is_private 正常)。
+        # mentions[i].id.open_id 作为 at segment 的 user_id, 与 has_at(bot_id) 口径
+        # 对齐 (bot_id 配置为机器人 open_id 时精确命中; 未配置时任一 @ 即触发)。
+        segments = _build_at_segments(message.get("mentions"))
         return ISACMessage(
             msg_id=message_id,
             platform="feishu",
             timestamp=int(time.time()),
             user_id=open_id,
             user_name=open_id,  # 飞书不直接给昵称, 用 open_id 占位 (N3 归一后可填充)
-            group_id=chat_id or None,  # chat_id 非空时视为群聊 (含 oc_ 前缀)
+            group_id=group_id,
             content=text,
+            segments=segments,
         )
 
     async def send(self, message: ISACMessage) -> bool:
@@ -382,3 +418,28 @@ def _parse_message_content(msg_type: str, content_str: str) -> str:
         # post 类型有 title/description 字段, 提取作占位
         return str(content.get("title", "") or content.get("description", "") or "")
     return ""
+
+
+def _build_at_segments(mentions: Any) -> list[MessageSegment]:
+    """Fix-97: 飞书 message.mentions → at segment 列表。
+
+    mentions[i] 形如 ``{"key": "@_user_1", "id": {"open_id": ...}, "name": ...}``;
+    取 id.open_id 作为 at segment 的 user_id (与 has_at(bot_id) 的 user_id 口径对齐)。
+    缺 open_id 的 mention 跳过 (无法判 @ 对象)。空/非法输入返回空列表。
+    """
+    if not isinstance(mentions, list):
+        return []
+    segments: list[MessageSegment] = []
+    for mention in mentions:
+        if not isinstance(mention, dict):
+            continue
+        mention_open_id = str((mention.get("id") or {}).get("open_id", "") or "")
+        if not mention_open_id:
+            continue
+        segments.append(
+            MessageSegment(
+                type="at",
+                data={"user_id": mention_open_id, "name": str(mention.get("name", "") or "")},
+            )
+        )
+    return segments

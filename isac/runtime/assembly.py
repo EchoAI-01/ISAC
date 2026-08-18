@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from isac.agent.hooks import AgentHooks
 from isac.agent.injectors.attention_drift import AttentionDriftInjector
@@ -58,6 +58,7 @@ from isac.commands.builtin.agents import AgentsCommand
 from isac.commands.builtin.focus import FocusCommand
 from isac.commands.builtin.mute import MuteCommand, UnmuteCommand
 from isac.commands.registry import CommandRegistry
+from isac.core.events import AgentHookPoint
 from isac.core.policy import EnableMatrix
 from isac.gating.system import GatingSystem
 from isac.memory.consolidator import MemoryConsolidator
@@ -80,6 +81,7 @@ from isac.runtime.conversation import (
 )
 from isac.runtime.instance import AgentInstance
 from isac.runtime.progress import build_progress_reporter
+from isac.runtime.services import ServiceContainer
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -152,6 +154,13 @@ def _build_memory_consolidator(
     if metadata is None:
         return None
     namespace = str(getattr(memory, "namespace", "") or config.effective_memory_namespace)
+    # N5b 批次E 项2: 注入本 pipeline 的 sparse/vector resolver, 让 consolidator 去重/
+    # 剪枝软删时同步 BM25/向量 (与控制面治理口径一致)。resolver 忽略传入 namespace
+    # (consolidator 只处理自身 namespace, 取本 pipeline 的索引即可)。
+    sparse_obj = getattr(memory, "sparse", None)
+    vector_obj = getattr(memory, "vector", None)
+    sparse_resolver = (lambda _ns: sparse_obj) if sparse_obj is not None else None
+    vector_resolver = (lambda _ns: vector_obj) if vector_obj is not None else None
     return MemoryConsolidator(
         agent_id=config.agent_id,
         namespace=namespace,
@@ -163,13 +172,37 @@ def _build_memory_consolidator(
         prune_importance_below=float(
             consolidation_cfg.get("prune_importance_below", 0.2) or 0.2
         ),
+        sparse_resolver=sparse_resolver,
+        vector_resolver=vector_resolver,
     )
+
+
+def _register_compress_listener(hooks: AgentHooks, consolidator: MemoryConsolidator) -> None:
+    """R4-②: 把 COMPRESS hook 回调注册进本 Agent 私有 hooks。
+
+    回调仅做"入队" (session_id + messages 快照 → consolidator.enqueue_compression),
+    不调 LLM (守护 hooks.py hook 内禁直接调 LLM 规范); 真实摘要在 consolidator
+    后台 ``_compress_step`` 低频完成。失败由 AgentHooks.fire 的 try-except 兜底。
+    """
+
+    async def _on_compress(messages: Any, context: Any) -> None:
+        session = getattr(context, "session", None)
+        session_id = str(getattr(session, "session_id", "") or "") if session else ""
+        if not session_id or not messages:
+            return
+        label = (
+            f"agent={getattr(session, 'agent_id', '')};platform={getattr(session, 'platform', '')}"
+            if session else ""
+        )
+        await consolidator.enqueue_compression(session_id, list(messages), context=label)
+
+    hooks.register(AgentHookPoint.COMPRESS, _on_compress)
 
 
 async def _setup_conversation_runtime(
     config: AgentConfig,
     global_config: dict,
-    agent_services: dict[str, Any],
+    agent_services: ServiceContainer,
     prompt_builder: SystemPromptBuilder,
     memory: Any = None,
 ) -> None:
@@ -227,6 +260,248 @@ async def _setup_conversation_runtime(
         logger.info("会话拟人状态快照已恢复", agent_id=config.agent_id, count=len(snapshots))
 
 
+def _register_media_tools(config: AgentConfig, tools: ToolRegistry) -> None:
+    """R1-⑤: 按 AgentConfig.model_capabilities_allow 条件注册媒体工具。
+
+    默认 ["*"] 全部允许 (向后兼容); 空 list 或指定子集只注册授权工具, 未授权的
+    LLM schema 不可见。词汇用工具名 (与 ModelCapabilitiesInjector hints 一致)。
+    """
+    caps = list(getattr(config, "model_capabilities_allow", ["*"]) or ["*"])
+
+    def _allowed(name: str) -> bool:
+        return "*" in caps or name in caps
+
+    if _allowed("generate_image"):
+        tools.register(GenerateImageTool())
+    if _allowed("generate_video"):
+        tools.register(GenerateVideoTool())
+    if _allowed("transcribe_audio"):
+        tools.register(TranscribeAudioTool())
+    if _allowed("synthesize_speech"):
+        tools.register(SynthesizeSpeechTool())
+    if _allowed("understand_image"):
+        tools.register(VisionUnderstandTool())
+    if _allowed("understand_video"):
+        tools.register(UnderstandVideoTool())
+
+
+def _merge_shared_plugin_tools(
+    services: ServiceContainer, tools: ToolRegistry, prompt_builder: SystemPromptBuilder
+) -> None:
+    """R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry。
+
+    同 plugin_agent_hooks 合并模式 (assembly.py assemble_agent 内 269-273 行): 共享
+    表是裸收集器, 合并进 per-Agent 后由 per-Agent 的 permission/enable_matrix 控可见性。
+    native 插件经 on_load 主动 register, AstrBot/MaiBot 兼容层经 _adapt_compat_plugins
+    调 adapter.adapt 注册到共享表 (_fire_plugin_on_load 收集)。默认无插件时空操作。
+    shared_commands 合并由调用方在 commands 构造后单独处理 (commands 此处尚未构造)。
+    """
+    shared_tools = services.plugin_tools
+    if shared_tools is not None:
+        for _name, _tool in shared_tools._tools.items():  # noqa: SLF001
+            # T6: 透传共享表来源, 让 per-Agent registry 也带 source 追踪,
+            # 否则热重载 deregister_by_source 在运行中 Agent 不生效。
+            _src = shared_tools._source.get(_name, "builtin")  # noqa: SLF001
+            tools.register(_tool, source=_src)
+    shared_prompt = services.plugin_prompt_builder
+    if shared_prompt is not None:
+        for _inj in shared_prompt._injectors:  # noqa: SLF001
+            prompt_builder.register(_inj)
+
+
+async def _wire_mcp_clients(
+    config: AgentConfig, services: ServiceContainer, tools: ToolRegistry
+) -> list[Any]:
+    """R3: 按 AgentConfig.mcp_servers 构造并连接 MCPClient, MCP 工具注册进 tools。
+
+    AgentConfig.mcp_servers (允许名列表) 查全局 `mcp_servers` 键 (build_services
+    注入, config.jsonc 顶层 mcp.servers 节)。逐 server 构造 MCPClient + connect +
+    list_tools, MCPToolBridge (Tool 子类, client.py:268) 注册进 per-Agent tools。
+    返回 MCPClient 实例列表 (供 per-Agent `mcp_clients` 键存储, stop/destroy 时
+    disconnect)。默认 mcp_servers=[] 或无全局定义时返回空列表, 零行为变化。
+    逐 server 错误隔离, 失败不阻塞 Agent 启动。
+    """
+    mcp_clients: list[Any] = []
+    mcp_servers_def = services.mcp_servers or {}
+    if not config.mcp_servers or not mcp_servers_def:
+        return mcp_clients
+    from isac.agent.tools.mcp.client import MCPClient
+
+    for _srv_name in config.mcp_servers:
+        _srv_cfg = mcp_servers_def.get(_srv_name)
+        if not _srv_cfg:
+            logger.warning(
+                "MCP server 配置缺失, 跳过",
+                server=_srv_name, agent_id=config.agent_id,
+            )
+            continue
+        try:
+            _client = MCPClient(_srv_name, _srv_cfg)
+            await _client.connect()
+            _bridges = await _client.list_tools()
+            for _bridge in _bridges:
+                tools.register(_bridge)
+            mcp_clients.append(_client)
+            logger.info(
+                "MCP server 已接入",
+                server=_srv_name, agent_id=config.agent_id, tools=len(_bridges),
+            )
+        except Exception as exc:  # noqa: BLE001
+            # N5b 批次D 项3: connect 成功但 list_tools 失败时, client 未进 mcp_clients
+            # 列表 (append 在 list_tools 之后) → stop/destroy 的 disconnect 拿不到它
+            # → 子进程/HTTP 连接泄漏。connect 成功必须配对 disconnect。
+            try:
+                await _client.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+            logger.warning(
+                "MCP server 接入失败, 不阻塞 Agent",
+                server=_srv_name, agent_id=config.agent_id,
+                error=str(exc), exc_info=True,
+            )
+    return mcp_clients
+
+
+def _merge_shared_plugin_commands(
+    services: ServiceContainer, commands: CommandRegistry
+) -> None:
+    """R3: 合并进程级共享插件 commands 进 per-Agent CommandRegistry。
+
+    同 plugin_agent_hooks 合并模式; 由 assemble_agent 在 commands 构造后调用
+    (commands 在 tools 之后定义, 故不能并入 _merge_shared_plugin_tools)。
+    默认无插件时空操作。
+    """
+    shared_commands = services.plugin_commands
+    if shared_commands is not None:
+        for _cmd in shared_commands._commands.values():  # noqa: SLF001
+            commands.register(_cmd)
+
+
+def _register_identity_prompts(
+    prompt_builder: SystemPromptBuilder, config: AgentConfig, global_config: dict[str, Any]
+) -> None:
+    """身份注入装配 (U7): prompt 文件优先, config 路径兜底。
+
+    <agents_dir>/<agent_id>/prompts/*.md 存在时按文件装配 (改人格=改文件, 新增
+    模型族变体=加一个文件); persona 族文件**替代** config 身份注入, 其余族
+    (rules 等) 追加注入。无 prompt 文件时落回 Q2 config 路径 (零行为变化)。
+    """
+    if _register_file_prompts(prompt_builder, config, global_config):
+        return
+    # Q2 激活: persona.description (Agent 级覆盖全局) 接入身份注入器, 使不同 Agent
+    # 的人格文本在 System Prompt 中可辨; 未配置时两者皆空, 注入器自身回落默认文案
+    # (零行为变化)。
+    identity_text = config.persona.get("description") or global_config.get("persona", {}).get("description")
+    prompt_builder.register(BaseIdentityInjector(identity_text))
+
+
+def _register_file_prompts(
+    prompt_builder: SystemPromptBuilder, config: AgentConfig, global_config: dict[str, Any]
+) -> bool:
+    """U7 prompt 文件化: 从 <agents_dir>/<agent_id>/prompts/*.md 装配注入器。
+
+    persona 族文件替代 config 身份注入 (返回 True 时调用方跳过 BaseIdentityInjector);
+    其余族 (rules/自定义) 追加注入。变体按当前模型族选择 (config.llm.model_family
+    覆盖优先, 否则按模型名前缀推断) —— 新增模型族 = 加一个 variant 文件, 零代码改动。
+    无 prompt 文件目录/空目录返回 False (落回 config 路径, 零行为变化)。
+    """
+    from pathlib import Path
+
+    from isac.agent.prompt_files import FilePromptInjector, load_prompt_dir, model_family_of
+
+    agents_dir = str((global_config.get("control", {}) or {}).get("agents_dir", "data/agents"))
+    grouped = load_prompt_dir(Path(agents_dir) / config.agent_id / "prompts")
+    if not grouped:
+        return False
+
+    # 模型族解析器: 构建时闭包读取 Agent/全局 llm 配置 (reload 后取到新值)。
+    agent_llm = config.llm if isinstance(config.llm, dict) else None
+
+    def _model_family() -> str:
+        llm_config = agent_llm if agent_llm is not None else (global_config.get("llm") or {})
+        return model_family_of(
+            str(llm_config.get("model") or ""), override=str(llm_config.get("model_family") or "")
+        )
+
+    has_persona_file = False
+    for family, docs in sorted(grouped.items()):
+        priority = 100 if family == "persona" else None  # persona 族对齐身份注入优先级
+        prompt_builder.register(FilePromptInjector(family, docs, _model_family, priority=priority))
+        has_persona_file = has_persona_file or family == "persona"
+    return has_persona_file
+
+
+def _merged_gating_config(global_config: dict[str, Any], agent_gating: dict[str, Any] | None) -> dict[str, Any]:
+    """U3: 合并全局 ``config.gating`` 与 Agent 级 ``AgentConfig.gating``。
+
+    全局节提供部署默认 (strategy/locale/weights/markers/词表), Agent 级覆盖
+    (浅合并, Agent 键优先)。两者皆空时返回 {} (GatingSystem 用框架默认)。
+    """
+    merged: dict[str, Any] = {}
+    global_gating = global_config.get("gating") if isinstance(global_config, dict) else None
+    if isinstance(global_gating, dict):
+        merged.update(global_gating)
+    if isinstance(agent_gating, dict):
+        # 嵌套 dict (weights/markers) 也做浅合并, Agent 覆盖全局同名子键。
+        for key, value in agent_gating.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = {**merged[key], **value}
+            else:
+                merged[key] = value
+    return merged
+
+
+def _build_gating_judge_fn(
+    global_config: dict[str, Any], agent_gating: dict[str, Any] | None, services: ServiceContainer
+) -> Any:
+    """U3: llm-judge/hybrid 档时构造门控相关性判定函数; 其余档/无 provider 返回 None。
+
+    判定器用 fallback 链**最便宜档** (fallback provider 优先, 缺则 primary), 经
+    ProviderManager.chat_with_retry 调用 (自带重试 + 降级)。解析模型 yes/no 输出
+    为 True/False, 无法判定返回 None (策略层回落 keywords)。成本与频率上限见
+    ARCHITECTURE.md 3.7。
+    """
+    merged = _merged_gating_config(global_config, agent_gating)
+    strategy = str(merged.get("strategy") or "keywords").strip().lower()
+    if strategy not in ("llm-judge", "hybrid"):
+        return None
+    provider_manager = services.provider_manager
+    if provider_manager is None:
+        return None
+    provider = getattr(provider_manager, "_fallback", None) or getattr(provider_manager, "_primary", None)
+    if provider is None:
+        return None
+
+    judge_system = (
+        "你是群聊相关性裁判。判断一条群聊消息是否需要 AI 助手回应 "
+        "(被提问、被请求、征求意见、或明确需要帮助)。只回答 yes 或 no。"
+    )
+
+    async def judge_fn(content: str, context: Any) -> bool | None:
+        try:
+            response = await provider_manager.chat_with_retry(
+                provider,
+                agent_id="gating-judge",
+                system=judge_system,
+                messages=[{"role": "user", "content": content}],
+            )
+            text = str(getattr(response, "content", "") or "").strip().lower()
+            if text.startswith("yes"):
+                return True
+            if text.startswith("no"):
+                return False
+            return None
+        except Exception:  # noqa: BLE001 判定器故障由策略层 fail-safe 回落
+            return None
+
+    return judge_fn
+
+
+def _as_container(services: dict[str, Any]) -> ServiceContainer:
+    """Z1-B: 测试夹具可能传裸 dict, 归一化为 ServiceContainer 供属性访问。"""
+    return services if isinstance(services, ServiceContainer) else ServiceContainer(services)
+
+
 async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> AgentInstance:
     """按配置组装一个 AgentInstance。
 
@@ -237,7 +512,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     [已完成] memory_factory / 人格注入器 / 记忆注入器 / BehaviorLearner hooks / SubAgent 工具;
     待落地: attention_drift/expression_style/mood/skill_selector 注入器接入 PersonaManager。
     """
-    global_config: dict = services.get("global_config", {})
+    services = _as_container(services)
+    global_config: dict = services.global_config or {}
 
     # E4 启用矩阵: Agent ∩ Channel ∩ 全局; Channel 覆盖来自 global_config.channels
     channel_overrides: dict = {}
@@ -249,24 +525,23 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
         channel_overrides=channel_overrides,
     )
 
-    gating = GatingSystem(config=config.gating)
+    gating = GatingSystem(
+        config=_merged_gating_config(global_config, config.gating),
+        judge_fn=_build_gating_judge_fn(global_config, config.gating, services),
+    )
 
     prompt_builder = SystemPromptBuilder()
-    # Q2 激活: persona.description (Agent 级覆盖全局) 接入身份注入器, 使不同 Agent
-    # 的人格文本在 System Prompt 中可辨; 未配置时两者皆空, 注入器自身回落默认文案
-    # (零行为变化)。
-    _identity_text = config.persona.get("description") or global_config.get("persona", {}).get("description")
-    prompt_builder.register(BaseIdentityInjector(_identity_text))
+    _register_identity_prompts(prompt_builder, config, global_config)
     # J2: 多模态能力注入器 (默认无授权媒体能力 → 注入空串, 主链路零变化)。
     # model_capabilities_allow 字段将在 J2 实现节点加入 AgentConfig; 当前经 getattr 兜底。
     _media_caps = [c for c in (getattr(config, "model_capabilities_allow", None) or []) if c != "chat"]
     prompt_builder.register(ModelCapabilitiesInjector(_media_caps))
 
     hooks = AgentHooks()
-    # CR3-H2: 插件经 on_load 注册到进程级共享注册表 (services["plugin_agent_hooks"],
+    # CR3-H2: 插件经 on_load 注册到进程级共享注册表 (`plugin_agent_hooks` 键,
     # main._fire_plugin_on_load 构造) 的钩子, 合并进本 Agent 的私有 hooks
     # (保留 priority; 同仓读内部结构, AgentHooks._hooks 即注册表本体)。
-    plugin_hooks: AgentHooks | None = services.get("plugin_agent_hooks")
+    plugin_hooks: AgentHooks | None = services.plugin_agent_hooks
     if plugin_hooks is not None:
         for point, entries in plugin_hooks._hooks.items():  # noqa: SLF001
             for priority, _seq, fn in entries:
@@ -313,12 +588,16 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # tools_policy 里显式开启对应能力 (如 {"generate_image": "allow"}) 才会
     # 出现在 LLM schema; model_router/artifact_store/media_normalizer 经 shared
     # services 自动流到 ToolContext.services (main.py 装配的键)。
-    tools.register(GenerateImageTool())
-    tools.register(GenerateVideoTool())
-    tools.register(TranscribeAudioTool())
-    tools.register(SynthesizeSpeechTool())
-    tools.register(VisionUnderstandTool())
-    tools.register(UnderstandVideoTool())
+    # R1-⑤: 媒体工具按 model_capabilities_allow 条件注册 (抽 helper 降 assemble_agent 复杂度)
+    _register_media_tools(config, tools)
+
+    # R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry (同 plugin_agent_hooks
+    # 合并模式; shared_commands 合并见下方 commands 定义后) + MCPClient 按
+    # AgentConfig.mcp_servers 构造+connect+list_tools 注册 MCP 工具进 tools。client
+    # 存 per-Agent 服务的 mcp_clients 键供 stop/destroy disconnect。默认空, 零行为变化。
+    _merge_shared_plugin_tools(services, tools, prompt_builder)
+    mcp_clients = await _wire_mcp_clients(config, services, tools)
+
     prompt_builder.register(ToolsAvailableInjector(tools))
 
     # E4 命令注册表: commands_allow 矩阵在 try_execute 时生效
@@ -333,21 +612,32 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     commands.register(FocusCommand())
     commands.register(MuteCommand())
     commands.register(UnmuteCommand())
+    # R3: 合并进程级共享插件命令 (plugin_commands 共享键) 进 per-Agent
+    # CommandRegistry, 同 plugin_agent_hooks 合并模式。默认空。
+    _merge_shared_plugin_commands(services, commands)
 
-    provider_manager = services["provider_manager"]
+    # build_services 恒注册 provider_manager/memory_factory (装配层不变量, cast 收敛)。
+    provider_manager = cast(Any, services.provider_manager)
     llm = provider_manager.for_agent(config)
-    memory = services["memory_factory"](config.effective_memory_namespace)
+    memory = cast(Any, services.memory_factory)(config.effective_memory_namespace)
     prompt_builder.register(PersonProfileInjector(memory))
     prompt_builder.register(JargonInjector(memory))
     prompt_builder.register(HeuristicMemoryInjector(memory))
     prompt_builder.register(MidTermMemoryInjector(memory))
-    agent_services = {**services, "memory": memory}
+    agent_services = ServiceContainer({**services, "memory": memory})
+    # R3: MCPClient 引用 (上方构造) 存入 services, 供 AgentManager.stop/destroy
+    # 与 _shutdown_message_pipeline 调 disconnect (避免子进程/HTTP 连接泄漏)。
+    agent_services["mcp_clients"] = mcp_clients
 
     # 后台记忆整合器 (默认关闭: memory.consolidation.enabled!=true → None → 生命周期不启动)。
     # 骨架期 run_once 为 no-op, 由 AgentManager 随 Agent start/stop 驱动。
     consolidator = _build_memory_consolidator(config, global_config, memory, llm=llm)
     if consolidator is not None:
         agent_services["memory_consolidator"] = consolidator
+        # R4-②: 注册 COMPRESS hook listener —— 仅入队待压缩会话快照到 consolidator
+        # (不调 LLM, 守护 hooks.py "hook 内禁直接调 LLM" 规范); 真实摘要由 consolidator
+        # 后台 _compress_step 低频完成。入队键为 session_id (回调拿不到 episode_id)。
+        _register_compress_listener(hooks, consolidator)
 
     # D9 进度报告: 注入工厂 (默认无 sender → 惰性关闭, 主链路热路径零变化)。
     # 消息处理时用它构造 per-session Reporter 并绑定 Channel sender; persona_rendering
@@ -372,7 +662,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # P2: 注入 MeshActionBroker —— 4 个 A2A 工具 (notify/handoff/list/memory_query)
     # 的 restricted 门要求该服务存在, 此前生产零注入点使它们恒返回"未接入"。
     # 策略随 Link 配置 (broker.policy_for 按对端解析), 不再依赖单值 mesh_link_policy。
-    bus = services.get("bus")
+    bus = services.bus
     if bus is not None:
         from isac.runtime.mesh.actions import MeshActionBroker
 

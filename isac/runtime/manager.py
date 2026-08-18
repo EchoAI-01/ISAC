@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,7 @@ from isac.runtime.conversation import (
     WaitEndReason,
 )
 from isac.runtime.instance import AgentInstance
+from isac.runtime.services import ServiceContainer
 from isac.utils.logger import get_logger
 from isac.utils.logging_context import bind_log_context
 
@@ -57,7 +59,14 @@ class AgentManager:
             services: 共享服务 (provider_manager / memory_factory / global_config / ...)
         """
         self._agents: dict[str, AgentInstance] = {}
-        self._services = services
+        # Z1-A: 生产路径 build_services 返回 ServiceContainer, 直通持有同一对象 ——
+        # bootstrap 先构造 AgentManager 再向同一容器陆续注册 bus/router/session_*
+        # 等键, 拷贝会让管理器永远看不到后注册的键。测试夹具传裸 dict 时拷贝为
+        # 容器 (夹具无后注册键, 拷贝语义等价)。
+        if isinstance(services, ServiceContainer):
+            self._services: ServiceContainer = services
+        else:
+            self._services = ServiceContainer(services)
         # Fix-2: 按 agent_id 的配置锁, 用于 PATCH 时把"读 revision → 校验 if_match →
         # 合并 → 持久化 → reload_config"整段串行化, 避免并发 PATCH 静默丢更新。
         # agent_id 数量受限于实际创建过的 Agent 数 (不像 session 那样量级无界),
@@ -77,34 +86,53 @@ class AgentManager:
         assemble_agent 内部 memory_factory 返回 NoOpMemoryPipeline 或真实 MemoryRetrievalPipeline;
         真实 pipeline 有 warm_up_sparse_index 方法, 从 MetadataStore 重建 BM25 内存索引,
         让重启后 BM25 检索立即可用而不等下次写入 (K3, DEVELOPMENT_PLAN.md)。
+
+        Fix-73: "存在性检查 → 组装 → 入册" 整段包在 per-agent_id 配置锁内。此前
+        两个并发 create 同一 agent_id 都通过 `in self._agents` 检查 (检查与入册间
+        隔着 assemble_agent 的 await 点), 后完成者用新实例**覆盖**先入册实例:
+        被覆盖实例的 MCP client/记忆 pipeline 等资源无人 stop 成为孤儿, 其 Sparse
+        预热也可能白跑。创建是低频控制面操作, 锁粒度 per-agent 不影响其它 Agent。
         """
-        if config.agent_id in self._agents:
-            raise ValueError(f"Agent 已存在: {config.agent_id}")
-        instance = await assemble_agent(config, self._services)
-        self._agents[config.agent_id] = instance
-        # K3: 预热 Sparse 索引 (NoOpMemoryPipeline 没有此方法, 静默跳过)
-        warm = getattr(instance.memory, "warm_up_sparse_index", None)
-        if warm is not None:
-            try:
-                await warm()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Sparse 索引预热失败, 不阻塞 Agent 创建", agent_id=config.agent_id, error=str(exc))
-        self._inc_metric("isac_agent_creates_total")
-        logger.info("Agent 已创建", agent_id=config.agent_id)
-        return instance
+        async with self.acquire_config_lock(config.agent_id):
+            if config.agent_id in self._agents:
+                raise ValueError(f"Agent 已存在: {config.agent_id}")
+            instance = await assemble_agent(config, self._services)
+            self._agents[config.agent_id] = instance
+            # K3: 预热 Sparse 索引 (NoOpMemoryPipeline 没有此方法, 静默跳过)
+            warm = getattr(instance.memory, "warm_up_sparse_index", None)
+            if warm is not None:
+                try:
+                    await warm()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Sparse 索引预热失败, 不阻塞 Agent 创建", agent_id=config.agent_id, error=str(exc))
+            self._inc_metric("isac_agent_creates_total")
+            logger.info("Agent 已创建", agent_id=config.agent_id)
+            return instance
 
     async def start(self, agent_id: str) -> None:
         instance = self._require(agent_id)
         instance.status = "running"
         # P1(L3): conversation 启用时随 Agent 启动主动任务调度循环 (assembly 仅在
         # conversation.enabled=true 时构造 scheduler, 默认 None 零行为变化)。
-        scheduler = instance.services.get("proactive_scheduler")
+        scheduler = instance.services.proactive_scheduler
         if scheduler is not None:
             await scheduler.start(self._on_proactive_wake)
         # S2: 后台记忆整合循环 (默认未构造 → None → 不启动, 零行为变化)。
-        consolidator = instance.services.get("memory_consolidator")
+        consolidator = instance.services.memory_consolidator
         if consolidator is not None:
             await consolidator.start()
+        # N5b 批次D 项2: stop→start 重连 MCP。stop 时 _disconnect_mcp_clients 断开,
+        # start 时对已 disconnect 的 client 重 connect (bridge 持同一 client 引用,
+        # 重连后 call_tool 可用, 无需 deregister/re-register 工具)。失败不阻塞启动。
+        for client in (instance.services.mcp_clients or []):
+            if not getattr(client, "_connected", False):
+                try:
+                    await client.connect()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "MCP start 重连失败, 工具调用将降级",
+                        agent_id=agent_id, server=getattr(client, "server_name", ""), error=str(exc),
+                    )
         self._inc_metric("isac_agent_starts_total")
         self._update_active_gauge()
         logger.info("Agent 已启动", agent_id=agent_id)
@@ -112,12 +140,14 @@ class AgentManager:
     async def stop(self, agent_id: str) -> None:
         instance = self._require(agent_id)
         instance.status = "stopped"
-        scheduler = instance.services.get("proactive_scheduler")
+        scheduler = instance.services.proactive_scheduler
         if scheduler is not None:
             await scheduler.stop()
-        consolidator = instance.services.get("memory_consolidator")
+        consolidator = instance.services.memory_consolidator
         if consolidator is not None:
             await consolidator.stop()
+        # R3: 断开 MCPClient (子进程/HTTP 连接), 异常隔离不阻塞停止。
+        await self._disconnect_mcp_clients(instance)
         self._inc_metric("isac_agent_stops_total")
         self._update_active_gauge()
         logger.info("Agent 已停止", agent_id=agent_id)
@@ -127,12 +157,14 @@ class AgentManager:
         instance = self._require(agent_id)
         del self._agents[agent_id]
         self._config_locks.pop(agent_id, None)
-        scheduler = instance.services.get("proactive_scheduler")
+        scheduler = instance.services.proactive_scheduler
         if scheduler is not None:
             await scheduler.stop()
-        consolidator = instance.services.get("memory_consolidator")
+        consolidator = instance.services.memory_consolidator
         if consolidator is not None:
             await consolidator.stop()
+        # R3: 断开 MCPClient (子进程/HTTP 连接), 异常隔离不阻塞销毁。
+        await self._disconnect_mcp_clients(instance)
         self._update_active_gauge()
         # Q0: 失效独立 Provider 缓存 (否则重建同名 Agent 仍拿到旧 llm 配置的 Provider)
         await self._invalidate_agent_provider(agent_id)
@@ -144,6 +176,21 @@ class AgentManager:
             await self._drain_agent_memory_tasks(agent_id)
             await self._purge_memory(instance)
         logger.info("Agent 已销毁", agent_id=agent_id, keep_memory=keep_memory)
+
+    async def _disconnect_mcp_clients(self, instance: Any) -> None:
+        """R3: 断开该 Agent 的所有 MCPClient (避免子进程/HTTP 连接泄漏)。
+
+        assemble_agent 把构造并 connect 的 MCPClient 存入 per-Agent 服务的
+        `mcp_clients` 键; stop/destroy 时逐个 disconnect, 异常隔离不阻塞停止。
+        """
+        mcp_clients = instance.services.mcp_clients
+        if not mcp_clients:
+            return
+        for client in mcp_clients:
+            try:
+                await client.disconnect()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("MCPClient disconnect 失败, 不阻塞停止", error=str(exc), exc_info=True)
 
     async def _drain_agent_memory_tasks(self, agent_id: str, timeout_seconds: float = 10.0) -> None:
         """Fix-26: 等待指定 agent_id 在途的记忆写入/旁听任务完成。
@@ -167,7 +214,7 @@ class AgentManager:
         此前缓存全仓无失效点: PATCH 修改 AgentConfig.llm 后 for_agent 仍返回旧
         Provider (换模型必须重启进程), destroy 后重建同名 Agent 也继承旧凭据。
         """
-        provider_manager = self._services.get("provider_manager")
+        provider_manager = self._services.provider_manager
         if provider_manager is None:
             return
         invalidate = getattr(provider_manager, "invalidate_agent_provider", None)
@@ -271,22 +318,26 @@ class AgentManager:
         old_instance = self._require(agent_id)
         was_running = old_instance.status == "running"
         # P1: 停掉旧实例的主动调度循环 (新实例随 running 状态重启自己的)
-        old_scheduler = old_instance.services.get("proactive_scheduler")
+        old_scheduler = old_instance.services.proactive_scheduler
         if old_scheduler is not None:
             await old_scheduler.stop()
-        old_consolidator = old_instance.services.get("memory_consolidator")
+        old_consolidator = old_instance.services.memory_consolidator
         if old_consolidator is not None:
             await old_consolidator.stop()
         # Q0: 失效独立 Provider 缓存, PATCH 修改 llm 后 for_agent 才会按新配置重建
         await self._invalidate_agent_provider(agent_id)
+        # N5b 批次D 项1: reload_config 是三个生命周期方法中唯一漏掉 MCP disconnect 的,
+        # 旧实例 stdio 子进程/HTTP 连接被丢弃引用但不显式 disconnect → 孤儿进程/连接泄漏。
+        # 与 stop/destroy 对齐, 在 assemble 新实例前断开旧实例 MCP 连接。
+        await self._disconnect_mcp_clients(old_instance)
         instance = await assemble_agent(config, self._services)
         instance.status = "running" if was_running else "stopped"
         self._agents[agent_id] = instance
         if was_running:
-            new_scheduler = instance.services.get("proactive_scheduler")
+            new_scheduler = instance.services.proactive_scheduler
             if new_scheduler is not None:
                 await new_scheduler.start(self._on_proactive_wake)
-            new_consolidator = instance.services.get("memory_consolidator")
+            new_consolidator = instance.services.memory_consolidator
             if new_consolidator is not None:
                 await new_consolidator.start()
         logger.info("Agent 配置已重载", agent_id=agent_id)
@@ -345,7 +396,7 @@ class AgentManager:
 
         注意: 普通入口 process_message 已在锁内, 不得改走本方法 (asyncio.Lock 不可重入)。
         """
-        lock_mgr = self._services.get("session_lock")
+        lock_mgr = self._services.session_lock
         if lock_mgr is None:
             return await self.handle_message(agent_id, message, session, user_profile, progress_sender)
         lock_key = (
@@ -381,25 +432,33 @@ class AgentManager:
         turn_scheduler = instance.gating.get_turn_scheduler(session.session_id)
         turn_scheduler.record_window_message()
 
-        # E4: 命令拦截 (在门控前)。/cmd 是用户显式发起, 跳过门控。
-        if instance.commands is not None and message.content.startswith("/"):
-            cmd_result = await self._try_command(instance, message, session, user_profile)
-            if cmd_result is not None:
-                turn_scheduler.record_reply()
-                instance.gating.get_idle_backoff(session.session_id).record_reply()
-                return cmd_result
+        # E4: 命令拦截 (在门控前, 命令即时执行跳过 debounce)。/cmd 是用户显式发起。
+        # Fix-101 落在 _try_command_shortcut 内: 命令命中且存在被打断回拨输入时
+        # 直接给出 pending 并跳过 debounce/drain; 其余情况走下方常规 debounce → drain。
+        pending, cmd_reply = await self._try_command_shortcut(
+            instance, conv_runtime, message, session, user_profile, turn_scheduler
+        )
+        if cmd_reply is not None:
+            return cmd_reply
 
-        if await self._debounce_should_yield(instance, conv_runtime, message):
-            return None
+        if pending is None:
+            if await self._debounce_should_yield(instance, conv_runtime, message):
+                return None
 
-        # MVP-Fix: drain 提到门控之前。此前 ① 门控只评估末条消息 —— 突发里靠前
-        # 消息的 @提及/内容分被丢弃, 整个突发可能一条不回; ② drain 为空时退回用
-        # 本条内容再跑一轮 —— 突发中被别的回合合并处理过的消息会重复回复。
-        # 现在 drain 空即弃权 (根治重复), 门控与 Loop 都基于整个 burst。
-        pending = self._drain_pending(conv_runtime, message)
-        if not pending:
-            logger.debug("本条消息已被前一回合合并处理, 弃权避免重复回复", agent_id=agent_id)
-            return None
+            # MVP-Fix: drain 提到门控之前。此前 ① 门控只评估末条消息 —— 突发里靠前
+            # 消息的 @提及/内容分被丢弃, 整个突发可能一条不回; ② drain 为空时退回用
+            # 本条内容再跑一轮 —— 突发中被别的回合合并处理过的消息会重复回复。
+            # 现在 drain 空即弃权 (根治重复), 门控与 Loop 都基于整个 burst。
+            pending = self._drain_pending(conv_runtime, message)
+            if not pending:
+                # T1: "未回复原因可查"。drain 空是正常拟人合并 (突发被前回合合并处理),
+                # 但此前仅 debug, 用户侧"消息发出去没动静"无法判断原因。升级 info 带
+                # reason 字段, 经 T4 日志台可按 reason=gating_wait 查"未回复原因"。
+                logger.info(
+                    "本条消息已被前一回合合并处理, 弃权避免重复回复",
+                    agent_id=agent_id, reason="drain_empty",
+                )
+                return None
 
         # P2: 互联消息 (ask/notify/handoff 经 bus 投递) 已过 Link ACL, 是显式协作
         # 动作, 不适用环境聊天的回复必要性门控 —— 否则 notify/交接摘要可能被静默
@@ -410,7 +469,12 @@ class AgentManager:
             )
             decision = await instance.gating.evaluate(pending, gating_context)
             if decision.kind != GateKind.TRIGGER:
-                logger.debug("门控未触发", agent_id=agent_id, kind=decision.kind.value)
+                # T1: 门控未触发是正常拟人行为 (群聊普通消息评分不足), 但此前仅
+                # debug, 用户侧零反馈。升级 info 带 reason, 经 T4 日志台可查。
+                logger.info(
+                    "门控未触发, 本轮不回复",
+                    agent_id=agent_id, kind=decision.kind.value, reason="gating_wait",
+                )
                 return None
 
         agent_context = self._build_agent_context(
@@ -418,21 +482,31 @@ class AgentManager:
         )
         # P1(L2): 积压 >1 条时合并为一轮输入 (带说话人前缀多行)
         user_content = self._merge_pending_content(pending)
-        messages = [{"role": "user", "content": user_content}]
+        # U1: 事件溯源历史窗口 —— 派生当前 burst 之前的历史 (并把本 burst 落事件)。
+        # 未注入 store/deriver 或关闭时返回 ([], None), 行为与改造前一致 (仅当前 burst)。
+        history_messages, user_event_seq = await self._derive_session_history(
+            instance, message, user_content
+        )
+        messages = history_messages + [{"role": "user", "content": user_content}]
         result = await self._run_loop_with_conversation(instance, conv_runtime, messages, agent_context)
         if result.interrupted:
-            logger.info("本轮被新消息打断, 旧回复已抑制", agent_id=agent_id)
+            await self._handle_interrupted_turn(
+                instance, conv_runtime, message, pending, user_event_seq
+            )
             return None
         if result.content:
             # 话轮调度: 记录本轮回复, 更新滑窗频率与存在感数据。
             turn_scheduler.record_reply()
-            instance.gating.get_idle_backoff(session.session_id).record_reply()
+            # U1: 回复成功 → turn.completed 事件落盘 (下一回合的历史窗口可见);
+            # 返回的 seq 供 episodes 事件投影定位本回合事件对。
+            turn_seq = await self._record_turn_completed(instance, message, result.content)
             # Q1: 回复后异步写入记忆 (episodic + 画像回路), 不阻塞回复发送。
             # MVP-Fix: 写入**本回合实际看到的输入** (合并后的整个 burst), 而不是
             # 触发这一轮的单条 —— 否则突发被合并处理时, 记忆只留下其中一条,
             # 用户后来问起前面说过的内容检索不到。
             self._schedule_memory_write(
-                instance, message, session, user_profile, result.content, user_content
+                instance, message, session, user_profile, result.content, user_content,
+                turn_seq=turn_seq,
             )
         return result.content or None
 
@@ -476,7 +550,7 @@ class AgentManager:
         缓存两次: 突发合并把重复条目一起喂给 LLM, 且末条的 drain 非空导致重复
         回复。msg_id 在 replace 后保持不变, 是稳定去重键 (为空时回退身份比较)。
         """
-        conv_registry = instance.services.get("conversation_registry")
+        conv_registry = instance.services.conversation_registry
         if conv_registry is None or not self._conversation_enabled():
             return None
         conv_runtime = conv_registry.get(instance.agent_id, session.session_id)
@@ -535,6 +609,43 @@ class AgentManager:
             if conv_runtime is not None and conv_runtime.state is ConversationState.THINKING:
                 conv_runtime.transition_to(ConversationState.IDLE)
 
+    async def _try_command_shortcut(
+        self,
+        instance: AgentInstance,
+        conv_runtime: ConversationRuntime | None,
+        message: ISACMessage,
+        session: Session,
+        user_profile: UserProfile | None,
+        turn_scheduler: Any,
+    ) -> tuple[builtins.list[ISACMessage] | None, str | None]:
+        """E4 命令拦截 + Fix-101 接续。返回 (pending, cmd_reply) 三态:
+
+        - (None, None): 非命令/未命中 → 调用方走常规 debounce → drain 路径;
+        - (None, str): 命令命中且无被打断积压 → 调用方直接返回命令回复;
+        - (list, None): 命令命中且存在 Fix-57 回拨的积压输入 → 积压接续为本回合
+          pending, 调用方跳过 debounce/drain 继续正常流程 (门控→Loop→回复)。
+
+        Fix-101: 命令短路返回不得吞掉 Fix-57 回拨的积压 burst —— 此前
+        "问题 Q1 → 被 /cmd 打断 (Q1 回拨缓存) → 命令分支不 drain 即返回"
+        会让 Q1 永久滞留缓存 (无新消息则无回复/无记忆/无历史)。drain 消费缓存:
+        命令消息本身已由 _try_command 处理; 被打断回拨的非命令输入接续为正常回合。
+        """
+        if instance.commands is None or not message.content.startswith("/"):
+            return None, None
+        cmd_result = await self._try_command(instance, message, session, user_profile)
+        if cmd_result is None:
+            return None, None
+        turn_scheduler.record_reply()
+        drained = self._drain_pending(conv_runtime, message)
+        interrupted = [m for m in drained if not str(m.content or "").startswith("/")]
+        if not interrupted:
+            return None, cmd_result
+        logger.info(
+            "命令打断了待处理输入, 接续为正常回合",
+            agent_id=instance.agent_id, interrupted=len(interrupted),
+        )
+        return interrupted, None
+
     async def _try_command(
         self,
         instance: AgentInstance,
@@ -559,8 +670,8 @@ class AgentManager:
             services={
                 "gating": instance.gating,
                 "agent_manager": self,
-                "session_mgr": self._services.get("session_mgr"),
-                "bus": instance.services.get("bus") or self._services.get("bus"),
+                "session_mgr": self._services.session_mgr,
+                "bus": instance.services.bus or self._services.bus,
                 "agent_id": instance.agent_id,
             },
         )
@@ -587,7 +698,7 @@ class AgentManager:
         current = pending[-1]
         display_name = instance.config.display_name
         mention_names = [display_name] if display_name else []
-        bot_id = self._services.get("global_config", {}).get("bot_id", "")
+        bot_id = (self._services.global_config or {}).get("bot_id", "")
 
         def _has_at(msg: ISACMessage) -> bool:
             return msg.has_at(bot_id) if bot_id else any(seg.type == "at" for seg in msg.segments)
@@ -629,10 +740,175 @@ class AgentManager:
             return pending[0].content
         return "\n".join(f"{m.user_name or m.user_id}: {m.content}" for m in pending)
 
+    # ── U1 事件溯源会话历史 ───────────────────────────────────
+
+    def _session_history_enabled(self) -> bool:
+        """U1: session.history.enabled (默认 True); store/deriver/session_mgr 缺一不可。"""
+        if self._services.session_event_store is None:
+            return False
+        if self._services.session_history is None:
+            return False
+        if self._services.session_mgr is None:
+            return False
+        hist_cfg = (self._services.global_config or {}).get("session", {}).get("history", {}) or {}
+        return bool(hist_cfg.get("enabled", True))
+
+    def _session_key_for(self, instance: AgentInstance, message: ISACMessage) -> str | None:
+        """U1: 事件流分区键 (与 SessionManager.make_session_key 口径一致)。"""
+        session_mgr = self._services.session_mgr
+        if session_mgr is None:
+            return None
+        return session_mgr.make_session_key(
+            instance.agent_id, message.platform, message.user_id, message.group_id
+        )
+
+    def _history_parts(
+        self, instance: AgentInstance, message: ISACMessage
+    ) -> tuple[Any, Any, str] | None:
+        """U1/Fix-100: (事件 store, 派生器, session_key) 三元组; 关闭/缺失返回 None。
+
+        三个历史方法 (_derive_session_history / _record_turn_completed /
+        _record_turn_aborted) 共用这一入口, services 字符串键访问收口到一处
+        (U9 红线"残余 services 字符串键访问"棘轮只减不增, 不得逐方法重复取键)。
+        """
+        if not self._session_history_enabled():
+            return None
+        session_key = self._session_key_for(instance, message)
+        if session_key is None:
+            return None
+        return self._services.session_event_store, self._services.session_history, session_key
+
+    async def _derive_session_history(
+        self, instance: AgentInstance, message: ISACMessage, user_content: str
+    ) -> tuple[builtins.list[dict], int | None]:
+        """U1: 派生当前 burst 之前的会话历史窗口, 并把本 burst 落事件。
+
+        "Model-visible ⟺ Logged": 本回合合并后的 user 输入追加为 message.user 事件,
+        且在 LLM 请求 (副作用) 前 flush 落盘。返回 (历史窗口, 本 burst user 事件的
+        seq) —— seq 供回合被打断时追加 turn.aborted 补偿事件 (Fix-100)。返回的历史
+        窗口不含本 burst (避免与调用方追加的当前 user message 重复)。store/deriver
+        未注入或关闭时返回 ([], None) (零行为变化); 派生异常降级为无历史不阻塞主链路。
+        """
+        parts = self._history_parts(instance, message)
+        if parts is None:
+            return [], None
+        store, deriver, session_key = parts
+        from isac.session.models import EVENT_USER_MESSAGE, SessionEvent
+
+        try:
+            past_events = await store.fetch_recent(session_key, limit=self._session_history_fetch_limit())
+            history = deriver.derive_window(past_events)
+            user_seq = await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_USER_MESSAGE,
+                    timestamp=int(time.time()),
+                    payload={"content": user_content, "user_name": message.user_name or message.user_id},
+                )
+            )
+            await store.flush()  # 副作用 (LLM 请求) 前强制落盘
+            return history, (int(user_seq) if user_seq and user_seq > 0 else None)
+        except Exception as exc:  # noqa: BLE001 历史派生失败不阻塞回复
+            logger.warning("会话历史派生失败, 降级为无历史", error=str(exc))
+            return [], None
+
+    def _session_history_fetch_limit(self) -> int:
+        """U1: 派生窗口取最近多少条事件 (窗口轮数 * 每轮事件数的保守上界)。"""
+        hist_cfg = (self._services.global_config or {}).get("session", {}).get("history", {}) or {}
+        try:
+            window_turns = max(1, int(hist_cfg.get("window_turns", 10) or 10))
+        except (TypeError, ValueError):
+            window_turns = 10
+        return max(50, window_turns * 6)
+
+    async def _record_turn_completed(
+        self, instance: AgentInstance, message: ISACMessage, reply_content: str
+    ) -> int | None:
+        """U1: 回复成功后把助手输出追加为 turn.completed 事件。
+
+        返回事件 seq (episodes 事件投影用); 未启用/落盘失败返回 None (best-effort)。
+        """
+        if not reply_content:
+            return None
+        parts = self._history_parts(instance, message)
+        if parts is None:
+            return None
+        store, _, session_key = parts
+        from isac.session.models import EVENT_TURN_COMPLETED, SessionEvent
+
+        try:
+            seq = await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_TURN_COMPLETED,
+                    timestamp=int(time.time()),
+                    payload={"content": reply_content},
+                )
+            )
+            await store.flush()
+            return seq if seq > 0 else None
+        except Exception as exc:  # noqa: BLE001 事件落盘失败不阻塞回复
+            logger.warning("turn.completed 事件落盘失败", error=str(exc))
+            return None
+
+    async def _handle_interrupted_turn(
+        self,
+        instance: AgentInstance,
+        conv_runtime: ConversationRuntime | None,
+        message: ISACMessage,
+        pending: builtins.list[ISACMessage] | None,
+        user_event_seq: int | None,
+    ) -> None:
+        """回合被打断的补偿处理: 旧回复已抑制, 保住用户输入不三方皆失。
+
+        Fix-57: 回拨本回合输入的 drain 指针。打断后回复被抑制、不写记忆,
+        若指针已越过本回合 burst, 接替回合 drain 取不到 → 用户输入三方皆失。
+        回拨后接替回合 (即触发打断的新消息的回合) 会重新 drain 并合并处理。
+        Fix-100: 本回合的 user 事件已在 LLM 请求前落盘 (Model-visible ⟺ Logged),
+        但回复被抑制成孤儿; 追加 turn.aborted 补偿事件标记作废, fold 时跳过,
+        避免接替回合重复落同一 burst 后历史窗口出现重复用户内容。
+        """
+        logger.info("本轮被新消息打断, 旧回复已抑制", agent_id=instance.agent_id)
+        if conv_runtime is not None and pending:
+            conv_runtime.rewind_processed(len(pending))
+        if user_event_seq is not None:
+            await self._record_turn_aborted(instance, message, user_event_seq)
+
+    async def _record_turn_aborted(
+        self, instance: AgentInstance, message: ISACMessage, aborted_user_seq: int
+    ) -> None:
+        """Fix-100: 回合被打断时追加 turn.aborted 补偿事件 (best-effort)。
+
+        指向被作废的孤儿 message.user 事件 seq (aborted_user_seq) —— 该回合回复被
+        抑制、不写记忆, 但 user 输入事件已在 LLM 请求前落盘; 接替回合重新 drain
+        同一 burst 会再落一条含相同内容的 user 事件。fold 时按本补偿事件跳过孤儿
+        user 事件, 避免后续历史窗口出现重复用户内容。落盘失败仅记日志不阻塞。
+        """
+        if not aborted_user_seq:
+            return
+        parts = self._history_parts(instance, message)
+        if parts is None:
+            return
+        store, _, session_key = parts
+        from isac.session.models import EVENT_TURN_ABORTED, SessionEvent
+
+        try:
+            await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_TURN_ABORTED,
+                    timestamp=int(time.time()),
+                    payload={"aborted_user_seq": aborted_user_seq},
+                )
+            )
+            await store.flush()
+        except Exception as exc:  # noqa: BLE001 补偿事件落盘失败不阻塞主链路
+            logger.warning("turn.aborted 补偿事件落盘失败", error=str(exc))
+
     def _conversation_debounce_seconds(self, instance: AgentInstance) -> float:
         """P1: 读 debounce 静默窗口秒数 (全局 conversation 节 ∪ Agent 级覆盖)。"""
         merged = {
-            **(self._services.get("global_config", {}).get("conversation", {}) or {}),
+            **((self._services.global_config or {}).get("conversation", {}) or {}),
             **(instance.config.conversation or {}),
         }
         try:
@@ -653,7 +929,7 @@ class AgentManager:
         instance = self._agents.get(agent_id)
         if instance is None or instance.status != "running":
             return
-        registry = instance.services.get("conversation_registry")
+        registry = instance.services.conversation_registry
         if registry is None:
             return
         runtime = registry.get(agent_id, session_id)
@@ -672,17 +948,36 @@ class AgentManager:
         instance = self._agents.get(task.agent_id)
         if instance is None or instance.status != "running":
             return
-        session_mgr = self._services.get("session_mgr")
+        session_mgr = self._services.session_mgr
         session = await session_mgr.get(task.session_id) if session_mgr is not None else None
         if session is None:
             logger.info("主动任务的会话不存在, 跳过", task_id=task.task_id, session_id=task.session_id)
             return
-        registry = instance.services.get("conversation_registry")
+        registry = instance.services.conversation_registry
         runtime = registry.get(task.agent_id, session.session_id) if registry is not None else None
         if runtime is not None and runtime.state is ConversationState.WAITING:
             runtime.resolve_wait(WaitEndReason.PROACTIVE)
             return
         await self._run_forced_turn(instance, session, runtime, task)
+
+    def _reserve_forced_turn_write(self, session: Session, task_id: str) -> tuple[Any, Any, bool]:
+        """U8: 强制话轮写入预约。返回 (gate, reservation, permitted)。
+
+        permitted=False = 仲裁让位 (放弃本次强制话轮); gate 为 None 时 reservation
+        亦为 None 且恒放行 (未接门零行为变化, 测试夹具路径)。
+        """
+        gate = self._services.session_write_gate
+        if gate is None:
+            return None, None, True
+        reservation = gate.reserve(session.session_id, "proactive")
+        if reservation is None:
+            logger.info(
+                "强制话轮让位: 会话已有活跃写入租约 (SessionWriteGate 仲裁)",
+                task_id=task_id,
+                session_id=session.session_id,
+            )
+            return gate, None, False
+        return gate, reservation, True
 
     async def _run_forced_turn(
         self,
@@ -698,15 +993,40 @@ class AgentManager:
         `await lock.acquire()` 处被取消 (scheduler.stop 取消调度循环时会传播到
         这里), finally 看到 `locked()` 为真 (那是并发消息任务持有的) 就会释放
         别人的锁, 单会话串行被破坏 (两条消息同时进入 Loop)。
+
+        Fix-81 (M3): finally 的状态复位限定为"本协程确实设置过"(`turn_owns_state`)。
+        此前在等待会话锁期间被取消时, finally 仍无条件清 forced_turn 并把 THINKING
+        拨回 IDLE —— 而此刻持有锁的并发回合 (消息回合/另一强制话轮) 正处于
+        THINKING, 状态机被一个从未设置过它的协程破坏 (接手方强制话轮的
+        forced_turn 被清、进行中的回合被误拨 IDLE)。
+        Fix-82 (M4): ① AgentContext.services 注入 conversation_runtime —— loop 的
+        打断判定 (_interrupt_seq) 经它读取, 不注入则强制话轮恒不可被打断;
+        ② 正常完成时清除 loop 结束后才到达的陈旧 interrupt_state (THINKING 直到
+        finally 才解除, notify_incoming 仍会 request_interrupt) —— 否则下一回合被
+        InterruptInjector 注入"上一轮被打断"的错误提示; loop 自身被打断
+        (interrupted=True) 时保留, 交由接替回合的 Injector 正常消费。
+        Fix-116: 会话锁获取移入 try —— 此前取锁 await 在 try 之外, 预约到租约后
+        若在取锁阶段异常/被取消, finally 的 cancel 不在执行路径上, 租约泄漏到
+        hold 超时 (期间该会话写入面被一个永不提交也不取消的幽灵租约挡住)。
+        Fix-115: 正常完成且租约有效时把产出落 U1 事件 (见 _record_forced_turn_events)。
         """
         import time as _time
 
-        lock_mgr = self._services.get("session_lock")
+        # U8 SessionWriteGate: 先预约后写入 —— 强制话轮是主动写入会话流, 动手前
+        # 取租约 (单写者仲裁); 在途已有活跃写者时放弃本次 (机会性主动, 让位不抢)。
+        # Fix-81/82 的状态机互踩根因 (多写者无仲裁) 收编进该门。
+        gate, reservation, permitted = self._reserve_forced_turn_write(session, task.task_id)
+        if not permitted:
+            return
+
+        lock_mgr = self._services.session_lock
         lock_key = f"{session.platform}:{session.user_id or 'unknown'}:{session.group_id or 'private'}"
-        lock = await lock_mgr.acquire(lock_key) if lock_mgr is not None else None
+        lock = None  # Fix-116: 取锁移入 try, lock/acquired 预置供 finally 判定
         acquired = False
+        turn_owns_state = False  # Fix-81: 仅当本协程设置过 forced_turn/THINKING 才复位
         try:
-            if lock is not None:
+            if lock_mgr is not None:
+                lock = await lock_mgr.acquire(lock_key)
                 await lock.acquire()
                 acquired = True
             if runtime is not None:
@@ -714,53 +1034,152 @@ class AgentManager:
                     source="proactive", reason=task.reason, created_at=_time.time()
                 )
                 runtime.transition_to(ConversationState.THINKING)
-            from isac.channel.model import ISACMessage as _ISACMessage
-            from isac.core.types import AgentContext
-
+                turn_owns_state = True
             # L3: 主动发言必带 source/intent/reason —— 经合成用户消息注入本轮上下文
-            content = (
-                f"[主动任务] 来源: {task.source}; 意图: {task.intent}; 原因: {task.reason}。"
-                "请据此主动向用户发起一条自然、简短的消息。"
-            )
-            synthetic = _ISACMessage(
-                msg_id=f"proactive-{task.task_id}",
-                platform=session.platform,
-                timestamp=int(_time.time()),
-                user_id=session.user_id,
-                user_name="",
-                group_id=session.group_id,
-                session_id=session.session_id,
-                content=content,
-            )
-            agent_context = AgentContext(
-                session=session,
-                user_profile=None,
-                current_message=synthetic,
-                services={"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id},
-            )
+            content, agent_context = self._forced_turn_context(instance, session, task, runtime)
             result = await instance.loop.run([{"role": "user", "content": content}], agent_context)
-            if result.content:
-                instance.gating.get_turn_scheduler(session.session_id).record_reply()
-                await self._send_proactive_reply(instance, session, result.content)
+            if not getattr(result, "interrupted", False):
+                # Fix-82: 正常完成 → 清除 loop 结束后到达的陈旧打断信号
+                if runtime is not None:
+                    runtime.clear_interrupt()
+                if result.content:
+                    # U8: 租约有效才推送产出 —— 超时作废 fail-closed, 丢弃本轮输出
+                    # (租约失效意味着另一写者可能已接手, 继续推送会互踩状态机)。
+                    if gate is not None and reservation is not None and not gate.commit(reservation):
+                        logger.warning(
+                            "强制话轮租约失效, 丢弃本次产出 (fail-closed)",
+                            task_id=task.task_id,
+                            session_id=session.session_id,
+                        )
+                    else:
+                        instance.gating.get_turn_scheduler(session.session_id).record_reply()
+                        # Fix-115: 产出落 U1 事件流 (在推送前, 推送失败不丢事件)。
+                        await self._record_forced_turn_events(
+                            instance, agent_context.current_message, content, result.content
+                        )
+                        await self._send_proactive_reply(instance, session, result.content)
         except Exception:  # noqa: BLE001
             logger.error("强制话轮执行异常", task_id=task.task_id, exc_info=True)
         finally:
-            if runtime is not None:
-                runtime.forced_turn = None
-                if runtime.state is ConversationState.THINKING:
-                    runtime.transition_to(ConversationState.IDLE)
-            # 只释放**本协程真正获取到**的锁 (acquired 标志), 不看共享锁的
-            # locked() 状态 —— 否则取消场景下会释放并发消息持有的同一把锁。
-            if lock is not None and acquired:
-                lock.release()
-            if lock_mgr is not None:
-                lock_mgr.release(lock_key)
+            # U8: 未提交的租约一律取消 (异常/被打断/未产出), 释放会话写入面。
+            # 已 commit 的租约 cancel 为无操作 (幂等)。
+            if gate is not None and reservation is not None:
+                gate.cancel(reservation)
+            self._finish_forced_turn(runtime, turn_owns_state, lock_mgr, lock_key, lock, acquired)
+
+    async def _record_forced_turn_events(
+        self,
+        instance: AgentInstance,
+        message: ISACMessage,
+        proactive_content: str,
+        reply_content: str,
+    ) -> None:
+        """Fix-115: 强制话轮产出落 U1 事件流 (best-effort, 失败仅记日志)。
+
+        此前只有消息回合路径写 message.user/turn.completed, 强制话轮 (主动发言)
+        完全绕过事件流 —— LLM 实际看到的主动 prompt 与发出的回复在会话事件流中
+        不存在: 后续回合的历史窗口看不到这段交互, 无法支撑"主动说过什么"的上下文。
+        合成 prompt (带 proactive 标记) 与回复成对写入。session_key 经 _history_parts
+        复用 SessionManager 口径; 历史未启用/未注入时静默跳过 (零行为变化)。
+        """
+        parts = self._history_parts(instance, message)
+        if parts is None:
+            return
+        store, _, session_key = parts
+        from isac.session.models import EVENT_TURN_COMPLETED, EVENT_USER_MESSAGE, SessionEvent
+
+        try:
+            now = int(time.time())
+            await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_USER_MESSAGE,
+                    timestamp=now,
+                    payload={"content": proactive_content, "proactive": True},
+                )
+            )
+            await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_TURN_COMPLETED,
+                    timestamp=now,
+                    payload={"content": reply_content},
+                )
+            )
+            await store.flush()
+        except Exception as exc:  # noqa: BLE001 事件落盘失败不阻塞主动回复
+            logger.warning("强制话轮事件落盘失败", error=str(exc))
+
+    @staticmethod
+    def _finish_forced_turn(
+        runtime: ConversationRuntime | None,
+        turn_owns_state: bool,
+        lock_mgr: Any,
+        lock_key: str,
+        lock: Any,
+        acquired: bool,
+    ) -> None:
+        """Fix-81 (从 _run_forced_turn 抽出, 降圈复杂度): 强制话轮收尾。
+
+        只复位本协程设置过的状态 (turn_owns_state), 只释放本协程获取到的锁
+        (acquired) —— 取消在等锁阶段时不得动并发回合的状态机或别人的锁。
+        """
+        if runtime is not None and turn_owns_state:
+            runtime.forced_turn = None
+            if runtime.state is ConversationState.THINKING:
+                runtime.transition_to(ConversationState.IDLE)
+        if lock is not None and acquired:
+            lock.release()
+        if lock_mgr is not None:
+            lock_mgr.release(lock_key)
+
+    @staticmethod
+    def _forced_turn_context(
+        instance: AgentInstance,
+        session: Session,
+        task: ProactiveTask,
+        runtime: ConversationRuntime | None,
+    ) -> tuple[str, Any]:
+        """Fix-82 (从 _run_forced_turn 抽出, 降圈复杂度): 合成强制话轮上下文。
+
+        返回 (合成消息文本, AgentContext); conversation_runtime 经 services 注入,
+        让 loop 的打断判定 (_interrupt_seq) 能感知本回合期间到达的新消息。
+        """
+        import time as _time
+
+        from isac.channel.model import ISACMessage as _ISACMessage
+        from isac.core.types import AgentContext
+
+        content = (
+            f"[主动任务] 来源: {task.source}; 意图: {task.intent}; 原因: {task.reason}。"
+            "请据此主动向用户发起一条自然、简短的消息。"
+        )
+        synthetic = _ISACMessage(
+            msg_id=f"proactive-{task.task_id}",
+            platform=session.platform,
+            timestamp=int(_time.time()),
+            user_id=session.user_id,
+            user_name="",
+            group_id=session.group_id,
+            session_id=session.session_id,
+            content=content,
+        )
+        turn_services: dict[str, Any] = {"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id}
+        if runtime is not None:
+            turn_services["conversation_runtime"] = runtime
+        agent_context = AgentContext(
+            session=session,
+            user_profile=None,
+            current_message=synthetic,
+            services=turn_services,
+        )
+        return content, agent_context
 
     async def _send_proactive_reply(self, instance: AgentInstance, session: Session, content: str) -> None:
         """把主动话轮的回复经原 Channel 发送 (platform_session_id 保证 WebChat 可达)。"""
         from isac.channel.model import ISACMessage as _ISACMessage
 
-        channel_registry = self._services.get("channel_registry")
+        channel_registry = self._services.channel_registry
         adapter = channel_registry.get(session.platform) if channel_registry is not None else None
         if adapter is None:
             logger.warning("主动消息无可用适配器, 丢弃", platform=session.platform)
@@ -804,6 +1223,7 @@ class AgentManager:
         user_profile: UserProfile | None,
         reply: str,
         user_content: str | None = None,
+        turn_seq: int | None = None,
     ) -> None:
         """Q1: 把本轮对话写入记忆 (后台任务, 失败降级不影响回复)。
 
@@ -811,13 +1231,64 @@ class AgentManager:
         从未调用 store_episode, 记忆恒为空。写入放后台任务是为了不给回复路径增加
         延迟 (配置 embedding 时 store_episode 内含一次向量化 API 调用)。
         user_content 缺省时用 message.content (直调 handle_message 的旧调用方)。
+        turn_seq: U1 本回合 turn.completed 事件 seq, episodes 事件投影定位用。
         """
         task = asyncio.create_task(
-            self._write_memory(instance, message, session, user_profile, reply, user_content),
+            self._write_memory(
+                instance, message, session, user_profile, reply, user_content,
+                turn_seq=turn_seq,
+            ),
             name=f"memory-write-{session.session_id}",
         )
         self._memory_tasks[task] = instance.agent_id
         task.add_done_callback(lambda t: self._memory_tasks.pop(t, None))
+
+    async def _project_episode_content(
+        self, instance: AgentInstance, message: ISACMessage, turn_seq: int | None
+    ) -> tuple[str, str, str] | None:
+        """U1: episodes 事件投影 —— 从事件流读回本回合内容作为记忆写入源。
+
+        事件流是唯一事实源 (append-only 不可变): 按 turn_seq 定位本回合
+        turn.completed 事件, 及其之前最近的 message.user 事件, 返回
+        ``(用户输入, 助手回复, 说话人)``。事件流不可用/未启用/定位失败返回 None
+        (调用方回退内存参数) —— 投影失败不阻塞记忆写入。
+        """
+        if turn_seq is None or not self._session_history_enabled():
+            return None
+        store = self._services.session_event_store
+        session_key = self._session_key_for(instance, message)
+        if session_key is None:
+            return None
+        from isac.session.models import EVENT_TURN_COMPLETED, EVENT_USER_MESSAGE
+
+        try:
+            # 本回合事件对 (user→turn) 紧邻; 后台写入可能与下一回合入站交叠,
+            # 窗口取大些保证 turn_seq 事件仍在其中。
+            events = await store.fetch_recent(session_key, limit=32)
+            turn_event = next(
+                (e for e in events if e.event_type == EVENT_TURN_COMPLETED and e.seq == turn_seq),
+                None,
+            )
+            if turn_event is None:
+                return None
+            user_event = next(
+                (
+                    e for e in reversed(events)
+                    if e.event_type == EVENT_USER_MESSAGE and e.seq < turn_seq
+                ),
+                None,
+            )
+            if user_event is None:
+                return None
+            said = str(user_event.payload.get("content", ""))
+            reply = str(turn_event.payload.get("content", ""))
+            speaker = str(user_event.payload.get("user_name", ""))
+            if not said or not reply:
+                return None
+            return said, reply, speaker
+        except Exception as exc:  # noqa: BLE001 投影失败回退直写, 不阻塞记忆
+            logger.debug("episodes 事件投影失败, 回退直写", error=str(exc))
+            return None
 
     async def _write_memory(
         self,
@@ -827,24 +1298,41 @@ class AgentManager:
         user_profile: UserProfile | None,
         reply: str,
         user_content: str | None = None,
+        turn_seq: int | None = None,
     ) -> None:
-        """写入一轮对话的 episodic 记忆 + 更新人物画像 (SPECIFICATION 5.1: 失败降级)。"""
+        """写入一轮对话的 episodic 记忆 + 更新人物画像 (SPECIFICATION 5.1: 失败降级)。
+
+        U1: 内容源优先**事件投影** (从 append-only 事件流读回本回合事件对),
+        事件流不可用时回退内存参数 —— 检索面 (store_episode) 不变, 写入侧以
+        不可变事件流为事实源。
+        """
         try:
             user_name = message.user_name or message.user_id
             display_name = instance.config.display_name or instance.agent_id
+            projected = await self._project_episode_content(instance, message, turn_seq)
+            if projected is not None:
+                said, reply, event_user = projected
+                user_name = event_user or user_name
+                merged_burst = True  # 事件投影必经 _dispatch_message, user_content 语义存在
+            else:
+                said = user_content if user_content is not None else message.content
+                merged_burst = user_content is not None
             # 存整轮对话 (用户话 + 回复): BM25/向量召回都能命中双方内容,
             # 注入时也能还原"谁说了什么"。合并回合存的是**整个 burst**
             # (user_content, 已带说话人前缀), 与 Agent 实际看到的输入一致。
-            said = user_content if user_content is not None else message.content
             content = (
                 f"{said}\n{display_name}: {reply}"
-                if user_content is not None and len(said.splitlines()) > 1
+                if merged_burst and len(said.splitlines()) > 1
                 else f"{user_name}: {said}\n{display_name}: {reply}"
             )
             await instance.memory.store_episode(
                 content=content,
                 session_id=session.session_id,
-                user_id=message.user_id,
+                # N5b 批次E 项1: episode.user_id 用归一 master_id (user_profile.user_id)
+                # 而非平台 id, 与 consolidator 归纳写 person_profiles / 注入器读
+                # person_profiles 的键口径一致 (此前键分裂致 S2 画像归纳在启用
+                # consolidation 时即死); user_profile 为 None 时回退平台 id 向后兼容。
+                user_id=(getattr(user_profile, "user_id", "") or message.user_id),
                 group_id=message.group_id or "",
                 metadata={"importance": 0.5},
             )
@@ -862,10 +1350,10 @@ class AgentManager:
         SessionManager 是内存实现, session_id 每次重启都会重新生成, 用它作键的
         快照重启后永远无法命中; RecoveryInjector 按同一公式重建键匹配。
         """
-        store = instance.services.get("conversation_state_store")
+        store = instance.services.conversation_state_store
         if store is None:
             return
-        registry = instance.services.get("conversation_registry")
+        registry = instance.services.conversation_registry
         runtime = (
             registry.get(instance.agent_id, session.session_id) if registry is not None else None
         )
@@ -893,8 +1381,11 @@ class AgentManager:
         person_id 与读侧 (PersonProfileInjector / query_person_profile 工具) 保持
         同一口径: 优先 UserMapper master_id (Q1 起 SQLite 持久化, 跨重启稳定),
         无 user_profile 时退化用平台 user_id (与注入器的 session.user_id 兜底一致)。
-        agent 键用 instance.agent_id (读侧用 session.agent_id, 二者相同)。
-        画像文本的 LLM 归纳留 MemoryConsolidator (MVP 之后), 本回路只做启发式累积。
+
+        U4: agent 键统一用 pipeline.namespace (租户前缀/自定义 namespace 下与
+        consolidator/注入器/工具读侧同键 —— 此前 manager 用裸 instance.agent_id,
+        与 consolidator 的租户前缀键分裂, 画像归纳写入 injector 永远读不到)。
+        默认单租户时 namespace == agent_id, 零行为变化。
 
         R12: 改用 ``increment_person_interaction`` 原子增量更新, 消除
         read-modify-write 竞态 (同一人并发消息导致 interaction_count 丢失)。
@@ -905,16 +1396,17 @@ class AgentManager:
         person_id = (getattr(user_profile, "user_id", "") or message.user_id or "").strip()
         if not person_id:
             return
+        agent_key = str(getattr(instance.memory, "namespace", "") or instance.agent_id)
         # name 仅在首次出现 (新 person_id) 时用 user_name 兜底; 已存在行由
         # increment_person_interaction 走 ON CONFLICT DO UPDATE, 不覆盖 name
         # (避免每次消息把 LLM 归纳的 name 重置为平台 user_name)。
         name_for_insert = (message.user_name or person_id) if message.user_name else None
         if not hasattr(metadata_store, "increment_person_interaction"):
             # 旧 store (或 mock) 不支持新方法 → 保留旧 read-modify-write 路径
-            existing = await metadata_store.get_person_profile(instance.agent_id, person_id) or {}
+            existing = await metadata_store.get_person_profile(agent_key, person_id) or {}
             from isac.utils.helpers import unix_now
             await metadata_store.upsert_person_profile(
-                instance.agent_id,
+                agent_key,
                 {
                     "person_id": person_id,
                     "name": message.user_name or existing.get("name") or message.user_id,
@@ -930,7 +1422,7 @@ class AgentManager:
             )
             return
         await metadata_store.increment_person_interaction(
-            instance.agent_id,
+            agent_key,
             person_id,
             name=name_for_insert,
             relationship_depth_step=RELATIONSHIP_DEPTH_STEP,
@@ -998,7 +1490,10 @@ class AgentManager:
                 await instance.memory.store_episode(
                     content=f"{speaker}: {message.content}",
                     session_id=session.session_id,
-                    user_id=message.user_id,
+                    # Fix-112: 与 _write_memory (N5b 批次E 项1) 同口径用归一 master_id
+                    # (user_profile.user_id) —— 此前旁听用平台 id, 主写作用 master_id,
+                    # 同一用户在旁听/主写两侧键分裂, 按 master_id 检索召回不到旁听记忆。
+                    user_id=(getattr(user_profile, "user_id", "") or message.user_id),
                     group_id=message.group_id or "",
                     metadata={"importance": 0.3, "observed": True},
                 )
@@ -1033,7 +1528,7 @@ class AgentManager:
     def _conversation_enabled(self) -> bool:
         """L1: 是否启用会话级拟人运行时 (默认关闭 → 主链路零行为变化)。"""
         return bool(
-            self._services.get("global_config", {}).get("conversation", {}).get("enabled", False)
+            (self._services.global_config or {}).get("conversation", {}).get("enabled", False)
         )
 
     def _require(self, agent_id: str) -> AgentInstance:
@@ -1043,13 +1538,13 @@ class AgentManager:
         return instance
 
     def _inc_metric(self, name: str) -> None:
-        metrics = self._services.get("metrics")
+        metrics = self._services.metrics
         if metrics is not None:
             metrics.counter(name).inc()
 
     def _update_active_gauge(self) -> None:
         """重新统计 status=running 的 Agent 数并更新 isac_agents_active。"""
-        metrics = self._services.get("metrics")
+        metrics = self._services.metrics
         if metrics is None:
             return
         active = sum(1 for instance in self._agents.values() if instance.status == "running")
@@ -1067,7 +1562,7 @@ class AgentManager:
         主链路保持零行为变化。sender 每次调用都重新绑定, 因为同一 session 后续消息
         可能来自不同的 Channel 连接。
         """
-        factory = instance.services.get("progress_reporter_factory")
+        factory = instance.services.progress_reporter_factory
         if factory is None:
             return None
         reporter = instance.progress_reporters.get(session_id)

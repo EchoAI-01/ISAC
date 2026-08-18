@@ -90,7 +90,10 @@ def build_router(
             status_code=status_code,
         )
         if not ok:
-            raise HTTPException(status_code=status_code, detail="identity bind failed")
+            raise HTTPException(
+                status_code=status_code,
+                detail={"code": "IDENTITY_BIND_FAILED", "message": "identity bind failed"},
+            )
         return {"person_id": body.person_id, "platform": body.platform, "bound": True}
 
     @router.get("/identity/conflicts", dependencies=read_deps)
@@ -119,7 +122,10 @@ def build_router(
             status_code=status_code,
         )
         if not ok:
-            raise HTTPException(status_code=status_code, detail="conflict not found")
+            raise HTTPException(
+                status_code=status_code,
+                detail={"code": "CONFLICT_NOT_FOUND", "message": "conflict not found"},
+            )
         return {"conflict_id": conflict_id, "resolved": True, "person_id": body.person_id}
 
     return router

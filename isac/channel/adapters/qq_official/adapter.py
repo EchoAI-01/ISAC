@@ -35,13 +35,14 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from typing import Any
 
 import httpx
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage
+from isac.channel.webhook_guard import DEFAULT_MAX_WEBHOOK_BODY_BYTES, read_body_limited
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -62,6 +63,10 @@ _ED25519_SEED_SIZE = 32
 # Fix-24: op=13 验证握手签名 oracle 限流默认值 (见 _handle_validation 说明)。
 _DEFAULT_VALIDATION_RATE_LIMIT = 5
 _DEFAULT_VALIDATION_RATE_WINDOW_SECONDS = 600.0
+# Fix-96: 事件级去重表容量与 TTL —— QQ 平台对未及时确认的事件会重推 (顶层带
+# 事件 id), 无去重时同一消息被处理两次 (重复回复 + 记忆写两份)。LRU + TTL 双限。
+_DEFAULT_EVENT_DEDUP_MAX = 2048
+_DEFAULT_EVENT_DEDUP_TTL_SECONDS = 600.0
 
 
 class QQOfficialAdapter(PlatformAdapter):
@@ -80,6 +85,8 @@ class QQOfficialAdapter(PlatformAdapter):
         self._webhook_host = str(config.get("webhook_host", _DEFAULT_WEBHOOK_HOST) or _DEFAULT_WEBHOOK_HOST)
         self._webhook_port = int(config.get("webhook_port", _DEFAULT_WEBHOOK_PORT) or _DEFAULT_WEBHOOK_PORT)
         self._webhook_path = str(config.get("webhook_path", _DEFAULT_WEBHOOK_PATH) or _DEFAULT_WEBHOOK_PATH)
+        # Fix-76: webhook 请求体体积上限 (验签前先限流读取, 防超大 body 打爆内存)
+        self._max_body_bytes = int(config.get("max_body_bytes", DEFAULT_MAX_WEBHOOK_BODY_BYTES))
         self._running = False
         self._server: Any = None
         self._serve_task: asyncio.Task[Any] | None = None
@@ -96,6 +103,38 @@ class QQOfficialAdapter(PlatformAdapter):
             or _DEFAULT_VALIDATION_RATE_WINDOW_SECONDS
         )
         self._validation_timestamps: deque[float] = deque()
+        # Fix-96: 事件级去重 (event_id → 首次接收时间); LRU 上限 + TTL 过期双约束。
+        self._seen_event_ids: OrderedDict[str, float] = OrderedDict()
+        self._event_dedup_max = int(
+            config.get("event_dedup_max", _DEFAULT_EVENT_DEDUP_MAX) or _DEFAULT_EVENT_DEDUP_MAX
+        )
+        self._event_dedup_ttl_seconds = float(
+            config.get("event_dedup_ttl_seconds", _DEFAULT_EVENT_DEDUP_TTL_SECONDS)
+            or _DEFAULT_EVENT_DEDUP_TTL_SECONDS
+        )
+
+    def _is_duplicate_event(self, event_id: str) -> bool:
+        """Fix-96: 顶层事件 id 去重。已见 (TTL 内) 返回 True; 首见记录并返回 False。
+
+        空 event_id 不去重 (无法判重, 放行避免误丢)。顺带清理过期条目并按
+        LRU 上限淘汰最旧, 保证表不无界增长。
+        """
+        if not event_id:
+            return False
+        now = time.time()
+        # 惰性清理过期条目 (从最旧开始, 遇未过期即停)
+        while self._seen_event_ids:
+            oldest_id, oldest_ts = next(iter(self._seen_event_ids.items()))
+            if now - oldest_ts < self._event_dedup_ttl_seconds:
+                break
+            self._seen_event_ids.pop(oldest_id, None)
+        if event_id in self._seen_event_ids:
+            self._seen_event_ids.move_to_end(event_id)
+            return True
+        self._seen_event_ids[event_id] = now
+        while len(self._seen_event_ids) > self._event_dedup_max:
+            self._seen_event_ids.popitem(last=False)
+        return False
 
     @property
     def platform_name(self) -> str:
@@ -152,9 +191,14 @@ class QQOfficialAdapter(PlatformAdapter):
         """
         # 取 raw body (验签需要原始字节, 不能 json 后再序列化)
         try:
-            raw_body = await request.body()
+            # Fix-76: 限流读取 —— request.body() 全量读入内存且无上限, 而验签在
+            # 读取之后, 超大 body (含 chunked) 在签名校验之前即可打爆内存。
+            raw_body = await read_body_limited(request, self._max_body_bytes)
         except Exception as exc:  # noqa: BLE001
             logger.warning("QQ 官方 webhook 取 body 失败", error=str(exc))
+            return {}
+        if raw_body is None:
+            logger.warning("QQ 官方 webhook 请求体超限, 拒绝", limit=self._max_body_bytes)
             return {}
         try:
             payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
@@ -285,6 +329,12 @@ class QQOfficialAdapter(PlatformAdapter):
 
     async def _dispatch_event(self, payload: dict) -> dict:
         """解析 op=0 事件 → 规范化 ISACMessage → on_message。"""
+        # Fix-96: 事件级去重 —— QQ 对未及时确认的事件重推 (顶层 id 不变), 无去重
+        # 时同一消息被处理两次 (重复回复 + 记忆写两份)。首见才处理, 重推直接 ACK。
+        event_id = str(payload.get("id", "") or "")
+        if self._is_duplicate_event(event_id):
+            logger.debug("QQ 官方重复事件已去重, 跳过", event_id=event_id)
+            return {"opcode": 12}
         event_type = str(payload.get("t", "") or "")
         data = payload.get("d") or {}
         msg = self._build_isac_message(event_type, data)
@@ -386,16 +436,7 @@ class QQOfficialAdapter(PlatformAdapter):
             return False
         if resp is None:
             return False
-        # NOTE: 用 `code_raw is None` 判定而非 `or` —— 0 在 Python 是 falsy,
-        # `None or 0 == 0` 会把 code=None (QQ 网关异常返回) 误判为成功。
-        # 与 FeishuAdapter.send() 和同文件 _handle_callback op 判定保持
-        # 一致的 fail-closed 语义 (缺失/None → -1 → 视为失败)。
-        code_raw = resp.get("code")
-        code = -1 if code_raw is None else int(code_raw)
-        if code != 0:
-            logger.warning("QQ 官方 send 返回非 0 code", code=code, msg=resp.get("message", ""))
-            return False
-        return True
+        return _send_response_ok(resp)
 
     async def _get_access_token(self) -> str | None:
         """获取 access_token (缓存 + 提前 60s 刷新)。"""
@@ -439,6 +480,31 @@ class QQOfficialAdapter(PlatformAdapter):
     def set_http_transport(self, transport: Any) -> None:
         """供测试注入 httpx.MockTransport (生产不调用)。"""
         self._http_transport = transport
+
+
+def _send_response_ok(resp: dict) -> bool:
+    """Fix-56: QQ 开放平台 OpenAPI 契约 (bot.q.qq.com) 的成功判定。
+
+    成功时 HTTP 2xx 直接返回业务数据 (群/C2C: {"id", "timestamp"} 消息对象;
+    频道: Message 对象), 响应体**不含** code 字段; 失败时返回非 2xx 状态 +
+    code/message (_http_post 对非 2xx 已返回 None)。此前实现按 `code == 0`
+    判成功 —— 成功响应必然无 code → None → -1 → 所有真实成功发送被判失败;
+    单测用虚构 {"code":0} 响应与实现互相印证 (与 Fix-37 企微 AES 布局错误同构)。
+    现: 2xx + 无错误字段 → 成功; 若带 err_code/code 且非 0 → fail-closed
+    (网关异常透传等未文档化形态保守拒绝)。
+    """
+    err_raw = resp.get("err_code")
+    if err_raw is None:
+        err_raw = resp.get("code")
+    if err_raw is not None:
+        try:
+            err = int(err_raw)
+        except (TypeError, ValueError):
+            err = -1
+        if err != 0:
+            logger.warning("QQ 官方 send 返回错误码", code=err, msg=str(resp.get("message", "")))
+            return False
+    return True
 
 
 def _derive_seed(secret: str) -> bytes:

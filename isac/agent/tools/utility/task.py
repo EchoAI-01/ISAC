@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 # 工具默认等待子任务终态的超时 (秒)
 _DEFAULT_WAIT_TIMEOUT = 30.0
+# N5b 批次F: LLM 可控参数上限, 防传超大值致主上下文长期挂起/资源耗尽。
+_MAX_WAIT_TIMEOUT = 300.0
+_MAX_BUDGET_TOKENS = 32000
 _POLL_INTERVAL = 0.05
 _TERMINAL = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
 
@@ -46,9 +49,13 @@ class TaskTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        # 递归深度检查: services["task_depth"] 由 runtime 维护, 默认 0
-        depth = int(context.services.get("task_depth", 0) or 0)
-        max_depth = int(context.services.get("task_max_depth", 3) or 3)
+        # 递归深度检查: services["task_depth"] 由 runtime (subagent/runner.py) 写入
+        # **AgentContext.services**。Fix-68: 此前从 ToolContext.services (= loop.services,
+        # 子 Agent 经 _build_services 收窄, 不含 task_depth) 读 → 恒 0 → 深度守卫
+        # 形同虚设, 一旦启用委派即无限递归。改从 agent_context.services 读
+        # (与本文件其他 agent_id/task_id 取值口径一致)。
+        depth = int(context.agent_context.services.get("task_depth", 0) or 0)
+        max_depth = int(context.agent_context.services.get("task_max_depth", 3) or 3)
         if depth >= max_depth:
             return ToolResult(
                 content=f"子任务递归深度已达上限 ({max_depth}), 拒绝继续委派。",
@@ -58,7 +65,7 @@ class TaskTool(Tool):
         task_text = str(context.args.get("task", "") or "").strip()
         if not task_text:
             return ToolResult(content="task 缺少任务描述。", is_error=True)
-        budget = max(500, int(context.args.get("budget_tokens", 2000) or 2000))
+        budget = min(_MAX_BUDGET_TOKENS, max(500, int(context.args.get("budget_tokens", 2000) or 2000)))
 
         # J4-2: 优先走 SubAgentSupervisor; 无 supervisor 时回退到 task_runner (向后兼容)
         supervisor: SubAgentSupervisor | None = context.services.get("subagent_supervisor")
@@ -102,7 +109,10 @@ class TaskTool(Tool):
         run = await supervisor.submit(task)
         # 子任务派生时 task_depth+1, 递归深度生效
         # (子 Agent 的 services 由 supervisor 注入 runner_factory 时设置 task_depth=depth+1)
-        wait_timeout = float(context.args.get("_wait_timeout", _DEFAULT_WAIT_TIMEOUT) or _DEFAULT_WAIT_TIMEOUT)
+        wait_timeout = min(
+            _MAX_WAIT_TIMEOUT,
+            float(context.args.get("_wait_timeout", _DEFAULT_WAIT_TIMEOUT) or _DEFAULT_WAIT_TIMEOUT),
+        )
         deadline = time.monotonic() + wait_timeout
         while time.monotonic() < deadline:
             cur = await supervisor.get_status(task_id, agent_ctx)

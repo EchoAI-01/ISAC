@@ -20,9 +20,12 @@ from isac.memory.storage.vector import VectorStore
 
 @pytest.fixture
 async def store(tmp_path: Path) -> VectorStore:
+    """yield store 并在测试结束后关闭持久连接, 避免 aiosqlite 长连接
+    被 GC 时抛 ResourceWarning + 'Event loop is closed' (24h soak 前置)。"""
     s = VectorStore(str(tmp_path / "vectors.db"), dimension=4)
     await s.init_schema()
-    return s
+    yield s
+    await s.close()
 
 
 @pytest.mark.asyncio
@@ -37,6 +40,7 @@ async def test_init_schema_creates_vec0_table(tmp_path: Path) -> None:
         rows = await cursor.fetchall()
         assert len(rows) == 1
         assert rows[0][0] == "vectors"
+    await s.close()  # 关闭持久连接, 避免事件循环结束后 aiosqlite 后台线程报错
 
 
 @pytest.mark.asyncio
@@ -91,6 +95,7 @@ async def test_dimension_mismatch_raises(tmp_path: Path) -> None:
     # 写入 3 维向量到 4 维 store, sqlite-vec 会报错
     with pytest.raises(Exception):  # noqa: PT011
         await s.upsert("m1", [1.0, 0.0, 0.0])
+    await s.close()  # 关闭持久连接, 避免 aiosqlite 后台线程在事件循环结束后报错
 
 
 @pytest.mark.asyncio

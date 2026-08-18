@@ -69,6 +69,8 @@ async def test_url_verification_plaintext_returns_challenge() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"challenge": challenge, "token": "tok-123", "type": "url_verification"}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {"challenge": challenge}
@@ -82,6 +84,8 @@ async def test_url_verification_token_mismatch_rejected() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"challenge": "cj", "token": "wrong", "type": "url_verification"}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     # 异常被吞, 不回 challenge (返回空 dict)
@@ -102,6 +106,8 @@ async def test_token_mismatch_uses_constant_time_compare() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"challenge": "cj", "token": "wrong-token-value", "type": "url_verification"}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     # _handle_event 吞掉 ValueError 返回空 dict (与原行为一致)
     resp = await adapter._handle_event(_Req())
@@ -126,6 +132,8 @@ async def test_url_verification_encrypted_mode_decrypts_challenge() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"encrypt": encrypted}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {"challenge": challenge}
@@ -160,6 +168,8 @@ async def test_plaintext_body_rejected_when_encrypt_key_configured() -> None:
     class _Req:
         async def json(self) -> Any:
             return forged_plaintext
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {}
@@ -175,6 +185,8 @@ async def test_plaintext_url_verification_rejected_when_encrypt_key_configured()
     class _Req:
         async def json(self) -> Any:
             return {"challenge": "cj-plaintext", "token": "tok-123", "type": "url_verification"}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {}  # 不回 challenge
@@ -210,6 +222,8 @@ async def test_message_event_normalized_to_isac_message() -> None:
     class _Req:
         async def json(self) -> Any:
             return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())
     assert resp == {}  # 常规事件回空 dict
@@ -220,6 +234,85 @@ async def test_message_event_normalized_to_isac_message() -> None:
     assert msg.group_id == "oc_group1"
     assert msg.content == "你好"
     assert msg.msg_id == "om_msg1"
+
+
+@pytest.mark.asyncio
+async def test_p2p_message_with_chat_type_not_treated_as_group() -> None:
+    """N5b 批次G: 飞书 p2p 私聊事件也带 chat_id, 须按 chat_type=="group" 判定群聊。
+
+    此前一律 group_id=chat_id, p2p 私聊被误判群聊 (下游 @mention/群上下文误触发)。
+    """
+    adapter = _make_adapter(verification_token="tok")
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    payload = {
+        "schema": "2.0",
+        "header": {"event_type": "im.message.receive_v1", "token": "tok"},
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_p2p_user"}, "sender_type": "user"},
+            "message": {
+                "message_id": "om_p2p_msg",
+                "chat_id": "oc_p2p_chat",  # p2p 也带 chat_id (非空!)
+                "chat_type": "p2p",  # 关键: chat_type 标明是私聊
+                "message_type": "text",
+                "content": json.dumps({"text": "私聊你好"}),
+            },
+        },
+    }
+
+    class _Req:
+        async def json(self) -> Any:
+            return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
+
+    resp = await adapter._handle_event(_Req())
+    assert resp == {}
+    assert len(received) == 1
+    msg = received[0]
+    assert msg.user_id == "ou_p2p_user"
+    assert msg.group_id is None  # p2p 私聊, chat_id 非空但按 chat_type 判定 group_id=None
+    assert msg.content == "私聊你好"
+
+
+@pytest.mark.asyncio
+async def test_group_message_with_chat_type_keeps_group_id() -> None:
+    """N5b 批次G: chat_type=="group" 时 chat_id 仍作 group_id (回归保护)。"""
+    adapter = _make_adapter(verification_token="tok")
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    payload = {
+        "schema": "2.0",
+        "header": {"event_type": "im.message.receive_v1", "token": "tok"},
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_g_user"}, "sender_type": "user"},
+            "message": {
+                "message_id": "om_g_msg",
+                "chat_id": "oc_group_real",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": json.dumps({"text": "群聊"}),
+            },
+        },
+    }
+
+    class _Req:
+        async def json(self) -> Any:
+            return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
+
+    await adapter._handle_event(_Req())
+    assert len(received) == 1
+    assert received[0].group_id == "oc_group_real"
 
 
 @pytest.mark.asyncio
@@ -251,6 +344,8 @@ async def test_message_event_encrypted_mode_decrypted_and_normalized() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"encrypt": encrypted}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     await adapter._handle_event(_Req())
     assert len(received) == 1
@@ -273,6 +368,8 @@ async def test_non_message_event_ignored() -> None:
     class _Req:
         async def json(self) -> Any:
             return {"header": {"event_type": "contact.user.updated_v3"}, "event": {}}
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     await adapter._handle_event(_Req())
     assert called == []
@@ -299,6 +396,8 @@ async def test_on_message_exception_does_not_break_response() -> None:
     class _Req:
         async def json(self) -> Any:
             return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
 
     resp = await adapter._handle_event(_Req())  # 不抛异常
     assert resp == {}
@@ -515,3 +614,88 @@ async def test_webhook_rejects_when_verification_token_missing() -> None:
     assert resp.status_code == 200
     assert resp.json() == {}
     assert received == []
+
+
+@pytest.mark.asyncio
+async def test_oversized_body_rejected_before_processing() -> None:
+    """Fix-76: 超限请求体在进入解密/校验之前即被拒绝 (流式累计, chunked 同样生效)。"""
+    adapter = _make_adapter(verification_token="tok")
+    adapter._max_body_bytes = 1024  # noqa: SLF001
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+
+    class _Req:
+        async def stream(self) -> Any:
+            yield b"x" * 600
+            yield b"y" * 600  # 累计 1200 > 1024
+
+    resp = await adapter._handle_event(_Req())
+    assert resp == {}
+    assert received == []
+
+
+# ── Fix-97: 飞书 mentions 解析为 at segment ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_group_at_message_produces_at_segment() -> None:
+    """Fix-97: 群聊 @机器人消息的 message.mentions 必须产出 at segment ——
+    此前完全不解析, 门控强制触发条件 has_at 恒 False, 飞书群 @机器人不回复。"""
+    adapter = _make_adapter(verification_token="tok")
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    payload = {
+        "schema": "2.0",
+        "header": {"event_type": "im.message.receive_v1", "token": "tok"},
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_user1"}, "sender_type": "user"},
+            "message": {
+                "message_id": "om_at1",
+                "chat_id": "oc_group1",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": json.dumps({"text": "@_user_1 帮个忙"}),
+                "mentions": [
+                    {"key": "@_user_1", "id": {"open_id": "ou_bot"}, "name": "ISAC"},
+                ],
+            },
+        },
+    }
+
+    class _Req:
+        async def json(self) -> Any:
+            return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
+
+    await adapter._handle_event(_Req())
+    assert len(received) == 1
+    msg = received[0]
+    at_segments = [s for s in msg.segments if s.type == "at"]
+    assert len(at_segments) == 1
+    assert at_segments[0].data["user_id"] == "ou_bot"
+    # has_at(bot_open_id) 精确命中 (bot_id 配置为机器人 open_id 的场景)
+    assert msg.has_at("ou_bot") is True
+
+
+def test_build_at_segments_skips_missing_open_id() -> None:
+    """Fix-97: 缺 open_id 的 mention 跳过; 空/非法输入返回空列表。"""
+    from isac.channel.adapters.feishu.adapter import _build_at_segments
+
+    mentions = [
+        {"key": "@_user_1", "id": {"open_id": "ou_a"}, "name": "A"},
+        {"key": "@_user_2", "id": {}, "name": "B"},  # 无 open_id → 跳过
+        "not-a-dict",  # 非法 → 跳过
+    ]
+    segs = _build_at_segments(mentions)
+    assert [s.data["user_id"] for s in segs] == ["ou_a"]
+    assert _build_at_segments(None) == []
+    assert _build_at_segments([]) == []

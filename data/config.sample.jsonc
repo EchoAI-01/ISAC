@@ -23,9 +23,31 @@
   // 主 LLM (文生文): K2 已落地, OpenAI 兼容 chat/completions
   "llm": {
     "provider": "openai",
+    // api_key 明文填写 (开发态); 生产环境可填 "secret:<key>" 引用 SecretStore 加密存储
+    // (R5): 先设 env ISAC_SECRET_KEY (32 字节 base64), 再用 `isac secret set <key>` 存入
+    // 明文, 配置中填 "secret:<key>"。env ISAC_LLM_API_KEY 仍最高优先级覆盖此处。
     "api_key": "sk-your-key",
     "base_url": "https://api.openai.com/v1",
     "model": "gpt-4o-mini"
+    // ── U7 数据化可选键 ──────────────────────────────────────────
+    // cost_tier / latency_tier: 本模型在 ModelRouter 的档位 (free|low|standard|high /
+    //   fast|standard|slow), category 路由打分用; 缺省按能力快照标注或 standard。
+    // model_family: prompt 文件变体选择用的模型族名 (缺省按模型名前缀推断,
+    //   如 gpt-* → gpt, claude-* → claude); 新模型族在此声明即可匹配 prompts/ 变体。
+    // "cost_tier": "low",
+    // "latency_tier": "fast",
+    // "model_family": "gpt"
+  },
+
+  // U7 category 路由: 委派任务 (delegate_task.category) 按类型选模型链, 经
+  // ModelCatalog/ModelRouter 数据驱动选择 (能力/成本/延迟/可达性过滤)。
+  // 四类默认画像见 isac/provider/category_routing.py; categories 节可覆盖任一字段
+  // (operation/cost_ceiling/latency_target/requires_tools), 不改代码。
+  "model_routing": {
+    "categories": {
+      // "chat": { "cost_ceiling": "free" },
+      // "creative": { "cost_ceiling": "high" }
+    }
   },
 
   // J2 多模态 Provider 数组: 用户可配置任意 OpenAI 兼容端点
@@ -144,6 +166,39 @@
     }
   },
 
+  // U1 事件溯源会话内核 (默认开启 = 开箱可用的滑动窗口历史)
+  // 会话存储为 append-only 事件表 (data/gateway/session_events.db, WAL),
+  // 消息历史/滑动窗口/压缩全部从事件派生; 入站消息即持久事件
+  // ("Model-visible ⟺ Logged"), 重启/断电容忍 (torn-tail 自动修复)。
+  //   - enabled: false 时回退旧行为 (LLM 每回合只看当前 burst, 无历史窗口)
+  //   - window_turns: 滑动窗口保留的最近轮数 (一轮 = 一问一答)
+  //   - budget_tokens: 窗口 token 预算 (从最旧丢弃); null/0 = 不设预算
+  "session": {
+    "history": {
+      "enabled": true,
+      "window_turns": 10,
+      "budget_tokens": null
+    }
+  },
+
+  // U3 门控策略化 (全局默认; Agent 级 AgentConfig.gating 可覆盖)。调整任一参数
+  // 都不改代码。strategy 四档: off / keywords (默认) / llm-judge / hybrid。
+  //   - locale: 门控词表语言 (zh_CN 默认中文词表 / en_US 英文词表), 词表在 locales。
+  //   - weights: 评分权重覆盖 (缺省用框架默认, 见 isac/gating/profile.py)。
+  //   - markers: question/request/consult 词表覆盖 (优先于 locale 词表)。
+  //   - llm-judge/hybrid 用小模型判群聊发言相关性: llm_judge_max_per_minute 频率
+  //     上限 (成本防护), 判定器故障/超限自动回落 keywords (fail-safe)。成本估算:
+  //     每次判定约 1 次最便宜 fallback 档调用 (prompt≈系统语+消息, 输出 yes/no)。
+  "gating": {
+    "strategy": "keywords",
+    "locale": "zh_CN",
+    "reply_necessity_threshold": 80
+    // "weights": { "content_question": 15, "content_request": 20 },
+    // "markers": { "question": ["?", "吗"] },
+    // "llm_judge_max_per_minute": 10,
+    // "hybrid_escalate_band": 20
+  },
+
   // P1 拟人化会话运行时 (默认关闭 = 每条消息即时处理, 零行为变化)
   // enabled=true 后:
   //   - debounce_seconds: 静默窗口秒数, 窗口内的连续消息合并为一轮处理 (0 = 不合并)
@@ -182,9 +237,11 @@
     "heuristic_enabled": false
   },
 
-  // 多租户隔离 (O1, 默认关闭 = 单租户零行为变化)
+  // 多租户隔离 (O1/R6, 默认关闭 = 单租户零行为变化)
   // enabled=true 且填入非 default 的 org/tenant 时: 记忆命名空间加 org:tenant 前缀,
   // episodes 读写带租户谓词/打标 (多个租户进程共享同一数据目录时互不可见)。
+  // R6: enabled=true 同时启用租户控制面 routes_tenants (CRUD 租户+成员, tenant:read/write
+  // scope, SQLite 存 data/gateway/tenants.db); enabled=false 时路由不挂载。
   "tenancy": {
     "enabled": false,
     "organization_id": "default",
@@ -202,26 +259,97 @@
   //            (Q0 修正: 此前样例误写 auth_token, 代码不读该键, 照样例配置会
   //             得到无认证的控制面)
   "control": {
-    "enabled": false,
+    "enabled": true,
     "host": "127.0.0.1",
     "port": 8091,
     "agents_dir": "data/agents",
     "api_token": "",
+    // T3-backend: 首登强制设密码 (对标 AstrBot password_change_required)。开箱控制面
+    // 仅绑 127.0.0.1; setup_enabled=true 时 admin 端点首登态返回 428 SETUP_REQUIRED,
+    // POST /api/v1/setup {password} 设密码后才可用 (密码经 PBKDF2 哈希, 不落明文)。
+    // 轮换密码: isac password reset 后重新 POST /setup。配置 api_token/tokens 后 setup 自动跳过。
+    "setup_enabled": true,
+    "setup_state_path": "data/control/setup_state.json",
+    // FE1 前后端分离 CORS (默认空 = 不加 CORSMiddleware, 同源/纯 API 场景零行为
+    // 变化)。独立部署的前端 (如 http://localhost:5173) 消费本 API 时, 在此列出
+    // 允许的 origin; 此时 Session Cookie 自动降 SameSite=Lax 跨源可带, 写操作
+    // 另用 Bearer Token (双轨)。生产推荐同源反代 (前端与 /api 同 origin), 无需
+    // 配置本字段。
+    "cors": {
+      "origins": [],
+      "allow_credentials": true
+    },
     // S5 Workflow 控制面 (O3/P5, 默认关闭)。enabled=true 后挂载 /api/v1/workflows
     // (list/get/start) 并按 base_dir 持久化工作流实例。
     "workflow": {
       "enabled": false,
       "base_dir": "data/workflows"
     },
-    // Fix-31: 部署方强制隔离插件 (经子进程加载), 覆盖插件自己 manifest.jsonc 的
-    // isolated 声明——不完全信任的插件作者/供应链不会主动声明 isolated: true,
-    // 这里给部署方一侧的强制开关。填插件目录名列表, 或 "*" 表示该加载路径下
-    // 全部插件都强制隔离。默认 [] (不覆盖, 只信任插件自己的 manifest 声明)。
-    // 仅 ISAC 原生插件格式支持隔离; 对 AstrBot/MaiBot 兼容层插件 (无
-    // manifest.jsonc) 强制隔离会导致加载失败 (清晰报错, 不会静默退回不受保护的
-    // 宿主进程内加载)。
+    // U6 信任分级倒转: 有 manifest.jsonc 的原生插件**默认隔离加载** (子进程,
+    // trust 缺省=sandboxed), 市场/git/url/upload 安装的插件未显式声明 hosted 即进沙箱。
+    // 仅当 manifest 声明 trust: "hosted" 且目录名列在下方 trust_hosted 清单内
+    // (运营方显式确认信任) 才在宿主进程内加载。无 manifest 的 AstrBot/MaiBot 兼容层
+    // 插件无法隔离, 仍在宿主进程内 (降级承诺, 见 PLUGIN_COMPATIBILITY.md)。
     "plugins": {
-      "isolated_plugins": []
+      // trust_hosted: 运营方显式确认信任、允许宿主进程内加载的插件目录名清单
+      // (须同时 manifest 声明 trust: "hosted" 才生效)。
+      "trust_hosted": [],
+      // Fix-31: 部署方强制隔离清单 (覆盖一切 manifest 声明)。填插件目录名列表,
+      // 或 "*" 表示全部强制隔离。对无 manifest 的兼容层插件强制隔离会清晰报错。
+      "isolated_plugins": [],
+      // U6: 隔离宿主参数接线 (rlimits 仅 POSIX 生效; Windows 跳过资源限额)。
+      "isolation": {
+        // 子进程资源限额: cpu 秒数 / nofile 文件描述符数 / as 地址空间字节
+        "rlimits": {
+          "cpu": [60, 60],
+          "nofile": [64, 64],
+          "as": [268435456, 268435456]
+        },
+        // IPC 响应等待超时 (秒), 超时按子进程挂死处理 (terminate + respawn)
+        "ipc_timeout_seconds": 30,
+        // 子进程崩溃重启上限, 超过后放弃
+        "max_restart_attempts": 3
+      },
+      // T6: 远程插件市场清单 URL。空 = 仅用本地 data/plugin_marketplace.jsonc。
+      // 配置后控制面 httpx 拉取远程清单 (SSRF 校验 + 超时 + 缓存), 与本地合并。
+      "marketplace_url": "",
+      // T6: 是否允许经控制面安装/卸载/热重载插件。默认 true (控制面仅 127.0.0.1 可达)。
+      // 暴露到外网时建议设 false, 经文件系统手动管理插件。
+      "allow_install": true
+    }
+  },
+
+  // R3: CLI 工具后端配置。workspace_root 固定为 data/workspace (LLM 文件操作沙箱,
+  // read_file/write_file 相对它解析, 禁绝对路径/..越权)。bash_allowlist 默认空
+  // (禁止所有命令); 配置允许的命令前缀让 bash 工具可用 (如 ["ls", "cat", "git"])。
+  //
+  // U5 approval: ask 档工具的人工审批配置。tools_policy 值设为 "ask" 的工具执行前
+  // 需人工批准 (IM 回复 "同意 <审批码>"/"拒绝 <审批码>", 或控制面 POST
+  // /api/v1/approvals/{id}/decide); timeout_seconds 秒内未回复自动拒绝 (fail-closed)。
+  "tools": {
+    "bash_allowlist": [],
+    "approval": {
+      "timeout_seconds": 300
+    }
+  },
+
+  // R3: 全局 MCP Server 定义。assemble_agent 按 Agent 级 mcp_servers (允许名列表)
+  // 查此表构造 MCPClient, connect + list_tools 把 MCP 工具桥接为 ISAC Tool 注册进
+  // per-Agent ToolRegistry; Agent 停止/销毁时 disconnect。stdio 启动子进程,
+  // http 用 httpx, sse 暂未实现 (会显式报错)。默认 servers 空 (不连接任何 MCP)。
+  "mcp": {
+    "servers": {
+      // "example_stdio": {
+      //   "transport": "stdio",
+      //   "command": "npx",
+      //   "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      //   "env": {}
+      // },
+      // "example_http": {
+      //   "transport": "http",
+      //   "url": "https://mcp.example.com",
+      //   "token": ""
+      // }
     }
   },
 

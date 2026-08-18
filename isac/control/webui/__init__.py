@@ -4,6 +4,11 @@ FastAPI 静态托管 + Vanilla JS, 调用 G1 Admin API 管理 Agent/路由/Link/
 不依赖 Vue 构建工具链, 单页 HTML + fetch 调用。
 
 启动: 控制面已运行时, 访问 http://127.0.0.1:8765/ui/
+
+**DEPRECATED (FE1, 2026-08-16)**: 本静态托管 WebUI 在前后端分离后由独立前端
+项目 (F1-F4, DEVELOPMENT_PLAN.md §四 FE) 取代。迁移期保留可用 (control/webui/
+仍随包发布, /ui 仍挂载); F2 十域页面迁移完成并验证后, 本模块与 /ui 挂载将移除。
+新功能不要加到本 WebUI, 改在独立前端项目实现 (消费 /api/v1 + SSE 契约)。
 """
 
 from __future__ import annotations

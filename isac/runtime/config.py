@@ -50,12 +50,16 @@ class AgentConfig:
     # "observer" = 旁听 (只入记忆不回复); "candidate" = 候选 (可被仲裁选为回复者)
     mesh_role: str = ""
 
-    # 能力开关: 插件 / 工具 / 命令 / MCP, 按 Agent 独立配置
+    # 能力开关: 插件 / 工具 / 命令 / MCP / 多模态能力, 按 Agent 独立配置
     plugins_allow: list[str] = field(default_factory=lambda: ["*"])
     plugins_deny: list[str] = field(default_factory=list)
     tools_policy: dict[str, str] = field(default_factory=dict)  # 覆盖全局工具权限
     commands_allow: list[str] = field(default_factory=lambda: ["*"])
     mcp_servers: list[str] = field(default_factory=list)  # 允许使用的 MCP Server 名
+    # R1-⑤: 多模态能力白名单 (工具名: generate_image/generate_video/transcribe_audio/
+    # synthesize_speech/understand_image/understand_video)。默认 ["*"] 全部允许 (向后兼容);
+    # assembly 按此字段条件注册媒体工具, ModelCapabilitiesInjector 据此注入 Prompt。
+    model_capabilities_allow: list[str] = field(default_factory=lambda: ["*"])
 
     # P1: 拟人化会话配置覆盖 (与全局 conversation 节合并, Agent 级优先;
     # enabled 总开关仍以全局 conversation.enabled 为准, SPECIFICATION.md 1.7)

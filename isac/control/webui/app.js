@@ -317,6 +317,42 @@ function startEventStream() {
     }
 }
 
+// T4: 实时日志台 —— 消费 /api/v1/logs/tail SSE, 把日志条目追加到 #log-stream。
+// 与 events/stream 同样限制: 仅会话 Cookie 模式 (EventSource 不支持 Bearer Header)。
+// level 过滤: 重连时带 ?level= 让服务端过滤, 客户端不再二次过滤。
+let logSource = null;
+const LOG_LEVELS = ["debug", "info", "warning", "error", "critical"];
+function startLogStream() {
+    if (logSource) logSource.close();
+    if (usingLegacyBearerAuth) return;
+    const filter = document.getElementById("log-level-filter");
+    const level = filter ? filter.value : "warning";
+    try {
+        const url = level ? `/api/v1/logs/tail?level=${encodeURIComponent(level)}` : "/api/v1/logs/tail";
+        logSource = new EventSource(url);
+        logSource.onmessage = (ev) => {
+            const pre = document.getElementById("log-stream");
+            if (!pre) return;
+            let entry;
+            try { entry = JSON.parse(ev.data || "{}"); } catch (_) { return; }
+            const ts = entry.timestamp || "";
+            const lvl = (entry.level || "").toUpperCase();
+            const logger = entry.logger || "";
+            const event = entry.event || "";
+            const line = `[${ts}] ${lvl.padEnd(8)} ${logger} ${event}`.trim() + "\n";
+            pre.textContent += line;
+            // 滚到底; 超长截断防内存爆
+            pre.scrollTop = pre.scrollHeight;
+            if (pre.textContent.length > 50000) {
+                pre.textContent = pre.textContent.slice(-40000);
+            }
+        };
+        logSource.onerror = () => { console.warn("日志 SSE 连接异常, 浏览器将自动重连"); };
+    } catch (e) {
+        console.warn("日志 EventSource 初始化失败", e);
+    }
+}
+
 // J3-5: SPA 导航 (10 域, 当前页 active)
 function navigate(page) {
     document.querySelectorAll(".page").forEach(el => el.classList.remove("active"));
@@ -329,7 +365,7 @@ function navigate(page) {
     if (page === "dashboard") refreshDashboard();
     if (page === "agents") refreshAgents();
     if (page === "channels") { refreshRules(); refreshLinks(); }
-    if (page === "logs") refreshAudit();
+    if (page === "logs") { refreshAudit(); startLogStream(); }
     if (page === "providers") refreshProviders();
     if (page === "usage") refreshUsage();
     if (page === "extensions") refreshExtensions();
@@ -447,19 +483,26 @@ async function refreshUsage() {
         apiCall("GET", `/usage/models/summary?group_by=${groupBy}`).catch(() => []),
         apiCall("GET", "/usage/models/events?limit=50").catch(() => ({ events: [] })),
     ]);
-    if (summary === null) return;
+    // N2-2: 用量计量未启用 (usage_store 为 None) 时 /usage/models/* 路由不挂载 →
+    // apiCall 404 返回 null。此前 `if (summary === null) return` 直接退出, 不渲染
+    // 任何行 → usage 表 tbody 空 → 页面无反馈 (既无数据也无空状态提示)。改为渲染
+    // 空状态行, 让"计量未启用/无数据"可见不报错 (与 audit 空状态一致)。
     // summary 表
     clearTableBody("usage-summary-table");
-    (summary || []).forEach(s => {
-        const groupKey = s[groupBy] || s.provider || s.model || "unknown";
-        addRow("usage-summary-table", [
-            groupKey, s.request_count || 0,
-            s.prompt_tokens || 0, s.completion_tokens || 0, s.total_tokens || 0,
-            s.estimated_cost_sum || "-",
-        ]);
-    });
-    if ((summary || []).length === 0) {
-        addRow("usage-summary-table", ["(无数据)", "", "", "", "", ""]);
+    if (summary === null) {
+        addRow("usage-summary-table", ["(计量未启用)", "", "", "", "", ""]);
+    } else {
+        summary.forEach(s => {
+            const groupKey = s[groupBy] || s.provider || s.model || "unknown";
+            addRow("usage-summary-table", [
+                groupKey, s.request_count || 0,
+                s.prompt_tokens || 0, s.completion_tokens || 0, s.total_tokens || 0,
+                s.estimated_cost_sum || "-",
+            ]);
+        });
+        if (summary.length === 0) {
+            addRow("usage-summary-table", ["(无数据)", "", "", "", "", ""]);
+        }
     }
     // events 表
     clearTableBody("usage-events-table");
@@ -492,7 +535,7 @@ async function refreshExtensions() {
         addRow("plugins-table", ["(无已加载插件)", "", ""]);
     }
     // SubAgent 任务 (Q5: usage/evidence 现在保留到 run 上, 控制面可读)
-    const runs = await apiCall("GET", "/agents/_/subagent-runs").catch(() => []);
+    const runs = await apiCall("GET", "/subagent-runs").catch(() => []);
     if (runs === null) return;
     clearTableBody("subagent-runs-table");
     (runs || []).forEach(r => {
@@ -522,6 +565,9 @@ document.addEventListener("DOMContentLoaded", () => {
         usingLegacyBearerAuth = false;
         refreshAll();
         startEventStream(); // Q5: SSE 实时事件流 (仅会话 Cookie 模式可用)
+        // T4: 日志级别过滤变化时重连日志 SSE (带新 ?level=)
+        const lvlFilter = document.getElementById("log-level-filter");
+        if (lvlFilter) lvlFilter.addEventListener("change", startLogStream);
         return;
     }
     const saved = sessionStorage.getItem("isac_token");
@@ -624,13 +670,13 @@ let _loadedConfig = null;  // 缓存加载的配置, 供 diff/patch 使用
 async function loadConfigForEdit() {
     const agentId = document.getElementById("config-edit-agent-id")?.value.trim();
     if (!agentId) { showToast("请输入 agent_id", "error"); return; }
-    // GET /agents/{id} 当前只返回 agent_id + status; 需要从 config 文件读
-    // 这里简化: 直接构造一个示例 config (实际应从 /agents/{id}/config 读取, 待 J3 后续)
-    const agent = await apiCall("GET", `/agents/${encodeURIComponent(agentId)}`);
-    if (agent === null) return;
-    _loadedConfig = { agent_id: agentId, display_name: agentId, enabled: true, revision: 1 };
+    // R2: 从 /agents/{id}/config 读取全量配置 + 真实 revision (替代此前硬编码 revision:1,
+    // 使 patchConfig 的 ?if_match= 乐观锁真实生效)
+    const cfg = await apiCall("GET", `/agents/${encodeURIComponent(agentId)}/config`);
+    if (cfg === null) return;
+    _loadedConfig = cfg;
     document.getElementById("config-revision").value = _loadedConfig.revision;
-    document.getElementById("config-new-name").value = _loadedConfig.display_name;
+    document.getElementById("config-new-name").value = _loadedConfig.display_name || "";
     showToast("配置已加载");
 }
 

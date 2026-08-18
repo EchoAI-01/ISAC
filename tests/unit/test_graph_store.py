@@ -19,9 +19,12 @@ from isac.memory.storage.graph import GraphStore
 
 @pytest.fixture
 async def store(tmp_path: Path) -> GraphStore:
+    """yield store 并在测试结束后关闭持久连接, 避免 aiosqlite 长连接
+    被 GC 时抛 ResourceWarning + 'Event loop is closed' (24h soak 前置)。"""
     s = GraphStore(str(tmp_path / "graph.db"))
     await s.init_schema()
-    return s
+    yield s
+    await s.close()
 
 
 @pytest.mark.asyncio
@@ -34,6 +37,7 @@ async def test_init_schema_creates_edges_table(tmp_path: Path) -> None:
         cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='graph_edges'")
         rows = await cursor.fetchall()
         assert len(rows) == 1
+    await s.close()  # 关闭持久连接, 避免事件循环结束后 aiosqlite 后台线程报错
 
 
 @pytest.mark.asyncio

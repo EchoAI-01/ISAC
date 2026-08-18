@@ -5,6 +5,7 @@ Bearer Token 认证 (依赖注入) + 审计日志 (写操作记录) + AgentConfi
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +16,63 @@ if TYPE_CHECKING:
     from isac.runtime.manager import AgentManager
 
 logger = get_logger(__name__)
+
+# Fix-91: 敏感配置键判定 + 脱敏哨兵。AgentConfig 的 llm/persona/gating/conversation
+# 是自由 dict, 部署方可能把 api_key/secret/token 放进 (ProviderManager 明确消费
+# llm.api_key)。GET /agents/{id}/config 若原样回显, 持窄 scope agent:read token 的
+# 集成方即可读走全部 Agent 的 LLM 凭据明文。序列化前按值替换为哨兵。
+_SENSITIVE_KEY_PATTERN = re.compile(
+    r"(api[_-]?key|apikey|secret|token|password|passwd|credential|private[_-]?key)",
+    re.IGNORECASE,
+)
+REDACTED_SENTINEL = "__ISAC_REDACTED__"
+
+
+def _is_sensitive_key(key: str) -> bool:
+    return bool(_SENSITIVE_KEY_PATTERN.search(str(key or "")))
+
+
+def _redact_sensitive(data: Any) -> Any:
+    """深拷贝并把敏感键的值替换为哨兵 (只读回显用, 不改原对象)。"""
+    if isinstance(data, dict):
+        return {
+            k: (REDACTED_SENTINEL if _is_sensitive_key(k) and v not in (None, "") else _redact_sensitive(v))
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_redact_sensitive(item) for item in data]
+    return data
+
+
+def _restore_redacted(merged: Any, original: Any) -> Any:
+    """PATCH 合并后, 把客户端回传的哨兵值还原为原配置的真实值。
+
+    WebUI 编辑流程是 GET (拿到脱敏值) → 改别的字段 → PATCH 回传整个 dict; 若不做
+    还原, 哨兵值会覆盖真实 api_key。规则: 敏感键上, 传回的是哨兵 → 用原值;
+    传回的是新值 (客户端真要改密钥) → 保留新值。非敏感键原样保留 merged。
+    列表按 merged 逐元素递归 (original 按索引对齐, 缺位传 None) —— 不能用
+    zip(merged, original): 两者不等长时 (如 trigger_words 由 [] 改 ["hi"]) 会按
+    短列表截断, 丢更新。
+    """
+    if isinstance(merged, dict):
+        original_dict = original if isinstance(original, dict) else {}
+        restored: dict[Any, Any] = {}
+        for k, v in merged.items():
+            if _is_sensitive_key(k):
+                if v == REDACTED_SENTINEL:
+                    restored[k] = original_dict.get(k)
+                else:
+                    restored[k] = v
+            else:
+                restored[k] = _restore_redacted(v, original_dict.get(k))
+        return restored
+    if isinstance(merged, list):
+        original_list = original if isinstance(original, list) else []
+        return [
+            _restore_redacted(item, original_list[i] if i < len(original_list) else None)
+            for i, item in enumerate(merged)
+        ]
+    return merged
 
 
 def build_router(
@@ -61,6 +119,11 @@ def build_router(
             raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
         return {"agent_id": instance.agent_id, "status": instance.status}
 
+    @router.get("/{agent_id}/config", dependencies=read_deps)
+    async def get_agent_config(agent_id: str) -> dict:
+        """R2: 返回全量 AgentConfig + 真实 revision (供 WebUI loadConfigForEdit 乐观锁)。"""
+        return await _get_agent_config(agent_manager, agent_id)
+
     @router.post("/{agent_id}/start", dependencies=write_deps)
     async def start_agent(agent_id: str) -> dict:
         await _require_agent(agent_manager, agent_id, "start")
@@ -75,8 +138,9 @@ def build_router(
 
     @router.delete("/{agent_id}", dependencies=write_deps)
     async def destroy_agent(agent_id: str, keep_memory: bool = True) -> dict:
-        await _require_agent(agent_manager, agent_id, "destroy")
-        await agent_manager.destroy(agent_id, keep_memory=keep_memory)
+        # N5b 批次G: DELETE 不存在 agent 经 _require_agent 统一转 404 (此前 destroy
+        # 内部 _require 抛 AgentNotFoundError 未捕获 → 500 泄露内部异常)。
+        await _require_agent(agent_manager, agent_id, "destroy", keep_memory=keep_memory)
         await _audit(
             audit_log, "DELETE", f"/api/v1/agents/{agent_id}", "destroy_agent",
             agent_id, detail=f"keep_memory={keep_memory}",
@@ -148,11 +212,18 @@ async def _do_patch_agent(
                         "current_revision": current_revision,
                     },
                 )
-        # 合并 payload 到现有 config (部分更新; agent_id 不可改)
+        # 合并 payload 到现有 config (部分更新; agent_id/revision 不可经 payload 改)
+        # Fix-66: revision 必须由服务端单调管理 —— 此前 payload 可携带 revision
+        # 覆盖当前值: ① 乐观锁 ABA (攻击者把 revision 改回旧值后, 持有旧 If-Match
+        # 的合法编辑者校验通过, 覆盖他人修改, 冲突检测失效); ② 非法值 ("abc")
+        # 在 save_agent_config 的 int() 抛出 → 500。与 agent_id 同等对待, 剥离。
         merged = asdict(instance.config)
         for k, v in payload.items():
-            if k in merged and k != "agent_id":
+            if k in merged and k not in ("agent_id", "revision"):
                 merged[k] = v
+        # Fix-91: 还原哨兵 —— GET 已把敏感键脱敏为哨兵, WebUI 编辑回传时若原样
+        # 带回哨兵, 不能让它覆盖真实凭据; 仅当客户端真传了新值才更新敏感键。
+        merged = _restore_redacted(merged, asdict(instance.config))
         try:
             new_config = AgentConfig(**merged)
         except (ValueError, TypeError) as exc:
@@ -215,8 +286,36 @@ async def _do_create_agent(agent_manager: AgentManager, config: dict) -> Any:
         ) from exc
 
 
-async def _require_agent(agent_manager: AgentManager, agent_id: str, action: str) -> None:
-    """执行需要 Agent 存在的操作 (start/stop/destroy); 不存在抛 404。"""
+async def _get_agent_config(agent_manager: AgentManager, agent_id: str) -> dict:
+    """R2: 返回全量 AgentConfig (asdict) + 真实 revision; Agent 不存在抛 404。
+
+    Fix-91: 回显前把敏感键 (llm.api_key 等) 替换为哨兵 —— 此前原样返回
+    asdict(config), 持窄 scope agent:read token 的集成方可读走全部 Agent 的 LLM
+    凭据明文。PATCH 侧经 _restore_redacted 保证哨兵不会覆盖真实值。
+    """
+    from dataclasses import asdict
+
+    from fastapi import HTTPException
+
+    instance = await agent_manager.get(agent_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail={"code": "AGENT_NOT_FOUND", "message": agent_id})
+    return _redact_sensitive(asdict(instance.config))
+
+
+async def _require_agent(
+    agent_manager: AgentManager,
+    agent_id: str,
+    action: str,
+    *,
+    keep_memory: bool = True,
+) -> None:
+    """执行需要 Agent 存在的操作 (start/stop/destroy); 不存在抛 404。
+
+    N5b 批次G: destroy 分支此前是 placeholder return (不检查存在性, destroy_agent
+    路由自己 try/except 导致 build_router 圈复杂度超限); 现统一在此处执行 destroy
+    并捕获 AgentNotFoundError → 404, 路由层零异常处理。
+    """
     from fastapi import HTTPException
 
     from isac.core.exceptions import AgentNotFoundError
@@ -226,8 +325,7 @@ async def _require_agent(agent_manager: AgentManager, agent_id: str, action: str
         elif action == "stop":
             await agent_manager.stop(agent_id)
         elif action == "destroy":
-            # destroy 内部会自己 _require, 这里只是 placeholder 保持接口一致
-            return
+            await agent_manager.destroy(agent_id, keep_memory=keep_memory)
     except AgentNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
 

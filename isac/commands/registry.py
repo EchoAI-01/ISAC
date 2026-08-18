@@ -20,10 +20,44 @@ class CommandRegistry:
 
     def __init__(self, enable_checker: EnableChecker | None = None):
         self._commands: dict[str, Command] = {}
+        # N5b 批次C C2: 来源追踪 (name → "builtin" 或插件名), 供热重载按来源 deregister。
+        self._source: dict[str, str] = {}
+        # on_load 期间设置的默认来源 (激活模块 set_current_source(plugin_name))。
+        self._current_source: str | None = None
         self._enable_checker = enable_checker
 
-    def register(self, command: Command) -> None:
+    def register(self, command: Command, *, source: str | None = None) -> None:
+        effective_source = source or self._current_source or "builtin"
         self._commands[command.name] = command
+        self._source[command.name] = effective_source
+
+    def set_current_source(self, source: str | None) -> None:
+        """设置后续 register() 的默认来源 (on_load 期间设为插件名, 结束后置 None)。"""
+        self._current_source = source
+
+    def deregister_by_source(self, source: str) -> list[str]:
+        """移除指定来源的全部命令, 返回被移除的命令名列表 (C2 热重载同步)。"""
+        removed = [n for n, s in self._source.items() if s == source]
+        for n in removed:
+            self._commands.pop(n, None)
+            self._source.pop(n, None)
+        return removed
+
+    def get_by_source(self, source: str) -> list[Command]:
+        """返回指定来源的全部命令 (C2 热重载同步)。"""
+        return [self._commands[n] for n, s in self._source.items() if s == source and n in self._commands]
+
+    def deregister_plugin_sourced(self) -> list[str]:
+        """移除全部插件来源命令 (source != "builtin"), 返回被移除的命令名列表 (C2)。"""
+        removed = [n for n, s in self._source.items() if s != "builtin"]
+        for n in removed:
+            self._commands.pop(n, None)
+            self._source.pop(n, None)
+        return removed
+
+    def items_with_source(self) -> list[tuple[Command, str]]:
+        """返回 (command, source) 列表 (C2: 全量同步模式用)。"""
+        return [(cmd, self._source.get(name, "builtin")) for name, cmd in self._commands.items()]
 
     def get(self, name: str) -> Command | None:
         return self._commands.get(name)

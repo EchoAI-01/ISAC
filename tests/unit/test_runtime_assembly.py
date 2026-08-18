@@ -143,3 +143,155 @@ async def test_progress_reporter_factory_wires_resolved_llm_for_llm_rendering() 
     reporter = factory("sess_1")
 
     assert reporter.renderer._llm is agent.loop.llm
+
+
+@pytest.mark.asyncio
+async def test_assemble_agent_merges_shared_plugin_tools() -> None:
+    """R3: services["plugin_tools"] 共享注册表 (_fire_plugin_on_load 收集) 合并进
+    per-Agent registry (同 plugin_agent_hooks 模式)。此前 PluginContext 的
+    tools/commands/prompt_builder 留 None, native 插件 on_load register 的 tool
+    进不了任何 Agent 的 LLM schema。"""
+    from isac.agent.tools.base import Tool, ToolContext, ToolResult
+    from isac.agent.tools.registry import ToolRegistry
+
+    class _FakePluginTool(Tool):
+        @property
+        def name(self) -> str:
+            return "plugin_fake_tool"
+
+        @property
+        def description(self) -> str:
+            return "插件工具"
+
+        @property
+        def parameters(self) -> dict:
+            return {"type": "object"}
+
+        async def execute(self, context: ToolContext) -> ToolResult:
+            return ToolResult(content="ok")
+
+    shared_tools = ToolRegistry()
+    shared_tools.register(_FakePluginTool())
+
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    agent = await assemble_agent(
+        AgentConfig(agent_id="agent_plugin"),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+            "plugin_tools": shared_tools,
+        },
+    )
+    tool_names = {d["name"] for d in agent.tools.definitions()}
+    assert "plugin_fake_tool" in tool_names
+
+
+@pytest.mark.asyncio
+async def test_assemble_agent_wires_mcp_clients(monkeypatch) -> None:
+    """R3: AgentConfig.mcp_servers + services["mcp_servers"] → assemble 构造 MCPClient
+    + connect + list_tools, MCPToolBridge 注册进 tools, client 存 services["mcp_clients"]。"""
+    from isac.agent.tools.base import Tool, ToolContext, ToolResult
+    from isac.agent.tools.mcp import client as mcp_mod
+
+    connect_calls: list[str] = []
+
+    async def _fake_connect(self) -> None:
+        connect_calls.append(self.server_name)
+        self._connected = True
+
+    async def _fake_list_tools(self) -> list[Tool]:
+        class _FakeMCPTool(Tool):
+            def __init__(self, name: str) -> None:
+                self._n = name
+
+            @property
+            def name(self) -> str:
+                return self._n
+
+            @property
+            def description(self) -> str:
+                return "mcp tool"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object"}
+
+            async def execute(self, context: ToolContext) -> ToolResult:
+                return ToolResult(content="mcp")
+
+        return [_FakeMCPTool(f"mcp_tool_{self.server_name}")]
+
+    monkeypatch.setattr(mcp_mod.MCPClient, "connect", _fake_connect)
+    monkeypatch.setattr(mcp_mod.MCPClient, "list_tools", _fake_list_tools)
+
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    agent = await assemble_agent(
+        AgentConfig(agent_id="agent_mcp", mcp_servers=["srv1", "srv2"]),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+            "mcp_servers": {
+                "srv1": {"transport": "stdio", "command": "echo"},
+                "srv2": {"transport": "http", "url": "https://x"},
+            },
+        },
+    )
+    assert connect_calls == ["srv1", "srv2"]
+    assert len(agent.services["mcp_clients"]) == 2
+    tool_names = {d["name"] for d in agent.tools.definitions()}
+    assert "mcp_tool_srv1" in tool_names
+    assert "mcp_tool_srv2" in tool_names
+
+
+@pytest.mark.asyncio
+async def test_assemble_agent_default_no_mcp_no_plugins_zero_change() -> None:
+    """R3: 默认无 mcp_servers 无 plugin_tools → mcp_clients 空, 行为与改动前一致。"""
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    agent = await assemble_agent(
+        AgentConfig(agent_id="agent_zero"),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        },
+    )
+    assert agent.services.get("mcp_clients") == []
+    tool_names = {d["name"] for d in agent.tools.definitions()}
+    # bash 默认 deny → 不出现在 LLM schema (definitions 只过滤 deny)
+    assert "bash" not in tool_names
+    assert "query_memory" in tool_names
+
+
+@pytest.mark.asyncio
+async def test_disconnect_mcp_clients_iterates_and_isolates_failures() -> None:
+    """R3: AgentManager._disconnect_mcp_clients 逐个 disconnect, 异常隔离不阻塞停止。"""
+    from isac.runtime.manager import AgentManager
+    from isac.runtime.services import ServiceContainer
+
+    disconnected: list[str] = []
+
+    class _FakeClient:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def disconnect(self) -> None:
+            disconnected.append(self.name)
+
+    class _FakeClientFail:
+        async def disconnect(self) -> None:
+            raise RuntimeError("boom")
+
+    class _FakeInstance:
+        services = ServiceContainer(
+            {"mcp_clients": [_FakeClient("a"), _FakeClient("b"), _FakeClientFail()]}
+        )
+
+    mgr = AgentManager.__new__(AgentManager)  # 跳过 __init__, 仅测本方法
+    await mgr._disconnect_mcp_clients(_FakeInstance())
+    # 失败的 client 不阻塞其余 disconnect
+    assert disconnected == ["a", "b"]

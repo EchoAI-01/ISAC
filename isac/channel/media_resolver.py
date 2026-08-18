@@ -30,6 +30,11 @@ _ONEBOT_KIND_TO_TYPE: dict[str, str] = {
 # 不支持媒体 segment 的平台 (返回 None, 由 adapter 自己降级)
 _UNSUPPORTED_PLATFORMS: set[str] = {"webchat", "telegram", "discord"}
 
+# Fix-63: OneBot 适配器的 platform_name 是 "qq" (onebot/adapter.py), 入站消息
+# platform="qq"; 此前只匹配 "onebot" (仅配置节名) → QQ 富媒体出站永远命中
+# 兜底 None 降级 (单测传字面量 "onebot" 掩盖了错位)。两者都接受。
+_ONEBOT_PLATFORM_NAMES: frozenset[str] = frozenset({"onebot", "qq"})
+
 
 class MediaResolver:
     """把 ArtifactRef 解析为 Channel 适配器支持的 MessageSegment。"""
@@ -51,7 +56,7 @@ class MediaResolver:
         if platform in _UNSUPPORTED_PLATFORMS:
             return None
         # OneBot 平台: 按 kind 映射到 segment type, url 指向 ref.uri
-        if platform == "onebot":
+        if platform in _ONEBOT_PLATFORM_NAMES:
             seg_type = _ONEBOT_KIND_TO_TYPE.get(artifact_ref.kind)
             if seg_type is None:
                 return None

@@ -3,7 +3,67 @@
 本文件记录 ISAC 各版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/),
 版本号遵循 [Semantic Versioning](https://semver.org/)。
 
-## [Unreleased] — CR3 评审修复轮 (2026-07-26)
+> **版本号策略 (U9 定稿)**: 当前 `isac.__version__ = 1.0.0` 为 **GA 目标版本号** ——
+> v1.0 GA 门槛 (DEVELOPMENT_PLAN §三之五: U0-U9 全过 + 环境准入 + 真机证据) 满足前
+> 不打 release tag; GA 后破坏性变更 → major, 新功能 → minor, 修复 → patch。
+
+## [Unreleased]
+
+### U 架构演进轮 (2026-08-17 ~ 08-18)
+
+**U9 A+ 复评门禁**: 红线指标 CI 常驻 (scripts/check_redlines.py: main.py ≤120 行 /
+模块 ≤500 行 / services 键 ≤36 / 硬编码门控词 ≤27 / services.get 残余 ≤205, 只减不增);
+"定义了未接线"清零审计常驻 (UNWIRED_LEDGER 登记册); smoke_main_resident flake 根治
+(固定 sleep → 就绪标记轮询); services 字符串键访问首批迁移 ServiceContainer;
+复评报告归档 docs/U9_ARCHITECTURE_REVIEW.md。
+
+**U2 装配层重构**: main.py 2046 → 82 行薄入口 (dispatch/wiring/bootstrap 三模块各
+≤500 行 + 卫星模块层级归位); ServiceContainer (dict 子类 + 14 核心键类型化属性,
+键错配类型层不可能); 红线测试常驻。
+
+**U8 注入仲裁门 + 治理门禁**: SessionWriteGate (先预约后写入 / hold 窗口 /
+fail-closed, Fix-81/82 根因收编) + AST 审计常驻; 工具/配置 catalog 生成 + CI --check
+漂移检测; mock IM 事件流快照回放; evidence 目录规范化。
+
+**U7 Agent 数据化**: prompt 文件化 (frontmatter 模型族变体, 改人格=改文件);
+models.dev 能力快照 (6666 模型入库 + CI 每周刷新 + 新鲜度 drift 测试) +
+record_health 生产接线 (fallback 链按能力与可达性过滤); category 路由
+(delegate_task.category 四类画像经 ModelRouter 选模型链)。
+
+**U3 门控策略化**: GatingProfile 配置收口 + GatingStrategy 四档 (off/keywords/
+llm-judge/hybrid) + locales 双语词表 + drift test; llm-judge 走 fallback 链最便宜档
++ 频率上限 fail-safe。
+
+**U6 插件隔离默认化**: 信任分级倒转 (原生插件默认隔离, hosted 需部署确认);
+rlimits/ipc_timeout 部署接线; 兼容层文档化降级承诺 (Z3 收敛)。
+
+**U5 工具权限管线 + HITL**: 四段管线 (waterfall → 单调 DenyGuard → 执行 → 事件表
+审计留痕); ask 档 IM 审批卡片闭环 (同意/拒绝/超时 fail-closed); decision_reasons
+词汇表 + drift test。
+
+**U4 租户机制强制**: TenantBoundDB 机制强制层 (谓词唯一实现不可绕过); 四记忆表
+租户列; QueryMemoryTool master_id 检索; 三处键统一。
+
+**U1 事件溯源会话内核**: append-only 事件表 + 状态事件派生 + "Model-visible ⟺
+Logged" + torn-tail repair + episodes 事件投影 + 迁移脚本 + 真机跨重启冒烟留档。
+
+**U0 安全清偿**: Fix-85 治理面租户谓词 / Fix-86 解压体积上限 / Fix-87 MCP
+restricted 语义 / Fix-88 插件工具命名空间; clamp/WAL/死字段批清。
+
+### Phase 0/1 工程纠偏 + T 开箱可用轮 + R 需求完整性轮 (2026-08-04 ~ 08-16)
+
+- **Phase0 批次 A-G**: 记忆口径租户隔离、LLM 参数 clamp、MCP 生命周期、适配器
+  零散修复等 ~40 项; browser CI 本地真跑通。
+- **T7**: 配置迁移测试 + compose 骨架 + 快速开始文档。
+- **R7**: P3/P4/P5 集成测试 19 例 (向量+图谱+治理召回 / 身份绑定聚合 / 跨租户+
+  插件隔离+workflow)。
+- **R1-R6**: 多模态出入站闭环 / 控制面与 SubAgent 收尾 / 插件与 MCP 生态激活 /
+  记忆完整性 (行话学习+MidTerm COMPRESS) / 持久化与密钥 / 企业化租户控制面。
+- **T1-T6**: 开箱能对话 (私聊无条件触发+占位 key 检测) / 零配置启动 / 控制面开箱
+  后端 / 错误可诊断 / 插件市场与热重载。
+- **FE0/FE1**: API 契约冻结 (openapi.json 基线) + 分离基建 (CORS/SameSite)。
+
+### CR3 评审修复轮 (2026-07-26)
 
 对应 `Review/ISAC_待修复项清单.md` 的 14 项待修复缺陷 (H2-H4 / M2 / M5-M7 / L1-L8),
 外加评审阶段已写回的 5 项 (H1 越权 / M1 锁泄漏 / M3 Discord / M4 原子写 / README 文案)。

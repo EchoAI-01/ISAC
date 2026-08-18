@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from isac.runtime.config import AgentConfig
+from isac.runtime.services import ServiceContainer
 
 if TYPE_CHECKING:
     from isac.agent.hooks import AgentHooks
@@ -37,7 +38,7 @@ class AgentInstance:
     persona: PersonaManager
     tools: ToolRegistry
     status: str = "stopped"  # "running" | "stopped" | "error"
-    services: dict[str, Any] = field(default_factory=dict)  # 注入的共享服务 (bus 等)
+    services: ServiceContainer = field(default_factory=ServiceContainer)  # 注入的共享服务 (bus 等)
     # E4 启用矩阵
     enable_matrix: EnableMatrix | None = None
     commands: CommandRegistry | None = None

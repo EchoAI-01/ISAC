@@ -120,3 +120,54 @@ class TestTrigger:
 
         assert result["https://example.com/hook"] == "ok"
         assert len(http.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_setup_webhooks_dispatch_does_not_block_event_bus() -> None:
+    """Fix-55: 死/慢订阅的推送不得卡住 fire_async —— 它在会话锁内的
+    process_message 末尾被 await, 阻塞 = 该会话每条消息等待推送重试退避。
+    改为后台任务推送后, fire_async 应立即返回。"""
+    import asyncio
+
+    from isac.core.events import EventType
+    from isac.gateway.event_bus import EventBus
+    from isac.main import _setup_webhooks
+
+    event_bus = EventBus()
+    manager = _setup_webhooks(event_bus)
+
+    async def _slow_dispatch(event: str, payload: dict) -> None:
+        await asyncio.sleep(1.0)  # 模拟死订阅的重试退避耗时
+
+    manager.dispatch = _slow_dispatch  # type: ignore[method-assign]
+    loop = asyncio.get_event_loop()
+    start = loop.time()
+    await asyncio.wait_for(
+        event_bus.fire_async(EventType.POST_MESSAGE, {"x": 1}), timeout=2.0
+    )
+    elapsed = loop.time() - start
+    assert elapsed < 0.5  # 立即返回, 不等后台推送
+    await asyncio.sleep(1.2)  # 让后台推送任务跑完, 避免悬挂 task 警告
+
+
+@pytest.mark.asyncio
+async def test_legacy_event_names_normalize_to_spec_catalog() -> None:
+    """Fix-80: 事件名以 CONTROL_PLANE_SPEC §5.1 目录为准 —— 旧名 (post_message/
+    post_send) 订阅与规范名 (message.*) 派发互通, 此前按文档订阅 message.* 永远
+    收不到以 EventBus 枚举值派发的事件。"""
+    http = _MockHTTPClient()
+    mgr = WebhookManager(http_client=http)
+
+    # 按规范目录名订阅, 旧名派发必须送达
+    mgr.subscribe("message.responded", "https://a.com/hook")
+    result = await mgr.dispatch("post_message", {"x": 1})
+    assert result == {"https://a.com/hook": "ok"}
+
+    # 旧名订阅, 规范名派发也必须送达 (订阅清单按规范名归一)
+    mgr.subscribe("post_send", "https://b.com/hook")
+    assert "message.sent" in mgr.list_subscriptions()
+    result = await mgr.dispatch("message.sent", {"y": 2})
+    assert result == {"https://b.com/hook": "ok"}
+
+    events = [json.loads(payload)["event"] for _url, payload in http.calls]
+    assert events == ["message.responded", "message.sent"]  # 推送体用规范名

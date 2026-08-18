@@ -13,10 +13,12 @@ from isac.core.injector import PromptInjector
 from isac.core.types import InjectionContext
 
 # 语义能力 → 面向 Agent 的自然语言说明 (不暴露 Provider / 模型名)。
+# R1-⑤: 补 understand_image (VisionUnderstandTool.name, 此前缺)。
 _CAPABILITY_HINTS = {
     "transcribe_audio": "把语音转成文字",
     "synthesize_speech": "把文字合成为语音",
     "generate_image": "根据描述生成图片",
+    "understand_image": "理解图片内容",
     "understand_video": "理解视频内容",
     "generate_video": "根据描述生成视频",
 }

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from isac.core.policy import EnableMatrix
     from isac.plugin.isolation.host import PluginIsolationHost
     from isac.plugin.native.plugin import PluginContext
+    from isac.plugin.runtime.installer import PluginInstaller
 
 try:
     import json5
@@ -28,6 +30,20 @@ except ImportError:  # pragma: no cover
     _loads = json.loads
 
 logger = get_logger(__name__)
+
+
+def _context_source_registries(context: Any) -> list[Any]:
+    """收集 PluginContext 上所有支持来源追踪的 registry (C2)。
+
+    on_load/adapt 期间对这些 registry 统一 set_current_source(plugin_name),
+    让插件注册的工具/命令/注入器/钩子/事件订阅都标 source=name, 卸载时精确 deregister。
+    """
+    registries: list[Any] = []
+    for attr in ("tools", "commands", "prompt_builder", "agent_hooks", "event_bus"):
+        obj = getattr(context, attr, None)
+        if obj is not None and hasattr(obj, "set_current_source"):
+            registries.append(obj)
+    return registries
 
 
 class PluginManager:
@@ -48,9 +64,12 @@ class PluginManager:
         self.enable_matrix = enable_matrix
         self._loader = PluginLoader()
         self._loaded: dict[str, LoadedPlugin] = {}  # name -> LoadedPlugin (宿主进程内)
-        # H2: name -> PluginIsolationHost (manifest isolated=true 的插件, 跑在子进程)
+        # H2: name -> PluginIsolationHost (隔离加载的插件, 跑在子进程)
         self._iso_hosts: dict[str, PluginIsolationHost] = {}
         self._plugin_context_factory = plugin_context_factory
+        # T6: 记录 plugins_dir 供 reload/install/retry 定位; 失败插件名 → 错误信息。
+        self._plugins_dir: Path | None = None
+        self._failures: dict[str, str] = {}
         # Fix-31: 是否隔离的决策权补上部署方一侧。之前只认插件自己 manifest.jsonc
         # 里的 isolated 字段——真正需要被限制的"不完全信任的插件", 其作者/供应链
         # 恰恰不会主动声明 isolated: true, 部署方没有任何强制覆盖开关; 且只有
@@ -60,25 +79,36 @@ class PluginManager:
         isolated_cfg = config.get("isolated_plugins", []) if isinstance(config, dict) else []
         self._force_isolate_all = isolated_cfg == "*"
         self._force_isolated_names: set[str] = set(isolated_cfg) if isinstance(isolated_cfg, list) else set()
+        # U6 信任分级倒转: 有 manifest 的原生插件**默认隔离** (trust 缺省=sandboxed);
+        # 仅当 manifest 显式声明 trust: "hosted" 且目录名在部署方 trust_hosted 确认
+        # 清单内 (运营方显式确认信任) 时才允许宿主进程内加载。
+        trust_hosted_cfg = config.get("trust_hosted", []) if isinstance(config, dict) else []
+        self._trust_hosted_names: set[str] = (
+            set(trust_hosted_cfg) if isinstance(trust_hosted_cfg, list) else set()
+        )
 
     async def load_all(self, plugin_dir: str | Path) -> dict[str, Any]:
         """加载目录下全部插件 (自动识别 AstrBot / MaiBot / ISAC 原生格式)。
 
-        H2: manifest 声明 isolated=true 的原生插件经 PluginIsolationHost 在**子进程**
-        加载 (顶层代码不进宿主, 资源受限); 其余插件仍在宿主进程内加载。错误隔离:
-        单个插件加载失败记录日志, 不影响其他插件。返回 {name: 状态} 报告。
+        U6 信任分级倒转: 有 manifest 的原生插件**默认经 PluginIsolationHost 在
+        子进程加载** (trust 缺省=sandboxed); 仅 manifest 声明 trust: "hosted" 且
+        目录名在部署方 trust_hosted 确认清单内的插件在宿主进程内加载。无 manifest
+        的兼容层插件仍在宿主进程内 (降级承诺, 见 PLUGIN_COMPATIBILITY.md)。
+        错误隔离: 单个插件加载失败记录日志, 不影响其他插件。返回 {name: 状态} 报告。
         """
         plugin_dir = Path(plugin_dir)
+        self._plugins_dir = plugin_dir
         if not plugin_dir.exists():
             logger.info("插件目录不存在, 跳过加载", plugin_dir=str(plugin_dir))
             return {}
         entries = [entry for entry in sorted(plugin_dir.iterdir()) if entry.is_dir()]
         in_process = [entry for entry in entries if not self._should_isolate(entry)]
         if in_process:
-            # H2: 隔离插件已改走子进程; 宿主进程内加载路径仍无沙箱, 只对非隔离插件告警。
+            # U6: 宿主进程内加载的插件 = 兼容层 (无 manifest, 降级承诺) 或运营方
+            # 显式确认信任的 hosted 插件; 告警提示信任责任在部署方。
             logger.warning(
-                "部分插件在宿主进程内加载执行, 无进程隔离 —— 仅加载完全可信的插件 "
-                "(需隔离的插件请在 manifest.jsonc 声明 isolated: true)",
+                "部分插件在宿主进程内加载执行, 无进程隔离 —— 仅限完全可信插件 "
+                "(hosted 信任需 manifest 声明 trust: hosted + 部署配置 trust_hosted 确认)",
                 plugin_dir=str(plugin_dir),
                 count=len(in_process),
             )
@@ -88,47 +118,115 @@ class PluginManager:
         return report
 
     async def _load_entry(self, entry: Path, report: dict[str, str]) -> None:
-        """加载单个插件目录 (isolated=true → 子进程, 否则宿主进程内)。错误隔离。"""
+        """加载单个插件目录 (U6 _should_isolate 判定 → 子进程或宿主内)。错误隔离。"""
         try:
             if self._should_isolate(entry):
                 await self._load_isolated(entry, report)
+                # T6: 隔离插件的成功/失败状态由 _load_isolated 写入 report。
+                if report.get(entry.name, "").startswith("failed"):
+                    self._failures[entry.name] = report[entry.name]
+                else:
+                    self._failures.pop(entry.name, None)
                 return
             loaded = await self._loader.load(entry)
             self._loaded[loaded.name] = loaded
             report[entry.name] = f"loaded ({loaded.format.value})"
+            self._failures.pop(entry.name, None)
             logger.info("插件已加载", name=loaded.name, format=loaded.format.value, path=str(entry))
         except Exception as exc:  # noqa: BLE001 错误隔离
             logger.warning("插件加载失败", path=str(entry), error=str(exc))
             report[entry.name] = f"failed: {exc}"
+            self._failures[entry.name] = f"failed: {exc}"
 
     @staticmethod
-    def _is_isolated_native(entry: Path) -> bool:
-        """原生插件 manifest 是否声明 isolated=true (只有 ISAC 原生格式支持隔离标志)。"""
+    def _manifest_trust(entry: Path) -> str | None:
+        """U6: 读 manifest 的信任档位。
+
+        返回 "sandboxed" / "hosted"; 无 manifest 返回 None (兼容层插件)。
+        - ``trust`` 字段显式声明优先 ("sandboxed"|"hosted");
+        - 旧 ``isolated: true`` 字段等价 sandboxed (向后兼容);
+        - 有 manifest 但未声明 → 缺省 "sandboxed" (信任分级倒转: 默认不信任)。
+        """
         manifest_path = entry / "manifest.jsonc"
         if not manifest_path.exists():
-            return False
+            return None
         try:
             manifest = _loads(manifest_path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001 manifest 解析失败交给常规加载路径报错
-            return False
-        return bool(manifest.get("isolated", False))
+            return "sandboxed"
+        trust = str(manifest.get("trust", "") or "").strip().lower()
+        if trust in ("sandboxed", "hosted"):
+            return trust
+        if bool(manifest.get("isolated", False)):
+            return "sandboxed"
+        return "sandboxed"
 
     def _should_isolate(self, entry: Path) -> bool:
-        """是否应该把该插件目录经 PluginIsolationHost 在子进程加载。
+        """U6: 是否经 PluginIsolationHost 在子进程加载 (信任分级倒转)。
 
-        Fix-31: 决策权拆成两路径, 任一命中即隔离 ——
-        1. 部署方强制指定 (isolated_plugins 配置, 按目录名或 "*"), 对 AstrBot/
-           MaiBot 兼容层插件同样生效 (它们没有 manifest.jsonc, 之前完全没有
-           被隔离的可能)。
-        2. 插件自己的 manifest.jsonc 声明 isolated: true (仅原生格式支持, 保留
-           原有行为, 一个"愿意被隔离"的插件依然可以这样声明)。
+        判定顺序:
+        1. 部署方强制指定 (isolated_plugins 配置, 按目录名或 "*") → 隔离, 对
+           AstrBot/MaiBot 兼容层插件同样生效。
+        2. 无 manifest (兼容层插件): 当前隔离机制只支持原生格式 → 宿主进程内
+           加载 (降级承诺, 见 PLUGIN_COMPATIBILITY.md U6 处置决策)。
+        3. 有 manifest: trust="hosted" 且目录名在部署方 trust_hosted 确认清单内
+           (运营方显式确认信任) → 宿主进程内; **其余一律默认隔离** —— 市场/git/
+           url/upload 安装的插件未声明 hosted 即进沙箱。
         """
         if self._force_isolate_all or entry.name in self._force_isolated_names:
             return True
-        return self._is_isolated_native(entry)
+        trust = self._manifest_trust(entry)
+        if trust is None:
+            return False
+        if trust == "hosted" and entry.name in self._trust_hosted_names:
+            return False
+        return True
+
+    @staticmethod
+    def _parse_rlimits(rlimits_raw: Any) -> dict[str, tuple[int, int]]:
+        """U6: 解析 rlimits 配置 ({cpu/nofile/as: [soft, hard]}); 非法项安全忽略。"""
+        if not isinstance(rlimits_raw, dict):
+            return {}
+        rlimits: dict[str, tuple[int, int]] = {}
+        for key in ("cpu", "nofile", "as"):
+            pair = rlimits_raw.get(key)
+            if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                try:
+                    rlimits[key] = (int(pair[0]), int(pair[1]))
+                except (TypeError, ValueError):
+                    continue
+        return rlimits
+
+    def _isolation_host_kwargs(self) -> dict[str, Any]:
+        """U6: 从部署配置读隔离宿主参数 (plugins.isolation 节)。
+
+        支持键: ``rlimits`` ({cpu/nofile/as: [soft, hard]}), ``ipc_timeout_seconds``,
+        ``max_restart_attempts``。缺省项交给 PluginIsolationHost 内置默认。
+        """
+        iso_cfg = self.config.get("isolation", {}) if isinstance(self.config, dict) else {}
+        if not isinstance(iso_cfg, dict):
+            iso_cfg = {}
+        kwargs: dict[str, Any] = {}
+        rlimits = self._parse_rlimits(iso_cfg.get("rlimits"))
+        if rlimits:
+            kwargs["rlimits"] = rlimits
+        try:
+            if iso_cfg.get("ipc_timeout_seconds") is not None:
+                kwargs["ipc_timeout"] = float(iso_cfg["ipc_timeout_seconds"])
+        except (TypeError, ValueError):
+            pass
+        try:
+            if iso_cfg.get("max_restart_attempts") is not None:
+                kwargs["max_restart_attempts"] = int(iso_cfg["max_restart_attempts"])
+        except (TypeError, ValueError):
+            pass
+        return kwargs
 
     async def _load_isolated(self, entry: Path, report: dict[str, str]) -> None:
-        """H2: 经 PluginIsolationHost 在子进程加载插件 (顶层代码不进宿主进程)。
+        """H2/U6: 经 PluginIsolationHost 在子进程加载插件 (顶层代码不进宿主进程)。
+
+        U6: rlimits/ipc_timeout/max_restart_attempts 从部署配置 plugins.isolation
+        节接线 (此前构造恒用内置默认, 配置不可达)。
 
         Fix-31: 隔离机制目前只支持 ISAC 原生格式 (需要 manifest.jsonc 提供 name/
         entry_point 等元信息)。部署方可以强制要求隔离 AstrBot/MaiBot 兼容层插件,
@@ -145,7 +243,7 @@ class PluginManager:
 
         manifest = _loads(manifest_path.read_text(encoding="utf-8"))
         name = str(manifest.get("name") or entry.name)
-        host = PluginIsolationHost(plugin_id=name)
+        host = PluginIsolationHost(plugin_id=name, **self._isolation_host_kwargs())
         await host.spawn()
         try:
             result = await host.load_plugin(str(entry))
@@ -233,16 +331,155 @@ class PluginManager:
         """对每个已加载的 Native 插件调用 on_load (传入 PluginContext)。
 
         AstrBot/MaiBot 兼容层由适配器单独处理, 不在此调用。
+
+        N5b 批次C C1: 按插件名设 ToolRegistry.current_source, 让 on_load 期间
+        register_tool 写入的工具标 source=name; 否则 source 退化为 "builtin",
+        卸载/热重载 deregister_by_source(plugin_name) 找不到 → 启动期注册的插件
+        工具永远清不掉 (running Agent 残留死工具)。与 activation.call_on_load_one
+        单插件路径同构 (activation.py:83-93)。commands/injectors 的来源追踪见 C2。
         """
         report: dict[str, str] = {}
+        # C2: 收集 context 上所有支持来源追踪的 registry (tools/commands/prompt_builder/
+        # agent_hooks/event_bus), on_load 期间统一按插件名设 current_source, 让插件
+        # 注册的工具/命令/注入器/钩子/事件订阅都标 source=name, 卸载时精确 deregister。
+        registries = _context_source_registries(context)
         for name, loaded in list(self._loaded.items()):
             if not loaded.is_native():
                 continue
             try:
-                if hasattr(loaded.instance, "on_load"):
-                    await loaded.instance.on_load(context)
-                report[name] = "on_load ok"
+                for r in registries:
+                    r.set_current_source(name)
+                try:
+                    if hasattr(loaded.instance, "on_load"):
+                        await loaded.instance.on_load(context)
+                    report[name] = "on_load ok"
+                finally:
+                    for r in registries:
+                        r.set_current_source(None)
             except Exception as exc:  # noqa: BLE001 错误隔离
                 logger.warning("插件 on_load 失败", name=name, error=str(exc))
                 report[name] = f"failed: {exc}"
         return report
+
+    # ── T6: 安装/热重载/卸载/失败追踪 ──────────────────────────
+
+    async def load_one(self, entry: Path) -> str:
+        """T6: 加载单个插件目录 (公开版 _load_entry), 返回状态字符串。"""
+        report: dict[str, str] = {}
+        await self._load_entry(entry, report)
+        return report.get(entry.name, "unknown")
+
+    def _cached_path_for(self, name: str) -> Path | None:
+        """Fix-135: 解析插件真实目录路径 (宿主内/隔离两种加载方式都覆盖)。
+
+        宿主内插件取 ``_loaded[name].path``; 隔离插件取隔离宿主缓存的 plugin_path
+        (隔离插件在 ``_iso_hosts`` 而不在 ``_loaded``, 此前只查 ``_loaded`` → 隔离插件
+        的 cached_path 恒为 None → reload/uninstall 回退 ``plugins_dir/name``, 在
+        manifest.name≠目录名时 reload 误报 not_found / uninstall 删错目录)。
+        都取不到时返回 None (调用方回退 plugins_dir/name)。
+        """
+        loaded = self._loaded.get(name)
+        if loaded is not None and loaded.path is not None:
+            return Path(loaded.path)
+        host = self._iso_hosts.get(name)
+        if host is not None:
+            iso_path = host.plugin_path
+            if iso_path:
+                return Path(iso_path)
+        return None
+
+    async def reload(self, name: str) -> str:
+        """T6: 热重载 (unload → 重新 _load_entry)。只管重新加载到 _loaded。
+
+        从共享表 deregister 旧工具、重新 on_load/adapt、同步运行中 Agent 由调用方
+        经 activation 模块处理 (routes 层编排)。隔离插件 unload 终止子进程,
+        重新 _load_entry 走 _load_isolated 重新 spawn。
+        """
+        if name not in self.list_loaded():
+            return "not_loaded"
+        # N5b 批次C C8: manifest.name 可能≠目录名, 在 unload 删除前缓存真实路径,
+        # 否则 self._plugins_dir / name 指向不存在目录 → reload 误报 not_found。
+        # Fix-135: 经 _cached_path_for 同时覆盖宿主内与隔离插件 (隔离插件不在 _loaded)。
+        cached_path = self._cached_path_for(name)
+        await self.unload(name)
+        if self._plugins_dir is None:
+            raise RuntimeError("plugins_dir 未设置, 无法 reload")
+        entry = cached_path if cached_path is not None else self._plugins_dir / name
+        if not entry.exists():
+            self._failures[name] = "插件目录不存在"
+            return "not_found"
+        return await self.load_one(entry)
+
+    async def install(self, source: dict[str, Any], installer: PluginInstaller) -> str:
+        """T6: 安装 + 加载。返回状态字符串。"""
+        plugin_path = await installer.install(source)
+        return await self.load_one(plugin_path)
+
+    async def uninstall(self, name: str) -> str:
+        """T6: 卸载 (unload) + 删目录。返回状态字符串。"""
+        # N5b 批次C C8: 在 unload 删除前缓存真实路径, manifest.name 可能≠目录名,
+        # 否则删错目录或 not_found。Fix-135: 经 _cached_path_for 同时覆盖隔离插件。
+        cached_path = self._cached_path_for(name)
+        if name in self.list_loaded():
+            await self.unload(name)
+        if self._plugins_dir is None:
+            return "no_plugins_dir"
+        entry = cached_path if cached_path is not None else self._plugins_dir / name
+        if not entry.exists():
+            return "not_found"
+        import shutil
+
+        await asyncio.to_thread(shutil.rmtree, entry)
+        self._failures.pop(name, None)
+        logger.info("插件已卸载 (删目录)", name=name)
+        return "uninstalled"
+
+    def list_failures(self) -> dict[str, str]:
+        """T6: 返回失败插件名 → 错误信息映射 (进程内不持久化, 重启清空)。"""
+        return dict(self._failures)
+
+    async def retry(self, name: str) -> str:
+        """T6: 重试加载之前失败的插件。成功则从 _failures 移除。"""
+        if self._plugins_dir is None:
+            raise RuntimeError("plugins_dir 未设置, 无法 retry")
+        entry = self._plugins_dir / name
+        if not entry.exists():
+            return f"not_found: {name}"
+        return await self.load_one(entry)
+
+    async def call_on_load_one(self, name: str, context: PluginContext) -> str:
+        """T6: 对单个已加载 native 插件调 on_load (call_on_load 单插件版, 供 reload 激活)。"""
+        loaded = self._loaded.get(name)
+        if loaded is None or not loaded.is_native():
+            return "skipped"
+        try:
+            if hasattr(loaded.instance, "on_load"):
+                await loaded.instance.on_load(context)
+            return "ok"
+        except Exception as exc:  # noqa: BLE001
+            self._failures[name] = f"on_load: {exc}"
+            logger.warning("插件 on_load 失败", name=name, error=str(exc))
+            return f"failed: {exc}"
+
+    async def adapt_one(self, name: str, shared_tools: Any, shared_commands: Any) -> str:
+        """T6: 对单个已加载兼容层插件调 adapter.adapt (_adapt_compat_plugins 单插件版)。"""
+        loaded = self._loaded.get(name)
+        if loaded is None:
+            return "not_loaded"
+        instance = loaded.instance
+        try:
+            if loaded.is_astrbot():
+                from isac.plugin.compatibility.astrbot.adapter import AstrBotStarAdapter
+
+                await AstrBotStarAdapter(instance).adapt(shared_tools)
+                return "adapted"
+            if loaded.is_maibot():
+                from isac.plugin.compatibility.maibot.plugin import MaiBotPluginAdapter
+
+                await MaiBotPluginAdapter(instance).adapt(shared_tools, shared_commands)
+                return "adapted"
+            return "skipped"
+        except Exception as exc:  # noqa: BLE001
+            self._failures[name] = f"adapt: {exc}"
+            logger.warning("兼容层插件 adapt 失败", name=name, error=str(exc))
+            return f"failed: {exc}"

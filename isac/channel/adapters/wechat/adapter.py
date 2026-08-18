@@ -13,7 +13,8 @@ httpx (HTTP) + uvicorn (服务端) + cryptography (AES-256-CBC 加解密) 实现
   <CreateTime>,<MsgType>,<Content>,<MsgId>,<AgentID>...</xml>``
 - AES 算法 (WXBizMsgCrypt): key = base64decode(encoding_aes_key + "="); iv = 密文前 16 字节;
   plain = AES-256-CBC decrypt(密文[16:]) → 前 16 字节是随机串, 接着 4 字节大端 msg_len,
-  然后 msg_len 字节 to_user (xml), 最后是 xml 正文。PKCS7 unpad。
+  然后 msg_len 字节 msg (内层 XML), 最后是 receiveid (corpid)。PKCS7 unpad。
+  (Fix-37 订正: 此前文档误写为 "msg_len 字节 to_user + xml 正文", 与官方布局颠倒。)
 
 出站 (``send``):
 - access_token: GET ``/cgi-bin/gettoken?corpid=&corpsecret=`` → ``{"access_token","expires_in"}``,
@@ -43,6 +44,7 @@ from fastapi.responses import PlainTextResponse
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage
+from isac.channel.webhook_guard import DEFAULT_MAX_WEBHOOK_BODY_BYTES, read_body_limited
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -76,6 +78,8 @@ class WeComAdapter(PlatformAdapter):
         self._webhook_host = str(config.get("webhook_host", _DEFAULT_WEBHOOK_HOST) or _DEFAULT_WEBHOOK_HOST)
         self._webhook_port = int(config.get("webhook_port", _DEFAULT_WEBHOOK_PORT) or _DEFAULT_WEBHOOK_PORT)
         self._webhook_path = str(config.get("webhook_path", _DEFAULT_WEBHOOK_PATH) or _DEFAULT_WEBHOOK_PATH)
+        # Fix-76: webhook 请求体体积上限 (验签前先限流读取, 防超大 body 打爆内存)
+        self._max_body_bytes = int(config.get("max_body_bytes", DEFAULT_MAX_WEBHOOK_BODY_BYTES))
         self._running = False
         self._server: Any = None  # uvicorn.Server
         self._serve_task: asyncio.Task[Any] | None = None
@@ -171,7 +175,13 @@ class WeComAdapter(PlatformAdapter):
 
     async def _handle_message_callback(self, request: Request) -> Any:
         """POST 回调: 校验 msg_signature, 解密 Encrypt, 解析 XML, 规范化为 ISACMessage。"""
-        body = await request.body()
+        # Fix-76: 限流读取 —— request.body() 全量读入内存且无上限, 而验签在读取
+        # 之后, 超大 body (含 chunked) 在签名校验之前即可打爆内存; 超限按本文件
+        # 既有拒绝惯例回 "success" (避免平台对同一超大请求反复重试)。
+        body = await read_body_limited(request, self._max_body_bytes)
+        if body is None:
+            logger.warning("企业微信消息回调请求体超限, 拒绝", limit=self._max_body_bytes)
+            return PlainTextResponse("success")
         msg_signature = str(request.query_params.get("msg_signature", "") or "")
         timestamp = str(request.query_params.get("timestamp", "") or "")
         nonce = str(request.query_params.get("nonce", "") or "")
@@ -222,7 +232,7 @@ class WeComAdapter(PlatformAdapter):
 
         key = base64decode(encoding_aes_key + "="); iv = 密文前 16 字节;
         plain = AES-256-CBC decrypt(密文[16:]) → PKCS7 unpad;
-        plain 前 16 字节随机串, 接着 4 字节大端 msg_len, 然后 msg_len 字节 to_user, 最后是 XML 正文。
+        明文切片与 receiveid 校验见 _extract_xml_from_plain (Fix-37 官方布局)。
         未配置 encoding_aes_key 时返回 None (拒绝明文模式, 与飞书一致)。
         """
         if not self._encoding_aes_key:
@@ -250,19 +260,39 @@ class WeComAdapter(PlatformAdapter):
             padded = decryptor.update(ciphertext) + decryptor.finalize()
             unpadder = PKCS7(128).unpadder()
             plain = unpadder.update(padded) + unpadder.finalize()
-            # 前 16 字节随机串, 接着 4 字节大端 msg_len
-            if len(plain) < 20:
-                logger.warning("企业微信解密后明文过短", length=len(plain))
-                return None
-            msg_len = struct.unpack(">I", plain[16:20])[0]
-            if 20 + msg_len > len(plain):
-                logger.warning("企业微信解密后 msg_len 越界", msg_len=msg_len, plain_len=len(plain))
-                return None
-            xml_bytes = plain[20 + msg_len:]
-            return xml_bytes.decode("utf-8")
+            return self._extract_xml_from_plain(plain)
         except Exception as exc:  # noqa: BLE001
             logger.warning("企业微信 AES 解密失败", error=str(exc))
             return None
+
+    def _extract_xml_from_plain(self, plain: bytes) -> str | None:
+        """从解密后明文提取内层 XML 并校验 receiveid (Fix-37, 自 _decrypt_aes 抽出)。
+
+        官方 WXBizMsgCrypt 明文布局 random(16) + msg_len(4 大端) + msg(msg_len 字节的
+        内层 XML) + receiveid(corpid)。此前实现把 msg_len 当前缀长度取 plain[20+msg_len:]
+        当 XML —— 取到的实为 corpid 尾部, 与官方协议颠倒; 单测用同样的错误布局编码互相
+        印证, 故全绿但真实回调必失败。现按官方布局切片, 并校验 receiveid == corpid
+        (防跨企业伪造); 未配置 corp_id 时跳过校验。
+        """
+        if len(plain) < 20:
+            logger.warning("企业微信解密后明文过短", length=len(plain))
+            return None
+        msg_len = struct.unpack(">I", plain[16:20])[0]
+        if 20 + msg_len > len(plain):
+            logger.warning("企业微信解密后 msg_len 越界", msg_len=msg_len, plain_len=len(plain))
+            return None
+        xml_bytes = plain[20:20 + msg_len]
+        receiveid = plain[20 + msg_len:]
+        if self._corp_id:
+            try:
+                receiveid_text = receiveid.decode("utf-8")
+            except UnicodeDecodeError:
+                logger.warning("企业微信 receiveid 非 UTF-8, 拒绝")
+                return None
+            if receiveid_text != self._corp_id:
+                logger.warning("企业微信 receiveid 与 corp_id 不符, 拒绝", receiveid=receiveid_text)
+                return None
+        return xml_bytes.decode("utf-8")
 
     async def send(self, message: ISACMessage) -> bool:
         """发送文本消息到企业微信 (touser + agentid)。

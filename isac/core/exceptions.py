@@ -75,6 +75,28 @@ class InterAgentLinkDeniedError(ISACError):
     retriable = False
 
 
+class InterAgentTimeoutError(ISACError):
+    """Fix-111: Agent 互联投递超时 (bus.send 的 wait_for 到期)。
+
+    此前 bus.send 无超时 —— 目标 Agent 处理挂起时, 发起方的 A2A 工具在 Loop 内
+    无限等待 (占着会话锁与话轮)。超时后投递任务被取消, 发起方如实收到失败。
+    """
+
+    code = "INTER_AGENT_TIMEOUT"
+    retriable = True
+
+
+class InterAgentRecursionError(ISACError):
+    """Fix-111: Agent 互联递归深度超限 (A 调 B、B 又调 A 的嵌套链过深)。
+
+    此前无递归保护 —— 互调链 (A→B→A→B…) 每层是一次完整的 handle_message +
+    Loop, 可无限嵌套耗尽资源。深度经 contextvar 沿投递链传播, 超限即拒绝。
+    """
+
+    code = "INTER_AGENT_RECURSION"
+    retriable = False
+
+
 class MediaValidationError(ISACError):
     """媒体输入校验失败 (路径越权 / 大小超限 / MIME 未知 / kind 不匹配)"""
 

@@ -86,24 +86,31 @@ def _session_to_dict(s: Any) -> dict:
 
 
 async def _query_episodes_by_session(store: Any, session_id: str, limit: int) -> list[dict]:
-    """从 MetadataStore 查询某 session_id 的 episodes。
+    """从 MetadataStore 查询某 session_id 的 episodes (租户作用域)。
 
-    MetadataStore 当前没有按 session_id 直接查询的方法, 用 iter_episodes_by_namespace
-    + 过滤 session_id 兜底 (性能不优, 但 J3 范围内可用; 后续可加专门索引)。
+    Fix-94: 此前直连 ``store.db_path`` 裸 SQL 查 episodes, 绕过 U4 已建立的租户
+    谓词 —— tenancy.enabled 且多租户共享同一 DB 时, 任一租户的 memory:read token
+    可遍历 session_id 读到**其他租户**的会话消息原文 (U4 修掉了 episodes/profiles/
+    jargon 三个读端点, 独漏此处)。改与 routes_memory ``_query_episodes_by_agent``
+    同构: 经 ``store._tenant_db.scoped()`` (投影含 organization_id/tenant_id 列,
+    enforce 子查询包裹) + ``tdb.connect()``; 隔离未生效时 scoped() 原样直通, 行为不变。
+    CR3-Fix 保留: 排除软删除行 (deleted=1), 与检索链路/routes_memory 墓碑过滤一致。
     """
-    # MetadataStore 的 session_id 是 episode 行的 session_id 列; 直接 SQL 查。
-    # CR3-Fix: 排除软删除行 (deleted=1), 与检索链路/routes_memory 的墓碑过滤一致 ——
-    # 治理 delete 后的内容不得再经会话消息端点原文取回。
     import aiosqlite
 
+    tdb = getattr(store, "_tenant_db", None)
+    if tdb is None:
+        return []
+    query, params = tdb.scoped(
+        "SELECT id, content, session_id, created_at, organization_id, tenant_id "
+        "FROM episodes WHERE session_id = ? AND deleted = 0 "
+        "ORDER BY created_at DESC LIMIT ?",
+        [session_id, limit],
+    )
     rows: list[dict] = []
-    async with aiosqlite.connect(store.db_path) as db:
+    async with tdb.connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT id, content, session_id, created_at FROM episodes "
-            "WHERE session_id = ? AND deleted = 0 ORDER BY created_at DESC LIMIT ?",
-            (session_id, limit),
-        )
+        cursor = await db.execute(query, params)
         for row in await cursor.fetchall():
             rows.append(dict(row))
     return rows

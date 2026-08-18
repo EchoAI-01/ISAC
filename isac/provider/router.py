@@ -76,8 +76,13 @@ class ModelRouter:
         allowed_operations: set[str] | None = None,
         cost_ceiling: str | None = None,
         latency_target: str | None = None,
+        requires_tools: bool = False,
     ) -> ModelSelection | None:
-        """选择满足 operation/模态/授权/成本/延迟/健康的最高分模型; 无候选返回 None。"""
+        """选择满足 operation/模态/授权/成本/延迟/健康的最高分模型; 无候选返回 None。
+
+        U7: ``requires_tools=True`` 追加能力过滤 —— 仅保留 supports_tools 的候选
+        (工具密集类委派任务用; 能力未知的描述符视为不满足, 保守排除)。
+        """
         # 1. Agent 授权: 未授权该 operation 直接无候选
         if allowed_operations is not None and operation not in allowed_operations:
             return None
@@ -88,6 +93,8 @@ class ModelRouter:
             candidates = [d for d in candidates if modalities_in <= d.modalities_in]
         if modalities_out:
             candidates = [d for d in candidates if modalities_out <= d.modalities_out]
+        if requires_tools:
+            candidates = [d for d in candidates if d.supports_tools]
         if not candidates:
             return None
 

@@ -402,7 +402,7 @@ async def test_send_group_message_uses_group_endpoint() -> None:
         captured.append(request)
         if "getAppAccessToken" in str(request.url):
             return httpx.Response(200, json={"access_token": "tok-qo", "expires_in": 7200})
-        return httpx.Response(200, json={"code": 0, "data": {"id": "new-msg"}})
+        return httpx.Response(200, json={"id": "ROBOT1.0_new-msg", "timestamp": "1700000000"})
 
     adapter.set_http_transport(httpx.MockTransport(_handler))
     msg = ISACMessage(
@@ -432,7 +432,7 @@ async def test_send_channel_message_uses_channel_endpoint() -> None:
         captured.append(request)
         if "getAppAccessToken" in str(request.url):
             return httpx.Response(200, json={"access_token": "tok-qo", "expires_in": 7200})
-        return httpx.Response(200, json={"code": 0, "data": {"id": "new-msg"}})
+        return httpx.Response(200, json={"id": "ROBOT1.0_new-msg", "timestamp": "1700000000"})
 
     adapter.set_http_transport(httpx.MockTransport(_handler))
     msg = ISACMessage(
@@ -454,7 +454,7 @@ async def test_send_p2p_message_uses_user_endpoint() -> None:
     def _handler(request: httpx.Request) -> httpx.Response:
         if "getAppAccessToken" in str(request.url):
             return httpx.Response(200, json={"access_token": "tok", "expires_in": 7200})
-        return httpx.Response(200, json={"code": 0, "data": {"id": "new"}})
+        return httpx.Response(200, json={"id": "ROBOT1.0_new", "timestamp": "1700000000"})
 
     adapter.set_http_transport(httpx.MockTransport(_handler))
     msg = ISACMessage(
@@ -475,7 +475,7 @@ async def test_token_cached_across_sends() -> None:
         if "getAppAccessToken" in str(request.url):
             token_calls.append(request)
             return httpx.Response(200, json={"access_token": "tok-cached", "expires_in": 7200})
-        return httpx.Response(200, json={"code": 0, "data": {"id": "m"}})
+        return httpx.Response(200, json={"id": "ROBOT1.0_m", "timestamp": "1700000000"})
 
     adapter.set_http_transport(httpx.MockTransport(_handler))
     msg = ISACMessage(
@@ -489,13 +489,13 @@ async def test_token_cached_across_sends() -> None:
 
 @pytest.mark.asyncio
 async def test_send_returns_false_on_api_error() -> None:
-    """send 返回 code!=0 → False。"""
+    """Fix-56: 官方失败路径 = 非 2xx 状态 + code/message → _http_post 返回 None → False。"""
     adapter = _make_adapter()
 
     def _handler(request: httpx.Request) -> httpx.Response:
         if "getAppAccessToken" in str(request.url):
             return httpx.Response(200, json={"access_token": "tok", "expires_in": 7200})
-        return httpx.Response(200, json={"code": 100014, "message": "msg_id expired"})
+        return httpx.Response(400, json={"code": 100014, "message": "msg_id expired"})
 
     adapter.set_http_transport(httpx.MockTransport(_handler))
     msg = ISACMessage(
@@ -507,15 +507,14 @@ async def test_send_returns_false_on_api_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_returns_false_when_code_is_none() -> None:
-    """X1: code 显式为 None 时 fail-closed, 不误判为成功 (None or 0 == 0)。"""
+async def test_send_returns_false_when_err_code_nonzero() -> None:
+    """Fix-56: 2xx 但带非 0 错误字段 (err_code/code, 未文档化异常形态) → fail-closed。"""
     adapter = _make_adapter()
 
     def _handler(request: httpx.Request) -> httpx.Response:
         if "getAppAccessToken" in str(request.url):
             return httpx.Response(200, json={"access_token": "tok", "expires_in": 7200})
-        # QQ 网关异常透传可能返回 code=None
-        return httpx.Response(200, json={"code": None, "message": "internal error"})
+        return httpx.Response(200, json={"err_code": 500, "message": "internal error"})
 
     adapter.set_http_transport(httpx.MockTransport(_handler))
     msg = ISACMessage(
@@ -527,23 +526,27 @@ async def test_send_returns_false_when_code_is_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_returns_false_when_code_missing() -> None:
-    """X1: code 字段缺失时 fail-closed (与 FeishuAdapter.send 一致)。"""
+async def test_send_official_success_shape_returns_true() -> None:
+    """Fix-56 核心回归: 官方成功响应 (2xx + 业务数据, 无 code 字段) 必须判成功。
+
+    此前实现找 `code` 字段, 成功响应必然缺失 → 所有真实成功被判失败
+    (fixture 与实现共享错误协议假设, 同 Fix-37 企微 AES 布局同构)。
+    """
     adapter = _make_adapter()
 
     def _handler(request: httpx.Request) -> httpx.Response:
         if "getAppAccessToken" in str(request.url):
             return httpx.Response(200, json={"access_token": "tok", "expires_in": 7200})
-        # 响应体不含 code 字段
-        return httpx.Response(200, json={"data": {"id": "m"}})
+        # 官方群消息发送成功响应形态 (无 code 字段)
+        return httpx.Response(200, json={"id": "ROBOT1.0_abc", "timestamp": "1700000000"})
 
     adapter.set_http_transport(httpx.MockTransport(_handler))
     msg = ISACMessage(
         msg_id="m1", platform="qq_official", timestamp=0, user_id="u1",
-        user_name="u1", content="hi",
+        user_name="u1", group_id="g1", content="hi",
     )
     ok = await adapter.send(msg)
-    assert ok is False
+    assert ok is True
 
 
 @pytest.mark.asyncio
@@ -608,3 +611,53 @@ async def test_start_stop_idempotent_no_port() -> None:
     await adapter.start()
     await adapter.stop()
     await adapter.stop()
+
+
+# ── Fix-96: 事件级去重 ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatch_event_dedup_same_event_id() -> None:
+    """Fix-96: 同一顶层事件 id 的重推只处理一次 —— 此前 QQ 平台重推未确认事件
+    会导致同一消息被处理两次 (重复回复 + 记忆写两份)。"""
+    adapter = _make_adapter()
+    received: list = []
+
+    async def _on_msg(msg) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+
+    def _event(event_id: str) -> dict:
+        return {
+            "op": 0, "id": event_id, "t": "GROUP_AT_MESSAGE_CREATE",
+            "d": {
+                "id": "msg-1", "group_openid": "g1",
+                "content": "你好",
+                "author": {"member_openid": "u1"},
+            },
+        }
+
+    await adapter._dispatch_event(_event("evt-1"))  # noqa: SLF001
+    await adapter._dispatch_event(_event("evt-1"))  # noqa: SLF001 重推, 应被去重
+    assert len(received) == 1
+
+    # 不同事件 id 正常处理
+    await adapter._dispatch_event(_event("evt-2"))  # noqa: SLF001
+    assert len(received) == 2
+
+
+def test_is_duplicate_event_ttl_and_lru() -> None:
+    """Fix-96: 去重表 TTL 过期与 LRU 上限约束 (不无界增长)。"""
+    adapter = QQOfficialAdapter({"enabled": True, "app_id": "x", "secret": "y",
+                                 "webhook_port": 0, "event_dedup_max": 3})
+    assert adapter._is_duplicate_event("a") is False  # noqa: SLF001
+    assert adapter._is_duplicate_event("a") is True  # noqa: SLF001
+    # 超过上限淘汰最旧
+    adapter._is_duplicate_event("b")  # noqa: SLF001
+    adapter._is_duplicate_event("c")  # noqa: SLF001
+    adapter._is_duplicate_event("d")  # noqa: SLF001  → 淘汰 "a"
+    assert len(adapter._seen_event_ids) == 3  # noqa: SLF001
+    assert adapter._is_duplicate_event("a") is False  # noqa: SLF001 "a" 已被淘汰
+    # 空 event_id 不去重
+    assert adapter._is_duplicate_event("") is False  # noqa: SLF001
