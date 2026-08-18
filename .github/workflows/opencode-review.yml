@@ -19,7 +19,7 @@ jobs:
           EASTPOLESTAR_API_KEY: ${{ secrets.EASTPOLESTAR_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: eastpolestar/deepseek-v4-flash
+          model: eastpolestar/hy3
           use_github_token: true
           prompt: |
             你是一名资深代码审查员,正在审查这个 GitHub Pull Request。
