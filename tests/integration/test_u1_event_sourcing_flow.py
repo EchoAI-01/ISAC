@@ -28,6 +28,7 @@ from isac.router.router import MessageRouter
 from isac.router.types import RoutingRules
 from isac.runtime.config import AgentConfig
 from isac.runtime.manager import AgentManager
+from isac.runtime.services import ServiceContainer
 from isac.session.event_store import SessionEventStore
 from isac.session.history import SessionHistoryDeriver
 from isac.session.models import (
@@ -88,7 +89,7 @@ async def _build_u1_e2e(
     await event_store.start()
     pipeline = memory_pipeline or RecordingMemoryPipeline("default")
 
-    services: dict[str, Any] = {
+    services = ServiceContainer({
         "global_config": {"session": {"history": {"enabled": True, "window_turns": 5}}},
         "provider_manager": provider_manager,
         "memory_factory": lambda namespace: pipeline,
@@ -96,7 +97,7 @@ async def _build_u1_e2e(
         "session_mgr": session_mgr,
         "session_event_store": event_store,
         "session_history": SessionHistoryDeriver(window_turns=5),
-    }
+    })
     agent_manager = AgentManager(services)
     await agent_manager.create(
         AgentConfig(agent_id="default", display_name="ISAC", trigger_words=[])

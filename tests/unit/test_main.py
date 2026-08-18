@@ -23,6 +23,7 @@ from isac.router.router import MessageRouter
 from isac.router.types import RoutingRules
 from isac.runtime.application import ApplicationRuntime
 from isac.runtime.config import AgentConfig
+from isac.runtime.services import ServiceContainer
 
 
 class _RecordingAgentManager:
@@ -136,10 +137,10 @@ class TestRegisterUsageLifecycle:
     @pytest.mark.asyncio
     async def test_start_opens_store_before_starting_periodic_flush(self) -> None:
         calls: list[str] = []
-        services = {
+        services = ServiceContainer({
             "usage_store": self._FakeStore(calls),
             "usage_recorder": self._FakeRecorder(calls),
-        }
+        })
         runtime = ApplicationRuntime()
         _register_usage_lifecycle(runtime, services)
 
@@ -154,10 +155,10 @@ class TestRegisterUsageLifecycle:
         """recorder.stop() (含最终 flush) 必须先于 store.stop() (关连接), 否则最后
         一批缓冲事件落库时连接已关闭。"""
         calls: list[str] = []
-        services = {
+        services = ServiceContainer({
             "usage_store": self._FakeStore(calls),
             "usage_recorder": self._FakeRecorder(calls),
-        }
+        })
         runtime = ApplicationRuntime()
         _register_usage_lifecycle(runtime, services)
 
@@ -169,7 +170,7 @@ class TestRegisterUsageLifecycle:
 
     def test_no_registration_when_usage_disabled(self) -> None:
         runtime = ApplicationRuntime()
-        _register_usage_lifecycle(runtime, {"usage_store": None})
+        _register_usage_lifecycle(runtime, ServiceContainer({"usage_store": None}))
         assert runtime._lifecycle == []
 
 

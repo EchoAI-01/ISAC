@@ -24,6 +24,7 @@ from isac.runtime.conversation import (
     WaitEndReason,
 )
 from isac.runtime.instance import AgentInstance
+from isac.runtime.services import ServiceContainer
 from isac.utils.logger import get_logger
 from isac.utils.logging_context import bind_log_context
 
@@ -58,7 +59,14 @@ class AgentManager:
             services: 共享服务 (provider_manager / memory_factory / global_config / ...)
         """
         self._agents: dict[str, AgentInstance] = {}
-        self._services = services
+        # Z1-A: 生产路径 build_services 返回 ServiceContainer, 直通持有同一对象 ——
+        # bootstrap 先构造 AgentManager 再向同一容器陆续注册 bus/router/session_*
+        # 等键, 拷贝会让管理器永远看不到后注册的键。测试夹具传裸 dict 时拷贝为
+        # 容器 (夹具无后注册键, 拷贝语义等价)。
+        if isinstance(services, ServiceContainer):
+            self._services: ServiceContainer = services
+        else:
+            self._services = ServiceContainer(services)
         # Fix-2: 按 agent_id 的配置锁, 用于 PATCH 时把"读 revision → 校验 if_match →
         # 合并 → 持久化 → reload_config"整段串行化, 避免并发 PATCH 静默丢更新。
         # agent_id 数量受限于实际创建过的 Agent 数 (不像 session 那样量级无界),
@@ -206,7 +214,7 @@ class AgentManager:
         此前缓存全仓无失效点: PATCH 修改 AgentConfig.llm 后 for_agent 仍返回旧
         Provider (换模型必须重启进程), destroy 后重建同名 Agent 也继承旧凭据。
         """
-        provider_manager = self._services.get("provider_manager")
+        provider_manager = self._services.provider_manager
         if provider_manager is None:
             return
         invalidate = getattr(provider_manager, "invalidate_agent_provider", None)
@@ -388,7 +396,7 @@ class AgentManager:
 
         注意: 普通入口 process_message 已在锁内, 不得改走本方法 (asyncio.Lock 不可重入)。
         """
-        lock_mgr = self._services.get("session_lock")
+        lock_mgr = self._services.session_lock
         if lock_mgr is None:
             return await self.handle_message(agent_id, message, session, user_profile, progress_sender)
         lock_key = (
@@ -662,8 +670,8 @@ class AgentManager:
             services={
                 "gating": instance.gating,
                 "agent_manager": self,
-                "session_mgr": self._services.get("session_mgr"),
-                "bus": instance.services.get("bus") or self._services.get("bus"),
+                "session_mgr": self._services.session_mgr,
+                "bus": instance.services.get("bus") or self._services.bus,
                 "agent_id": instance.agent_id,
             },
         )
@@ -690,7 +698,7 @@ class AgentManager:
         current = pending[-1]
         display_name = instance.config.display_name
         mention_names = [display_name] if display_name else []
-        bot_id = self._services.get("global_config", {}).get("bot_id", "")
+        bot_id = (self._services.global_config or {}).get("bot_id", "")
 
         def _has_at(msg: ISACMessage) -> bool:
             return msg.has_at(bot_id) if bot_id else any(seg.type == "at" for seg in msg.segments)
@@ -736,18 +744,18 @@ class AgentManager:
 
     def _session_history_enabled(self) -> bool:
         """U1: session.history.enabled (默认 True); store/deriver/session_mgr 缺一不可。"""
-        if self._services.get("session_event_store") is None:
+        if self._services.session_event_store is None:
             return False
-        if self._services.get("session_history") is None:
+        if self._services.session_history is None:
             return False
-        if self._services.get("session_mgr") is None:
+        if self._services.session_mgr is None:
             return False
-        hist_cfg = self._services.get("global_config", {}).get("session", {}).get("history", {}) or {}
+        hist_cfg = (self._services.global_config or {}).get("session", {}).get("history", {}) or {}
         return bool(hist_cfg.get("enabled", True))
 
     def _session_key_for(self, instance: AgentInstance, message: ISACMessage) -> str | None:
         """U1: 事件流分区键 (与 SessionManager.make_session_key 口径一致)。"""
-        session_mgr = self._services.get("session_mgr")
+        session_mgr = self._services.session_mgr
         if session_mgr is None:
             return None
         return session_mgr.make_session_key(
@@ -768,7 +776,7 @@ class AgentManager:
         session_key = self._session_key_for(instance, message)
         if session_key is None:
             return None
-        return self._services["session_event_store"], self._services["session_history"], session_key
+        return self._services.session_event_store, self._services.session_history, session_key
 
     async def _derive_session_history(
         self, instance: AgentInstance, message: ISACMessage, user_content: str
@@ -806,7 +814,7 @@ class AgentManager:
 
     def _session_history_fetch_limit(self) -> int:
         """U1: 派生窗口取最近多少条事件 (窗口轮数 * 每轮事件数的保守上界)。"""
-        hist_cfg = self._services.get("global_config", {}).get("session", {}).get("history", {}) or {}
+        hist_cfg = (self._services.global_config or {}).get("session", {}).get("history", {}) or {}
         try:
             window_turns = max(1, int(hist_cfg.get("window_turns", 10) or 10))
         except (TypeError, ValueError):
@@ -900,7 +908,7 @@ class AgentManager:
     def _conversation_debounce_seconds(self, instance: AgentInstance) -> float:
         """P1: 读 debounce 静默窗口秒数 (全局 conversation 节 ∪ Agent 级覆盖)。"""
         merged = {
-            **(self._services.get("global_config", {}).get("conversation", {}) or {}),
+            **((self._services.global_config or {}).get("conversation", {}) or {}),
             **(instance.config.conversation or {}),
         }
         try:
@@ -940,7 +948,7 @@ class AgentManager:
         instance = self._agents.get(task.agent_id)
         if instance is None or instance.status != "running":
             return
-        session_mgr = self._services.get("session_mgr")
+        session_mgr = self._services.session_mgr
         session = await session_mgr.get(task.session_id) if session_mgr is not None else None
         if session is None:
             logger.info("主动任务的会话不存在, 跳过", task_id=task.task_id, session_id=task.session_id)
@@ -958,7 +966,7 @@ class AgentManager:
         permitted=False = 仲裁让位 (放弃本次强制话轮); gate 为 None 时 reservation
         亦为 None 且恒放行 (未接门零行为变化, 测试夹具路径)。
         """
-        gate = self._services.get("session_write_gate")
+        gate = self._services.session_write_gate
         if gate is None:
             return None, None, True
         reservation = gate.reserve(session.session_id, "proactive")
@@ -1011,7 +1019,7 @@ class AgentManager:
         if not permitted:
             return
 
-        lock_mgr = self._services.get("session_lock")
+        lock_mgr = self._services.session_lock
         lock_key = f"{session.platform}:{session.user_id or 'unknown'}:{session.group_id or 'private'}"
         lock = None  # Fix-116: 取锁移入 try, lock/acquired 预置供 finally 判定
         acquired = False
@@ -1171,7 +1179,7 @@ class AgentManager:
         """把主动话轮的回复经原 Channel 发送 (platform_session_id 保证 WebChat 可达)。"""
         from isac.channel.model import ISACMessage as _ISACMessage
 
-        channel_registry = self._services.get("channel_registry")
+        channel_registry = self._services.channel_registry
         adapter = channel_registry.get(session.platform) if channel_registry is not None else None
         if adapter is None:
             logger.warning("主动消息无可用适配器, 丢弃", platform=session.platform)
@@ -1247,7 +1255,7 @@ class AgentManager:
         """
         if turn_seq is None or not self._session_history_enabled():
             return None
-        store = self._services["session_event_store"]
+        store = self._services.session_event_store
         session_key = self._session_key_for(instance, message)
         if session_key is None:
             return None
@@ -1520,7 +1528,7 @@ class AgentManager:
     def _conversation_enabled(self) -> bool:
         """L1: 是否启用会话级拟人运行时 (默认关闭 → 主链路零行为变化)。"""
         return bool(
-            self._services.get("global_config", {}).get("conversation", {}).get("enabled", False)
+            (self._services.global_config or {}).get("conversation", {}).get("enabled", False)
         )
 
     def _require(self, agent_id: str) -> AgentInstance:
@@ -1530,13 +1538,13 @@ class AgentManager:
         return instance
 
     def _inc_metric(self, name: str) -> None:
-        metrics = self._services.get("metrics")
+        metrics = self._services.metrics
         if metrics is not None:
             metrics.counter(name).inc()
 
     def _update_active_gauge(self) -> None:
         """重新统计 status=running 的 Agent 数并更新 isac_agents_active。"""
-        metrics = self._services.get("metrics")
+        metrics = self._services.metrics
         if metrics is None:
             return
         active = sum(1 for instance in self._agents.values() if instance.status == "running")
