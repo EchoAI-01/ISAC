@@ -436,6 +436,10 @@ class MemoryConsolidator:
             return False
         meaning, context = _parse_jargon_response(response.content)
         meaning = _sanitize_llm_induction(meaning)
+        # Fix-104: context 与 meaning 同为 LLM 归纳产物 (素材是攻击者可控的群聊原文),
+        # 此前仅 meaning 过注入防护, context 直接落盘并被 JargonInjector 拼入系统
+        # prompt —— 间接 prompt injection 仍可从 context 字段进入。两者同口径清洗。
+        context = _sanitize_llm_induction(context)
         if not meaning or meaning == "未知":
             return False
         try:
@@ -510,7 +514,11 @@ class MemoryConsolidator:
         except Exception as exc:  # noqa: BLE001
             logger.warning("中期记忆压缩: LLM 摘要失败, 跳过", agent_id=self._agent_id, error=str(exc))
             return ""
-        return _clean_llm_output(response.content)
+        # Fix-105: 摘要与 profile_text/jargon 同为 LLM 归纳产物 (素材是攻击者可控的
+        # 会话原文), 落盘 episodes.summary 后由 MidTermMemoryInjector 注入系统 prompt。
+        # 此前仅 _clean_llm_output (去引号/代码块), 未剥离指令前缀行 —— 间接 prompt
+        # injection 可经压缩摘要进入。对齐 profile_text 口径补注入防护 (line 361)。
+        return _sanitize_llm_induction(_clean_llm_output(response.content))
 
     async def enqueue_compression(
         self, session_id: str, messages: list[Any], context: str = ""

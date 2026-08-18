@@ -225,6 +225,22 @@ def _aggregate_health(
     }
 
 
+def _audit_read_deps(auth_dependency: Any, scope_dependency: Any) -> list[Any]:
+    """Fix-107: /api/v1/audit 依赖 = 基线认证 + scope 模型生效时要求 "*" 通配。
+
+    审计日志是最敏感数据面 (记录 actor/操作/目标, 可还原"谁在何时做了什么"),
+    tokens[] scope 模型下窄 scope token (如 usage:read) 不得读全量审计 —— 对齐
+    routes_logs Fix-46 的 "*" 口径。scope_dependency 为 None (未配 tokens[]) 时
+    行为不变 (仅基线认证)。抽为模块级 helper 以控制 create_control_app 复杂度。
+    """
+    from fastapi import Depends
+
+    deps: list[Any] = [Depends(auth_dependency)] if auth_dependency else []
+    if scope_dependency:
+        deps.append(Depends(scope_dependency("*")))
+    return deps
+
+
 def create_control_app(
     agent_manager: AgentManager,
     router: MessageRouter,
@@ -375,6 +391,8 @@ def create_control_app(
     )
 
     audit_deps = [Depends(auth_dependency)] if auth_dependency else []
+    # Fix-107: /api/v1/audit 基线认证 + scope 模型生效时要求 "*" (见 _audit_read_deps)。
+    audit_read_deps = _audit_read_deps(auth_dependency, scope_dependency)
 
     @app.get("/health")
     async def health() -> dict:
@@ -388,7 +406,7 @@ def create_control_app(
         result["setup_required"] = setup_manager is not None and setup_manager.is_setup_required
         return result
 
-    @app.get("/api/v1/audit", dependencies=audit_deps)
+    @app.get("/api/v1/audit", dependencies=audit_read_deps)
     async def query_audit(
         action: str | None = None,
         actor: str | None = None,

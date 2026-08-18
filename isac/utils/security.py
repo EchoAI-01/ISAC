@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from typing import Any
 
 
 class SecretStore:
@@ -158,21 +159,43 @@ async def resolve_secret_async(value: str, secret_store: SecretStore | None) -> 
     return resolved
 
 
+async def _resolve_secret_field(
+    container: Any, field: str, secret_store: SecretStore | None
+) -> None:
+    """就地解析单个 dict 里某字段的 ``secret:`` 引用 (非 dict/缺字段/非 str 时 no-op)。"""
+    if not isinstance(container, dict):
+        return
+    value = container.get(field)
+    if isinstance(value, str):
+        container[field] = await resolve_secret_async(value, secret_store)
+
+
 async def resolve_secrets_in_config(config: dict, secret_store: SecretStore | None) -> None:
     """就地解析 global_config 中所有 ``secret:`` 前缀的密钥引用 (R5)。
 
-    扫描 ``llm.api_key`` + ``llm.multimodal[*].api_key`` (J2 多模态 Provider)。
+    扫描:
+    - ``llm.api_key`` + ``llm.multimodal[*].api_key`` (主 LLM / 旧式多模态节);
+    - ``multimodal_providers[*].api_key`` (J2 多模态 Provider, register_multimodal_providers
+      直接读此键);
+    - ``mcp.servers[*].token`` (R3 全局 MCP Server 定义, MCPClient 作为 Bearer 用)。
+
+    Fix-106: 此前仅覆盖 llm.api_key + llm.multimodal[*].api_key, 用户在
+    multimodal_providers[] / mcp.servers[].token 写 ``secret:xxx`` 会原样透传给
+    Provider/MCPClient (字面 "secret:xxx" 当密钥用 → 注册失败/鉴权恒错)。统一收口。
     在 build_services / register_llm_provider 之前调用, 使同步注册函数拿到明文。
     """
     llm = config.get("llm")
-    if isinstance(llm, dict):
-        api_key = llm.get("api_key")
-        if isinstance(api_key, str):
-            llm["api_key"] = await resolve_secret_async(api_key, secret_store)
-        mm = llm.get("multimodal")
-        if isinstance(mm, list):
-            for entry in mm:
-                if isinstance(entry, dict):
-                    mk = entry.get("api_key")
-                    if isinstance(mk, str):
-                        entry["api_key"] = await resolve_secret_async(mk, secret_store)
+    await _resolve_secret_field(llm, "api_key", secret_store)
+    mm = llm.get("multimodal") if isinstance(llm, dict) else None
+    if isinstance(mm, list):
+        for entry in mm:
+            await _resolve_secret_field(entry, "api_key", secret_store)
+    mm_providers = config.get("multimodal_providers")
+    if isinstance(mm_providers, list):
+        for entry in mm_providers:
+            await _resolve_secret_field(entry, "api_key", secret_store)
+    mcp = config.get("mcp")
+    mcp_servers = mcp.get("servers") if isinstance(mcp, dict) else None
+    if isinstance(mcp_servers, dict):
+        for entry in mcp_servers.values():
+            await _resolve_secret_field(entry, "token", secret_store)

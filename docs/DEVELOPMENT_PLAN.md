@@ -139,7 +139,7 @@
 
 **剩余 (~40 项 Minor)**: 另立批次, 优先级让位于 N2 环境准入与 N4 前端轨道。
 
-### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1 + 批 2 + 批 3 全部完成 (全量 2008 通过), 剩余 Major/Minor 另立批次**
+### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1~4 全部完成 (全量 2021 通过), 剩余 Major/Minor 另立批次**
 
 **方法**: U0-U9 架构演进后按同规格再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 主审逐条回码复核。去重后 **1 Critical + 21 Major + 44 Minor**。
 
@@ -168,6 +168,18 @@
 - [x] **Fix-103** SessionManager per-key 锁引用计数 —— `_key_locks` 升级为 `{key: (lock, 引用数)}` + `_held_key_lock` 上下文管理, 消灭 Fix-78 "锁被 GC 后新来者拿新锁"的双创建竞态 (取锁-持锁 await 空隙 `locked()==False` 误删); 锁注册表归零自排空不再依赖 `_gc_expired` 顺带回收。
 
 顺带: `fold`/`_dispatch_message` 触 ruff C901 复杂度上限, 抽 `_collect_superseded`/`_event_to_message`/`_handle_interrupted_turn` 辅助方法; U1 三历史方法共用 `_history_parts` 收口 services 字符串键访问 (U9 红线棘轮 205→204)。新增 13 例批 3 回归测试。**全量 2008 通过**, ruff/mypy (295 源文件) 全绿。其余 Major/Minor 另立批次。
+
+**批 4 已完成 (注入安全 + 鉴权/审计加固, Fix-104~110)**:
+
+- [x] **Fix-104** 行话 `context` 注入防护 —— 行话学习的 `meaning` 与 `context` 同为 LLM 归纳产物 (素材是攻击者可控的群聊原文), 此前仅 `meaning` 过 `_sanitize_llm_induction`, `context` 直接落盘并被 `JargonInjector` 拼入系统 prompt; 两者同口径清洗, 间接 prompt injection 不得经 context 字段进入。
+- [x] **Fix-105** 压缩摘要注入防护 —— `_summarize_one_session` 落盘 `episodes.summary` 前由仅 `_clean_llm_output` 升级为 `_sanitize_llm_induction(_clean_llm_output(...))` (对齐 profile_text 口径); 该摘要由 `MidTermMemoryInjector` 注入, 此前指令前缀行可经压缩摘要进入系统 prompt。
+- [x] **Fix-106** `secret:` 前缀覆盖扩面 —— `resolve_secrets_in_config` 增扫 `multimodal_providers[*].api_key` 与 `mcp.servers[*].token`; 此前仅覆盖 `llm.api_key` + `llm.multimodal[*].api_key`, 用户在这两处写 `secret:xxx` 会字面透传给 Provider/MCPClient (注册失败/鉴权恒错)。抽 `_resolve_secret_field` 降复杂度。
+- [x] **Fix-107** GET /api/v1/audit scope 门禁 —— 审计日志是最敏感数据面 (可还原"谁在何时做了什么"), 此前只挂基线认证, tokens[] scope 模型下窄 scope token 也能读全量; 对齐 routes_logs Fix-46 要求 `*` 通配 scope (抽 `_audit_read_deps` helper)。scope_dependency=None 时行为不变。
+- [x] **Fix-108** CSRF 空 Bearer 缺口 —— 中间件此前只判 `startswith("bearer ")`, 空 Bearer ("Authorization: Bearer ") 也跳过 CSRF, 但 `extract_bearer` 对空 token 返回 None → 认证回退会话 Cookie, 构成"空 Bearer 绕过 CSRF + 受害者 Cookie 完成认证"的跨站写操作组合; 改用 `extract_bearer` 判定, 仅非空 token 放行, 与认证侧取 token 口径严格一致。
+- [x] **Fix-109** webhook URL 日志/审计脱敏 —— 订阅 URL 常内嵌凭据 (query token / userinfo), 此前全量写入 audit.ndjson 与运行日志; 新增 `isac/utils/ssrf.redact_url` (掩 userinfo + 全部 query 值, 保留 scheme/host/path, 解析失败回占位符), 审计 detail 与 subscribe/unsubscribe/dispatch 日志统一脱敏, 投递/存储/列表仍用原 URL。
+- [x] **Fix-110** 插件操作错误信息受控 —— install/reload/retry 失败此前把 `str(exc)` 原样回显客户端 (git clone stderr 等可含 URL/路径/凭据); 新增 `_client_error_message`: 受控 ValueError (人工审定的校验/安全消息) 原样返回, 其余异常掩为通用消息, 明细留给服务端审计与日志, 对齐全局异常处理器口径。
+
+顺带: `create_control_app`/`resolve_secrets_in_config` 触 ruff C901 上限, 分别抽 `_audit_read_deps`/`_resolve_secret_field` 降复杂度。新增 13 例批 4 回归测试。**全量 2021 通过**, ruff/mypy (295 源文件) 全绿。其余 Major/Minor (observe_message master_id / A2A bus 超时 / 无界增长卫生等) 另立批次。
 
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 

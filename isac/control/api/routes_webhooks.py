@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from isac.utils.ssrf import redact_url as _redact_url
+
 if TYPE_CHECKING:
     from isac.control.audit import AuditLog
     from isac.control.webhooks import WebhookManager
@@ -47,7 +49,7 @@ def build_router(
     @router.delete("/webhooks", dependencies=write_deps)
     async def unsubscribe_webhook(event: str, url: str) -> dict:
         webhook_manager.unsubscribe(event, url)
-        await _audit_webhook(audit_log, "DELETE", "unsubscribe_webhook", event, f"url={url}")
+        await _audit_webhook(audit_log, "DELETE", "unsubscribe_webhook", event, f"url={_redact_url(url)}")
         return {"status": "unsubscribed", "event": event, "url": url}
 
     @router.post("/automation/trigger", dependencies=write_deps)
@@ -74,7 +76,7 @@ async def _do_subscribe(webhook_manager: Any, audit_log: AuditLog | None, body: 
         webhook_manager.subscribe(event, url)
     except Exception as exc:  # noqa: BLE001 SSRFBlockedError 等
         raise _http_exc(status_code=400, detail={"code": "WEBHOOK_REJECTED", "message": str(exc)}) from exc
-    await _audit_webhook(audit_log, "POST", "subscribe_webhook", event, f"url={url}")
+    await _audit_webhook(audit_log, "POST", "subscribe_webhook", event, f"url={_redact_url(url)}")
     return {"status": "subscribed", "event": event, "url": url}
 
 
