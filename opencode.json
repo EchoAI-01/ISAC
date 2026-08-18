@@ -9,7 +9,8 @@
         "apiKey": "{env:EASTPOLESTAR_API_KEY}"
       },
       "models": {
-        "deepseek-v4-flash": { "name": "DeepSeek V4 Flash" }
+        "deepseek-v4-flash": { "name": "DeepSeek V4 Flash" },
+        "hy3": { "name": "Hy3" }
       }
     }
   }
