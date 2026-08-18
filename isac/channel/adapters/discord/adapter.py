@@ -30,12 +30,16 @@ from typing import TYPE_CHECKING, Any
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage, MessageSegment
+from isac.channel.text_chunk import chunk_text
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+# Fix-98: Discord 单条文本上限 (message content 2000 字符)
+_DISCORD_MAX_TEXT_CHARS = 2000
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -92,17 +96,28 @@ class DiscordAdapter(PlatformAdapter):
             self._http_client = None
 
     async def send(self, message: ISACMessage) -> bool:
-        """发送文本消息到 Discord channel。"""
+        """发送文本消息到 Discord channel。
+
+        Fix-98: Discord 单条上限 2000 字符, 超长整条提交 → 平台 400 → 回复静默
+        丢失。按上限分段发送 (优先换行边界); 任一段失败整体记 False 但继续发余下段。
+        """
         channel_id = message.group_id or message.user_id
         if not channel_id:
             logger.warning("Discord send 缺少 channel_id")
             return False
-        result = await self._call_api(
-            "POST",
-            f"/channels/{channel_id}/messages",
-            json_body={"content": message.content},
-        )
-        return result is not None
+        chunks = chunk_text(str(message.content or ""), _DISCORD_MAX_TEXT_CHARS)
+        if not chunks:
+            chunks = [""]
+        ok = True
+        for chunk in chunks:
+            result = await self._call_api(
+                "POST",
+                f"/channels/{channel_id}/messages",
+                json_body={"content": chunk},
+            )
+            if result is None:
+                ok = False
+        return ok
 
     async def _poll_loop(self) -> None:
         """轮询 watch_channels 拉新消息。"""

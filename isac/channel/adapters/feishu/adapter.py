@@ -42,7 +42,7 @@ import httpx
 from fastapi import Request
 
 from isac.channel.base import PlatformAdapter
-from isac.channel.model import ISACMessage
+from isac.channel.model import ISACMessage, MessageSegment
 from isac.channel.webhook_guard import DEFAULT_MAX_WEBHOOK_BODY_BYTES, read_body_limited
 from isac.utils.logger import get_logger
 
@@ -283,6 +283,12 @@ class FeishuAdapter(PlatformAdapter):
         group_id = chat_id or None
         if chat_type and chat_type != "group":
             group_id = None
+        # Fix-97: 解析 message.mentions 产出 at segment —— 此前完全不解析, 群聊
+        # 文本里的 @ 只是 @_user_N 占位符, 下游无任何 at segment → 门控强制触发
+        # 条件 has_at 恒 False, 飞书群 @机器人基本不回复 (私聊靠 is_private 正常)。
+        # mentions[i].id.open_id 作为 at segment 的 user_id, 与 has_at(bot_id) 口径
+        # 对齐 (bot_id 配置为机器人 open_id 时精确命中; 未配置时任一 @ 即触发)。
+        segments = _build_at_segments(message.get("mentions"))
         return ISACMessage(
             msg_id=message_id,
             platform="feishu",
@@ -291,6 +297,7 @@ class FeishuAdapter(PlatformAdapter):
             user_name=open_id,  # 飞书不直接给昵称, 用 open_id 占位 (N3 归一后可填充)
             group_id=group_id,
             content=text,
+            segments=segments,
         )
 
     async def send(self, message: ISACMessage) -> bool:
@@ -411,3 +418,28 @@ def _parse_message_content(msg_type: str, content_str: str) -> str:
         # post 类型有 title/description 字段, 提取作占位
         return str(content.get("title", "") or content.get("description", "") or "")
     return ""
+
+
+def _build_at_segments(mentions: Any) -> list[MessageSegment]:
+    """Fix-97: 飞书 message.mentions → at segment 列表。
+
+    mentions[i] 形如 ``{"key": "@_user_1", "id": {"open_id": ...}, "name": ...}``;
+    取 id.open_id 作为 at segment 的 user_id (与 has_at(bot_id) 的 user_id 口径对齐)。
+    缺 open_id 的 mention 跳过 (无法判 @ 对象)。空/非法输入返回空列表。
+    """
+    if not isinstance(mentions, list):
+        return []
+    segments: list[MessageSegment] = []
+    for mention in mentions:
+        if not isinstance(mention, dict):
+            continue
+        mention_open_id = str((mention.get("id") or {}).get("open_id", "") or "")
+        if not mention_open_id:
+            continue
+        segments.append(
+            MessageSegment(
+                type="at",
+                data={"user_id": mention_open_id, "name": str(mention.get("name", "") or "")},
+            )
+        )
+    return segments

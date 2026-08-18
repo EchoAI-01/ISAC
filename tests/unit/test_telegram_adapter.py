@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from isac.channel.adapters.telegram.adapter import TelegramAdapter, _utf16_slice
 
 
@@ -68,3 +70,54 @@ class TestMentionEntity:
         at_segments = [s for s in msg.segments if s.type == "at"]
         assert len(at_segments) == 1
         assert at_segments[0].data["user_id"] == ""
+
+
+# ── Fix-98: 超长回复分段发送 ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_send_chunks_overlong_reply(monkeypatch) -> None:
+    """Fix-98: 超过 Telegram 4096 上限的回复必须分段发送 —— 此前整条提交 →
+    平台 400 → send False → 用户完全收不到回复。"""
+    from isac.channel.model import ISACMessage
+
+    adapter = make_adapter()
+    sent_texts: list[str] = []
+
+    async def _fake_call_api(method, params):
+        sent_texts.append(params.get("text", ""))
+        return {"ok": True}
+
+    monkeypatch.setattr(adapter, "_call_api", _fake_call_api)
+    long_content = "x" * 9000  # > 4096*2
+    msg = ISACMessage(
+        msg_id="m1", platform="telegram", timestamp=0,
+        user_id="u1", user_name="u1", group_id=None, content=long_content,
+    )
+    ok = await adapter.send(msg)
+    assert ok is True
+    assert len(sent_texts) == 3  # 4096 + 4096 + 808
+    assert all(len(t) <= 4096 for t in sent_texts)
+    assert "".join(sent_texts) == long_content
+
+
+@pytest.mark.asyncio
+async def test_send_short_reply_single_message(monkeypatch) -> None:
+    """Fix-98 回归: 短回复不切分, 仍单条发送。"""
+    from isac.channel.model import ISACMessage
+
+    adapter = make_adapter()
+    sent_texts: list[str] = []
+
+    async def _fake_call_api(method, params):
+        sent_texts.append(params.get("text", ""))
+        return {"ok": True}
+
+    monkeypatch.setattr(adapter, "_call_api", _fake_call_api)
+    msg = ISACMessage(
+        msg_id="m1", platform="telegram", timestamp=0,
+        user_id="u1", user_name="u1", group_id=None, content="hello",
+    )
+    ok = await adapter.send(msg)
+    assert ok is True
+    assert sent_texts == ["hello"]

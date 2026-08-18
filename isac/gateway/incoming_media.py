@@ -41,11 +41,17 @@ async def download_inbound_media(
     artifact_store: Any,
     *,
     http_client: Any = None,
+    allow_loopback: bool = False,
 ) -> int:
     """扫描入站 message.segments 的媒体, HTTP 下载落盘, 回填 media_uri。
 
     返回成功下载落盘的 segment 数。artifact_store 为 None 时直接返回 0 (未启用)。
     http_client 可注入 (测试); 生产用 httpx.AsyncClient。
+
+    Fix-99: ``allow_loopback`` —— OneBot/NapCat 同机反向部署时图片 URL 就是本机
+    地址 (http://127.0.0.1:<port>/images/...), 默认 SSRF 守卫拒 loopback 会让
+    入站媒体在主力平台恒下载失败 (R1-② 闭环断链)。由 global_config
+    ``inbound_media.allow_loopback`` 控制 (仍逐跳复校验, 非放行任意内网)。
     """
     segments = getattr(message, "segments", None) or []
     if not segments or artifact_store is None:
@@ -63,7 +69,7 @@ async def download_inbound_media(
         # 此处不再重复预校验 —— is_safe_url 的同步 DNS 在消息主链路上是阻塞点,
         # 重复一次 = 每 segment 多一次事件循环停摆窗口。
         try:
-            content = await _download_bytes(url, http_client)
+            content = await _download_bytes(url, http_client, allow_loopback=allow_loopback)
             if content is None:
                 continue
             mime_type = _infer_mime(kind, url)
@@ -76,16 +82,21 @@ async def download_inbound_media(
     return downloaded
 
 
-async def _download_bytes(url: str, http_client: Any) -> bytes | None:
+async def _download_bytes(
+    url: str, http_client: Any, *, allow_loopback: bool = False
+) -> bytes | None:
     """HTTP 下载为 bytes。http_client 注入时直接用; 否则走 safe_download_bytes。
 
     Fix-39: 生产路径改用 safe_download_bytes —— 重定向逐跳复跑 is_safe_url
     (此前 follow_redirects=True 不校验重定向目标 → SSRF 绕过), 且流式累计
     超过 MAX_INBOUND_MEDIA_BYTES 中止 (此前 resp.content 全量缓冲无上限 → OOM)。
+    Fix-99: allow_loopback 透传 (OneBot 同机媒体服务白名单)。
     """
     if http_client is not None:
         return await http_client.get_bytes(url)
-    return await safe_download_bytes(url, timeout_seconds=30.0, max_bytes=MAX_INBOUND_MEDIA_BYTES)
+    return await safe_download_bytes(
+        url, timeout_seconds=30.0, max_bytes=MAX_INBOUND_MEDIA_BYTES, allow_loopback=allow_loopback
+    )
 
 
 def _infer_mime(kind: str, url: str) -> str:

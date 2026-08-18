@@ -636,3 +636,66 @@ async def test_oversized_body_rejected_before_processing() -> None:
     resp = await adapter._handle_event(_Req())
     assert resp == {}
     assert received == []
+
+
+# ── Fix-97: 飞书 mentions 解析为 at segment ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_group_at_message_produces_at_segment() -> None:
+    """Fix-97: 群聊 @机器人消息的 message.mentions 必须产出 at segment ——
+    此前完全不解析, 门控强制触发条件 has_at 恒 False, 飞书群 @机器人不回复。"""
+    adapter = _make_adapter(verification_token="tok")
+    received: list[ISACMessage] = []
+
+    async def _on_msg(msg: ISACMessage) -> None:
+        received.append(msg)
+
+    adapter.on_message = _on_msg
+    payload = {
+        "schema": "2.0",
+        "header": {"event_type": "im.message.receive_v1", "token": "tok"},
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_user1"}, "sender_type": "user"},
+            "message": {
+                "message_id": "om_at1",
+                "chat_id": "oc_group1",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": json.dumps({"text": "@_user_1 帮个忙"}),
+                "mentions": [
+                    {"key": "@_user_1", "id": {"open_id": "ou_bot"}, "name": "ISAC"},
+                ],
+            },
+        },
+    }
+
+    class _Req:
+        async def json(self) -> Any:
+            return payload
+        async def stream(self) -> Any:
+            yield json.dumps(await self.json()).encode("utf-8")
+
+    await adapter._handle_event(_Req())
+    assert len(received) == 1
+    msg = received[0]
+    at_segments = [s for s in msg.segments if s.type == "at"]
+    assert len(at_segments) == 1
+    assert at_segments[0].data["user_id"] == "ou_bot"
+    # has_at(bot_open_id) 精确命中 (bot_id 配置为机器人 open_id 的场景)
+    assert msg.has_at("ou_bot") is True
+
+
+def test_build_at_segments_skips_missing_open_id() -> None:
+    """Fix-97: 缺 open_id 的 mention 跳过; 空/非法输入返回空列表。"""
+    from isac.channel.adapters.feishu.adapter import _build_at_segments
+
+    mentions = [
+        {"key": "@_user_1", "id": {"open_id": "ou_a"}, "name": "A"},
+        {"key": "@_user_2", "id": {}, "name": "B"},  # 无 open_id → 跳过
+        "not-a-dict",  # 非法 → 跳过
+    ]
+    segs = _build_at_segments(mentions)
+    assert [s.data["user_id"] for s in segs] == ["ou_a"]
+    assert _build_at_segments(None) == []
+    assert _build_at_segments([]) == []
