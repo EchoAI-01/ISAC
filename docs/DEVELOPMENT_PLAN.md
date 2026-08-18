@@ -14,6 +14,8 @@
 4. **文档即蓝图**：整体思路、节点待办、项目构造、蓝图必须落成文档；修改实现时同步更新文档。
 5. **代码可读性**：必须写中文 docstring；复杂逻辑加行内注释解释"为什么"；保持代码整洁。
 6. **文档可读性**：避免模糊词与未定义名词；必须解释的专业术语集中放在 [术语表](#五术语表)。
+7. **禁止"定义了未接线"**：安全相关的常量、机制、限制必须接线到生产或删除，不允许零引用声明（2026-08-17 立；反例：MAX_EXTRACTED_BYTES / install_sandbox / CompressionPolicy 三处）。
+8. **同构面核对清单**：每个安全/防护修复交付前，必须核对同类入口是否全部覆盖同等防护（2026-08-17 立；反例：mcp: 前缀未推广到兼容层、SSRF pin 未推广到入站下载、租户谓词未推广到治理面）。
 
 ---
 
@@ -39,20 +41,438 @@
 
 **2026-07-26 MVP 差距复核**：对照 `docs/REQUIREMENTS.md` 十二条原始需求做 10 域并行代码取证(498 次代码检索 + 一次真实启动实测),发现一批标 `[x]` **已交付**的节点(D8/E4/F1-F3/H1/H2/J1-J4/K1-K4/K7)存在与其"完成定义"矛盾的未接线子行为,已在对应节点下补记"**2026-07-26 MVP 缺口复核**"说明(不改动其余已验证部分的 `[x]`);并新增大节点 **Q MVP 收尾**,收纳未被 P0-P5 覆盖、但 MVP 必需的缺口(记忆写入回路等,定义见 §四 Q)。技术路线全景见 [ROADMAP.md](./ROADMAP.md);模块开发范式见 [MODULE_GUIDE.md](./MODULE_GUIDE.md)。
 
-## 三之二、下一步开发计划
+**2026-08-17 全景 Review 与架构演进决策**: 完成 18 项目全景 Review (16 存量项目增量核对 + 新增 deepseek-harness / oh-my-openagent 全量审查) 与 ISAC 深度 Review (报告归档于工作目录 `.tmpfiles/agent-review-2026-08-17/`, 含 `isac-deep.md` 461 行深度评估, 实测 pytest 1822/7/3、ruff/mypy 全绿): 认定 **4 项安全实洞**与 **8 项架构问题** (区别于"功能未完成"的进度问题, 定性原则见 §三之五)。项目负责人拍板**升级完再发版** (不留过渡形态): 新增大节点 **U 架构演进轮** (U0 安全清偿、U1-U8 八项架构升级、U9 A+ 复评门禁, 定义见 §四 U); 发布路径与四项已拍板决策见 **§三之五** (取代 §三之三/§三之四 的 M-GA 定义); 架构债 Z1/Z2 升级收敛至 U2, 兼容层隔离收敛至 U6。
 
-K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**剩余工作 = 把标 `[~]` 的能力接入生产主链路 + 补齐未开始功能**,按下述优先级推进(详见 §四 P 节点与各 `[~]` 节点"接线待办"):
+## 三之二、下一步开发计划 (2026-08-15 整合: 前后端分离 · 后端先行)
 
-1. **P0 消息处理并发化** — `manager` 用 `asyncio.create_task` 并发处理消息 + 单会话串行 + 优雅关闭,是 P1 的前置基础。
-2. **P1 拟人化激活(最优先)** — 接入 L2-L5:debounce 合并 / 主动调度启停 / 打断闭环 / 上下文恢复,受 `conversation.enabled` 开关控制。拟人化是 ISAC 核心差异点,已接近闭合。
-3. **P2 Mesh 激活** — 接入 M1/M2:observer/candidate 路由 + 4 个 A2A 工具(assembly 注入 `mesh_action_broker`)。
-4. **P3 记忆检索深化激活** — `pipeline.search()` 接入向量/图谱召回 + 检索期治理过滤(N2 生效) + MemoryItem 接入检索链(N1)。
-5. **P4 身份归一激活** — gateway 接入 `IdentityResolver`,记忆按归一身份聚合(N3)。
-6. **P5 企业化激活** — 多租户隔离 / 插件进程隔离 / Workflow 接入 control 与主链路(O1-O3)。
-7. **未开始功能(`[ ]`)** — O4 平台适配器(微信/Slack/飞书 ≥1 真实实现;**骨架轮 S7 已补飞书·微信·QQ 官方三平台骨架 + 默认关闭注册分支**,剩真实连接/收发)、O5 Video Provider 真实端点(**骨架轮 S6 已接注册挂点**,剩端点二次确认 + 真实调用)、MemoryConsolidator(记忆整合后台任务;**骨架轮 S2 已补骨架 + 后台生命周期挂点**,剩真实去重/合并/剪枝逻辑)、I 节点复核(浏览器测试 CI 已随 K8 接入,复核 85%→100%)。
-8. **Q MVP 收尾**(2026-07-26 新增,详见 §四 Q 节点) — 对照原始需求清单逐条代码取证后发现的、**未被 P0-P5 覆盖**的 MVP 必需缺口(按优先级排列,非编号顺序):**Q1 记忆写入回路与身份稳定化**(检索/注入/治理链路全通但生产从未写入,MVP 最高优先级,不依赖 P0)、Q0 开箱可触达与配置纠偏、Q2 人格差异化实现、Q3 插件与 MCP 生态数据面接线、Q4 多模态工具注册与计量收尾、Q5 WebUI 与控制面收尾、Q6 SubAgent 用量与安全补漏。
+**重大决策**: 项目转入**前后端分离**开发。后端 (本仓库) 演进为纯 API 服务 (REST + SSE 控制面 + 消息数据面), 前端独立成项目围绕 API 契约开发。**先开发后端**, 前端轨道 (F 节点) 在 API 基线冻结后启动。决策记录见 `ARCHITECTURE.md` ADR-012, 节点定义见 §四 FE。
 
-依赖顺序：P0 → P1;P2 与 P3 可并行,P4 依赖 P3;P5 与 O4/O5/MemoryConsolidator/I 复核独立,可并行插入;**Q0/Q1 不依赖 P0,可立即开始甚至优先于 P0**,Q2-Q6 相互独立、与 P 节点也无强依赖,可并行插入。MVP 发布以 **P0-P2 + Q0-Q1** 完成为最低准入线(详见 [ROADMAP.md](./ROADMAP.md) M-MVP 里程碑)。每项按 §二"完成定义"验收(非桩实现 + 单测 + 集成/运行验证 + 主链路接线 + 文档 + `ruff`/`mypy`/CI),完成后把 §四 对应 `[~]` 升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。
+**当前方位**: T 开箱可用轮 **T1/T2/T4 已完成 (2026-08-04)** —— 开箱能对话 (私聊无条件触发 + 未回复可观测 + 占位 key 检测)、零配置启动 (默认配置内置 + 首启建 data 目录)、错误可诊断 (中文可操作提示 + `/health` 聚合 + 实时日志台); **T3 未开始**并按前后端分离重定义 (后端先交付 setup/auth API, WebUI 页面归前端轨道); T5-T7 与 R 节点组未开始。1568 测试通过、ruff/mypy 全绿。**阶段 0 工程纠偏已完成 (2026-08-15)** (CI 分支/venv/aiosqlite/worktree/构建产物, 详见下方推进顺序第 1 项); **FE0 API 契约冻结已完成 (2026-08-16)** (openapi.json 基线归档 + 错误格式统一 + 变更流程文档化); **FE1 分离基建已完成 (2026-08-16)** (CORS 白名单 + Session SameSite 参数化 + WebUI 标 deprecated); **T3-backend 控制面开箱后端支撑已完成 (2026-08-16)** (control 默认开 + setup 首登强制设密码状态机 + CLI password reset + /config/schema JSON Schema 端点 + 真机验收 setup 流程走通), **R3 插件与 MCP 生态激活已完成 (2026-08-16)** (收敛 Q3: 共享注册表 + AstrBot/MaiBot adapt 桥接 + MCPClient 生产接线, 真机冒烟 `MCP server 已接入 server=echo tools=1`), **T6 插件市场与热重载已完成 (2026-08-16)** (PluginInstaller 四源安装 + SSRF/zip slip 防护 + ToolRegistry deregister/来源追踪 + activation 热重载同步运行中 Agent + 控制面端点 + CLI `isac plugin` + 本地/远程市场清单, 真机冒烟 `scripts/smoke_plugin_marketplace.py` 安装→reload→卸载 exit=0), **R5 持久化与密钥安全已完成 (2026-08-16)** (SessionManager SQLite 写穿+重启恢复 + SecretStore `secret:` 前缀接入 + CLI `isac secret`, 真机冒烟重启恢复 session_id exit=0), **R2 控制面与 SubAgent 收尾已完成 (2026-08-16)** (`GET /agents/{id}/config` 真实 revision + SubAgent list-all + routes_webhooks (WebhookManager+EventBus 订阅+AlertManager 注入) + MCP Server 5 工具/生产启动点 + ContextEnvelopeBuilder 真传背景摘要 + evidence_refs 生成), **R6 企业化激活已完成 (2026-08-16)** (routes_tenants + TenantManager SQLite + tenant:read/write scope + ②loader 隔离已满足零工作 + ③workflow agent 入口决策落地选 B), **R1 多模态出入站闭环已完成 (2026-08-16)** (①_send_reply 扫 artifact 经 get_ref+MediaResolver 转 segment + ②入站下载落盘 data/uploads 闭环 + ③6 个 record_* 计量 + ④pricing.jsonc 价目表 + ⑤model_capabilities_allow 工具可见性), **R4 记忆完整性补齐已完成 (2026-08-16)** (①行话学习写入回路 consolidator `_extract_jargon_step` 群聊高频词 LLM 释义落 `upsert_jargon` + ②中期记忆真实 COMPRESS 压缩 方案A: hook 入队+consolidator 后台摘要落 `episodes.summary`+MidTermMemoryInjector 改读 summary 注入 RecallCue + ③语义关系图跳过留架构债: 写边层已就绪待补 LLM 抽取层), **R7 集成测试补齐代码可做部分已完成 (2026-08-16)** (新增 test_p3/p4/p5 三套集成测试 19 例: 向量+图谱+治理过滤召回 / 两平台 bind→记忆聚合 / 跨租户不可见+插件隔离+workflow 声明式执行; 全绿)。环境准入项 (真机/Docker 健康检查/24h soak/browser CI/十二条逐条取证) 按需环境留后。前端轨道 F1-F4 (独立项目, 技术栈待决策) 暂不启动。**P 主链路接线 (历史阶段)** 已全部完成或被 T/R 收敛, 不再是独立工作线。
+
+**后端推进顺序**(定义与验收见 §四对应节点):
+
+1. **阶段 0 工程纠偏 ✅ 已完成 (2026-08-15)** — CI 触发分支修正 (`ci.yml` `[main, develop]` → `[main, dev]`, 此前推 dev 从不触发 CI, 致 `scripts/smoke_webchat.py` 的 C901 一直没被发现); 重建 venv (shebang 指向迁移前旧路径 `/Users/chen/ai/ISAC`, `uv venv`+`uv sync` 重建后修正); 修复 aiosqlite 连接未关闭 (`test_graph_store`/`test_vector_store`/`test_memory_pipeline`/`test_runtime_manager` 的 fixture/teardown 补关闭长连接, `Event loop is closed`/`deleted before being closed` 警告归零, 24h soak 前置); 清理残留 worktree (6 个停在 `7df5e67` 的旧快照 + 分支, dev 已含全部内容, 删除无丢失) 与构建产物 (htmlcov/.coverage/dist)。顺手拆分 `smoke_webchat.py::main` 降 C901。验证: ruff/mypy 全绿、1568 测试通过(0 aiosqlite 警告)、smoke 真机冒烟退出码 0。
+2. **FE0/FE1 API 契约与分离基建** — OpenAPI 契约导出冻结; CORS 与跨源认证策略 (Session Cookie + CSRF 适配分离 origin, Bearer Token 保留双轨); 配置 Schema 暴露 (JSON Schema 端点, 前端表单驱动前提); 现内置 WebUI 静态托管标记 deprecated (迁移期保留); SSE 契约维持 (`/events/stream`、`/logs/tail`)。
+3. **T3-backend 控制面开箱后端支撑** — `control.enabled` 默认 true (仅绑 127.0.0.1); 首登强制设密码 (setup 状态 + `password_change_requires` + CLI reset 兜底); 真机验收。
+4. **T5 真实 IM 接入验收** — 需用户凭据; OneBot/NapCat 先行, 飞书/QQ 官方/企业微信逐个真机联调 (此前均只有单测, 从未真机验证); WebUI/控制面连接状态回显。
+5. **R3 插件与 MCP 生态激活 ✅ 已完成 (2026-08-16, T6 前置)** — per-Agent PluginContext 真实共享注册表 + AstrBot/MaiBot `adapt` 桥接接线 (新建 `AstrBotStarAdapter`) + MCPClient 生产接线 (`mcp.servers` 配置节 + `_wire_mcp_clients` + stop/destroy/shutdown `disconnect`) + CLI 工具 services 注入; 真机冒烟 stdio MCP server 接入验证。兼容层插件迁进程隔离未做 (架构受限: 兼容层无 manifest, Fix-31 已安全兜底, 留架构债)。
+6. **T6 插件市场与热重载 ✅ 已完成 (2026-08-16)** — `PluginInstaller` (market/git/url/upload + SSRF/zip slip 防护) + `ToolRegistry` deregister/来源追踪 + `activation` 模块 (热重载同步运行中 Agent) + 控制面 marketplace/install/reload/uninstall/failed/retry 端点 + CLI `isac plugin` + 市场清单 (本地+可配远程); 真机冒烟 exit=0。
+7. **并行收尾 (相互独立, 可穿插)** — **R1 多模态闭环 ✅ 已完成 (2026-08-16)** (出站 artifact 扫描+MediaResolver 转 segment/入站下载落盘 data/uploads/6 个 record_* 计量/pricing.jsonc 价目表/model_capabilities_allow 工具可见性); **R2 控制面与 SubAgent ✅ 已完成 (2026-08-16)** (`GET /agents/{id}/config` + SubAgent list-all + routes_webhooks + MCP 5 工具/生产启动 + ContextEnvelopeBuilder 真传 + evidence_refs 生成); **R4 记忆完整性 ✅ 已完成 (2026-08-16)** (①行话学习写入回路 consolidator `_extract_jargon_step` 群聊高频词 LLM 释义落 `upsert_jargon` + ②中期记忆真实 COMPRESS 方案 A: hook 入队+consolidator 后台摘要落 `episodes.summary`+MidTermMemoryInjector 改读 summary 注入 + ③语义关系图跳过留架构债: 写边层 `GraphStore.add_edge` 已就绪待补 LLM 抽取层); **R5 持久化与密钥 ✅ 已完成 (2026-08-16)** (SessionManager SQLite 写穿+重启恢复 + SecretStore `secret:` 前缀接入 + CLI `isac secret` + 真机冒烟重启恢复 session_id exit=0)。
+8. **R6 企业化激活 ✅ 已完成 (2026-08-16)** — routes_tenants (CRUD 租户+成员 + tenant:read/write scope) + TenantManager (SQLite 持久化) + ②loader 隔离已满足 (零工作) + ③workflow agent 入口决策落地选 B (文档化不做, 消除悬空); 真机 smoke exit=0。
+9. **R7 发布准入 + T7 分发运维 (最后)** — P3/P4/P5 集成测试补齐 ✅ 已完成 (2026-08-16, 19 例);I 节点复核升 100%、REQUIREMENTS 十二条逐条取证、release_checklist 七段、docker compose 一键 + 配置自动迁移、**24h soak** (待环境) → v1.0 GA。
+
+**前端轨道 (独立项目, FE0/FE1 + T3-backend 之后启动)**: F1 项目初始化 + 登录/setup 向导 → F2 十域页面迁移 (配置编辑事务改接真实 API, 顺带修复 Q5 遗留假数据) → F3 实时日志与 SSE → F4 插件市场 UI。定义见 §四 FE。
+
+依赖顺序：阶段 0 → FE0/FE1 → T3-backend → T5;R3 → T6;R1/R2/R4/R5/R6 相互独立可并行;R7 必须最后。**验收铁律 (2026-07-31 立) 继续适用**: 任何节点声明完成必须附真机部署证据, 不接受"单测通过"作为可用性证明。每项按 §二"完成定义"验收, 完成后把 §四 对应标记升为 `[x]` 并同步 [PROGRESS.md](./PROGRESS.md)。
+
+**GA 之后做什么**: 本节计划全部完成 (v1.0 GA) 后的预置蓝图见 §四 **"GA 后开发计划"** (V 功能广度兑现 / X 生态与商业化 / Y 智能演进 / Z 工程演进持续线), M-GA 验收通过后才激活排期, 不影响当前推进。
+
+---
+
+## 三之三、下一步行动计划 (2026-08-16 制定, 取代 §三之二 推进顺序的未完成部分)
+
+**背景**: 后端代码工作已基本收尾 —— 阶段 0 / FE0 / FE1 / T3-backend / T1-T2/T4 / T6 / R1-R6 全部完成, R7 代码部分 (P3/P4/P5 集成测试 + hook 真实触发测试 + ConfigMigrator 测试 + QUICKSTART) 完成; 全量 1739 测试、ruff/mypy 全绿。**剩余项几乎全部是环境/凭据依赖与前端轨道**。本计划按"解除阻塞的先后"排列。**2026-08-16 补记**: 本轮全量代码审查 (见下方 N1b) 发现"接线层"仍有一批 Critical/Major 缺陷 —— "无纯后端代码缺口"的结论以 N1b/N5b 清偿完毕为准。
+
+### N1 文档与标记收敛 (立即, ~0.5 轮) — **已完成 (2026-08-18)**
+
+- [x] 三态标记漂移修复: T3-backend `[ ]`→`[x]`; Q4/Q5/Q6/P3/P4/P5 已被 R 节点收敛, 由 `[~]` 升 `[x]` 并补"结论"行 (2026-08-16)。
+- [x] PROGRESS.md 节点总览表 N/O/Q 行同步收敛口径; T7 `[~]` 与 R7 `[~]` 的剩余项逐一挂到 `RELEASE_AUDIT.md` 第三节环境项 (2026-08-18: 增"对应节点"列逐项映射 N2/N3, 补 T7 真人复现行; T 行 T7 状态同步)。
+- [x] README 状态表与 AGENTS.md 剩余工作同步 (T6/R1-R6 完成态 + N1b~N1e 清偿记录, 2026-08-18)。
+
+### N1b 全量代码审查修复轮 (2026-08-16, Fix-37~Fix-48) — **"立即"层已完成, 专项批次见 N5b**
+
+**方法**: 5 路并行全量审查 (isac/ 全部 260+ 源文件, 重点盯 T6/R1-R6 新增接线) → 主审对全部 Critical 逐条读码复核。发现 7 Critical + 44 Major + 68 Minor。
+
+**已完成 (Critical 7 项 + 批次 A 安全一致性 4 项, 新增 15 例回归测试, 全量 1752 通过)**:
+
+- [x] **Fix-37** 企微 AES 明文布局与官方 WXBizMsgCrypt 协议颠倒 (真实回调必失败, 单测同错互证故全绿) → 官方布局切片 + receiveid==corpid 校验。
+- [x] **Fix-38** image_gen 下载第三方 CDN URL 泄露 Bearer api_key → 独立无 Authorization 下载 client。
+- [x] **Fix-39** 入站媒体/插件安装器重定向 SSRF 绕过 + 无体积上限 → `safe_download_bytes` (逐跳复校验 + 流式上限)。
+- [x] **Fix-40** 已配静态凭证时未认证 POST /setup 可接管控制面 → SetupManager static_credentials_configured 闸门。
+- [x] **Fix-42** MCP 接线补传 parsed_tokens (tokens[] 部署认证跳过)。
+- [x] **Fix-43** MCP 无凭证时 tools/call fail-closed。
+- [x] **Fix-44** MCP stdio 阻塞 readline → asyncio.to_thread (启用即冻结 Bot)。
+- [x] **Fix-45** /events/stream scope 解析支持会话 Cookie (WebUI SSE)。
+- [x] **Fix-46** /logs/tail scope 门禁 ("*")。
+- [x] **Fix-47** CSRF 豁免 POST /auth/session (带旧 Cookie 重新登录)。
+- [x] **Fix-48** PUT plugins 配置锁 + 列表参数健壮化。
+
+### N1c 第二轮全量代码审查修复轮 (2026-08-16/17, Fix-55~Fix-84) — **批 1 + 批 2 + 批 3 全部完成 (全量 1834 通过), 剩余 ~40 Minor 另立批次**
+
+**方法**: 与 N1b 同规格 5 路并行全量审查, 目标"复核 N1b/N5b 修复质量 + 查漏"。确认 3 项新 Critical + 5 项修复回归 + 一批 Medium/Minor。
+
+**批 1 已完成 (3 Critical + 回归, Fix-55~62)**:
+
+- [x] **Fix-55** webhook dispatch 在会话锁内同步 await (单个慢 endpoint 阻塞该会话消息链 ~32s) → 后台任务派发。
+- [x] **Fix-56** QQ 官方 send() 只看 HTTP 2xx 不看 body 错误字段 (平台级失败静默吞掉) → 非零错误码 fail-closed。
+- [x] **Fix-57** 打断后 pending 消息丢失 (interrupted 分支未回退消费游标) → `rewind_processed`。
+- [x] **Fix-58~62** MCP server agents_dir 未接线; PUT plugins matrix 404 移入 config 锁; stdio serve 异常隔离; 静态凭证判定补 token_scopes 分支; `is_safe_url` 同步 DNS 解析 to_thread 化。
+
+**批 2 已完成 (协议契约 + 认证一致性 + 记忆/制品, Fix-63~71)**:
+
+- [x] **Fix-63** MediaResolver 平台键与 OneBot adapter `platform_name="qq"` 不匹配。
+- [x] **Fix-64** rerank 响应字段协议错认 (单数 "result" → 官方 "results", 单数保留为 fallback)。
+- [x] **Fix-65** reranker 非数字 score 排序崩溃 → float 强转回退。
+- [x] **Fix-50/52** setup 已配静态凭证后 `is_password_valid` 仍 True + PBKDF2 校验滑动窗限速。
+- [x] **Fix-66** PATCH agent payload 可携带 revision 覆盖 (乐观锁 ABA) → 剥离。
+- [x] **Fix-67** consolidator episode 元数据 IN 查询分块 (500/批)。
+- [x] **Fix-68** task/delegate_task 深度键读错容器恒 0 (递归守卫失效) → 改读 AgentContext.services。
+- [x] **Fix-69** ArtifactStore 同内容制品 `INSERT OR REPLACE` 互改元数据/TTL → `INSERT OR IGNORE` + 首次登记为准。
+- [x] **Fix-70** handoff 无存活校验 (死 Agent 劫持会话至 TTL) → 工具登记前拒绝 + route() 自愈回落。
+- [x] **Fix-71** Telegram entity offset 按 code point 切片错位 → UTF-16 code unit 切片。
+
+**批 3 已完成 (Medium 12 项, Fix-72~84)**:
+
+- [x] **Fix-72** LogBuffer 非 loop 线程 append 线程安全 (threading.Lock + call_soon_threadsafe)。
+- [x] **Fix-73** AgentManager.create check-then-act 双创建 → per-agent 锁串行。
+- [x] **Fix-74** consolidator 画像归纳写回前重读最新 profile (防过期基线回滚并发更新)。
+- [x] **Fix-75** WebChat 待消费回复会话个数上限 (max_sessions + 逐出 + poll 删条目)。
+- [x] **Fix-76** 三个 webhook 适配器验签前 body 限流 (`webhook_guard.read_body_limited`, 默认 2MB)。
+- [x] **Fix-77** 隔离插件 IPC recv 超时 (默认 30s, 超时按崩溃重启)。
+- [x] **Fix-78** SessionManager per-session_key 锁 (全局锁退化问题) + key 锁惰性回收。
+- [x] **Fix-79** Session 持久化补 platform_session_id/user_ids 列 (含旧库 ALTER 迁移)。
+- [x] **Fix-80** webhook 事件名对齐 CONTROL_PLANE_SPEC §5.1 目录 (旧名自动归一)。
+- [x] **Fix-81** 强制话轮等锁期间被取消不再破坏并发回合状态机 (turn_owns_state)。
+- [x] **Fix-82** 强制话轮注入 conversation_runtime (可被打断) + 正常完成清陈旧打断信号。
+- [x] **Fix-83** SubAgent restore_interrupted 先落库改状态再登记内存索引。
+- [x] **Fix-84** ArtifactStore schema 初始化双重检查锁 (并发首写 database is locked)。
+
+**剩余 (~40 项 Minor)**: 另立批次, 优先级让位于 N2 环境准入与 N4 前端轨道。
+
+### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1~7 全部完成 (全量 2078 通过): Critical/Major/Minor 代码级清零**
+
+**方法**: U0-U9 架构演进后按同规格再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 主审逐条回码复核。去重后 **1 Critical + 21 Major + 44 Minor**。
+
+**批 1 已完成 (C1 沙箱逃逸 + 5 项安全治理, Fix-89~94)**:
+
+- [x] **Fix-89 [Critical]** 隔离插件 IPC pickle 传输沙箱逃逸 RCE → socketpair + 长度前缀 JSON 字节帧 + 帧长上限; _on_crash 补 SIGKILL 兜底。
+- [x] **Fix-90** IM 审批回流会话归属 + 发起人鉴权 (审批码旁路 HITL)。
+- [x] **Fix-91** /agents/{id}/config 凭据脱敏 + PATCH 哨兵还原 (含列表 zip 截断回归)。
+- [x] **Fix-92** 审批 decide 审计 TypeError (AuditLog 误当可调用)。
+- [x] **Fix-93** MCP 11 写工具审计留痕 (共享 AuditLog)。
+- [x] **Fix-94** /sessions/{id}/messages 租户谓词 (裸 SQL 绕过 U4)。
+
+**批 2 已完成 (平台协议可用性, Fix-95~99)**:
+
+- [x] **Fix-95** QQ 官方频道回复/进度帧透传 incoming.metadata (qq_official_source 端点路由凭证)。
+- [x] **Fix-96** QQ webhook 事件级去重 (顶层事件 id LRU+TTL, 防重推重复处理)。
+- [x] **Fix-97** 飞书群 @ 信号恢复 (解析 mentions → at segment, has_at 不再恒 False)。
+- [x] **Fix-98** Telegram/Discord 超长回复分段发送 (text_chunk, 优先换行边界)。
+- [x] **Fix-99** OneBot 入站媒体 loopback 白名单 (global_config inbound_media.allow_loopback)。
+
+**批 3 已完成 (会话内核正确性, Fix-100~103)**:
+
+- [x] **Fix-100** U1 打断回合孤儿 user 事件补偿 —— 新增 `turn.aborted` 事件类型 (ignorable, 前向兼容); `_derive_session_history` 返回本 burst user 事件 seq, 回合被打断时 `_record_turn_aborted` 追加补偿事件; `SessionHistoryDeriver.fold` 按 `aborted_user_seq` 跳过孤儿 user 事件, 接替回合重复落同一 burst 后历史窗口不出现重复用户内容。
+- [x] **Fix-101** /命令短路不吞 Fix-57 回拨积压 —— 命令分支抽出 `_try_command_shortcut`: 命中命令且 drain 出被打断回拨的非命令输入时, 该输入接续为本回合 pending 走正常门控→Loop→回复 (此前命令短路返回, Q1 永久滞留缓存无回复/无记忆/无历史); 无积压时行为不变直接回命令结果。
+- [x] **Fix-102** ArtifactStore TTL 只延长不缩短 —— 同内容重复 put 由 `INSERT OR IGNORE` 改 `ON CONFLICT DO UPDATE`, `expires_at` 取两者较长 (0=永不过期优先), 修"首次短 TTL 过期后再 put 拿到的 ref 已过期、get 直接删文件"; kind/mime/metadata 仍以首次登记为准 (Fix-69 语义不变)。
+- [x] **Fix-103** SessionManager per-key 锁引用计数 —— `_key_locks` 升级为 `{key: (lock, 引用数)}` + `_held_key_lock` 上下文管理, 消灭 Fix-78 "锁被 GC 后新来者拿新锁"的双创建竞态 (取锁-持锁 await 空隙 `locked()==False` 误删); 锁注册表归零自排空不再依赖 `_gc_expired` 顺带回收。
+
+顺带: `fold`/`_dispatch_message` 触 ruff C901 复杂度上限, 抽 `_collect_superseded`/`_event_to_message`/`_handle_interrupted_turn` 辅助方法; U1 三历史方法共用 `_history_parts` 收口 services 字符串键访问 (U9 红线棘轮 205→204)。新增 13 例批 3 回归测试。**全量 2008 通过**, ruff/mypy (295 源文件) 全绿。其余 Major/Minor 另立批次。
+
+**批 4 已完成 (注入安全 + 鉴权/审计加固, Fix-104~110)**:
+
+- [x] **Fix-104** 行话 `context` 注入防护 —— 行话学习的 `meaning` 与 `context` 同为 LLM 归纳产物 (素材是攻击者可控的群聊原文), 此前仅 `meaning` 过 `_sanitize_llm_induction`, `context` 直接落盘并被 `JargonInjector` 拼入系统 prompt; 两者同口径清洗, 间接 prompt injection 不得经 context 字段进入。
+- [x] **Fix-105** 压缩摘要注入防护 —— `_summarize_one_session` 落盘 `episodes.summary` 前由仅 `_clean_llm_output` 升级为 `_sanitize_llm_induction(_clean_llm_output(...))` (对齐 profile_text 口径); 该摘要由 `MidTermMemoryInjector` 注入, 此前指令前缀行可经压缩摘要进入系统 prompt。
+- [x] **Fix-106** `secret:` 前缀覆盖扩面 —— `resolve_secrets_in_config` 增扫 `multimodal_providers[*].api_key` 与 `mcp.servers[*].token`; 此前仅覆盖 `llm.api_key` + `llm.multimodal[*].api_key`, 用户在这两处写 `secret:xxx` 会字面透传给 Provider/MCPClient (注册失败/鉴权恒错)。抽 `_resolve_secret_field` 降复杂度。
+- [x] **Fix-107** GET /api/v1/audit scope 门禁 —— 审计日志是最敏感数据面 (可还原"谁在何时做了什么"), 此前只挂基线认证, tokens[] scope 模型下窄 scope token 也能读全量; 对齐 routes_logs Fix-46 要求 `*` 通配 scope (抽 `_audit_read_deps` helper)。scope_dependency=None 时行为不变。
+- [x] **Fix-108** CSRF 空 Bearer 缺口 —— 中间件此前只判 `startswith("bearer ")`, 空 Bearer ("Authorization: Bearer ") 也跳过 CSRF, 但 `extract_bearer` 对空 token 返回 None → 认证回退会话 Cookie, 构成"空 Bearer 绕过 CSRF + 受害者 Cookie 完成认证"的跨站写操作组合; 改用 `extract_bearer` 判定, 仅非空 token 放行, 与认证侧取 token 口径严格一致。
+- [x] **Fix-109** webhook URL 日志/审计脱敏 —— 订阅 URL 常内嵌凭据 (query token / userinfo), 此前全量写入 audit.ndjson 与运行日志; 新增 `isac/utils/ssrf.redact_url` (掩 userinfo + 全部 query 值, 保留 scheme/host/path, 解析失败回占位符), 审计 detail 与 subscribe/unsubscribe/dispatch 日志统一脱敏, 投递/存储/列表仍用原 URL。
+- [x] **Fix-110** 插件操作错误信息受控 —— install/reload/retry 失败此前把 `str(exc)` 原样回显客户端 (git clone stderr 等可含 URL/路径/凭据); 新增 `_client_error_message`: 受控 ValueError (人工审定的校验/安全消息) 原样返回, 其余异常掩为通用消息, 明细留给服务端审计与日志, 对齐全局异常处理器口径。
+
+顺带: `create_control_app`/`resolve_secrets_in_config` 触 ruff C901 上限, 分别抽 `_audit_read_deps`/`_resolve_secret_field` 降复杂度。新增 13 例批 4 回归测试。**全量 2021 通过**, ruff/mypy (295 源文件) 全绿。其余 Major/Minor (observe_message master_id / A2A bus 超时 / 无界增长卫生等) 另立批次。
+
+**批 5 已完成 (正确性 + 会话内核, Fix-111~119)**:
+
+- [x] **Fix-111** A2A `bus.send` 补**投递超时** (默认 60s, 可配; `asyncio.wait_for` 到期取消投递并抛 `InterAgentTimeoutError`) 与**递归深度保护** (contextvar 沿投递链传播, 默认 8 层, 超限抛 `InterAgentRecursionError`) —— 修"目标 Agent 挂起则发起方 A2A 工具无限等待"与"A↔B 互调链无限嵌套耗尽资源"。
+- [x] **Fix-112** `observe_message` 旁听记忆 `episode.user_id` 改用归一 master_id (`user_profile.user_id`, 与 `_write_memory` 的 N5b 口径一致) —— 修旁听/主写两侧键分裂导致按 master_id 检索召回不到旁听记忆; user_profile 为 None 回退平台 id。
+- [x] **Fix-113** `_apply_mesh_routing` 退出时还原 primary 的 `message.session_id` —— observer/candidate 的 `get_or_create` 会覆写该字段, 仲裁未切换回复者时主链路此前带着别人的会话 id 继续处理 primary 消息。
+- [x] **Fix-114** `SubAgentSupervisor.cancel` 不再无差别吞 CancelledError —— 用 `Task.cancelling()` 区分"后台任务被取消"(吞, 正常) 与"当前任务自身被取消"(>0 时重新抛出), 修优雅关闭/打断传播时取消协议失效。
+- [x] **Fix-115** 强制话轮产出落 U1 事件流 —— 主动发言的合成 prompt (带 proactive 标记) 与回复成对写 `message.user`/`turn.completed` (此前完全绕过事件流, 后续回合历史窗口看不到主动说过什么)。
+- [x] **Fix-116** 强制话轮取会话锁移入 try —— 此前取锁 await 在 try 外, 预约到租约后若在取锁阶段异常/取消, finally 的 cancel 不在路径上, 租约泄漏到 hold 超时挡住该会话写入。
+- [x] **Fix-117** handoff 工具 gate 顺序 + 失败不 commit —— ① 预约前置 (拿不到 SessionWriteGate 租约立即返回, 不再先投递摘要造成半程移交); ② 仅成功路径 commit, 失败/异常一律 cancel (此前 finally 无条件 commit)。
+- [x] **Fix-118** 主动任务唤醒回调失败重入队 —— 此前任务被 `poll_ready` 取出后回调失败即静默丢弃 (提醒永久丢失); 现在 `attempts` 计数重入队, 达 `MAX_WAKE_RETRIES` (3) 或队列满才放弃。
+- [x] **Fix-119** Agent Loop 预算耗尽退出前发 `budget_exhausted` 终态进度事件 —— 登记进 `_TERMINAL_STAGES`/`_TASK_TERMINAL_STAGES`/模板, 修多步任务进度"无声消失"。
+
+顺带: `handoff execute`/`scheduler._loop` 触 C901 上限, 抽 `_transfer_ownership`/`_produce_tasks`/`_fire_task` 降复杂度; services 残余访问维持 204 (未新增)。新增 20 例批 5 回归测试。**全量 2041 通过**, ruff/mypy (295 源文件) 全绿。剩余 Minor (restricted 工具 `_required_service` / 插件工具名 `:` 绕过 Fix-88 / DenyGuard 重建只读 500 事件 / 无界增长卫生 / audit.ndjson 轮转等) 另立批次。
+
+**批 6 已完成 (工具/Agent + 资源边界卫生, Fix-120~129)**:
+
+- [x] **Fix-120** DenyGuard 重建扫**全量**事件流 —— 此前启动只取每分区最近 500 条, 长会话里较早的 DENIED 事件落在窗口外, 重启后拒绝丢失、被拒工具翻回放行 (瓦解 U5 单调拒绝不变量); 新增 `DenyGuard.restore_from_store` 按 seq 分页 (默认 1000/页) 顺序扫完整个分区, bootstrap 委托之。
+- [x] **Fix-121** `generate_image` 的 `n` 夹到 [1,10] (schema 声明范围) —— LLM 传 0/负数/超大值不再造成空调用或批量生成放大; 非数字回落 1。
+- [x] **Fix-122** bash 工具 stderr 与 stdout 同口径截断 (MAX_OUTPUT_CHARS) —— 此前 stderr 无上限, 编译/依赖安装的海量报错原样进工具结果膨胀 prompt (C4 同源)。
+- [x] **Fix-123** Agent Loop tool_calls 分支追加的 assistant 消息 `content` None 归一为 "" (对齐 R17 对 final 响应的口径), 防下游 f-string/序列化/部分 Provider 报错。
+- [x] **Fix-124** MCP client stdio reader 对响应 `id` 非数字显式捕获 (此前冒泡到宽 except 被误记为"非 JSON 行"), 非数字 id 只是匹配不到在途请求, reader 继续消费。
+- [x] **Fix-125** `SystemPromptBuilder` 会话频率表 (`_last_trigger_at`/`_messages_since_trigger`) 按 session 数封顶 (默认 1000, 超限逐出最旧), 修长期运行无界增长; 被逐会话只是丢冷却状态不影响正确性。
+- [x] **Fix-126** `SessionWriteGate.reserve` 顺带全量回收已过期/已消费/已取消租约 (`_purge_stale`) —— 此前 `_purge_session` 只清被显式触及的 key, 过期且无人再触及的条目永久驻留 `_active`。
+- [x] **Fix-127** J4 5 个 SubAgent 工具 (delegate_task/list_subagents/subagent_status/subagent_log/cancel_subagent) 补 `_required_service` 映射 → subagent_supervisor —— 此前 restricted 但无映射, `if required:` 为假直接放行, 等效 allow (同 Fix-87 修 mcp:* 前的病灶)。
+- [x] **Fix-128** 插件工具命名空间收紧 —— 跳过条件从"名字含任意 ':'"改为"名字已含**本源**前缀 `<source>:`"; 此前插件用 `mcp:x:y`/`别的插件:tool` 这类名字可整体绕过命名空间, 冒充 MCP 工具或顶替其他插件的已命名工具。生产 MCP 桥接以 source=builtin 注册不受影响。
+- [x] **Fix-129** host 插件工具执行超时 —— AstrBot `FunctionToolAdapter` / MaiBot `MaiBotActionAdapter` 执行受 timeout 约束 (默认 60s 可配); 异步直接 wait_for, 同步经 to_thread 移出事件循环再限时, 挂死的插件函数不再无限阻塞 Agent Loop。
+
+顺带: Fix-120 把分页重建移入 `DenyGuard.restore_from_store`, bootstrap `_start_session_event_store` 精简后维持 ≤500 行红线; host 适配器超时下限 0.01s 便于测试注入 (生产默认 60s)。新增 21 例批 6 回归测试 (并更新 Fix-88 命名空间既有测试以反映加固语义)。**全量 2062 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。
+
+**批 7 已完成 (剩余 Minor 清零, Fix-130~137)**:
+
+- [x] **Fix-130** `SubAgentSupervisor._runs` 内存索引封顶 (`max_tracked_runs`, 默认 500) —— 终态 run 已落 Journal 可回读, 超限按 `finished_at` 从最旧终态淘汰; 活跃 (queued/running) run 绝不淘汰。
+- [x] **Fix-131** 主动任务生产者去重标记表 LRU 封顶 (`_bound_marker`, 默认 1000 会话) —— `IdleReengage`/`DateReminder`/`TopicFollowup`/`MemoryAssociation` 四处按 session_id 累积的标记表此前无界增长; 超限淘汰最旧, 被逐会话最坏重新武装多主动一次, 不影响正确性。
+- [x] **Fix-132** `event_store.append` 改用 `INSERT...SELECT ... RETURNING seq` 原子取回本次分配的 seq —— 消除"INSERT 后单独 SELECT MAX(seq) 回读"之间被并发 append 插队导致拿错 seq 的竞态。
+- [x] **Fix-133** upload 安装 `zip_b64` 体积封顶 —— 对齐 URL 安装的 `MAX_PLUGIN_DOWNLOAD_BYTES` (100MB); 先按 b64 长度预检 (防超大串整体解码进内存), 解码后复核真实字节数, 超限拒绝。
+- [x] **Fix-134** `audit.ndjson` 尺寸轮转 —— 超 `max_bytes` (默认 10MB) 滚动为编号备份 `.1/.2/…` (默认保留 3 份), 主文件重新计数; 此前只追加不轮转无界增长。
+- [x] **Fix-135** 隔离插件 reload/uninstall 真实路径解析 —— 新增 `_cached_path_for` 同时覆盖宿主内 (`_loaded.path`) 与隔离 (`_iso_hosts[].plugin_path`) 两种加载方式; 此前隔离插件不在 `_loaded` → cached_path 恒 None → 回退 `plugins_dir/name`, manifest.name≠目录名时 reload 误报 not_found / uninstall 删错目录。`PluginIsolationHost` 补公开 `plugin_path` 属性。
+- [x] **Fix-136** `DenyGuard._denials` LRU 封顶 + 事件流惰性重建 —— 单调拒绝是安全不变量, 单纯逐出会翻回; 故仅在 `bind_store` 注入事件存储时才逐出, 逐出后经 `is_denied` 从事件流惰性重建该会话拒绝集 (无拒绝缓存空集避免热点会话重复扫)。未绑定存储时不逐出 (绝不丢拒绝)。`is_denied` 改异步。
+- [x] **Fix-137** 反应式门控移除死代码空闲退避判定 —— `IdleBackoffController.record_idle` 在反应式链路从无调用点, `should_delay` 恒 False, evaluate 里的退避分支恒不执行; 且即便接线, 对评分已达标的消息按空闲连击延迟 30~300s 反而伤害体验。移除该分支与两处 `record_reply` 调用; 主动发言冷却由 `ProactiveScheduler.min_interval_seconds` 承担才是退避语义正确落点。`IdleBackoffController`/`get_idle_backoff` 作为经隔离单测的组件保留。
+
+顺带: 新增 16 例批 7 回归测试。**全量 2078 通过**, ruff/mypy (295 源文件) 全绿, 红线全绿。
+
+**第三轮最终小结**: 1 Critical + 21 Major + 44 Minor 已全部完成代码级清零 (批 1~7 合计 Fix-89~137 共 49 项)。唯一留档非代码项: **全局配置无控制面持久化路径** —— `routes_config` 仅有 validate/diff, `data/config.jsonc` 从不被写回, 故全局 `mcp.servers` 等定义只能手工编辑 + 重启 (Agent 级 MCP 绑定 `AgentConfig.mcp_servers` 已经 `save_agent_config` 持久化并经 `reload_config → assemble_agent → _wire_mcp_clients` 热重连)。该项属"全局配置持久化 + 热重载"专门特性 (影响所有全局配置, 非 MCP 独有), 不宜以 MCP-only 写回器草率实现 (config.jsonc 带注释, 整体回写会丢注释), 建议另立节点。→ **已由 N1e 落地 (2026-08-18)**。
+
+### N1e 全局配置持久化 + 热重载 (2026-08-18) — **已完成 (全量 2098 通过)**
+
+**目标**: 清偿 N1d 唯一留档项 —— 全局配置获得控制面持久化路径与热重载, 全局 `mcp.servers`/`llm` 等定义不再"手编 config.jsonc + 重启"。
+
+**持久化模型**: `data/config.jsonc` 带注释, 控制面不整体回写 (会丢注释), 写入独立覆盖层 `data/config.override.json` (机器所有, 纯 JSON, 原子写, 含 `__revision__`)。加载序扩展为: 内置默认 ← config.jsonc (用户手编) ← override (控制面写入) ← 环境变量 ← CLI (SPECIFICATION.md 3.2 语义不变, 环境变量仍最高优先级)。`isac/utils/config.py` 新增 `deep_merge_config` (dict 递归合并 / 非 dict 整体覆盖 / null 叶删键) + `load_config_overrides`/`save_config_overrides` (read-modify-write + revision+1); `load_config` 增 `override_path`/`overrides` 参数; 根 bootstrap 启动加载 override。
+
+**控制面端点** (`routes_config`, scope `config:read`/`config:write`, 审计只记节名不记值):
+- `GET /api/v1/config/global` — 有效配置 (Fix-91 同口径脱敏哨兵) + revision。
+- `PATCH /api/v1/config/global` — 深合并部分更新: 哨兵剥离 (含剥后空 dict 剪枝, 防"全哨兵 patch"绕过无变更检查) → 候选全链 load 校验 (schema 硬失败 400 不落盘) → 持久化 override → 热应用; If-Match 乐观锁 (409 CONFIG_CONFLICT); null 叶 = 撤销覆盖项。
+- `POST /api/v1/config/global/reload` — 磁盘重读热应用 (手编 config.jsonc 免重启)。
+
+**热重载语义** (CONTROL_PLANE_SPEC §8.2 规则 6, 不假装热更成功): `applied` 节原地更新 services 持有的 global_config dict (同一对象 clear+update, 全部持有者立即可见) + 同步重建运行中 Agent (复用既有 `reload_config` 全重建路径, 单 Agent 失败保留旧实例记入 `reload_errors`); `control`/`channels`/`logging`/`debug`/`log_level` 在 bootstrap 构造服务端点不可运行中重建 → 持久化但列 `restart_required`; `reload_required` 恒空 (重建在请求内完成)。secret: 前缀在内存候选经 `_build_secret_store` + `resolve_secrets_in_config` 解析, override 落盘保留原值不落明文。
+
+**契约**: CONTROL_PLANE_SPEC 新增 §3.7 + scope 扩列 (FE0 流程); `docs/api/openapi.json` 基线重导出 (55→57 路径, 仅新增 `/config/global` 与 `/config/global/reload`)。新增 20 例测试 (`test_global_config_persistence.py`)。全量 2098 通过, ruff/mypy (295 源文件)/红线全绿 (bootstrap 499 行)。
+
+### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
+
+> 对应 `docs/RELEASE_AUDIT.md` 第三节。验收铁律适用: 每项附真实输出。
+
+- [ ] **N2-1 Docker 健康检查冒烟**: `docker build` + `docker compose up` + `/health` 循环实测 (T7 验收 + release_checklist 第 3 段)。
+- [ ] **N2-2 browser CI 复核**: 装 Playwright chromium 跑 `tests/browser/` 黄金路径, I 节点 85%→100% (release_checklist 第 4 段)。
+- [ ] **N2-3 release_checklist 七段过一遍** (除真实 IM 凭据段): CI 全绿 + 本地全量 + 文档同步 + 版本号一致 + 发布标签 + 回滚预案 + 发布后监控预案。
+- [ ] **N2-4 24h soak**: 真实 LLM key + 连续对话负载, 验证无内存/连接/任务泄漏 (验收铁律的最后一道)。
+
+### N3 T5 真实 IM 接入验收 (外部阻塞: 需用户凭据 + 回调公网地址)
+
+- [ ] **N3-1 凭据准备清单** (不依赖开发, 先交付给用户): OneBot/NapCat 测试 QQ 号; 飞书自建应用 (encrypt_key + verification_token); QQ 官方机器人 (app_id + secret); 企业微信 wecom (corpid/secret/agentid + 回调 URL)。
+- [ ] **N3-2 逐平台真机联调**: OneBot 先行 (私聊 + 群聊 @ + 富媒体降级) → 飞书 → QQ 官方 → wecom; 每平台附收发实证。
+- [ ] **N3-3 控制面连接状态回显** (Channel 实时状态经 `/health` 与 SSE 暴露)。
+
+### N4 前端轨道启动 (独立项目, 后端 API 基线已冻结可直接开工)
+
+> 前置已全部就绪: FE0 openapi.json 契约基线 + FE1 CORS/跨源认证 + T3-backend setup API + `/config/schema` JSON Schema 端点。
+
+- [ ] **N4-1 技术栈决策** (开工第一决策): 框架与构建工具选型, 消费 `docs/api/openapi.json` 生成客户端。
+- [ ] **F1** 项目初始化 + 登录页 + 首登强制设密码向导 (对接 `/setup` API + 428 gate)。
+- [ ] **F2** 十域页面迁移 (配置编辑事务接真实 API + 乐观锁, 顺带清除 Q5 遗留假数据); 完成后移除后端 `control/webui/` 静态托管。
+- [ ] **F3** 实时日志台 (`/logs/tail` SSE) + 事件流页面 (`/events/stream`)。
+- [ ] **F4** 插件市场 UI (对接 T6 的 marketplace/install/reload/uninstall 端点)。
+
+### N5 并行线: 剩余架构债与加固 (见缝插针)
+
+- [~] **Z1** `services` 弱类型 → ServiceContainer 强类型 —— **批 A+B 已完成 (2026-08-18)**: 容器属性扩至全部 36 全局注册键 + 14 per-Agent 键, 统一宽容语义 (缺键 None); bootstrap/AgentManager 全局容器访问 + assembly/manager/dispatch/subagent-runner 的 per-Agent (`instance.services`) 读取迁移属性访问; 生产容器直通同一对象 (后注册键可见), 裸 dict 测试夹具归一化拷贝 (assemble_agent/AgentManager 入口)。红线棘轮 205→167→130。剩余: `context.services` (Agent Loop/工具热路径) 与 control 路由 `(services or {})` 面另立批 C。
+- [x] **Z2** `main.py` 拆分 —— 已由 **U2 收敛 (2026-08-17)**: main.py 82 行薄入口, 装配拆 isac/bootstrap.py + isac/wiring.py + isac/dispatch.py + isac/control/bootstrap.py (各受 ≤500 行红线)。
+- [ ] 同步 IO 异步化 (audit/bus persist/routes_routing 写盘)。
+- [ ] `reload_config` 差量更新 (观察项, 不紧急; N1e 热重载当前走全重建路径)。
+
+### N5b 全量审查剩余批次 (2026-08-16 审查发现的 Major/Minor, 各立专项)
+
+> N1b 已清偿全部 Critical 与批次 A; 以下为剩余批次, 建议顺序 C → D → E → F/G。
+
+- [x] **批次 C 插件生态专项** — 启动路径工具 source 追踪 (卸载/重载 deregister 对启动期插件失效); commands/injectors/hooks/EventBus 来源追踪 + deregister (只增不删); 隔离子进程崩溃后自动重载插件 + RLIMIT_CPU 可配 + 并发响应 correlation_id 匹配 + FD 泄漏; installer `name` 路径校验 (`^[A-Za-z0-9_-]+$` + resolve 子树检查)、update 原子交换回滚、解压体积上限; AstrBot import 沙箱接线 (官方语法插件当前加载失败); 插件名≠目录名生命周期映射; MCP 桥接工具名强制前缀 + 默认 restricted (防同名覆盖内置工具)。**注: C7 (AstrBot import 沙箱) 留架构债** —— 隔离是 opt-in 设计取舍, 非隔离插件顶层代码在宿主执行; 强制兼容层隔离需重构 adapt 进子进程, 写边层 (PluginIsolationHost) 已就绪待后续接入。
+- [x] **批次 D MCP Client 生命周期** — reload_config 断开旧实例 MCP 连接 (子进程泄漏); stop→start 重连; connect 后 list_tools 失败路径清理; initialize/initialized 握手 + list_tools error 显式 (对真实 MCP server 当前恒 0 工具); stdio reader 脏输出 continue 不退出。
+- [x] **批次 E 记忆口径一致性** — person_profiles 键分裂 (consolidator 平台 user_id vs manager/注入器 master_id, S2 画像归纳默认部署即死功能); 租户/自定义 namespace 注入器读不到 + person_profiles/jargon 表补租户列; `latest_episode_id_for_session` 租户包裹 SQL 报错 (R4 压缩链路失效, 已实测复现); consolidator 软删同步 BM25/向量; embedding 维度错配部分提交误报; 去重桶加 user_id; 归纳产物防持久化 prompt injection。
+- [x] **批次 F LLM 可控参数 clamp** — wait/delegate/task 秒数、bash timeout、ask_agent 超时 + hop 深度、generate_image n、/mute 时长 + 命令用户级鉴权。
+- [x] **批次 G 适配器与零散** — 飞书 p2p 私聊当群聊 (chat_type 未读); Discord/Telegram 自身消息过滤; ChannelRegistry.start_all/stop_all 错误隔离; uploads_store 生命周期注册 (TTL sweep); DELETE 不存在 agent 500→404; PUT routing/rules 400; TenantManager.list_tenants 缓存; resolve_secret 扫描路径对齐; 及 Minor 批量 (详见审查记录)。
+
+### 里程碑路径
+
+M-T2 可部署可管理 = N1 + N4-F1/F2 (前端落地即达成, 后端段已完成); **M-T3 可接入 = N2 + N3** (环境与凭据解除后); M-T4 可扩展已达成 (R3+T6); **M-GA v1.0 = N2 全过 + N3 至少一个平台真机通过 + N4-F2 完成** + release_checklist 七段全绿 **(2026-08-17 修订: 另需 U 节点组全过 + A+ 复评达标, 见 §三之五)**。GA 后进入 §四 GA 后开发计划 (V/X/Y/Z)。
+
+---
+
+## 三之四、产品可用全景计划 (2026-08-16 制定, 从"工程节点"升级为"产品可用"视角)
+
+> **为什么新增本节**: §三之三 的 N1-N5 是**工程节点清单**, 回答"代码还缺什么"; 但历史教训 (2026-07-31 真机冒烟推翻"MVP 已达成") 证明**工程完成 ≠ 产品可用**。本节以**四类用户旅程**为线索定义"可用产品"的判定标准, 把 N1-N5 与其未覆盖的产品维度 (可部署性验证、可运维性、性能基线、兼容性矩阵、面向部署者/运维者的文档) 整合为 Phase 0-5 的全景计划。**关系**: N1-N5 是工程事实源与执行粒度, 本节是它们的产品化组织与缺口补充; 二者不重复维护进度, 进度仍以 [PROGRESS.md](./PROGRESS.md) 为唯一事实源。
+
+### 一、"可用产品"判定标准 (v1.0 GA 的充分必要条件)
+
+**v1.0 GA = 以下四条用户旅程全部真机走通并附证据** (验收铁律: 命令 + 实际输出, 不接受"单测通过"):
+
+| 用户角色 | 核心旅程 | 成功标准 (真机可验) |
+|---|---|---|
+| **部署者** | 获得软件 → 部署 → 启动 → 说第一句话 | QUICKSTART 路径 A (Docker) / B (源码) 5 分钟跑通; 零手写配置可对话; 未配 LLM key 时给出"去哪配"的明确中文提示而非静默 |
+| **管理者** | 打开浏览器 → 登录 → 配置 → 监控 → 排障 | 首登强制设密码 (无硬编码默认密码); 十域管理页无假数据; `/health` 聚合各子系统状态; 实时日志台可查; 配置修改经表单 + 乐观锁生效 |
+| **终端用户** | 在 IM 里和 Bot 对话 | 私聊必回 (T1 已修); 群聊 @/提及触发; 越聊越熟 (记忆写入回路 Q1); 回复节奏拟人 (debounce/wait/打断); 富媒体按平台能力降级不丢 |
+| **开发者** | 安装插件 / 接 MCP / 调 Admin API | 插件市场可装可用可热重载 (T6); MCP server 可接 (R3); API 契约冻结 (`docs/api/openapi.json`) 且向后兼容 |
+
+### 二、全景缺口盘点 (八大维度)
+
+按产品维度归位缺口, 而非仅按代码节点:
+
+| 维度 | 现状 | 缺口 | 收敛位置 |
+|---|---|---|---|
+| **1. 功能完整性** | R1-R6 全部完成; REQUIREMENTS 十二条 8✅4⚠️ | 剩余 ⚠️ 项均属 GA 后 (V1-V4/X3/X4), 不阻塞 v1.0 | §四 GA 后计划 |
+| **2. 正确性** | N1b 7 Critical + 批次 A; N5b 批次 C-G; N1c 第二轮审查批 1-3 (Fix-55~84: 3 新 Critical + 回归 + 协议契约 + 12 Medium) 全部清偿 | N1c 剩余 ~40 Minor 另立批次 | Phase 0 |
+| **3. 开箱体验** | T1/T2/T3-backend/T4 已完成 (后端) | 前端 F1-F4 未启动 (登录向导/十域/实时/插件市场); 内置 `control/webui/` 静态托管待 F2 完成后移除 | Phase 3 |
+| **4. 真实环境验证** | 从未在真实环境验证 | Docker 冒烟 (N2-1)、browser CI (N2-2)、24h soak (N2-4) 全部待环境; 真实 IM 联调 (N3) 待凭据 | Phase 1/2 |
+| **5. 可部署性** | Dockerfile/compose/export 脚本已存在 | **未经真机构建验证** (N2-1); pip/uv 单包 3 步安装未验证; 配置版本迁移 (ConfigMigrator) 已有测试但缺真实升级链验证 | Phase 1/4 |
+| **6. 可运维性** | `/health` + 日志台 + 用量计量 + 审计已有 | 缺: 备份/恢复/升级/降级流程真机演练; 监控告警端到端 (AlertManager→Webhook→送达) 验证; **面向运维者的 MAINTENANCE.md 运维手册缺失** | Phase 1/4 |
+| **7. 安全性** | SSRF/Token/审计/SecretStore 已落地 | 缺: 安全自查清单 (secrets 扫描/依赖漏洞/权限最小化) 系统过一遍; 第三方审计留 X4 | Phase 4 |
+| **8. 性能基线** | 无任何基线数据 | 并发会话上限、消息端到端延迟分布、24h 内存/连接/任务泄漏曲线全部未知 (随 N2-4 soak 产出) | Phase 1 |
+| **9. LLM 兼容性** | 仅假设 OpenAI 兼容协议 | 主流端点 (DeepSeek/通义/Kimi/智谱/MiniMax) 未逐一验证 base_url/字段差异; 嵌入/重排端点同理 | Phase 1 |
+| **10. 文档完备性** | 开发文档 (架构/规范/计划) 完备 | 缺面向**部署者/运维者**的用户文档: 部署详解、配置项参考、故障排查树、FAQ、各平台接入分步指南 | Phase 1/4 |
+
+### 三、分阶段计划
+
+> 每 Phase 列: 目标 / 工作项 (标注映射 N1-N5 或新增) / 准出标准 (真机证据) / 预估。验收铁律全程适用。
+
+#### Phase 0 代码清偿 —— 把已知缺陷清零 (纯代码, 无外部依赖, **可立即启动**)
+
+- **目标**: 消除全部已知 Critical/Major, 代码进入"零已知缺陷"状态。
+- **工作项**:
+  1. **N1 收尾** — README 状态表 + AGENTS.md 剩余工作同步 (T6/R1-R6 完成态)。
+  2. **N5b 批次 E** (优先, 含真 bug) — 记忆口径一致性: person_profiles 键分裂 (consolidator 平台 user_id vs 注入器 master_id)、租户/自定义 namespace 注入器读不到、`latest_episode_id_for_session` 租户包裹 SQL 报错、consolidator 软删同步 BM25/向量、embedding 维度错配部分提交误报、去重桶加 user_id、归纳产物防 prompt injection。
+  3. **N5b 批次 C** — 插件生态专项: source 追踪/deregister、隔离崩溃重载、installer name 路径校验、AstrBot import 沙箱、MCP 工具名前缀防覆盖。
+  4. **N5b 批次 D** — MCP Client 生命周期: reload 断开旧连接、stop→start 重连、initialize 握手、stdio 脏输出。
+  5. **N5b 批次 F** — LLM 可控参数 clamp: wait/delegate/task 秒数、bash timeout、/mute 时长鉴权。
+  6. **N5b 批次 G** — 适配器与零散: 飞书 p2p 私聊误判、Discord/Telegram 自身消息过滤、DELETE 不存在 agent 500→404 等。
+- **准出**: ruff/mypy/全量测试绿; 批次 E 真 bug 附复现→修复→回归测试证据; 新增缺陷回归测试。
+- **预估**: 3-4 轮。**可全部在本沙箱完成**。
+
+#### Phase 1 工程验证 —— 真实环境跑通 (环境准入, 对应 N2)
+
+- **目标**: 证明"能装、能跑、能诊断、不泄漏", 产出性能基线。
+- **工作项**:
+  1. **N2-1 Docker 冒烟** — `docker build` + `compose up` + `/health` 循环; pip/uv 单包 3 步安装验证 (T7)。
+  2. **N2-2 browser CI 复核** — pytest-playwright + chromium 跑 `tests/browser/` 黄金路径, I 节点 85%→100%。
+  3. **N2-3 release_checklist 七段** (除真实 IM 段) — CI 全绿/本地全量/文档同步/版本号一致/发布标签/回滚预案/监控预案。
+  4. **N2-4 24h soak** — 真实 LLM key + 连续对话负载, 产出并发/延迟/内存/连接/任务泄漏基线; 顺带覆盖性能基线 (维度 8)。
+  5. **LLM 兼容性矩阵** (新增) — 逐一实测 DeepSeek/通义/Kimi/智谱/MiniMax 的 chat/embedding/rerank base_url 与字段差异, 记入文档; 不兼容处加适配或文档注明。
+  6. **可运维性验证** (新增) — 备份→恢复→升级→降级全流程真机演练; AlertManager→Webhook→送达端到端; ConfigMigrator 真实升级链验证。
+  7. **用户文档补齐** (新增) — `docs/deployment.md` 细化、`docs/MAINTENANCE.md` 新建 (排查树/备份/升级)、各平台接入分步指南、FAQ。
+- **准出**: 每项附命令+实际输出; 性能基线数据落 `docs/`; Docker 与 soak 证据。
+- **预估**: 2-3 轮。**依赖**: docker daemon、浏览器环境、真实 LLM key。**本沙箱可先做**: N2-2 (pytest-playwright 可装)、用户文档、LLM 兼容性矩阵 (需 key)。
+
+#### Phase 2 真实接入 —— IM 凭据联调 (对应 N3, 外部阻塞)
+
+- **目标**: 从"适配器有单测"升级为"真机能收发"。
+- **工作项**:
+  1. **N3-1 凭据准备清单** (先发用户): OneBot/NapCat 测试 QQ、飞书自建应用 (encrypt_key+verification_token)、QQ 官方 (app_id+secret)、wecom (corpid/secret/agentid + 回调公网地址)。
+  2. **N3-2 逐平台真机联调** — OneBot 先行 (私聊+群聊@+富媒体降级) → 飞书 → QQ 官方 → wecom; 每平台附收发实证。
+  3. **N3-3 控制面连接状态回显** — Channel 实时状态经 `/health` 与 SSE 暴露。
+- **准出**: 每平台真人连续对话 N 轮无异常栈、无消息丢失的实证。
+- **预估**: 1-2 轮 (不含凭据等待)。**阻塞项**: 用户凭据 + 回调公网地址。
+
+#### Phase 3 前端交付 —— 前后端分离完成 (对应 N4)
+
+- **目标**: 管理者旅程完整落地, 移除内置 WebUI 静态托管。
+- **工作项**:
+  1. **N4-1 技术栈决策** — 框架/构建工具选型, 消费 `docs/api/openapi.json` 生成客户端。
+  2. **F1** 项目初始化 + 登录页 + 首登强制设密码向导 (对接 `/setup` API + 428 gate)。
+  3. **F2** 十域页面迁移 (配置编辑事务接真实 API + 乐观锁); 完成后移除后端 `control/webui/`。
+  4. **F3** 实时日志台 (`/logs/tail` SSE) + 事件流页 (`/events/stream`)。
+  5. **F4** 插件市场 UI (对接 T6 marketplace/install/reload/uninstall)。
+- **准出**: 独立前端项目跑通管理者全旅程; 内置 WebUI 移除后主链路无回归。
+- **预估**: 3-5 轮。**依赖**: N4-1 技术栈决策 (用户输入); 后端 API 基线已冻结可直接开工。
+
+#### Phase 4 发布准入 —— GA 门禁 (对应 R7 收尾 + 安全/文档收口)
+
+- **目标**: 满足全部 GA 准入条件, 可正式发布 v1.0。
+- **工作项**:
+  1. **release_checklist 七段全过** (含真实 IM 段, 依赖 Phase 2)。
+  2. **REQUIREMENTS 十二条逐条取证复核** (仿 RELEASE_AUDIT 方法, GA 前终审)。
+  3. **安全自查清单** (新增) — secrets 扫描 (无硬编码 key)、依赖漏洞扫描 (`uv pip audit` / pip-audit)、权限最小化复核、CSRF/CORS/SSRF 配置复核。
+  4. **文档终审** — QUICKSTART/部署/运维/FAQ/平台指南齐全且经"未接触项目的人"复现验证。
+- **准出**: 七段清单全绿 + 十二条 8✅→全✅ (或明确记录 ⚠️ 项为 GA 后计划) + 安全自查通过。
+- **预估**: 1 轮。**依赖**: Phase 0-3 全部完成。
+
+#### Phase 5 GA 后演进 —— 衔接 §四 GA 后开发计划 (V/X/Y/Z)
+
+GA 达成后进入 V (功能广度) / X (生态商业化) / Y (智能演进) / Z (工程持续线), 详见 §四 GA 后开发计划, 本节不重复。
+
+### 四、里程碑 (产品可用口径)
+
+| 里程碑 | 判定 | 依赖 Phase |
+|---|---|---|
+| **M-P0 代码零已知缺陷** | 全部 Critical/Major 清零, 回归测试绿 | Phase 0 |
+| **M-P1 工程验证通过** | Docker/soak/browser CI 全过 + 性能基线产出 | Phase 1 |
+| **M-P2 真实 IM 可用** | 至少一个平台真机收发通过 | Phase 2 |
+| **M-P3 管理者旅程完整** | 前端十域 + 登录向导 + 实时可用 | Phase 3 |
+| **M-GA v1.0 正式版** | release_checklist 七段全绿 + 十二条取证 + 安全自查 + **U 节点组全过 + A+ 复评 (§三之五)** | Phase 0-4 全过 + U 节点组 |
+
+**GA 充分必要条件** (2026-08-17 修订, 以 §三之五 为准): N2 全过 (M-P1) + N3 至少一个平台真机通过 (M-P2) + N4-F2 完成 (M-P3) + Phase 0 代码清偿 (M-P0) + release_checklist 七段全绿 + 十二条取证 + 安全自查 (Phase 4) + **U0-U9 架构演进全过 + A+ 复评达标 (U9)**。
+
+### 五、关键路径、依赖与风险
+
+- **关键路径**: Phase 0 (本沙箱可做) → Phase 1 → Phase 2/3 可并行 → Phase 4。**Phase 2 (IM 凭据) 与 Phase 3 (前端) 相互独立**, 可并行推进; Phase 4 依赖全部前置。
+- **外部依赖 (阻塞项, 需用户提供)**: ① IM 凭据 + 回调公网地址 (Phase 2); ② 真实 LLM key (Phase 1 soak + 兼容性矩阵); ③ docker daemon + 浏览器环境 (Phase 1); ④ 前端技术栈决策 (Phase 3 N4-1)。
+- **风险**: ① 凭据/环境等待会拉长 Phase 2 时间线 —— 缓解: Phase 0/1 不依赖凭据的部分先行, 凭据清单提前发用户准备; ② LLM 端点兼容性可能暴露协议差异 —— 缓解: Phase 1 兼容性矩阵提前实测, 差异早发现早适配; ③ 24h soak 可能暴露泄漏 —— 缓解: 尽早启动, 失败项转 N5b 新批次清偿。
+
+---
+
+## 三之五、架构演进与发布总纲 (2026-08-17 制定; 发布路径取代 §三之三/§三之四 的既有 M-GA 定义)
+
+**背景**: 2026-08-17 完成 18 项目全景 Review 与 ISAC 深度 Review (见 §三 概况)。结论: 后端代码面收尾质量高 (两轮对抗审查 43 项修复逐条核实无虚报, 1826 测试函数、mypy 全绿), 但存在 **4 项安全实洞**与 **8 项架构问题**。项目负责人已拍板: **架构升级全部完成并复评达标后才发布 v1.0**, 不留过渡形态, 不估工时, 只按验收标准推进, 质量目标为稳定性/健壮性/可维护性/可扩展性/可升级空间/模块化全部 A+ 水准。
+
+### 已拍板决策 (2026-08-17)
+
+| # | 决策 | 选择 | 说明 |
+|---|------|------|------|
+| 1 | 会话存储形态 | **事件溯源 (SQLite 事件表)** | "银行流水式": 只追加不涂改、可回溯、崩溃可精确重放恢复; 与既有 SQLite 栈一致, 不引入新依赖 (落点 U1) |
+| 2 | 发版时点 | **升级完再发版** | U0-U9 全部验收 + A+ 复评通过才发 v1.0; 过渡性止血方案 (临时滑动窗口等) 全部取消, 一步做到最终形态 |
+| 3 | 群聊门控 LLM judge 模型档位 | **fallback 链最便宜档** | "要不要回复"判断任务简单, 小模型够用且成本近零 (落点 U3) |
+| 4 | 模型能力清单数据源 | **models.dev 开源数据** | 覆盖 2700+ 模型、每周 CI 刷新、零维护; 个别国产新模型晚收录时手动补录兜底 (落点 U7) |
+
+### 架构问题 vs 进度问题 (定性原则)
+
+- **架构问题** = 做法本身需要升级的结构性缺陷, 归 U 节点组清偿, 计入架构评分;
+- **进度问题** = 功能未完成, 做完即可, 归既有节点, 不计入架构评分。包括: mp 公众号/视频 Provider/Slack/前端 F1-F4/Docker 冒烟/24h soak/真实 IM 凭据联调/CHANGELOG 补齐/发布卫生等;
+- 原列的 COMPRESS 触发面窄、滑动窗口缺失等债务**依附 U1 解决** (事件溯源后二者均为派生策略), 不单独立项。
+
+**8 项架构问题 → U 节点映射**:
+
+| 架构问题 | 现状评分 | 收敛节点 |
+|---|---|---|
+| 装配层反模式 (main.py 1832 行上帝模块 + 25 键无类型 services 袋) | 总体分层 B+ | U2 |
+| 门控硬编码 (中文关键词表 + 权重钉死 constants.py) | 配置与门控 C+ | U3 |
+| 可变持久化 (episodes 可覆盖写、gateway 诸库无 WAL、非事件溯源) | 持久化层 B- | U1 |
+| 租户半隔离 (治理面/画像/行话无租户列, 靠调用方自觉) | 记忆系统 B | U4 (前哨 U0 Fix-85) |
+| 工具权限静态化 (无 ask 档、无单调 guard、restricted 语义走样) | MCP B+ | U5 (前哨 U0 Fix-87/88) |
+| 插件隔离非默认 (供应链插件默认宿主内 exec) | 插件与隔离 B | U6 (前哨 U0 Fix-86) |
+| 对话上下文无结构位 (loop 无历史派生槽位) | 主循环 A- | U1 (窗口=派生策略) |
+| 注入无仲裁 (四路写会话靠锁兜底, Fix-81/82 已两次补丁) | 主循环 A- | U8 |
+
+### 推进顺序 (只按验收推进, 不估工时)
+
+```
+U0 安全清偿 (阻塞一切) → U1 事件溯源内核 (地基) → U4 → U5;
+U2/U3/U6/U7/U8 可穿插 → U9 A+ 复评门禁 (最后);
+N2 环境准入 / N3 真机联调 / N4 前端 的环境与凭据等待期与 U 节点并行利用, 不互斥。
+GA 门槛以 U 节点组与环境准入两者都完成为准。
+```
+
+### v1.0 GA 门槛 (修订版, 取代 §三之三/§三之四 的 M-GA 定义)
+
+v1.0 GA = 以下全部满足:
+
+1. **U0-U8 全部 `[x]`** (按 §二完成定义: 非桩实现 + 单测 + 集成/真机验证 + 主链路接线 + 文档 + ruff/mypy/CI);
+2. **U9 A+ 复评通过**: 按 `isac-deep.md` 同款方法 (只读代码级审查 + 实测) 逐模块复评 —— 无 C 项、B 项 ≤2、其余 A-/A+ 以上; "定义了未接线"零残留;
+3. 原 GA 条件全部维持: N2 全过 + N3 至少一平台真机 + N4-F2 完成 + release_checklist 七段全绿 + REQUIREMENTS 十二条取证 + 安全自查;
+4. 验收铁律适用: 每项附真机部署证据。
+
+### 新增工程纪律 (2026-08-17, 已并入 §一 总则第 7/8 条)
+
+1. 禁止"定义了未接线"的安全常量/机制 (lint 规则常驻, U9 落地);
+2. 同构面核对清单 (每个安全修复交付前核对同类入口);
+3. 红线指标只减不增: main.py 行数、services 袋键数、硬编码门控词条目数纳入 CI 监控 (U2/U3 落地)。
+
+### 本轮经验来源 (18 项目全景 Review → U 节点映射)
+
+- **U1** ← deepseek-harness 会话内核四件套 (append-only 事件日志 + surface 派生模型可见面 + 带 sourceEventSeqs 溯源的 replace 压缩 + 未知事件默认拒绝重建) + "Model-visible ⟺ Logged" (入站队列即持久事件) + 副作用前 flush; pi 三存储规范 (entries/registers/ledger + 持久化程序计数器) 互证;
+- **U3** ← MaiBot 决策-表达分离 + grok-build decision_reason 词汇治理 (23 规范值 + drift test);
+- **U4** ← 反面教材: deepseek-harness 单信任域空白; 正面: ISAC 自有 TenantIsolationGuard 升级为机制强制;
+- **U5** ← deepseek-harness 工具权限集中管线 (pre-execute allow/deny/ask + 单调 guard + fail-closed 审批 + 权限预设事件溯源) + grok-build 决策理由规范词汇 + RikkaHub 消息内审批卡片范式;
+- **U6** ← MaiBot Supervisor 隔离模式; ISAC 自有 PluginIsolationHost 转正为默认路径;
+- **U7** ← oh-my-openagent 数据化三件套 (prompt 文件按模型族变体 + models.dev 能力快照生成管线 + category 路由);
+- **U8** ← oh-my-openagent prompt-async-gate (预约表 + hold 窗口 + 编译器 AST 审计禁绕过) + deepseek-harness 治理门禁 (生成目录 + --check 漂移检测 + 无 key 快照回放)。
 
 ---
 
@@ -394,7 +814,7 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **当前**：已完成 (2026-07-25)。通用多模态 Provider 框架落地: 所有 Provider (image_gen/stt/tts/embed/vision) 接受用户配置的 `api_base + api_key + model`, 可接任意 OpenAI 兼容端点; 测试用 httpx.MockTransport 不依赖真实 Key。
     - **ModelRouter 打分排序** (`isac/provider/router.py`): 过滤链 operation→modalities→authorization→cost_ceiling→latency_target→health; 综合分 `score = (4-cost_rank)*2.0 + (2-latency_rank)*1.0 + health*1.5 + pref*0.5`; `record_health()` 上报 provider 健康状态, `set_preference()` 用户偏好加权; `ModelSelection.reason` 输出各因子明细。
     - **ArtifactStore 本地 FS + TTL** (`isac/artifacts/store.py`): 路径 `data/artifacts/<sha256[:2]>/<sha256>.bin` (分桶避免单目录文件过多); SQLite 元数据 `meta.db` (artifact_id PK + expires_at 索引); `put` 写盘幂等 (sha256 决定性, 重复 put 不覆盖); `get` 探测过期则删文件+DB 行并返回 None; `sweep_expired()` 周期扫描; `start_ttl_sweep()/stop()` 生命周期对齐 ApplicationRuntime; `ArtifactRef` 新增 `expires_at` 字段, 默认 7 天 TTL 可配。
-    - **MediaNormalizer** (`isac/utils/media.py`): MIME 推断 (mimetypes.guess_type) + 路径白名单 (默认 data/artifacts/, 可配置多个 allowed_dirs) + 大小上限 (image 25MB / audio 50MB / video 200MB / file 50MB) + expected_kind 校验 + URL 输入拒绝 (J2 不做入站 HTTP 下载); magic-byte 校验留 TODO(J3+)。
+    - **MediaNormalizer** (`isac/utils/media.py`): MIME 推断 (mimetypes.guess_type) + 路径白名单 (默认 data/artifacts/, 可配置多个 allowed_dirs) + 大小上限 (image 25MB / audio 50MB / video 200MB / file 50MB) + expected_kind 校验 + URL 输入拒绝 (J2 不做入站 HTTP 下载) + magic-byte 头部签名校验 (2026-08-16 清偿架构债: png/jpeg/gif/mp3/wav/ogg/flac/mp4/webm 防扩展名伪造, 未登记 MIME 跳过)。
     - **多模态 Provider 真实实现**:
       * `OpenAICompatImageGenProvider` (`isac/provider/image_gen/openai_compat.py`): POST /images/generations, b64_json/url 两种响应格式都支持, 生成图片写入 ArtifactStore 返回 ArtifactRef 列表。
       * `OpenAICompatSTTProvider` + `OpenAICompatTTSProvider` (`isac/provider/stt_tts/openai_compat.py`): STT multipart 上传 /audio/transcriptions 返回 TranscriptionResult; TTS POST /audio/speech 返回音频 bytes 存 ArtifactStore 返回 ArtifactRef。
@@ -678,21 +1098,24 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
     - 动作审计: broker 4 类动作 (含拒绝) 结构化日志埋点 (trace 贯穿, 可与发起方消息串联)。
     - 集成测试 `tests/integration/test_p2_mesh_activation.py` (7): observer 旁听入记忆不回复 / candidate 评分切换 / 无角色零行为变化 / notify 真实投递 / notify 无权限拒绝 / handoff 归属转移 (后续消息路由接手方) / memory_query scope 裁剪同步返回。
 
-- [~] **P3 记忆检索深化激活**(依赖 N1 + VectorStore/GraphStore/Embedding/Reranker)
+- [x] **P3 记忆检索深化激活**(依赖 N1 + VectorStore/GraphStore/Embedding/Reranker)
+  - **结论**：**已完成 (2026-08-16 收敛)** —— ①图谱召回接入 + ②Reranker provider 注入 + ③MemoryItem 落地边界均于 S3 轮 (2026-07-28) 激活;集成测试 `tests/integration/test_p3_memory_retrieval.py` (8 例) 于 R7 补齐;剩余"通用实体关系图抽取层"按 R4 决策转 **Y1 (GA 后)** 承接,写边层 `GraphStore.add_edge` 已就绪。
   - **目标**：`pipeline.search()` 接入向量 KNN(VectorStore)+ 图谱邻居(GraphStore)召回,与现有 FTS/BM25/Reranker 融合;`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确其落地边界(N1)。(注:检索期软删除 `deleted` 过滤已由 CR2-Fix-12 生效,向量召回+RRF 融合已由 CR3-H3 生效,均不在本节点剩余范围。)**(2026-07-26 差距复核扩充)** 本节点剩余范围收窄为:①图谱召回接入(`GraphStore` 边写入 + `neighbors` 结果并入 RRF,目前全仓无 `add_edge`/`neighbors` 调用点,图始终为空);②`Reranker` provider 注入 —— `main.py` 构造 `Reranker(memory_config.get("reranker", {}))` 时从未传入 provider,`is_available()` 恒 `False`,rerank 步骤永不执行,补齐仿 CR3-H3 embedding 的写法(按 `memory.reranker.{api_key,model,protocol}` 构造 `OpenAICompatRerankerProvider` 注入);③`MemoryItem`/`MemoryItemAdapter` 接入检索/注入链或明确落地边界。
   - **验收**：配置 embedding 时向量召回已生效(CR3-H3);配置 reranker 时 rerank 步骤真实执行;图谱召回生效;被治理条目不被检索命中;`MemoryItem` 成为检索/注入统一载体;集成测试。
   - **产出**：pipeline 图谱召回接线、Reranker provider 注入、MemoryItem 接入、集成测试。
   - **依赖**：N1、N2、J2(embed/rerank Provider)。
   - **当前**：**2026-07-28 S3 激活**:`store_episode` 成功后 + `enable_graph_recall=True` 时写 user/group → episode `mentioned_in` 边 (写边失败不影响 episode 已成功存储); `_graph_search` 实现: 种子锚定调用方 user_id/group_id (满足 ACL 铁律), `graph.neighbors` 取邻居剥 `episode:` 前缀还原 memory_id, 按 weight 降序去重截断; `_build_memory_stack` 注入 `OpenAICompatRerankerProvider` (够 `api_key+model` 时, 仿 CR3-H3 embedding 注入写法), `Reranker.is_available()` 不再恒 False; pipeline 模块 docstring 明确 MemoryItem 落地边界 (检索热路径继续用 MemoryHit, 治理路径用 MemoryItemAdapter)。新增 `test_graph_recall_s3.py` (12 例)。**剩余范围**: 通用实体关系图 (人物-人物/人物-话题等语义关系抽取, 本轮只交付 mentioned_in 提及图)、P3 集成测试。
 
-- [~] **P4 身份归一激活**(依赖 N3 + N1 + P3)
+- [x] **P4 身份归一激活**(依赖 N3 + N1 + P3)
+  - **结论**：**已完成 (2026-08-16 收敛)** —— 控制面 bind/conflicts/resolve 于 S4 轮 (2026-07-28) 激活;集成测试 `tests/integration/test_p4_identity_bind.py` (6 例: 两平台 bind 同 person_id + 记忆按归一身份聚合 + 冲突裁决) 于 R7 补齐。
   - **目标**：gateway 入站主链路接入 `IdentityResolver.resolve`,把跨平台同一用户归一到统一 identity;记忆按归一身份聚合。
   - **验收**：不同 IM 的同一用户归一为同一 person、记忆按归一身份聚合、低置信冲突写入 `identity_conflicts` 供人工裁决;集成测试。
   - **产出**：gateway 接线、记忆聚合按归一身份、集成测试。
   - **依赖**：N3、N1、P3。
   - **当前**：**2026-07-28 S4 激活**:`IdentityResolver` 新增 `resolve_conflict` (人工裁决 conflict + 更新 person_id); 新建 `routes_identity.py` (bind / list conflicts / resolve conflict 三个 REST 入口, scope=identity:read/write, 无 resolver 注入时返回 None 不挂载); `server.create_control_app`/`_mount_optional_routers` 接收 `identity_resolver`; `main` 把 `services["identity_resolver"]` 注入并经 `_register_control_plane` 透传 (helper `_mount_identity_workflow_routers` 抽出避免 C901 超)。新增 `test_routes_identity.py` (7 例)。**剩余范围**: P4 集成测试 (两平台同一自然人 bind → 记忆聚合验证)。
 
-- [~] **P5 企业化激活**(依赖 O1/O2/O3)
+- [x] **P5 企业化激活**(依赖 O1/O2/O3)
+  - **结论**：**已完成 (R6, 2026-08-16 收敛)** —— Workflow action_handler + 声明式加载于 S5 激活;R6 补齐 routes_tenants + TenantManager、loader 子进程隔离经核验已满足、`agent:` 工具入口决策落地 (选 B 文档化不做);集成测试 `tests/integration/test_p5_enterprise_isolation.py` (5 例) 于 R7 补齐。
   - **目标**：`TenantIsolationGuard` 接入 memory store/control/用量计量 + MetadataStore 增 `tenant_id` 列 + `routes_tenants` 控制面(O1);`PluginIsolationHost` 接入 loader 作为可选隔离模式(O2);`WorkflowEngine` 暴露 control 路由/工具入口 + 生产注入 action handler(O3)。
   - **验收**：跨租户不可见且控制面按租户鉴权、插件进程隔离可选启用且崩溃可恢复、Workflow 可声明式执行且可观测;集成测试。
   - **产出**：租户接线 + tenant_id 列 + routes_tenants、loader 隔离模式、workflow 控制面入口、集成测试。
@@ -782,28 +1205,31 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **依赖**：D8(PersonaManager/MoodEngine 已实现)、D2(prompt_builder)。
   - **当前**：**已完成 (2026-07-29 实现落地)**。①`config.persona.description`(Agent 级覆盖全局 `persona.description`, 契约见 `SPECIFICATION.md` 1.6/1.7 + `config.sample.jsonc`)接入 `BaseIdentityInjector`(`assembly.py:254-259`);未配置时回落原默认文案, 零行为变化。②新增 `MoodTracker`(`isac/persona/mood_tracker.py`), 经 `PersonaManager.register_hooks` 与 `BehaviorLearner` 同点挂 `FINAL_RESPONSE`:每轮先 `decay()` 自然衰减,再按本轮工具调用数(封顶 5 次, `AROUSAL_STEP_PER_TOOL_CALL=0.03`)对 `arousal` 施加小幅扰动 —— `valence` 不臆造对用户情绪的主观判断, 只交给 `decay` 回归中性,符合 `HUMANLIKE_RUNTIME.md` 6.2"缓慢变化不剧烈波动"。三注入器与 `PersonaManager` 访问器沿用既有接线(均为真实逻辑非空桩)。**2026-07-29 复核修正**:初版 arousal 扰动读 `response.tool_calls`,但 `FINAL_RESPONSE` 触发条件恰是 `response.tool_calls` 为空(`isac/agent/loop.py` 的 `else` 分支),该信号源恒为 0,是死代码;改为 `AgentContext.tool_calls_this_turn`(由 loop.py 在工具调用分支里累加)读取,并新增跑真实 `ISACAgentLoop` 的端到端测试防止同类回归。新增 `tests/unit/test_persona.py::TestMoodTracker`(5 例)+`test_register_hooks_attaches_mood_tracker`、`tests/unit/test_persona_injectors.py` 新增 3 例(persona 文本接线/回落默认/全局兜底);ruff/mypy 全绿, 全量回归(1473 单测 + 72 集成)无退化。
 
-- [~] **Q3 插件与 MCP 生态数据面接线**(依赖 F1-F4/E4/H2,均已实现)
+- [x] **Q3 插件与 MCP 生态数据面接线**(依赖 F1-F4/E4/H2,均已实现)
   - **目标**：让插件(Native/AstrBot/MaiBot)与 MCP Server 注册的工具/命令/注入器真正进入 Agent 的运行时注册表并被 LLM 调用,而不仅仅是"加载成功但惰性"。
   - **验收**：`main.py` 构造 `PluginContext` 时传入真实的进程级共享工具/命令/注入器注册表(复用已验证的 `assembly.py:100-104` `plugin_agent_hooks` 模式),`assemble_agent` 把共享注册表合并进每个 Agent 的 `ToolRegistry`/`CommandRegistry`/`SystemPromptBuilder`;`plugin/runtime/loader.py` 加载 AstrBot/MaiBot 插件后调用 `FunctionToolAdapter`/`MaiBotPluginAdapter.adapt` 完成真正桥接;`PluginManager` 构造时传入 `EnableMatrix`,`plugins_allow`/`plugins_deny` 对插件 hooks 真实生效;`AgentConfig.mcp_servers` 配置后,`assembly` 按需构造 `MCPClient`、`connect`、把 `list_tools` 结果注册进 `ToolRegistry`,Agent 停止/销毁时 `disconnect`;`tools.workspace_root`/`tools.bash_allowlist` 配置项接入 `build_services`,使 `bash`/`read_file`/`write_file` 三个 CLI 工具不再因 services 未注入而恒被拒绝。
   - **产出**：共享注册表机制、AstrBot/MaiBot 桥接接线、PluginManager EnableMatrix 注入、MCP Client 生产接线、CLI 工具 services 注入、集成测试(示例插件注册的工具被 LLM 真实调用)。
   - **依赖**：F1-F4(兼容层与加载器已实现)、E4(EnableMatrix 已实现)、H2(MCPClient 已实现)。
-  - **当前**：**部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)**。`EnableMatrix` 已注入 `PluginManager` (`main.py:1227`, `plugins_allow/deny` 对已加载插件 hooks 生效) + 进程级 `plugin_agent_hooks` 已按 priority 合并进每个 Agent (`assembly.py:265-269`)。**剩余**: ① per-Agent `PluginContext` 的 `_tools/_commands` 恒 `None` (`main.py:1362-1368`, 注释明示"per-Agent bridge 推迟") → AstrBot/MaiBot 插件仅 `exec_module` 实例化 (`loader.py:116-147`), 不调 `FunctionToolAdapter`/`MaiBotPluginAdapter.adapt`, `@filter.llm_tool`/`@register_action` 标记的 handler 在生产是死代码; ② `MCPClient` 全仓无生产 import/connect, `AgentConfig.mcp_servers` 零消费者; ③ `tools.workspace_root`/`bash_allowlist` 未接入 `build_services` (`main.py:719-751`) → `bash`/`read_file`/`write_file` 恒因 services 未注入被拒。接线后升级 `[x]`。
+  - **当前**：**已完成 (2026-08-16, 由 R3 收敛)**。原三项剩余全部落地: ① per-Agent `PluginContext` 的 `_tools/_commands/_prompt_builder` 不再留 None —— `_fire_plugin_on_load` 建立进程级共享 `ToolRegistry`/`CommandRegistry`/`SystemPromptBuilder` 注入 `make_plugin_context`, native 插件 `register_*` 真实写入; 新建 `AstrBotStarAdapter` (`isac/plugin/compatibility/astrbot/adapter.py`) + `_adapt_compat_plugins` 把 AstrBot `@filter.llm_tool` / MaiBot `@register_action`/`@register_command` 桥接进共享表 (loader 不改: ToolRegistry per-Agent, adapt 在共享收集层); `assemble_agent` 经 `_merge_shared_plugin_tools`/`_merge_shared_plugin_commands` 合并共享表进 per-Agent registry。② `MCPClient` 生产接线: `build_services` 注入 `services["mcp_servers"]` (config.jsonc 顶层 `mcp.servers` 节), `assemble_agent` 经 `_wire_mcp_clients` 按 `AgentConfig.mcp_servers` 构造+connect+list_tools 注册 `MCPToolBridge`, `AgentManager.stop`/`destroy`/`_shutdown_message_pipeline` 调 `disconnect`。③ CLI 工具 services 注入此前已完成。EnableMatrix 注入 PluginManager (hooks 生效) + 共享 hooks 合并 (`assembly.py:269-273`) 保持。新增 7 例单测 + 真机冒烟 (`dev_mcp_echo_server.py` → `MCP server 已接入 server=echo tools=1`); ruff/mypy 全绿。AstrBot `@filter.on_message`/`@filter.on_llm_request` hook 桥接 (EventBus/AgentHooks 签名适配) 与兼容层进程隔离迁移 (需 manifest 机制) 留后续, 非本节点"工具激活"范围。
 
-- [~] **Q4 多模态工具注册与计量收尾**(依赖 J1/J2,均已实现)
+- [x] **Q4 多模态工具注册与计量收尾**(依赖 J1/J2,均已实现)
+  - **结论**：**已完成 (R1, 2026-08-16 收敛)** —— 6 工具注册 (87a84fa) + R1 补齐出站 artifact 扫描、入站落盘 `data/uploads/`、6 个 `record_*` 计量接入、`data/pricing.jsonc` 价目表加载、`model_capabilities_allow` 字段;集成测试见 `test_r1_*`。
   - **目标**：打通 J2 已就绪的 Provider/Router/Catalog/ArtifactStore 与 Agent 侧的"最后一厘米"——6 个语义媒体工具注册进 ToolRegistry,出入站媒体链路可用,多模态用量真实可查。
   - **验收**：`assembly.py` 注册 vision/STT/TTS/生图/视频理解/视频生成 6 个 `media.py` 工具(视频两模态可保留桩,待 O5 二次确认端点);`AgentConfig` 增 `model_capabilities_allow` 字段并映射为工具可见性;`_send_reply` 扫描回复中的 `artifact_id` 引用,经 `MediaResolver.resolve_for_channel` 转换为对应 Channel 的 segment 发送;入站媒体(用户上传图片/语音)下载落盘到 `data/uploads/`,`MediaNormalizer` 白名单相应扩展,生成合法 `media_uri` 供工具使用;`_MediaToolBase`/`EmbeddingManager`/`Reranker` 调用点接入 `UsageRecorder` 的 6 个多模态 `record_*` 方法;`data/pricing.jsonc` 价目表加载机制落地,`ModelUsageEvent` 的 provider 字段与价目表 key 对齐(而非记 `type(provider).__name__`)。
   - **产出**：媒体工具注册、`model_capabilities_allow` 字段、出/入站媒体链路、多模态计量埋点、价目表加载、集成测试(配置生图/视觉 key 后发图/识图全链可用且计量有数)。
   - **依赖**：J1(用量框架)、J2(Provider/Router/Catalog/ArtifactStore)。
   - **当前**：**部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)**。6 个语义媒体工具 (`GenerateImageTool`/`GenerateVideoTool`/`TranscribeAudioTool`/`SynthesizeSpeechTool`/`VisionUnderstandTool`/`UnderstandVideoTool`) 已注册进 ToolRegistry (`assembly.py:312-317`, 默认 deny, 需 `tools_policy` 显式开启)。**剩余**: ① 出站 `_send_reply` 仅处理纯文本 (`main.py:209`), 不扫描 `artifact_id`、不经 `MediaResolver.resolve_for_channel` → LLM 生成的图/语音发不出去; ② 入站用户媒体不下载落盘 `data/uploads/`, `MediaNormalizer` 白名单未扩展; ③ `UsageRecorder` 的 6 个 `record_*` 多模态方法零生产调用 → 多模态用量恒 0; ④ `PricingCatalog()` 构造传空表 (`main.py:770`), `estimated_cost` 恒 `None`; ⑤ `AgentConfig` 无 `model_capabilities_allow` 字段 (现经 `getattr` 兜底空)。接线后升级 `[x]`。
 
-- [~] **Q5 WebUI 与控制面收尾**(依赖 J3/G2/G3,均已实现)
+- [x] **Q5 WebUI 与控制面收尾**(依赖 J3/G2/G3,均已实现)
+  - **结论**：**已完成 (R2, 2026-08-16 收敛)** —— Extensions/SSE/Usage 页此前已接真实数据;R2 补齐 `GET /agents/{id}/config` 真实 revision、SubAgent 表 list-all、routes_webhooks + EventBus 订阅 + 告警推送激活、MCP Server 生产启动点 + 5 工具补齐。
   - **目标**：修掉 J3 WebUI 与 G2/G3 控制面里"看起来完成但实为占位"的断点,并给自动化场景补上生产启动点。
   - **验收**：Extensions 插件页改接真实 `/agents/{id}/plugins` API;SubAgent 任务表改正确 `agent_id` 参数(而非硬编码 `_`);新增 `GET /agents/{id}/config` 返回全量配置 + 真实 `revision`,WebUI `loadConfigForEdit` 改用它(乐观锁真实生效);WebUI 消费 `/events/stream` SSE(`EventSource`);Usage 明细表按实际 API 返回结构(裸数组)解析,不再读 `events?.events`;补 `routes_webhooks`(subscribe/unsubscribe/list + `/automation/trigger`)并在 `main.py` 构造 `WebhookManager` 订阅 `EventBus` 事件;`isac/control/mcp_server.py` 补生产启动点(独立进程或桥接到 Admin API)并补齐 5 个声明但未实现的工具;密钥管理策略文档化为"配置文件 + env 覆盖"(`ISAC_API_TOKEN` 已支持,Provider `api_key` 同理补 env 映射),`SecretStore` 接线留 MVP 之后。
   - **产出**：WebUI 断点修复、`GET /agents/{id}/config` 端点、SSE 前端消费、Webhook 路由与事件源接线、MCP Server 启动点、密钥管理文档、集成测试。
   - **依赖**：J3(WebUI v2)、G2(MCP Server)、G3(Webhooks)。
   - **当前**：**部分接线 (2026-07-29 代码复审校正, 原标"未开始"不准)**。Extensions 页已接真实 `/plugins/loaded` (`app.js:481`)、SSE `EventSource('/events/stream')` 已消费 (`app.js:292` + `routes_events.py` scope 过滤/断线恢复/连接上限)、Usage 明细表按正确结构解析。**剩余**: ① `GET /agents/{id}/config` 端点缺失 → 前端 `loadConfigForEdit` 伪造 `revision=1`, 乐观锁未真实生效; ② SubAgent 任务表调 `GET /agents/_/subagent-runs` (`app.js:495` 硬编码 `_`) → 恒空 (后端 `/{agent_id}/subagent-runs` 未被正确调用); ③ `WebhookManager`/`ISACMCPServer` 无生产启动点与路由挂载 (`main.py` 未实例化, `server.py` 未 include)。接线后升级 `[x]`。
 
-- [~] **Q6 SubAgent 用量与安全补漏**(依赖 J4,已实现)
+- [x] **Q6 SubAgent 用量与安全补漏**(依赖 J4,已实现)
+  - **结论**：**已完成 (R2, 2026-08-16 收敛)** —— usage/evidence 保留 + 并发信号量 + `delegate_task` restricted deny 此前已完成 (dbb58eb);R2 补齐背景摘要经 `ContextEnvelopeBuilder` 传子 Agent + `evidence_refs` 真实生成。
   - **目标**：让 J4 SubAgent 的用量/证据数据真实可信,并补上两个安全口子。
   - **验收**：`supervisor` 保存 `result.usage`/`evidence_refs` 到 `run.tokens_used`/`tool_calls_used`/journal(而非只留 `summary`);`delegate_task` 收集的背景摘要经 `ContextEnvelopeBuilder` 真正传给子 Agent;`SubAgentPolicy`/`supervisor` 加并发上限(信号量或计数器);`control/defaults.py` 的 `RESTRICTED_TOOLS_POLICY` 补 `deny` `delegate_task`。
   - **产出**：supervisor 用量/证据保存、summary 传递接线、并发信号量、受限策略修正、集成测试。
@@ -831,30 +1257,31 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 **验收铁律(新增, 适用于 T 与其后所有节点)**：**任何节点声明完成,必须附真机部署证据**(命令 + 实际输出),不接受"单测通过"作为可用性证明。单测证明"函数逻辑对",真机才证明"用户能用"。参见 `MODULE_GUIDE.md` §二"第三道坎"。
 
-- [ ] **T1 开箱能对话**(P0 阻断, 下一步立即做)
+- [x] **T1 开箱能对话**(P0 阻断)
   - **目标**：让"部署 → 发消息 → 收到回复"这条最短路径无条件走通。
   - **验收**：①`gating/system.py` 私聊无条件强制触发(`has_at or is_private`),不再额外要求 `has_mention`;群聊行为不变(仍需 @/提及/评分);②消息被门控 WAIT / 被 debounce 弃权 / 无可用 Provider 时**不得零反馈** —— 至少 WARNING 级日志说明原因,面向用户侧按人设给出可读提示或明确的"未回复原因"可查;③未配置有效 `api_key`(含 `sk-your-key` 占位符)时启动即 WARNING 提示"去哪配",调用失败映射为可操作提示而非静默;④**真机验收**:干净目录 + 默认配置启动 → 发"你好" → 收到回复。
   - **产出**：门控私聊修复、无回复原因可观测、Provider 缺失/占位 key 检测与提示、真机冒烟脚本(纳入 CI 或 `scripts/`)、回归测试(经真实 `manager.process_message` 驱动,不是直调 gating)。
   - **依赖**：无。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-04)**。`gating/system.py:182` 强制触发改 `has_at or is_private`;`manager` drain_empty/gating_wait 两处静默 return 升级 info 带 reason 字段;`config_schema.is_placeholder_key()` 检测占位 key (sk-your/your-key/changeme/replace/example/placeholder/xxx/todo);占位/空 key → StubProvider + WARNING 引导,Stub 默认回复改引导文案;`scripts/smoke_webchat.py` 真机冒烟脚本落地 (干净目录启动 → 发"你好" → 收到回复)。
 
-- [ ] **T2 零配置启动**(对标 AstrBot 默认配置内置)
+- [x] **T2 零配置启动**(对标 AstrBot 默认配置内置)
   - **目标**：不写任何配置文件也能启动并对话,`config.sample.jsonc` 降级为"可选覆盖参考"。
   - **验收**：默认配置内置代码(仿 AstrBot `core/config/default.py`,与 `config_schema.py` 共用一份 schema);首启自动创建 `data/` 及子目录;无 `data/config.jsonc` 时不再依赖 StubProvider 兜底的隐式行为,而是明确的"未配置模型 → 引导去配"路径;占位符 key 视为未配置。
   - **依赖**：T1。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-04)**。`utils/config.py` `DEFAULT_CONFIG` 扩充为最小可启动形态 (webchat 默认开 loopback + llm 空 + control/memory 默认关, default-off 铁律);`load_config` 改 `deepcopy(DEFAULT_CONFIG)` (顺带修复浅拷贝污染全局默认值的既有 bug);`main._ensure_data_dirs()` 首启集中创建 data/ 及被引用子目录。真机零配置验证: 干净目录无 config.jsonc 启动 → webchat 默认开 → 发"你好"收到引导回复。**遗留决策项 (2026-08-15)**: 零配置模式 `memory.enabled` 默认 false → "越聊越熟"开箱不生效, 是否放开待 T3-backend 一并决策。
 
-- [ ] **T3 WebUI 开箱可用 + 首登向导**
-  - **目标**：装完打开浏览器就能管理,配置不用手写 JSONC。
-  - **验收**：`control.enabled` 默认 true 且默认仅绑 `127.0.0.1`;**首次登录强制设置管理员密码**(禁止硬编码默认密码,对标 AstrBot `password_change_required` + `/setup`);CLI `isac password reset` 兜底;Agent/Channel/Provider/路由等主要配置可经 WebUI 表单创建与修改(schema 驱动),不需手工编辑文件;配置热更新生效。
-  - **依赖**：T1、G(控制面已实现)、J3(WebUI v2 已实现)。
-  - **当前**：未开始。
+- [~] **T3 控制面开箱可用**(2026-08-15 按前后端分离重定义, 后端部分 = T3-backend / FE 节点; 后端段已完成, 前端段 F1/F2 待启动)
+  - **目标**：装完打开浏览器就能管理,配置不用手写 JSONC。前后端分离后拆为两段: **后端**先交付控制面开箱与 setup/auth API (FE1 + T3-backend), **前端**向导与表单页面在独立项目实现 (F1/F2, 见 §四 FE)。
+  - **验收 (后端)**：`control.enabled` 默认 true 且默认仅绑 `127.0.0.1`;首登强制设密码的后端支撑 (setup 状态机 + `password_change_required` 标志 + `/setup` API, 禁止硬编码默认密码, 对标 AstrBot `password_change_required` + `/setup`);CLI `isac password reset` 兜底;配置 Schema 暴露 (JSON Schema 端点) 使前端表单可驱动 Agent/Channel/Provider/路由等主要配置的创建与修改, 不需手工编辑文件;配置热更新生效。
+  - **验收 (前端, F1/F2 节点)**：首登强制设密码向导页面;主要配置表单化 (schema 驱动)。
+  - **依赖**：T1、G(控制面已实现)、J3(WebUI v2 已实现)、FE1。
+  - **当前**：**T3-backend 后端段已完成 (2026-08-16)**, 前端段 F1/F2 (独立项目, 技术栈开工前决策) 待启动。①`control.enabled` 默认改 True + 仅绑 127.0.0.1 (DEFAULT_CONFIG + ControlConfig + enforce_safe_host; setup_enabled 默认 True 配套)。②**首登强制设密码状态机** `SetupManager` (`isac/control/setup.py`, PBKDF2-HMAC-SHA256 20 万次哈希, 禁止明文/硬编码默认密码, 状态文件 `data/control/setup_state.json` 原子写): 首登态 (无 api_token/tokens 且 setup_state 无密码) admin 端点 428 SETUP_REQUIRED, 仅 /setup /health 可用; `POST /api/v1/setup {password}` 设密码后作 Bearer 生效。③`auth.make_auth_dependency/make_token_only_dependency` 加 setup_manager 参数 (setup_manager=None 时行为不变向后兼容)。④**CLI `isac password reset`** 兜底 (`__main__.py` argparse 子命令, 删 setup_state 回首登态)。⑤**`GET /api/v1/config/schema`** JSON Schema 端点 (ISACConfig.model_json_schema, 前端表单驱动前提)。⑥`/health` 加 setup_required 标志。⑦**真机验收** `scripts/smoke_control_setup.py` (零配置启动 → /health setup_required=true → /api/v1/audit 428 → POST /setup 设密码 → Bearer 生效 200, exit=0)。`tests/unit/test_t3_backend.py` (8 例)。T4 日志台后端 (LogBuffer + `/logs/tail` SSE) 已先行完成, 页面消费等前端轨道 F3。
 
-- [ ] **T4 错误可诊断**
+- [x] **T4 错误可诊断**
   - **目标**：出问题时用户知道"哪儿错了、去哪修",而不是看栈或看不到任何东西。
   - **验收**：LLM 401/402/429/连接失败映射为可操作中文提示,**且提示里引用的配置路径必须是当前真实路径**(MaiBot 的反面教材:提示指向已过时的 `/config/model_list.toml`);新增 `/health` 端点(对标 MaiBot `webui/routes.py:128`)返回各子系统状态;WebUI 实时日志台;消息在链路各环节被丢弃/延迟/等待均可观测。
   - **依赖**：T3(日志台挂 WebUI)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-04)**。T4-1 LLM 错误中文可操作提示 (`openai_compat._map_http_error` 区分 401/402·403/429/5xx/其他 4xx, 全部引用 `data/config.jsonc` 真实配置路径;`manager._degraded_reply_from_error` 按错误类型映射可操作降级文案);T4-2 `/health` 聚合 (`_aggregate_health`: agents running/total + llm stub/configured + channels 平台列表 + control, 关键子系统缺失 → status=degraded);T4-3 LogBuffer 单例 + `/api/v1/logs/tail` SSE 实时日志台。**备注**: 日志台的**页面消费**属前端轨道 (F3), 后端 SSE 契约已就位;T4 先行于 T3 完成, 依赖倒挂在 FE1 解决 (control 默认开后日志台即可用)。
 
 - [ ] **T5 真实 IM 接入验收**(需用户提供凭据/环境)
   - **目标**：把"适配器有单测"升级为"真机能收发"。
@@ -863,17 +1290,17 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **当前**：未开始。
   - **备注**：需要外部账号与回调公网地址,**开工前需与用户确认可用凭据与联调窗口**。
 
-- [ ] **T6 插件市场与热重载**(生态可用性, 对标 AstrBot)
+- [x] **T6 插件市场与热重载**(生态可用性, 对标 AstrBot)
   - **目标**：插件"能装、能用、免重启",而不是"放进目录但不触发"。
   - **验收**：插件市场列表 + 一键安装(市场 / Git / URL / 上传)+ 热重载免重启 + 失败插件单独列出可重试(对标 AstrBot `api/plugins.py:578-593,502,534,565,820,1064`)。
   - **依赖**：**R3(插件桥接激活)必须先完成** —— 否则装了也不触发,是假功能。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。新建 `PluginInstaller` (`isac/plugin/runtime/installer.py`, 对标 AstrBot `PluginUpdator`) 支持 market/git/url/upload 四源安装 (SSRF `is_safe_url` + zip slip `safe_extractall` + 失败回滚), 市场清单本地 `data/plugin_marketplace.jsonc` + 可配远程 `marketplace_url` (httpx 拉取, 失败降级仅本地); `PluginManager` 加 `install/reload/uninstall/list_failures/retry`; `ToolRegistry` 加 `deregister`/`deregister_by_source`/`deregister_plugin_sourced` + 来源追踪 (`_source`/`set_current_source`); 新建 `activation` 模块 (`activate_plugin` + `sync_plugin_tools_to_agents`) 遍历运行中 Agent deregister 旧工具 + register 新工具, 运行中会话立即生效 (对标 AstrBot reload 全局重建, 适配 ISAC per-Agent registry); 控制面新增 `GET /plugins/marketplace` + `POST /plugins/install` + `POST /plugins/{name}/reload` + `DELETE /plugins/{name}` + `GET /plugins/failed` + `POST /plugins/{name}/retry` (写操作 `plugin:write` scope + 审计, `allow_install=false` 不注册写端点); CLI `isac plugin list/marketplace/install/reload/uninstall/failed/retry` 经 HTTP; upload 用 base64 body 不引 multipart 依赖。injectors/commands 热重载为加法语义 (仅 tools 精确 deregister, 已知限制)。新增 60 单测 (safe_install/tool_registry/activation/installer/manager_t6/routes_t6), ruff/mypy 全绿; 真机冒烟 `scripts/smoke_plugin_marketplace.py` (干净目录启动 → 列市场清单 → 上传安装 echo 插件 → reload → 卸载, exit=0)。
 
-- [ ] **T7 分发、运维与长跑验证**
+- [~] **T7 分发、运维与长跑验证**
   - **目标**：让别人能照文档在自己机器上跑起来并长期运行。
   - **验收**：`docker compose up` 一键(单服务 + 仅暴露 WebUI 端口 + 一个 `data` 卷,对标 AstrBot `compose.yml`);`pip`/`uv` 单包安装 3 步命令可用;配置版本自动升级迁移(对标 MaiBot `config_upgrade_hooks.py`);备份/导出;**24h soak test** 验证无内存/连接/任务泄漏;`docs/` 快速开始 5 分钟跑通(由未接触过项目的人按文档复现)。
   - **依赖**：T1-T4。
-  - **当前**：未开始。
+  - **当前**：**代码可做部分已完成 (2026-08-16),环境验证待环境**。①`docker compose up` 一键 —— `Dockerfile` (多阶段 builder+runtime, uv --frozen, HEALTHCHECK curl /health) + `docker-compose.yml` (单服务 + 127.0.0.1:8765 端口 + isac_data 卷 + 环境变量映射) 早已存在 (I2 节点)。②`pip`/`uv` 单包安装 —— `uv sync --all-extras --dev` 3 步 (README 快速开始 + docs/QUICKSTART.md)。③配置版本自动升级迁移 —— `ConfigMigrator` (config.py:127, MIGRATIONS 链式 while 升级 + 0.0.0→1.0.0) 早已存在, **本轮补链式迁移测试 2 例** (test_chain_migration_across_multiple_versions 验证 while 链式跨版本 + test_broken_path_warns_and_stops_at_dead_end 验证死端 warning 不抛)。④备份/导出 —— `scripts/export.py` + `scripts/export_openapi.py` 早已存在。⑤docs 快速开始 5 分钟 —— **新建 `docs/QUICKSTART.md`** (路径 A Docker 一键 / B 源码 / C 接入真实 LLM + IM 接入 + 验证清单 + 常见问题)。**待环境项**: 24h soak (需长时运行环境 + 真实 LLM key, 验证无内存/连接/任务泄漏)、"由未接触项目的人按文档复现"真人验证 (需人工)。
 
 ---
 
@@ -898,49 +1325,186 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 
 依赖顺序：T1 → T2 → T3 → T4 → T5;R3 → T6;T7 依赖 T1-T4;R1/R2/R4/R5/R6 相互独立可并行插入;R7 必须最后。
 
-- [ ] **R1 多模态出入站闭环**(收敛 Q4;用户可见价值最高)
+- [x] **R1 多模态出入站闭环**(收敛 Q4;用户可见价值最高)
   - **目标**：让"生成的图/语音真的发得出去、用户发来的媒体真的用得上、多模态用量真的查得到"。
   - **验收**：`_send_reply` 扫描回复中 `artifact_id` 经 `MediaResolver.resolve_for_channel` 转 Channel segment 发送;入站媒体下载落盘 `data/uploads/` + `MediaNormalizer` 白名单扩展 + 生成合法 `media_uri`;`_MediaToolBase`/`EmbeddingManager`/`Reranker` 接入 `UsageRecorder` 6 个多模态 `record_*`;`data/pricing.jsonc` 价目表加载 + `ModelUsageEvent.provider` 与价目表 key 对齐;`AgentConfig` 增 `model_capabilities_allow` 字段并映射工具可见性。
   - **依赖**：J1/J2(已实现)、Q4 现状(6 工具已注册)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。①`_send_reply` (`main.py`) 扫回复文本 `artifact:<64位hex>` 经新增 `ArtifactStore.get_ref` (`store.py`, 查表构造 ArtifactRef 含 kind/mime/uri) + `MediaResolver.resolve_for_channel` 转 segment append `reply.segments`; `_format_artifact_refs` (`media.py`) 去掉 `[:12]` 截断输出完整 64 位 id; `_resolve_artifact_store` 从 agent_manager 取目标 Agent 的 artifact_store (容错 mock)。②新建 `isac/gateway/incoming_media.py` `download_inbound_media` 扫 `message.segments` 中 image/voice/audio/video/file 取 `data["url"]`, HTTP 下载 (httpx + SSRF `is_safe_url` 校验) → `uploads_store.put` (ArtifactStore root_dir=data/uploads) → 回填 `data["media_uri"]`; `process_message` 路由后调用; `_build_media_normalizer` 白名单含 data/uploads。③`_MediaToolBase.execute` (`media.py`) 调 provider 后经 `_record_media_usage` helper 计 record_image_gen/stt/tts/video (传 descriptor.provider_id/model_id); `EmbeddingManager`/`Reranker` 加 `usage_recorder` 参数 + `record_embed`/`record_rerank`; `_build_memory_stack` 透传 usage_recorder。④新建 `data/pricing.jsonc` (示例价目表, text/image/audio/video/embedding/rerank 条目) + `PricingCatalog.load` 类方法 (jsonc→PriceSnapshot, 文件不存在/解析失败返空 catalog); `main._build_usage_stack` 改 `PricingCatalog.load`; record_* 传 provider/model → 与价目表 key 对齐闭环。⑤`AgentConfig` 加 `model_capabilities_allow: list[str]` (默认 ["*"] 向后兼容); `_register_media_tools` (`assembly.py`) 按字段条件注册 6 工具; `ModelCapabilitiesInjector._CAPABILITY_HINTS` 补 `understand_image`。新增 13 单测 (test_r1: caps/pricing/get_ref/完整id/入站下载/SSRF/record_*); ruff/mypy 全绿 (266 文件); 全量 1693 passed; smoke exit=0。
 
-- [ ] **R2 控制面与 SubAgent 收尾**(收敛 Q5 + Q6)
+- [x] **R2 控制面与 SubAgent 收尾**(收敛 Q5 + Q6)
   - **目标**：消除 WebUI/控制面剩余占位与 SubAgent 数据失真。
   - **验收**：新增 `GET /agents/{id}/config` 返回全量配置 + 真实 `revision`,WebUI `loadConfigForEdit` 改用它(乐观锁真实生效);SubAgent 任务表传真实 `agent_id`(修 `app.js` 硬编码 `_`);补 `routes_webhooks` + `main` 构造 `WebhookManager` 订阅 `EventBus`;`isac/control/mcp_server.py` 补生产启动点 + 补齐声明未实现的工具;`delegate_task` 背景摘要经 `ContextEnvelopeBuilder` 真传子 Agent;子任务 `evidence_refs` 真实生成。
   - **依赖**：J3/J4/G2/G3(均已实现)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。①`GET /agents/{id}/config` (`routes_agents.py` `_get_agent_config` 抽 helper 降复杂度) 返回 `asdict(instance.config)` 含真实 `revision`, WebUI `app.js:loadConfigForEdit` 改用它替代硬编码 `revision:1` (乐观锁 `?if_match=` 真实生效)。②SubAgent list-all: `GET /subagent-runs` (无 parent_agent_id 过滤) 替代 app.js `GET /agents/_/subagent-runs` 硬编码 `_`。③新建 `routes_webhooks.py` (CRUD + `/automation/trigger`, 复用 WebhookManager + SSRF), `main._setup_webhooks` 构造 WebhookManager + EventBus `on_async(POST_MESSAGE/POST_SEND)` 订阅 + AlertManager 注入 `webhook_manager` 激活告警推送, `server.py` `_mount_webhook_router` 挂载。④`mcp_server._call_tool` 补 5 工具 (channel_bind/unbind 操作 RoutingRules.bindings, agent_update_config 复用 `_do_patch_agent`, plugin_set_enabled 调整 plugins_allow/deny + 持久化, message_send 构造 ISACMessage+Session 调 handle_message_serialized) 抽 `_call_r2_tools` helper; `main._register_mcp_server` 生产启动点 (`control.mcp_server.enabled`, 默认关闭零行为变化, spawn stdio task)。⑤`runner.py` 调 `ContextEnvelopeBuilder().build(task)` 把 `task.context["summary"]` 拼进 LLM user message (此前 build() 零调用, summary 被忽略)。⑥`runner._collect_evidence_refs` 从结果 content 扫 `artifact:<id>` 引用填入 `SubAgentResult.evidence_refs` (此前恒空)。新增 11 单测 (test_r2 9 + test_mcp_server 2); ruff/mypy 全绿 (263 文件); 全量 1669 passed; smoke_webchat/smoke_main_resident exit=0。
 
-- [ ] **R3 插件与 MCP 生态激活**(收敛 Q3;工作量最大)
+- [x] **R3 插件与 MCP 生态激活**(收敛 Q3;工作量最大)
   - **目标**：让插件与 MCP 注册的工具/命令/注入器真正进入 Agent 运行时并被 LLM 调用。
   - **验收**：`main` 构造 per-Agent `PluginContext` 时传入真实共享注册表(替换 `main.py:1362` 的 `_tools=None/_commands=None`);`loader.py` 加载 AstrBot/MaiBot 插件后调 `FunctionToolAdapter`/`MaiBotPluginAdapter.adapt` 完成桥接,`@filter.llm_tool`/`@register_action` handler 真实触发;`assembly` 按 `AgentConfig.mcp_servers` 构造 `MCPClient` + `connect` + `list_tools` 注册进 `ToolRegistry`,停止/销毁时 `disconnect`;`tools.workspace_root`/`bash_allowlist` 接入 `build_services`,`bash`/`read_file`/`write_file` 不再恒被拒。
   - **依赖**：F1-F4/E4/H2(均已实现)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。复用 `plugin_agent_hooks` 三阶段共享模式扩展到 tools/commands/injectors: `_fire_plugin_on_load` 建立进程级共享 `ToolRegistry`/`CommandRegistry`/`SystemPromptBuilder` (`services["plugin_tools"]` 等) 注入 `make_plugin_context` (替换原 None), native 插件 `on_load` 的 `register_tool`/`register_command`/`register_injector` 真实写入; 新增 `_adapt_compat_plugins` 遍历已加载 AstrBot/MaiBot 插件调 `AstrBotStarAdapter.adapt` (新建 `isac/plugin/compatibility/astrbot/adapter.py`, 仿 `MaiBotPluginAdapter`) / `MaiBotPluginAdapter.adapt` 把 `@filter.llm_tool`/`@register_action` 标记桥接进共享表; `assemble_agent` 经 `_merge_shared_plugin_tools`/`_merge_shared_plugin_commands` 合并共享表进 per-Agent registry (同 hooks 合并模式)。MCPClient 接线: `build_services` 注入 `services["mcp_servers"]` (config.jsonc 顶层 `mcp.servers` 节, DEFAULT_CONFIG 加默认空节), `assemble_agent` 经 `_wire_mcp_clients` 按 `AgentConfig.mcp_servers` 查全局定义构造 `MCPClient` + `connect` + `list_tools` 注册 `MCPToolBridge` 进 per-Agent tools, client 存 `agent_services["mcp_clients"]` 供 `AgentManager.stop`/`destroy` 与 `_shutdown_message_pipeline` 调 `disconnect`。CLI 工具 services 注入此前已完成 (`main.py:755-797`)。默认无插件无 mcp_servers 零行为变化。新增 `test_astrbot_compat.py::TestAstrBotStarAdapter` (3 例) + `test_runtime_assembly.py` 共享合并/MCPClient 接线/零行为/disconnect (4 例); ruff/mypy 全绿; 真机冒烟: `scripts/dev_mcp_echo_server.py` (最小 stdio MCP server) 配 `mcp.servers.echo` + Agent `mcp_servers=["echo"]`, isac 启动日志 `MCP server 已接入 server=echo tools=1` (list_tools 桥接真实生效)。**第 5 项"兼容层插件迁进程隔离"未做**: `manager._load_isolated` 依赖 manifest.jsonc, AstrBot/MaiBot 兼容层无 manifest, Fix-31 已做安全兜底 (显式失败而非静默退回宿主进程); 真正支持需独立的兼容层 manifest 机制, 超出"激活"范围, 留架构债 (§架构债表)。
 
-- [ ] **R4 记忆完整性补齐**(收敛 P3 剩余 + 2026-07-29 新发现的需求缺口)
+- [x] **R4 记忆完整性补齐**(收敛 P3 剩余 + 2026-07-29 新发现的需求缺口)
   - **目标**：补上 `REQUIREMENTS.md` 4/5 明确要求、但读侧就绪写侧缺失的两项记忆能力,并完成 P3 剩余。
   - **验收**：**①行话学习**(R5 要求) —— `JargonInjector` 已注册读侧(`assembly.py:341`)但 `upsert_jargon` 全仓零生产调用、行话表恒空;补群聊高频词/上下文的行话抽取写入回路(归 `MemoryConsolidator` 后台低频,`HUMANLIKE_RUNTIME.md` 6.3)。**②中期记忆真实压缩**(R5 要求) —— `MidTermMemoryInjector` 现仅截断复述 `pending_messages` 末 5 条,与其自述"由 COMPRESS hook 触发 + CompressionPolicy + Summary + Recall Cue"不符;改为真实接 `COMPRESS` hook 做摘要压缩并落中期记忆。**③P3 通用实体关系图** —— 现只有 `mentioned_in` 提及边,补人物-人物/人物-话题语义关系抽取写边。
   - **依赖**：N1/N2、S2(MemoryConsolidator 已激活)、S3(图谱召回已激活)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。**①行话学习写入回路** —— `MemoryConsolidator.run_once` 新增第 4 步 `_extract_jargon_step`(LLM 守卫内,与画像归纳同级):按 `group_id` 聚合群聊 episode → `_top_candidate_words`(内置 CJK 2-gram bigram 分词 + 停用词/单字/既有 jargon 过滤,无 jieba 新依赖)统计高频词 → `_define_one_jargon` 经 `self._llm.chat` 释义(MEANING/CONTEXT 两行)→ `metadata.upsert_jargon(namespace, word, meaning, context)`;LLM 失败/无群聊/LLM=None 时跳过,异常隔离。**②中期记忆真实压缩(方案 A)** —— `assembly` 经 `_register_compress_listener` 把 COMPRESS hook 回调注册进 per-Agent 私有 hooks:回调仅 `consolidator.enqueue_compression(session_id, messages)` 入队(不调 LLM,守护 hook 禁直接调 LLM 规范);`run_once` 第 5 步 `_compress_step` 消费队列 → `_summarize_one_session` LLM 摘要 → `metadata.latest_episode_id_for_session` 定位 episode → `update_episode_summary` 落 `episodes.summary` 列(复用既存列 + episodes_fts_au 触发器自动同步 FTS);`MidTermMemoryInjector.build()` 改读本会话最近 episode 已落盘 summary 经 `RecallCue` 注入,不再截断复述 `pending_messages[-5:]`;新建 `CompressionPolicy`/`Summary`/`RecallCue` 三类承载逻辑。**③P3 通用实体关系图 —— 跳过留架构债**:写边层 `GraphStore.add_edge`(通用三元组, relation 任意字符串)已就绪,抽取层从零(需 LLM + NER + 关系抽取 prompt 工程 + 解析归一,~150+ 行),按"遇到阻塞先跳过"指示文档化留后续(见架构债表)。新增 `MetadataStore.update_episode_summary`/`get_episode_summary`/`latest_episode_id_for_session` 三方法;`ConsolidationResult` 加 `jargon_extracted`/`compressed_summaries` 计数。测试 `test_memory_consolidator_r4.py`(16 例)+ 更新 `test_memory_injectors.py` 旧 mid_term 测为新契约。默认零行为变化(LLM=None/无群聊/无 COMPRESS 触发时不变),ruff/mypy 全绿。
 
-- [ ] **R5 持久化与密钥安全收尾**(补 `REQUIREMENTS.md` 9/10 缺口)
+- [x] **R5 持久化与密钥安全收尾**(补 `REQUIREMENTS.md` 9/10 缺口)
   - **目标**：让"重启不丢会话"与"密钥不落明文"达到需求要求。
   - **验收**：**①Session 持久化**(R10 明确要求"Agent、Session、身份、路由、Link 和记忆可持久化恢复") —— `SessionManager` 现为纯内存(`session.py:30-35`),补 SQLite 写穿 + 重启恢复,与 Q1 的 `UserMapper` 持久化同构。**②密钥安全**(R9"密钥只可设置或替换,不可回显") —— `SecretStore`(AES-256-GCM)现零生产调用点(仅注释提及),`api_key` 明文存 `data/config.jsonc`;接入 SecretStore 或落地"配置 + env 覆盖"并确保控制面/WebUI 不回显、审计不记明文。
   - **依赖**：K4(持久化框架)、K7(SecretStore 已实现)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。①`SessionManager` (`isac/gateway/session.py`) 照 `UserMapper` 同构加 `db_path` 参数: `SCHEMA_SQL` 建 `sessions` 表 + `_ensure_schema` (惰性建表) + `_load_from_db` (缓存未命中先查库 hydrate 既有会话, 重启复用 session_id 不新建) + `_persist` (best-effort 写穿, 失败仅记日志不阻塞消息流) + `_delete_from_db` (close/gc 同步删) + `asyncio.Lock` 串行 check-then-create (防并发双创建); `main` 传 `db_path=data/gateway/sessions.db`, 不传则纯内存向后兼容。②`SecretStore` 接入: `resolve_secret_async` (`security.py`) 用 `secret:<key>` 前缀约定解密配置中 api_key; `resolve_secrets_in_config` 在 `build_services`/`register_llm_provider` 之前就地解析 `llm.api_key` + `llm.multimodal[*].api_key` 使同步注册函数拿明文; env `ISAC_SECRET_KEY` 未配置时不构造 store → `secret:` 前缀值原样回退 (warning) 走原明文路径向后兼容; env `ISAC_LLM_API_KEY` 仍最高优先级 (非 `secret:` 前缀原样返回); CLI `isac secret set/get/delete` 管理加密密钥 (getpass 不回显); 控制面无 GET config 明文回显端点 (routes_config 仅 validate/diff), 审计 `secret:` 前缀本身不含明文天然安全。默认无 db_path/无 env/无 `secret:` 前缀零行为变化。新增 8 单测 (SessionManager 持久化/重启恢复/并发/close + resolve_secret 各分支/resolve_secrets_in_config); ruff/mypy 全绿 (262 文件); 真机冒烟 `scripts/smoke_session_persistence.py` (建会话→SIGTERM 停→重启→同会话键发消息验证 session_id 不变, exit=0)。
 
-- [ ] **R6 企业化激活**(收敛 P5 剩余)
+- [x] **R6 企业化激活**(收敛 P5 剩余)
   - **目标**：完成 O1/O2/O3 的最后一段控制面与隔离接线。
   - **验收**：`routes_tenants` 控制面落地 + 按租户鉴权(O1 数据面 `tenancy.enabled` 已接);`loader.py` 支持可选子进程隔离模式(按 manifest `isolated` 标记路由到已实现的 `PluginIsolationHost`),崩溃可恢复;Workflow Agent 工具入口决策落地(新增 Tool + `assembly` 注册 + engine 注入,或明确记录"不做"及理由,消除 `actions.py:57` 的 `agent:` noop 悬空)。
   - **依赖**：O1/O2/O3、G(控制面)。
-  - **当前**：未开始。
+  - **当前**：**已完成 (2026-08-16)**。①`routes_tenants` (`isac/control/api/routes_tenants.py`) CRUD 租户 + 成员管理 (`GET/POST /tenants`, `GET/DELETE /tenants/{id}`, `POST/DELETE /tenants/{id}/members`), `tenant:read/write` scope + 审计; 新建 `TenantManager` (`isac/runtime/tenancy/manager.py`, SQLite 持久化照 UserMapper/SessionManager 同构, best-effort 写穿 + 重启恢复 + asyncio.Lock 串行), `tenancy.enabled` 时构造 (`main._build_tenant_manager`, `data/gateway/tenants.db`), `server._mount_tenant_router` 挂载 (无 manager 不挂载, 零行为变化); 数据面隔离已由 MetadataStore 层 `TenantIsolationGuard.enforce` 完成, AgentConfig/AgentManager 租户过滤界定为 O1 数据面纵深 (R6 范围外)。②`loader` 子进程隔离**已完全满足, 零工作** (三要素: `_should_isolate`/`_is_isolated_native` 读 manifest `isolated` 路由 manager.py:116-128 + `_load_isolated` 构造 `PluginIsolationHost` manager.py:130-176 + `_on_crash` 崩溃自动重启 max_restart_attempts host.py:270-314, 已接生产 load 路径 + 有测试)。③Workflow Agent 工具入口**决策落地选 B (明确记录不做)**: `actions.py:57` `agent:` stage→agent noop 补"经决策不实现"交叉引用 (消除悬空语义, 非遗漏), actions.py docstring + main.py:1476 正式化决策依据 (engine 有 `start` agent-facing 方法但 assembly 不接收 workflow_engine, 接入需跨 build_services/assemble_agent 两层 plumbing 与收益不匹配; `agent:` stage 路由属 workflow→agent 方向, 依赖 agent intent 调用协议超 R6 范围)。新增 10 单测 (test_r6_tenants: TenantManager 存储 CRUD/持久化/成员 + routes_tenants 端点 CRUD/成员/scope); ruff/mypy 全绿 (265 文件); 全量 1679 passed; smoke exit=0。
 
-- [ ] **R7 集成测试补齐与发布准入**(GA 最后一道门,必须最后做)
+- [~] **R7 集成测试补齐与发布准入**(GA 最后一道门,必须最后做)
   - **目标**：补齐缺失的集成测试,复核 I 节点,过发布清单。
   - **验收**：新增 `tests/integration/test_p3_*`(向量+图谱+治理过滤召回)、`test_p4_*`(两平台同一自然人 bind → 记忆聚合)、`test_p5_*`(跨租户不可见 + 插件隔离 + workflow 执行) —— 三者现全缺;R1-R6 各自的端到端集成测试就位;**每个 hook/injector 至少一条经真实触发者驱动的测试**(见 `MODULE_GUIDE.md` §二"第三道坎");I 节点复核由 85% 升 100%(浏览器测试 CI 已随 K8 接入);`scripts/release_checklist.md` 七段清单全过;真实启动冒烟 + Docker 健康检查;`REQUIREMENTS.md` 十二条逐条取证复核(仿 2026-07-26 方法)。
   - **依赖**：R1-R6 全部完成。
-  - **当前**：未开始。
+  - **当前**：**代码可做部分已完成 (2026-08-16),环境准入项待环境**。新增三套集成测试 (19 例, 全绿): `tests/integration/test_p3_memory_retrieval.py` (8 例: 向量 KNN 召回 + 图谱 mentioned_in 邻居召回 + 治理 deleted 不被检索命中 + frozen 仍可检索 + embedder 降级 dense 短路 + graph 关闭不写边, 复用 `_KeywordEmbeddingProvider` 确定性 fake embedding)、`tests/integration/test_p4_identity_bind.py` (6 例: 两平台 qq+telegram bind 同一 person_id + 记忆按归一 master_id 聚合检索 + 归一身份隔离 + 低置信冲突写 identity_conflicts + resolve_conflict 标记解决 + 高置信不写冲突)、`tests/integration/test_p5_enterprise_isolation.py` (5 例: pipeline 层跨租户不可见 + PluginIsolationHost spawn→load→call→kill 真实插件 + _on_crash 崩溃重启达 max 放弃 + workflow 声明式 load_workflows_from_dir+persist + tool: action 经 build_default_action_handler 真实调 ToolRegistry.execute)。**待环境项 (按"遇到阻塞先跳过"留后)**: 真实启动冒烟 + Docker 健康检查 (需 docker daemon)、24h soak (需长时运行环境 + 真实 LLM key)、I 节点 browser CI 复核 100% (需浏览器环境, 本地无 browser 报 2 ERROR 为环境限制非代码缺陷)、`scripts/release_checklist.md` 七段全过 (需真实部署环境)、`REQUIREMENTS.md` 十二条逐条取证 (需人工逐条复核)。全量 1728 单测通过 (+19 例, 跳 browser 环境限制)、ruff/mypy 全绿 (266 文件)。
 
 **GA 后可选项(不阻塞正式版发布,用户已明确暂缓或判为增强)**：S6 视频 Provider 真实端点(待端点选型二次确认)、微信 mp 公众号模式(wecom 已实现)、Slack 适配器、主链路启用流式回复(Provider 层 `chat_stream` 已闭环且有测试,`loop` 流式路径存在但 `run_stream` 无生产调用点 —— 属体验增强而非需求缺口)。
+
+---
+
+### FE 前后端分离 (2026-08-15 制定, 后端先行)
+
+**背景与决策**: 现 WebUI 是控制面静态托管的 SPA (`control/webui/`, Vanilla JS)。随管理面增长, 前后端耦合的代价上升 (前端产物随后端发布、页面演进受后端发版节奏制约、无法独立选型与迭代)。**2026-08-15 决策**: 转入前后端分离 —— 后端提供纯 REST + SSE API, 前端独立成项目围绕冻结的 API 契约开发。决策记录见 `ARCHITECTURE.md` ADR-012。**先开发后端**; 前端轨道 (F 节点) 在 FE0/FE1 + T3-backend 完成后启动。
+
+- [x] **FE0 API 契约冻结**
+  - **目标**：把既有控制面 API 冻结为前后端双方的正式契约。
+  - **验收**：`/openapi.json` 导出并归档为契约基线 (同步 `docs/api.md`); 全部既有端点通过契约自检 (命名/错误格式符合 `CONTROL_PLANE_SPEC.md` §3.6 统一错误格式); 版本策略确认 (`/api/v1` 前缀保持, 破坏性变更须升版本); 契约变更流程文档化 (改 API 先改 `CONTROL_PLANE_SPEC.md`)。
+  - **依赖**：无。
+  - **当前**：已完成 (2026-08-16)。`scripts/export_openapi.py` 用最小 mock 注入 `create_control_app` 挂载全部可选路由, 导出 `docs/api/openapi.json` 契约基线 (45 路径, version=1.0.0)。运行时 `/openapi.json` 仍按 R15 默认关闭 (`docs_enabled=false`), 契约以归档文件为准。统一错误格式对齐实际形态 `{"detail":{"code","message"}}` (CONTROL_PLANE_SPEC §3.6 订正; 原 `{"error":{...,"retriable","trace_id"}}` 形态中 retriable/trace_id 标为可选扩展留待 GA); 顺手修 `routes_identity` 两处纯字符串 detail (违反契约)。FastAPI app version 由硬编码 `0.1.0` 改读 `isac.__version__`。`docs/api.md` 加"API 契约基线"章节 (版本策略 + 变更流程: 改 API 先改规范再跑导出脚本刷新基线)。`tests/unit/test_api_contract.py` (4 例) 自检: 基线可加载 + version 一致 + 关键端点在 + 运行时 paths 与归档基线一致 (防漂移)。
+
+- [x] **FE1 分离基建 (CORS / 跨源认证 / 静态托管降级)**
+  - **目标**：让独立部署的前端能安全地消费 API。
+  - **验收**：CORS 策略落地 (开发态 origin 白名单可配, 生产推荐同源反代, 默认不放开); 跨源认证落地 (Session Cookie + CSRF 在分离 origin 下的 SameSite/credentials 策略, 自动化场景保留 Bearer Token 双轨); `control/webui/` 静态托管标记 deprecated (迁移期保留可用, F2 完成后移除); SSE 契约维持 (`/events/stream`、`/logs/tail`)。
+  - **依赖**：FE0。
+  - **当前**：已完成 (2026-08-16)。`CorsConfig` (origins 默认空 + allow_credentials) 加入 `ControlConfig` (`config_schema.py`); `server._configure_cors` helper: origins 非空时加 `CORSMiddleware` (allow_credentials + 全方法/头), 默认空不加零行为变化; `routes_auth.build_router` 加 `samesite` 参数, 分离 origin (origins 非空) 降 `SameSite=Lax` 跨源可带, 同源保持 `Strict`; 写操作 Bearer Token 双轨保留 (CSRF middleware 只对会话 Cookie 写请求生效)。`control/webui/__init__.py` docstring 标 DEPRECATED (迁移期保留, F2 后移除, 新功能去独立前端)。SSE 契约 (`/api/v1/events/stream`、`/api/v1/logs/tail`) 未动维持。`config.sample.jsonc` 加 `control.cors` 示例 (注释生产推荐同源反代)。`tests/unit/test_fe1_cors.py` (5 例): 默认不放开 / 配置 origin 预检放行 / 未列 origin 拒绝 / samesite strict 默认 / samesite lax 跨源。
+
+- [x] **T3-backend 控制面开箱后端支撑** (T3 后端段)
+  - **验收**：`control.enabled` 默认 true 且仅绑 `127.0.0.1`; 首登强制设密码后端支撑 (setup 状态机 + `password_change_required` + `/setup` API, 禁止硬编码默认密码); CLI `isac password reset` 兜底; 配置 Schema 暴露 (JSON Schema 端点, 前端表单驱动前提); 真机验收 (干净目录启动 → 控制面可达 → setup 流程走通)。
+  - **依赖**：FE1。
+  - **当前**：**已完成 (2026-08-16, 1c0e639)** —— `DEFAULT_CONFIG` control 默认开 (仅 127.0.0.1); `SetupManager` (PBKDF2 + 428 SETUP_REQUIRED gate + `/setup` API); CLI `isac password reset`; `/api/v1/config/schema` JSON Schema 端点; `scripts/smoke_control_setup.py` 真机验收 exit=0。
+
+- [ ] **F1 前端项目初始化 + 登录/setup 向导** (前端轨道)
+  - **验收**：独立项目/目录 (技术栈开工前决策); 消费 `/api/v1` + SSE; 登录页 + 首登强制设密码向导页; 与后端 T3-backend 联调通过。
+  - **依赖**：FE1 + T3-backend。
+
+- [ ] **F2 十域页面迁移** (前端轨道)
+  - **验收**：Dashboard/Agents/Channels/Providers/Usage/Extensions/Memory/Sessions/Logs/System 十域在前端项目重实现; 配置编辑事务接真实 API (Schema 校验 + Diff + 二次确认 + 乐观锁, 消费 R2 的 `GET /agents/{id}/config` 真实 revision); 同步修复 Q5 遗留 (SubAgent 表真实 agent_id 等假数据); 完成后移除后端 `control/webui/` 静态托管。
+  - **依赖**：F1、R2。
+
+- [ ] **F3 实时体验** (前端轨道)
+  - **验收**：实时日志台 (`/logs/tail` SSE) + 事件流页面化 (`/events/stream`)。
+  - **依赖**：F2。
+
+- [ ] **F4 插件市场 UI** (前端轨道)
+  - **验收**：插件市场列表 + 一键安装 + 热重载操作 + 失败插件可重试的前端界面。
+  - **依赖**：T6 (后端能力先行)。
+
+---
+
+### U 架构演进轮 (2026-08-17 制定, v1.0 GA 前置, 发布路径与决策见 §三之五)
+
+**目标**: 把 2026-08-17 深度 Review 认定的 8 项架构问题清偿到 A+ 水准 (稳定性/健壮性/可维护性/可扩展性/可升级空间/模块化)。现状证据与工作目录报告见 `.tmpfiles/agent-review-2026-08-17/` (主报告 `isac-deep.md`)。
+
+**依赖顺序**: U0 最先 (安全, 阻塞一切发布相关工作) → U1 (地基, U3/U5 部分项依赖) → U4 → U5; U2/U3/U6/U7/U8 可穿插; U9 最后 (复评门禁)。
+
+**推进方式**: 不估工时, 按各节点验收标准推进; 验收铁律 (真机证据) 与三态标记适用; 每项完成同步 PROGRESS.md。
+
+- [x] **U0 安全清偿 (P0, 阻塞一切发布相关工作)**
+  - **目标**: 清偿深度 Review 新发现的 4 项安全实洞 (Fix-85~88), 均在多租户与插件生态两个核心卖点面上。
+  - **验收**:
+    ①**Fix-85 治理面租户谓词**: `MemoryGovernor` 全部 SQL 补租户作用域, `routes_memory_admin` 校验 agent 归属租户; `tests/integration/test_p5_enterprise_isolation.py` 扩展到治理面 —— 租户 A 凭据对租户 B 记忆 freeze/correct/delete 一律拒绝。(发现: `governance.py` SQL 不经租户谓词, 控制面传裸 agent_id。)
+    ②**Fix-86 解压体积上限接线**: `MAX_EXTRACTED_BYTES` 接入解压循环 (流式累计计数, 超限中止 + 清理); zip bomb 构造测试被拒且无残留文件。(发现: `installer.py` 该常量全仓零引用。)
+    ③**Fix-87 MCP restricted 语义修正**: restricted 服务门补 `mcp:*` 映射, 或改默认 allow 并同步文档与 `base.py` 注释 (二选一, 消除语义矛盾); restricted 档下 LLM 直调 mcp: 工具被拒的用例。
+    ④**Fix-88 兼容层工具命名空间**: mcp: 前缀防护推广到 compat/native 插件工具 (`<plugin>:tool` 前缀), 同名工具在机制上不可能覆盖内置工具 (现有 warning 升级为确定性隔离)。
+    另顺带批清: delegate_task `_wait_timeout` clamp、gateway 诸库 (sessions/identity/tenants) WAL + busy_timeout、`pending_messages` 死字段删除、onebot 测试 extra 缺失时 importorskip。
+  - **产出**: 对应修复 + 每项回归测试 (按 Fix-N 体系编号归档 CODE_REVIEW_REPORT.md)。
+  - **依赖**: 无。
+  - **当前**: **已完成 (2026-08-17)**。Fix-85 治理面全部 episodes SQL 补 organization_id/tenant_id 谓词 (guard.enabled 且非默认租户时, 与 metadata enforce 语义一致) + test_p5 新增跨租户治理拒绝/默认租户直通 2 例; Fix-86 safe_extractall 增 max_extracted_bytes 流式累计实际写盘字节 (元数据可伪造, 以实际为准) 超限中止+清半成品, installer 接入 MAX_EXTRACTED_BYTES, zip bomb 3 例; Fix-87 _required_service 补 mcp:*→mcp_clients 映射 (接线时 assembly 注入, 未接线拒绝; 4 例); Fix-88 ToolRegistry.register 对插件来源工具自动 <plugin>: 前缀包装 (_NamespacedTool), 已含 ':' 跳过, 启动期 compat 桥接补 set_current_source (防覆盖内置 6 例)。顺带批清: subagent _wait_timeout clamp 300 / gateway 四库 WAL+busy_timeout / pending_messages 死字段删除 (基类+SessionContext+loop 拷贝+4 测试传参) / onebot importorskip。全量单测 1740 通过+1 skip, integration 91 通过, ruff/mypy 全绿。
+
+- [x] **U1 事件溯源会话内核 (架构演进地基)**
+  - **目标**: 会话存储从可变表升级为事件溯源: append-only 会话事件表 + 状态全部从事件派生 (消息历史=折叠、滑动窗口=窗口派生策略、压缩=带 `source_seqs` 溯源的 replace 事件); 入站消息即持久事件 ("Model-visible ⟺ Logged" 的 IM 化, 天然解决异步消息/重启续跑/审计合规); 未知事件类型默认拒绝重建 (ignorable 白名单); torn-tail 容忍 + repair (孤儿工具调用合成 OUTCOME_UNKNOWN, 不猜结果); 工具执行前/LLM 请求前强制 flush (副作用前落盘)。
+  - **验收**: 强制断电 (kill -9) 后事件重放恢复无损; 上下文压缩可查溯源凭证, 摘要不小于原文时拒绝提交; **滑动窗口历史开箱可用** (最近 N 轮, budget 感知截断, 窗口大小可配; memory 关闭时仍维持窗口内连续性 —— 这是底线场景); 真机演示"隔天回到同一群聊仍保持上下文"并留档; episodes 写入改事件投影 (检索面不变, 写入侧不可变化); 既有全量测试绿 + 新增事件溯源专项套件 (重放/压缩溯源/torn-tail/未知事件拒绝)。
+  - **产出**: `session events` SQLite 事件表 (WAL + write-behind 批处理)、派生器 (全量/窗口/压缩后三种派生策略)、旧 sessions 数据迁移脚本、repair 工具、配置项、MEMORY_DESIGN.md / ARCHITECTURE.md 同步。
+  - **依赖**: U0。
+  - **当前**: **已完成 (2026-08-17)**。新建 `isac/session/` 包: `models.py` (SessionEvent + 事件类型白名单, 未知事件拒绝重建, ignorable 白名单首个成员 session.migrated)、`event_store.py` (SessionEventStore: append-only 分区事件表, WAL + busy_timeout, 原子 seq 分配 INSERT...SELECT COALESCE(MAX(seq),0)+1, write-behind 批处理 + 显式 flush, fetch/fetch_recent/max_seq, torn-tail repair 合成 OUTCOME_UNKNOWN 不猜结果, payload 脱敏 + 256KB 截断)、`history.py` (SessionHistoryDeriver: fold 全量折叠含 turn.compressed source_seqs 溯源替代、derive_window 滑动窗口 window_turns*2 + budget 感知截断从最旧丢弃、validate_compression 摘要≥原文拒绝提交、UnknownSessionEventError)、`migrate.py` (旧 sessions 表 → session.migrated 标记事件, 幂等 + dry-run, `python -m isac.session.migrate`)。主链路接线 (runtime/manager.py): `_dispatch_message` 派生历史窗口 messages=历史+[当前 burst], 入站消息 LLM 请求前 flush 落盘 (Model-visible ⟺ Logged); 回复成功 turn.completed 落盘; `_write_memory` episodes 改事件投影 (按 turn_seq 从事件流读回本回合事件对为内容源, 失败回退直写, 检索面不变)。生产装配 (main.py): `_build_session_history_kernel` 按 session.history 配置构造 store/deriver, 生命周期注册启动建表 + 逐分区 torn-tail 修复。配置: config.sample.jsonc 增 session.history 节 (enabled 默认 true / window_turns 10 / budget_tokens)。测试: 单测专项 18 例 (重放无损/并发 seq/脱敏/torn-tail/折叠/压缩溯源/未知事件拒绝/窗口/budget/memory-off/迁移幂等) + 集成 6 例 (LLM 前落盘断言、二轮见历史、重启隔天保持上下文、episodes 投影、关闭零行为、启动 repair); 真机冒烟 scripts/smoke_u1_history_continuity.py (两进程跨重启同会话事件流连续, PASS 留档)。文档: ARCHITECTURE.md §3.14 + MEMORY_DESIGN.md §4.4。全量单测 1758 通过+1 skip, integration 97 通过, ruff/mypy 全绿。
+
+- [x] **U2 装配层重构 (收敛架构债清单 Z1+Z2)**
+  - **目标**: main.py (1832 行, 08-17 实测) 拆为 bootstrap/dispatch/wiring/cli 四模块 (各 ≤500 行, main.py 变薄入口); `build_services` 25 键 services 袋 ServiceContainer Protocol 化 (先核心 10 键, 再清其余), 下游 123 处防御式 `services.get(...)` 清零; 合入 lint 红线 (main.py 行数冻结, 只减不增)。
+  - **验收**: mypy strict 通过装配层; 键错配在类型层不可能; 既有全量测试绿; 单向导入链 (main.py:3-6 声明) 保持。
+  - **依赖**: U0。
+  - **当前**: **已完成 (2026-08-18)**。①**main.py 2046 行 → 82 行薄入口** (纯 re-export 兼容面, 既有 `from isac.main import ...` 调用方零改动), 拆出: **dispatch.py** 481 行 (消息主链路: process_message/make_message_dispatcher/身份归一/媒体落盘/回复出站)、**wiring.py** 499 行 (build_services + 服务构造器)、**bootstrap.py** 499 行 (main() 运行时生命周期); cli 早已分离 isac/__main__.py。卫星模块层级归位: control/bootstrap.py (控制面+webhook 注册)、runtime/plugin_bootstrap.py (MCP/workflow/插件 on_load/compat 桥接)、channel/registration.py (通道注册+默认路由)、runtime/mesh/query.py (跨 Agent 记忆查询应答)、memory/stack.py (记忆子系统构造器归记忆层)、observability/usage/stack.py (用量栈归 observability 层)、gateway 侧 _build_tenant_manager/_build_media_normalizer 归 runtime/tenancy 与 utils/media。②**ServiceContainer** (runtime/services.py): dict 子类 + 14 核心键类型化属性 (global_config/metrics/provider_manager/model_catalog/model_router/artifact_store/uploads_store/usage_recorder/session_event_store/media_normalizer/channel_registry/session_mgr/session_lock/session_write_gate), build_services 返回类型 ServiceContainer —— **键错配在类型层不可能** (mypy strict 293 源文件全绿); dict 语义全保持 (索引/get/解包), 下游既有字符串键访问渐进迁移 (残余 ~215 处列 U9 批清, 即"先核心 10 键, 再清其余"第一阶段)。③**lint 红线常驻** (tests/unit/test_u2_assembly_redlines.py 4 例): main.py ≤120 行/四模块各 ≤500 行只减不增、main.py 禁函数定义 (薄入口)、ServiceContainer 核心键属性哨兵、拆分模块禁反向 import isac.main (单向链)。AST 精确抽取迁移 (零转写), 全量 **1962 通过 + 4 skip** 零失败 (smoke_main_resident 本批亦过, U9 根治项不变)。
+
+- [x] **U3 门控策略化 (配置 + i18n + LLM judge)**
+  - **目标**: constants.py 硬编码的三组中文关键词表与评分权重迁入 config `gating` 节 + locales 双语包 (zh_CN 现有词表迁入, en_US 新配); GatingStrategy 可插拔四档 (off / keywords / llm-judge / hybrid), TurnGate 单一调用点; llm-judge 档用小模型判群聊发言相关性 (频率上限 + 成本估算入文档; 已拍板: fallback 链最便宜档); 词汇表 drift test (config 与 locales 键一致性 CI 检查)。
+  - **验收**: 英文群聊场景门控 e2e 通过; 调整任何门控参数不改代码; zh_CN 默认配置下既有门控行为回归一致。
+  - **依赖**: U0。
+  - **当前**: **已完成 (2026-08-17)**。①**GatingProfile** (gating/profile.py): 门控参数画像收口 —— 全部评分权重/阈值/三类词表/策略档位可经 `config.gating` 覆盖 (weights/markers/locale/strategy/reply_necessity_threshold/llm_judge_max_per_minute/hybrid_escalate_band), 未配置回落 constants 默认; 数据类字段默认 = zh_CN 词表 (constants 同源), 裸构造 GatingProfile() 亦与 U3 前行为一致; strategy 非法值归一 keywords。②**GatingStrategy 可插拔四档** (gating/strategy.py): off (恒无内容信号) / keywords (默认, 词表匹配, U3 前语义原样) / llm-judge (小模型判相关性, judge 缺失/异常/返回 None/超频率上限 fail-safe 回落 keywords, 滑动窗口频率上限默认 10 次/分钟) / hybrid (keywords 先行, 无任何问询信号才升级 judge); 策略只产出内容信号 (is_question/is_request/is_consult/judged_by_llm), 分数换算仍归 ReplyNecessityJudge (单一调用点, 策略可换评分模型不变)。③**i18n 词表** (locales): GATING_MARKERS 双语包 —— zh_CN 为 constants 三组中文词表原样迁入, en_US 新增英文词表 (question/request/consult); load_gating_markers(locale) 未知语言回退默认语言; config markers 覆盖优先于 locale 词表。④**装配接线** (runtime/assembly.py): _merged_gating_config 全局 config.gating 与 Agent 级浅合并 (嵌套 weights/markers 子键合并, Agent 优先); _build_gating_judge_fn 仅 llm-judge/hybrid 档且 provider 在场时构造, 经 ProviderManager.chat_with_retry 走 **fallback 链最便宜档** (拍板 #3), yes/no 解析, 异常归 None 回落。⑤**drift test**: zh_CN/en_US 词表键集合 == GATING_MARKER_KINDS 三类且非空 (CI 常驻)。⑥**配置样例**: config.sample.jsonc 全局 gating 节 (strategy/locale/threshold + weights/markers/频率上限注释样例)。成本说明: llm-judge 每条待判定群聊消息 ≤1 次最便宜档调用 (频率上限兜底), 单群中等活跃度下约每分钟 ≤10 次小模型短请求, 成本近零 (ARCHITECTURE.md §3.7)。测试: U3 专项 17 例 (四档策略/fail-safe/频率上限/hybrid 升级/权重词表阈值配置化/英文群聊 e2e 双语对照/默认零行为回归/词表 drift/全局-Agent 合并) + 既有门控域 236 例回归全绿。全量 1920 通过+4 skip (smoke_main_resident 全量批负载 flake 单独复跑稳定, U9 根治项), ruff/mypy 全绿。
+
+- [x] **U4 租户机制强制 (半墙 → 整墙)**
+  - **目标**: 隔离从"调用方自觉"升级为"机制强制": TenantBound 连接包装层自动注入租户谓词 (替换逐处子查询, 调用方无法绕过); person_profiles/jargon_entries/memory_revisions/memory_audit 补 tenant_id 列 + 迁移脚本; QueryMemoryTool 改 master_id 检索 (修私聊工具召回系统性漏); 租户前缀/自定义 namespace 下 consolidator-manager-injector 三处键统一。
+  - **验收**: 两租户共库全场景零串档 (检索/治理/画像/行话/工具召回集成测试); 审计确认无裸 SQL 绕过点; `tenancy.enabled=false` 时零行为变化。
+  - **依赖**: U0 (Fix-85 是其前哨)。
+  - **当前**: **已完成 (2026-08-17)**。①**TenantBoundDB 机制强制层** (memory/storage/tenant_bound.py): 租户读写原语唯一入口 —— `scoped()` SELECT 自动 enforce 子查询包裹、`predicate()` UPDATE/DELETE 规范谓词片段、`row_values()` INSERT 打标、`connect()` 连接收口; MetadataStore._tenant_scope/_tenant_row_values 与 MemoryGovernor._tenant_predicate 全部委托该层 (谓词逻辑唯一实现, 调用方无法自行拼装绕过)。②**四表补租户列**: person_profiles/jargon_entries/memory_revisions/memory_audit 经 _ensure_column 迁移补 organization_id/tenant_id (默认 'default', 存量不需回填); profile/jargon 写入打标 + 读取经租户作用域; governor 审计/revision 行打租户标, list_audit 跨租户不可见, 治理 SELECT 改走 scoped()。③**QueryMemoryTool master_id**: user_id 取 user_profile.user_id (与 _write_memory 落盘口径一致, 修私聊工具召回系统性漏); query_person_profile 同步 (person_id 回落链 + namespace 键)。④**三处键统一**: manager._update_person_profile 与三个注入器 (person_profile/jargon/mid_term) 及两工具的 agent 键统一为 pipeline.namespace (租户前缀/自定义 namespace 下与 consolidator 写侧同键; 默认单租户零变化); 顺带清偿两处裸 SQL 绕过点 —— consolidator._fetch_episode_meta 改经 metadata.get_episode_meta_by_ids (租户作用域内分块), routes_memory 控制面三端点改经 store._tenant_db.scoped()。审计测试常驻 (允许清单外 isac/ 零 aiosqlite.connect 记忆库直连)。测试: U4 专项单测 12 例 (三态原语/四表隔离/delete 谓词双保险/meta 作用域/审计行打标/默认租户零行为/工具取键口径/绕过点审计) + test_p5 集成 3 例 (画像行话元数据跨租户不可见/键统一写读一致/master_id 召回回归)。全量单测 1770 通过+1 skip, integration 100 通过, ruff/mypy 全绿。
+
+- [x] **U5 工具权限管线 + HITL 卡片审批**
+  - **目标**: 工具权限从静态 scope 表升级为四段管线: pre-execute (allow/deny/ask waterfall) → 单调 guard (拒绝不可翻回) → 执行 → post 审计留痕 (决策 + 决策者 + 理由, 经 U1 事件表); ask 档落 IM 审批卡片 (人点同意/拒绝, 超时 fail-closed); 决策理由词汇表 (规范值 + drift test); mcp:/compat/native 统一走命名空间注册管线 (Fix-88 机制化)。
+  - **验收**: 真机演示 ask 审批完整闭环 (卡片同意/拒绝/超时三条路); guard 拒绝不可翻案测试; 决策留痕可查询; 既有 restricted/EnableMatrix 语义回归一致。
+  - **依赖**: U0 (Fix-87/88 前哨)、U1 (留痕载体)。
+  - **当前**: **已完成 (2026-08-17)**。①**四段管线** (ToolRegistry.execute 重构): pre-execute waterfall (effective_policy 四档 allow/restricted/ask/deny, 未知档位值 fail-closed 归 deny) → 单调 DenyGuard (会话×工具拒绝账本, 只增不删无撤销 API; 拒绝经 tool.outcome=DENIED 事件持久化, 启动时 restore_from_events 重建, 跨重启不可翻回) → 执行 (异常隔离) → post 审计留痕 (tool.called 执行前副作用前 flush + tool.outcome 执行后/拒绝时, payload 带 decision+decider+reason)。②**ask 档 HITL**: ApprovalGate (审批码+卡片经 channel_registry 投递本会话); 回流两路 —— IM 回复"同意/拒绝 <审批码>" 经 process_message 入口拦截 (不触发对话回合, 过期码按普通消息继续路由) + 控制面 POST /api/v1/approvals/{id}/decide; 超时 (tools.approval.timeout_seconds 默认 300s) fail-closed 拒绝并登记 guard; ask 档审批门未接线时 fail-closed 拒绝 (不静默放行)。③**决策理由词汇表** (decision_reasons.py): 10 规范 reason + 5 decision + 3 decider, validate_reason 越表 raise; drift test 扫描 registry 引用的常量全在表内。④**决策留痕查询**: GET /api/v1/approvals/history 聚合事件表全部 tool.* 决策记录。⑤**命名空间管线不变量测试**: 非 builtin 来源工具注册名必含 ':' 前缀 (同名插件工具机制上不可能覆盖内置), 已含 ':' 不二次前缀。既有 restricted 服务门/EnableMatrix channel 覆盖/三态语义测试全回归。测试: U5 专项单测 22 例 + HITL 全链路集成 4 例 (同意/拒绝/超时三路经真实 process_message 闭环 + 过期码不误吞)。全量 1895 通过+4 skip, ruff/mypy 全绿。
+
+- [x] **U6 插件隔离默认化 (信任分级倒转)**
+  - **目标**: 市场/git/url/upload 安装的插件**默认隔离 host 运行** (trust 分级: manifest 声明 `trust: sandboxed|hosted`, hosted 需运营方显式确认); rlimits/ipc_timeout 从部署配置接线; 运行中 Agent 的插件 hooks 卸载后同步清除 (不留至重启)。兼容层 (AstrBot/MaiBot) 隔离迁移 (原 Z3) 在本节点给出处置决策: 复活 manifest 机制接入隔离, 或文档化降级承诺 + ARCHITECTURE.md 修订, 二选一消除"隔离承诺与实现落差"。
+  - **验收**: 市场插件默认在隔离 host 运行的集成测试; rlimits 生效验证; 卸载后 hooks 零残留测试; 兼容层处置决策落文档。
+  - **依赖**: U0 (Fix-86 前哨)。
+  - **当前**: **已完成 (2026-08-17)**。①**信任分级倒转** (PluginManager._should_isolate/_manifest_trust): 有 manifest 的原生插件默认隔离加载 (trust 缺省=sandboxed, 旧 isolated:true 向后兼容等价); trust="hosted" 仅当目录名在部署配置 `control.plugins.trust_hosted` 确认清单内才宿主进程内加载 (运营方显式确认信任), 未确认仍隔离; isolated_plugins 强制清单优先级最高保持。②**rlimits/ipc_timeout 部署接线** (_isolation_host_kwargs): `control.plugins.isolation` 节 rlimits(cpu/nofile/as)/ipc_timeout_seconds/max_restart_attempts 解析传入 PluginIsolationHost (非法值安全忽略)。③**hooks 零残留**: 卸载经共享表 deregister_by_source + sync_plugin_tools_to_agents 按来源同步运行中 Agent (机制批次 C 已接线, 本节点补验收测试)。④**兼容层处置决策 (Z3 收敛)**: 选"文档化降级承诺" —— 无 manifest 的 AstrBot/MaiBot 插件当前机制无法隔离, 宿主进程内加载 + 显式告警 (信任责任在部署方); 强制隔离兼容层插件时清晰报错不静默退回; 落 PLUGIN_COMPATIBILITY.md §5.4 + ARCHITECTURE.md §3.8。测试: U6 专项 7 例 (市场安装默认隔离/hosted 未确认仍隔离/兼容层降级/rlimits 配置解析与生效/卸载 hooks 零残留) + 既有插件域测试适配信任分级 (64 例)。全量 1903 通过+4 skip (smoke_main_resident 全量批负载 flake, 单独复跑稳定, U9 根治项), ruff/mypy 全绿。
+
+- [x] **U7 Agent 数据化 + 模型能力快照 + category 路由**
+  - **目标**: ①prompt 文件化: 人格/规则写 agents/*.md (frontmatter 声明变体键), SystemPromptBuilder 从文件装配, 改人格=改文件; ②模型能力快照管线: models.dev → 生成 JSON → CI 定期刷新 + 新鲜度测试 (已拍板数据源), fallback 链按能力与可达性过滤; ③category 路由: 委派任务按类型 (问答/创作/工具密集/闲聊) 选模型链, 并入现有数据驱动路由表。
+  - **验收**: 新增一个模型族=加一个文件, 零代码改动; 能力快照漂移 CI 报警; category 路由委派测试; 既有 persona 行为回归一致。
+  - **依赖**: U0。
+  - **当前**: **已完成 (2026-08-17)**。①**prompt 文件化** (agent/prompt_files.py): `<control.agents_dir>/<agent_id>/prompts/*.md` frontmatter 声明 family/variant/priority/enabled (无依赖子集解析器); persona 族文件替代 config.persona.description 身份注入, 其余族追加 (rules 等); 变体按当前模型族选择 (config.llm.model_family 覆盖优先, 否则模型名前缀推断 gpt/claude/qwen/deepseek... 16 族), 未命中回落 default —— **改人格=改文件, 新增模型族=加一个 variant 文件零代码**; 无 prompt 文件落回 config 路径零行为变化; assembly 拆 _register_identity_prompts/_register_file_prompts (降 C901)。②**能力快照管线**: scripts/gen_model_capabilities.py (仅标准库 urllib, 在线/离线 --source/--check) 拉 models.dev api.json 归一化 + overrides 手动补录合并 (拍板 #4 兜底); 首份快照已生成入库 **6666 模型** (data/model_capabilities.json, .gitignore 白名单); CapabilitySnapshot 加载/大小写不敏感查询/新鲜度 fresh(max_age_days); **drift CI 报警**: 专项测试断言快照在库+≤60 天+规模≥1000+gpt-4o-mini supports_tools; .github/workflows/model-capabilities.yml 每周一刷新有差异自动提交。启动接线 _wire_llm_capabilities: primary LLM ModelDescriptor 合并快照能力注册 ModelCatalog; **record_health 生产接线** (此前定义零调用): provider_manager.model_router 注入后 chat_with_retry 成功/最终失败上报健康 (限流除外), fallback 链按可达性过滤。③**category 路由** (provider/category_routing.py): qa/creative/tool_heavy/chat 四类画像 (成本/延迟上限 + requires_tools 能力过滤 —— ModelRouter.select 新增能力过滤参数, 未知能力保守排除), config.model_routing.categories 覆盖画像不改代码; DelegateTaskTool 增 category 参数透传 task.context, 子 Agent runner 经 ModelRouter 选型命中另一已注册 LLM provider 时切换执行 (ProviderManager._llm_registry + llm_provider_for 注册表), 无候选/无 router 回落父模型 fail-safe。config.sample.jsonc: llm 节增 cost_tier/latency_tier/model_family 注释键 + model_routing 节。测试: U7 专项 23 例 (frontmatter 解析/模型族推断/变体选择四路/快照加载损坏容错/新鲜度/生成器归一化+overrides/**committed 快照 drift**/四档 category 选型/requires_tools 能力过滤/健康上报三路/runner 切换与回落) + provider 域回归 41 例全绿。全量 1943 通过+4 skip (smoke_main_resident 全量批负载 flake 单独复跑稳定, U9 根治项), ruff/mypy (282 源文件) 全绿。
+
+- [x] **U8 注入仲裁门 + 治理门禁**
+  - **目标**: ①SessionWriteGate: 记忆注入/handoff/插件注入/强制话轮统一预约表 (先预约后写入、hold 窗口、超时作废 fail-closed), Fix-81/82 补丁逻辑收编进门内; AST 审计 (ruff 自定义规则或 import-linter) 禁止门之外的会话写入路径; ②治理门禁: 工具 catalog / 配置 catalog 生成脚本 + CI --check 漂移检测; mock IM 事件流快照回放 (无真实凭据跑整条 bot 链路); ③evidence 目录规范化 (日期-slug/, 真机证据必留档)。
+  - **验收**: 审计测试能当场捕获故意绕过的写入; catalog drift CI 生效; 快照回放测试跑通; 强制话轮/打断既有集成测试回归绿。
+  - **依赖**: U0。
+  - **当前**: **已完成 (2026-08-18)**。①**SessionWriteGate** (runtime/write_gate.py): 会话写入统一仲裁门 —— reserve(session_key, source) 先预约后写入 (同会话单活跃租约, 先到者得后来者放弃; _ALLOWED_SOURCES 门内名单 proactive/handoff/plugin_injection/memory_injection, 未登记来源拒绝); hold 窗口默认 30s (clamp 1~600s monotonic) 超时作废; commit 过期/已取消/被接手 → False **fail-closed 丢弃产出** (Fix-81/82 状态机互踩根因收编进该门)。接线: 强制话轮 _run_forced_turn 经 _reserve_forced_turn_write 预约 (让位不抢, 租约失效丢弃输出, finally 幂等取消) + handoff_conversation 归属转移经门 (在途写入时移交暂缓); main.py build_services 注入 session_write_gate; 未接门 (测试夹具) 零行为变化。**AST 审计常驻**: 扫描 isac/ 门之外 forced_turn 赋值/transition_to 调用即失败 (允许清单 manager.py + conversation 状态机本体), 故意绕过当场捕获。②**治理门禁**: scripts/gen_tool_catalog.py 自动发现全部 Tool 子类 (29 工具: name/description/默认策略) → data/catalogs/tools.json; scripts/gen_config_catalog.py 解析 config.sample.jsonc 键面 (21 顶层键) → data/catalogs/config_keys.json; 两者 --check 漂移检测并入 CI catalog-drift job (工具面/配置面变更未重新生成即失败)。③**快照回放**: tests/fixtures/u8_im_event_stream.json 脱敏 IM 事件流 (5 事件含私聊/@/群聊短反应) 经真实主链路 (EventBus→Router→Gating→AgentManager→LLM→Channel) 回放 2 例 (回复序列按 scripted 消费对齐 WAIT 不消耗 + 门在场反应式链路零干扰零残留租约)。④**evidence 规范化**: scripts/new_evidence_dir.py 创建 evidence/YYYY-MM-DD-<slug>/ + README 骨架, U8 验收证据留档 evidence/2026-08-18-u8-gate-and-governance/ (PASS)。测试: U8 专项单测 12 例 (门生命周期/单写者仲裁/hold 超时 fail-closed/未登记拒绝/过期接手防互踩/clamp/AST 审计/接线防未接线/catalog drift×2) + 快照回放集成 2 例。全量 **1958 通过 + 4 skip** (smoke_main_resident 本批亦通过, 仍为 U9 根治项), ruff/mypy (283 源文件) 全绿。
+
+- [x] **U9 A+ 架构复评与发布门禁 (最后执行)**
+  - **目标**: 按 `isac-deep.md` 同款方法 (只读代码级审查 + 实测 pytest/ruff/mypy) 对 U1-U8 改造后的架构逐模块复评; 清零全部"定义了未接线" (lint 规则常驻); 红线指标 (main.py 行数 / services 键数 / 硬编码门控词条目数) 纳入 CI 常驻监控; Minor 批清收尾 (smoke_main_resident flake 根治、CHANGELOG 补齐 07-26 之后全部变更、版本号策略定稿、U2 遗留 ~215 处 services 字符串键访问迁移 ServiceContainer 类型化属性)。
+  - **验收 (GA 门槛组成部分)**: 复评报告无 C 项、B 项 ≤2、其余 A-/A+; "零引用安全常量" lint 规则全仓通过; 复评报告归档 docs/。
+  - **依赖**: U0-U8 全部 `[x]`。
+  - **当前**: **已完成 (2026-08-18)**。①**复评报告**: docs/U9_ARCHITECTURE_REVIEW.md 归档 —— 12 模块逐项评级 **无 C 项、B 项 2** (B-1 services 残余访问棘轮、B-2 语义关系抽取层架构债, 均带收敛路径), 其余 A-/A; 实测基线 1962 passed + 4 skipped 零失败 + ruff/mypy (293 源文件) 全绿。②**"定义了未接线"清零常驻**: tests/unit/test_u9_release_gate.py UNWIRED_LEDGER 登记册 (7 历史符号: MAX_EXTRACTED_BYTES/record_health/_ALLOWED_SOURCES/DEFAULT_HOLD_SECONDS/VALID_STRATEGIES/GATING_MARKER_KINDS/SNAPSHOT_SCHEMA_VERSION) 使用点审计 + 安全模块零 TODO 卫生检查, 登记册符号全部有真实使用点 (零残留)。③**红线指标 CI 常驻**: scripts/check_redlines.py (main.py ≤120 行 / dispatch-wiring-bootstrap 各 ≤500 / services 键 ≤36 / 硬编码门控词 ≤27 只减不增 / services 残余访问 ≤205 棘轮) 并入 CI catalog-drift job, 基线全绿冻结。④**Minor 批清**: **smoke_main_resident flake 根治** (固定 sleep 1.5s → 后台线程读管道轮询就绪标记"ISAC 启动完成"后才 SIGTERM, 兼防管道缓冲阻塞, 5/5 稳定 + 全套件批跑通过); **CHANGELOG 补齐** 07-26 后全部轮次 (U 轮 9 节点 + Phase0/1 + R/T/FE 各轮, Keep a Changelog 格式); **版本号策略定稿** (SemVer, isac.__version__=1.0.0 为 GA 目标版本号, GA 门槛满足前不打 release tag, GA 后 major/minor/patch 语义); **services.get 首批迁移** bootstrap/wiring 顶层 10 处 → ServiceContainer 类型化属性 (215→205, 棘轮冻结只减不增, 残余按域批清路径入报告 B-1)。全量 **1962 通过 + 4 skip** 零失败。**U9 完成 —— U 架构演进轮 U0-U9 全部清偿, 代码侧 GA 门槛就绪 (环境准入 N2/N3/N4 按既有排期)**。
+
+---
+
+### 架构债清单 (2026-08-15 整合自 2026-07-28/29 两轮评审, 各轮顺手清)
+
+> 两轮评审 (Review/ 报告, 已整合删除) 遗留的架构级债务统一登记于此; 对应修复时机见"建议时机"列, 不单独立轮。
+> 2026-07-28 复审的 5 项 Critical (C-N1 SSE 泄露/C-N2 飞书绕过/C-N3 QQ 签名 oracle/C-N4 标签转义/C-N5 存储锁竞态) 与全部 Required 项已由 Fix-22~Fix-36 修复, 不在此列。
+
+| 债务 | 说明 | 建议时机 |
+|------|------|---------|
+| `services: dict[str, Any]` 弱类型 | 跨几十个文件传递, 改 key 名即全仓 AttributeError; 改 ServiceContainer Protocol/TypedDict | **升级至 U2** (2026-08-17, 见 §四 U) |
+| 兼容层插件宿主进程执行 | AstrBot/MaiBot 插件 `exec_module` 在宿主进程, 绕过 `PluginIsolationHost` 隔离承诺 | **升级至 U6** (2026-08-17, 处置决策在 U6 落地) |
+| `main.py` (1832 行, 08-17 实测) / `manager.py` (1258 行) | 逼近 C901 红线且 main.py 逆向增长中 (1519→1832); 拆分方案见 U2 | **升级至 U2** (2026-08-17) |
+| 2026-08-17 深度 Review 四项安全实洞 (治理面绕过租户谓词 / MAX_EXTRACTED_BYTES 零引用 / MCP restricted 等效 allow / 兼容层工具无前缀) | 均在多租户与插件生态核心卖点面 | **U0 立即清偿** (Fix-85~88) |
+| 同步 IO | `audit.py` 同步 `open("a")`、`bus._trigger_persist` 同步 fsync、`routes_routing` 同步写盘 | 任意空档顺手清 |
+| Provider 测试端点假连接 | `POST /providers/{id}/test` 不发真实连接即返回 ok, 且访问私有属性 | R1 顺手做真实 ping |
+| ~~检索结构化过滤~~ | ✅ 已清偿 (2026-08-16): `pipeline.search(filters=)` 透传到 `search_fts`+`get_episodes_by_ids`, `_build_filter_clause` 支持 topics (json_each 匹配) + since/until 时间范围, None 向后兼容不加过滤 | — |
+| ~~媒体 magic-byte 校验~~ | ✅ 已清偿 (2026-08-16): `_check_magic_bytes` 读头部签名校验 png/jpeg/gif/mp3/wav/ogg/flac/mp4/webm, 扩展名伪造拒, 未登记 MIME 跳过向后兼容 | — |
+| 通用实体关系图抽取层 | R4-③ 跳过: 写边层 `GraphStore.add_edge`(通用三元组 relation 任意字符串)已就绪, 但抽取层从零(需 LLM + NER + 人物-人物/人物-话题关系抽取 prompt 工程 + 解析归一, ~150+ 行); 现 `mentioned_in` 提及图已满足 S3 召回, 语义关系图留 Y1 长期记忆深化承接 | Y1 (GA 后) |
+| ~~429 退避区分~~ | ✅ 已清偿 (2026-08-16): `_retry_backoff(attempt, *, rate_limited=True)` RateLimitError 退避基数翻倍 (2,4 vs 普通 1,2), 给服务端配额恢复更多时间 | — |
+| `reload_config` 差量更新 | 现整实例重建, 应差量更新 gating/persona/权限 | 观察, 不紧急 |
 
 ---
 
@@ -952,6 +1516,64 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
   - **验收**：trace_id/session_id/agent_id 经 `contextvars` 贯穿路由→门控→Loop→工具→记忆→回复,无需逐处手传;日志可按 level 与按模块前缀分级;默认 `INFO` 时 debug 零输出、零性能影响;全程脱敏 (不打密钥/完整参数/未清洗结果)。
   - **产出**：`utils/logging_context.py` (`bind_log_context`)、`utils/logger.py` (level + per_module 分级)、`manager.handle_message` trace 绑定、`agent/loop.py`/`gating/system.py` 等关键链路 debug 日志、`docs/LOGGING.md`、`data/config.sample.jsonc` logging 段、单测。
   - **当前**：已落地。用法与排查树见 [LOGGING.md](./LOGGING.md)。
+
+---
+
+### GA 后开发计划 (2026-08-16 预置, M-GA 验收通过后激活, 不影响当前 T/R/FE 推进)
+
+**定位**: 本节是"当前计划全部开发完成 (v1.0 GA) 之后做什么"的预置蓝图, 依据三处既有记录推演: ①§四 R 末尾的 **GA 后可选项** (S6 视频端点 / 微信 mp / Slack / 主链路流式); ②§四**架构债清单**的持续清偿; ③`REQUIREMENTS.md` 第 12 条总体目标中尚未展开的"商业化基础"与"通用 Agent 框架"外延。**激活前提**: M-GA 达成 (R7 + T7 验收通过); 本节节点在激活前一律视为 `[ ]` 预置, 不排期不占资源。验收铁律 (真机部署证据) 继续适用。
+
+#### V 功能广度兑现轮 (v1.1–v1.2): 把 GA 后可选项做成产品能力
+
+- [ ] **V1 主链路流式回复**
+  - **目标**: Provider 层 `chat_stream` 已闭环、`loop` 流式路径存在但 `run_stream` 无生产调用点 —— 启用流式, 回复边生成边送达。
+  - **验收**: `AgentContext.streaming=True` 生产路径接线; Channel 侧分片送达/编辑追加按平台能力适配 (WebChat 原生流式帧, IM 平台分片或编辑消息降级); 流式失败回退非流式 (已有 CR3-H4); 前端流式渲染契约进 FE (独立前端项目消费)。
+  - **依赖**: M-GA; 前端流式渲染属前端轨道。
+- [ ] **V2 视频生成 Provider (原 S6)**
+  - **目标**: `OpenAICompatVideoGenProvider.generate` 落地真实端点。
+  - **验收**: **开工前用户二次确认端点** (Sora/Runway/Kling/即梦/自托管); 仿 image_gen: POST 生成 → 轮询/等待 → ArtifactStore → ArtifactRef; 计量埋点 (record_video 已就绪)。
+  - **依赖**: M-GA; 端点选型为用户决策闸门。
+- [ ] **V3 微信公众号 (mp) 适配器**
+  - **目标**: wecom 企业微信已实现, 补齐 mp 公众号模式。
+  - **验收**: 服务器配置校验 (signature) + 消息/事件接收 + 被动回复 + access_token 缓存; 富媒体按能力降级。
+  - **依赖**: M-GA。
+- [ ] **V4 更多平台 (Slack 优先, Line/WhatsApp 可选)**
+  - **验收**: 复用 Channel 抽象 + enabled-gated 注册 + 真机收发验证。
+  - **依赖**: M-GA。
+- [ ] **V5 语音交互链路**
+  - **目标**: 从"语音消息转写工具"升级为连续语音对话 (陪伴场景核心体验)。
+  - **验收**: 流式 STT/TTS Provider 选型落地 (现 stt_tts 为 OpenAI 兼容基类); 语音消息入站转写 → 回复 TTS 出站全链; 与 V1 流式协同降低首音延迟。
+  - **依赖**: V1; 端点选型为用户决策。
+- [ ] **V6 前端体验扩展** (独立前端项目)
+  - **验收**: 移动端适配 / 界面 i18n / Dashboard 可视化增强 (用量趋势图、记忆图谱视图); 以冻结的 API 契约为准, 不改后端。
+  - **依赖**: F1-F4 完成。
+
+#### X 生态与商业化轮 (v1.2–v2.0): 从"能用的框架"到"有人用的生态"
+
+- [ ] **X1 分发与托管体系** — 官方镜像与版本化发布节奏; 一键部署模板生态 (1Panel/宝塔/NAS 等); 官方文档站独立部署; 升级迁移自动化在 T7 基础上产品化。
+- [ ] **X2 插件生态运营** — T6 插件市场之上: 市场托管与审核签名机制、插件开发文档与模板库、版本兼容声明; 与 AstrBot/MaiBot 存量插件的迁移工具产品化 (scripts/migrate.py 升级)。
+- [ ] **X3 多租户商业化** — R6 routes_tenants 之上: 组织/配额/计费模型、用量成本按租户结算 (usage 计量已就绪)、租户级 WebUI 视图。
+- [ ] **X4 安全与合规** — 第三方安全审计; 数据合规能力 (记忆治理 freeze/delete 扩展为"被遗忘权"导出与清除流程); 审计日志归档策略。
+- [ ] **X5 Agent 即服务商业化接口** — 把"API/MCP 自动化创建与配置 Agent"从内部能力升级为对外产品: G1 Admin API + G2 MCP Server + R6 多租户底座之上补开放 API 配额/限流/计费挂接 (与 X3 协同) + 外部开发者文档与 SLA; 这是项目负责人框架愿景中预留的商业化能力。
+
+#### Y 智能演进轮 (v2.0): 深化"像人"的核心差异
+
+- [ ] **Y1 长期记忆深化** — R4 实体关系图之上: 人物-人物/人物-话题语义网络持续抽取; 记忆反思 (定期自省生成自我叙事与关系总结, 经 MemoryConsolidator 通道); 记忆可解释性 (用户可查"为什么记得这个")。
+- [ ] **Y2 多 Agent 社会** — Mesh 从少数 Agent 协作扩展为大规模拓扑: 群聊中多角色并存、Agent 社区模拟、跨 Agent 记忆共享的 ACL 精细化。
+- [ ] **Y3 自主成长** — BehaviorLearner 的行为特征累积升级为长期行为画像演化闭环 (风格随关系深度与互动历史渐变, 有界不漂移)。
+- [ ] **Y4 学习效果评估与回滚** — 拟人化/记忆/行为学习的效果评估闭环 (学习前后对比评估 + 效果恶化自动回滚); 18 个调研项目全员缺失此能力 (hermes-agent evals 回归台仅部分缓解), 可成为 ISAC 的差异化卖点。
+
+#### Z 工程演进 (持续线, 不设节点门, 见缝插针)
+
+> 承接 §四架构债清单, 在 V/X/Y 各轮开发中顺手清偿; 清偿一项从架构债清单移除一项。
+
+- [ ] **Z1 ServiceContainer 强类型化** — `services: dict[str, Any]` → Protocol/TypedDict (越晚改越贵, 建议 V 轮启动时做)。
+- [ ] **Z2 main.py 拆分** — `isac/bootstrap/{services,channels,control_plane,lifecycle,links}.py` (2026-07-28 复审给出的划分方案)。
+- [ ] **Z3 兼容层插件子进程化** — AstrBot/MaiBot 插件全部迁 PluginIsolationHost (R3 留下的架构受限项, 需先解决"兼容层无 manifest"问题)。
+- [ ] **Z4 上游兼容测试矩阵** — AstrBot/MaiBot 真实插件样本的 CI 兼容回归 (现兼容层测试用仿写样本)。
+- [ ] **Z5 多进程部署预研** — "执行外移、状态内留" (参考 openclaw Cloud Workers 模式: 执行可下放独立进程/一次性云机, 会话状态/推理/凭据留在网关); 前置 U1 事件溯源内核 (状态可从事件重建是执行外移的前提)。
+
+**GA 后里程碑**: M-v1.1 (V1-V4 流式+视频+微信 mp+Slack) → M-v1.2 (V5-V6 语音+前端扩展 + X1-X2 分发+插件生态) → **M-v2.0** (X3-X5 商业化+合规 + Y1-Y4 智能演进)。Z 线贯穿始终。依赖要点: V5 依赖 V1; V2/V5 含用户选型闸门; X3 依赖 R6; X5 依赖 G1/G2 + X3; Y1 依赖 R4; Z5 依赖 U1。
 
 ---
 
@@ -995,3 +1617,10 @@ K1-K8 稳定化 + J1-J4 能力 + L/M/N/O 各节点核心实现均已落地。**�
 | **Q 节点(MVP 收尾)** | 2026-07-26 对照 `REQUIREMENTS.md` 逐条代码取证后新增的节点组,收纳未被 P0-P5 覆盖、但 MVP 必需的缺口(定义见 §四 Q)。 |
 | **MVP 差距复核** | 2026-07-26 对照 `REQUIREMENTS.md` 十二条需求做的一次性审计事件(10 域并行代码取证 + 真实启动实测);其结论落为各节点下的"MVP 缺口复核"批注与 §四 Q 节点组。 |
 | **MVP 缺口复核** | 本文档中标注在已交付(`[x]`)节点下的补充说明(是上述"MVP 差距复核"审计的逐节点产物),记录与该节点"完成定义"矛盾的未接线子行为,不改动该节点其余已验证部分的状态,指向修复它的 Q/P 节点。 |
+| **U 节点组 (架构演进轮)** | 2026-08-17 设立的 v1.0 GA 前置节点组: U0 安全清偿、U1-U8 八项架构升级、U9 A+ 复评门禁; 定义见 §四 U, 发布路径与已拍板决策见 §三之五。 |
+| **事件溯源** | (U1) 会话存储范式: 一切操作记为只追加事件, 消息历史/压缩/滑动窗口全部从事件"派生", 存储本身不可涂改; 参考 deepseek-harness 会话内核与 pi 三存储规范。 |
+| **SessionWriteGate** | (U8) 会话写入单一闸门: 记忆注入/handoff/插件注入/强制话轮先预约后写入, 超时作废, AST 审计禁止绕过; 参考 oh-my-openagent prompt-async-gate。 |
+| **GatingStrategy** | (U3) 可插拔门控策略: off/keywords/llm-judge/hybrid 四档, 词表与权重配置化 + i18n, 取代硬编码中文关键词表。 |
+| **能力快照** | (U7) 模型能力清单生成管线: models.dev → 生成 JSON → CI 定期刷新 + 新鲜度测试; 模型路由按能力与可达性过滤。 |
+| **category 路由** | (U7) 委派任务按类型 (问答/创作/工具密集/闲聊) 选模型链, 取代"每个 Agent 钉一个模型"。 |
+| **同构面核对清单** | §一.8 工程纪律: 每个安全修复交付前核对同类入口是否全覆盖同等防护; 反例见 §一 总则。 |

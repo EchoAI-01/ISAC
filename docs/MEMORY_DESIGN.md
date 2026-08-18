@@ -186,6 +186,15 @@ class MemoryItem:
 3. 高置信度手动记忆优先于自动提取记忆。
 4. frozen/protected 记忆不被自动覆盖或删除。
 
+### 4.4 Episodes 与会话事件流 (U1 事件溯源)
+
+U1 之后, episodic 记忆的写入侧是**会话事件流的投影** (架构细节见 ARCHITECTURE.md §3.14):
+
+- 每回合的入站消息与助手回复先落 append-only 事件表 (`message.user` / `turn.completed`, `data/gateway/session_events.db`); 回复成功后, 记忆写入按本回合 `turn.completed` 事件的 seq 从事件流读回该事件对, 以**事件内容为事实源**组装 episode (检索面 `store_episode` 不变)。
+- 事件流不可用 (未启用/未注入/读失败) 时回退内存参数直写 —— 投影失败不阻塞记忆写入。
+- 意义: 事件流不可变, episodes 与 LLM 实际看到的输入 (含 burst 合并结果) 永远同源; kill -9 后事件重放即可重建写入依据, 不存在"记忆与对话历史各执一词"。
+- 会话历史窗口 (LLM 上下文) 同样从该事件流派生, 与 episodes 共享同一事实源; memory 关闭时窗口仍可用。
+
 ---
 
 ## 五、检索流水线
@@ -405,4 +414,5 @@ CREATE TABLE platform_identities (
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-08-17 | Architect | U1 事件溯源会话内核: 新增 4.4 Episodes 事件投影 (写入侧以事件流为事实源) |
 | 2026-07-22 | Architect | 新增记忆系统专项设计，补充身份归一、写入流水线、无 embedding 模式、记忆治理与存储 Schema |

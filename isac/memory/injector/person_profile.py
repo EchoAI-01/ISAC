@@ -34,8 +34,11 @@ class PersonProfileInjector(MemoryInjector):
         person_id = getattr(context.user_profile, "user_id", "") or getattr(context.session, "user_id", "")
         if not person_id:
             return ""
+        # U4: agent 键统一用 pipeline.namespace (租户前缀/自定义 namespace 下与
+        # manager/consolidator 写侧同键; 默认单租户时 namespace == agent_id 零变化)。
+        agent_key = str(getattr(self.pipeline, "namespace", "") or getattr(context.session, "agent_id", ""))
         try:
-            profile = await metadata.get_person_profile(getattr(context.session, "agent_id", ""), person_id)
+            profile = await metadata.get_person_profile(agent_key, person_id)
         except Exception:
             return ""
         if not profile:

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
   pull_request:
 
 jobs:
@@ -30,6 +30,36 @@ jobs:
         # K8: branch coverage + 最低覆盖率门禁 (statement 75%, branch 45%)
         # 覆盖率下滑会阻止合并; 关键安全/启动路径 (K7/K1/K4) 已有专项测试
         run: uv run pytest --cov=isac --cov-branch --cov-report=term-missing --cov-fail-under=75
+
+  catalog-drift:
+    # U8 治理门禁: catalog 漂移检测 —— 工具面/配置键面/模型能力快照变更后未重新
+    # 生成入库 catalog 即失败 (生成脚本见 scripts/gen_*_catalog.py 与
+    # scripts/gen_model_capabilities.py)。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Tool catalog drift check
+        run: uv run python scripts/gen_tool_catalog.py --check
+
+      - name: Config catalog drift check
+        run: uv run python scripts/gen_config_catalog.py --check
+
+      - name: Model capabilities snapshot parse check
+        run: uv run python scripts/gen_model_capabilities.py --check
+
+      - name: Redline metrics check
+        # U9: main.py 行数 / services 键数 / 硬编码门控词条目数 / 迁移棘轮, 只减不增
+        run: uv run python scripts/check_redlines.py
 
   browser:
     # K8-2: Playwright 浏览器黄金路径测试 (tests/browser/); 未装时 skip,

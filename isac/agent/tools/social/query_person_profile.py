@@ -31,21 +31,29 @@ class QueryPersonProfileTool(Tool):
             return ToolResult(content="未启用人物画像存储，无法查询画像。", is_error=True)
 
         raw_user_name = str(context.args.get("user_name", "")).strip()
-        person_id = raw_user_name or getattr(context.agent_context.session, "user_id", "")
+        # U4: person_id 口径与写侧一致 —— 工具参数优先, 其次归一 master_id
+        # (user_profile.user_id), 最后平台 session.user_id。agent 键统一用
+        # pipeline.namespace (租户前缀/自定义 namespace 下与写侧同键)。
+        profile = getattr(context.agent_context, "user_profile", None)
+        person_id = (
+            raw_user_name
+            or str(getattr(profile, "user_id", "") or "")
+            or getattr(context.agent_context.session, "user_id", "")
+        )
         if not person_id:
             return ToolResult(content="query_person_profile 缺少用户标识。", is_error=True)
+        agent_key = str(
+            getattr(memory, "namespace", "") or getattr(context.agent_context.session, "agent_id", "")
+        )
 
         try:
-            profile = await metadata.get_person_profile(
-                getattr(context.agent_context.session, "agent_id", ""),
-                person_id,
-            )
+            profile_row = await metadata.get_person_profile(agent_key, person_id)
         except Exception as exc:
             return ToolResult(content=f"人物画像查询失败：{exc}", is_error=True)
 
-        if not profile:
+        if not profile_row:
             return ToolResult(content=f"未找到 {person_id} 的人物画像。")
-        return ToolResult(content=self._format_profile(profile))
+        return ToolResult(content=self._format_profile(profile_row))
 
     @staticmethod
     def _format_profile(profile: dict) -> str:

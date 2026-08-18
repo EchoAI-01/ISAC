@@ -122,10 +122,11 @@ async def test_task_tool_delegates_to_supervisor() -> None:
 @pytest.mark.asyncio
 async def test_delegate_task_depth_limit_rejects() -> None:
     services = _make_supervisor_services(_runner_success)
-    services["task_depth"] = 1
-    services["task_max_depth"] = 1
     tool = DelegateTaskTool()
     ctx = _make_ctx(services, {"objective": "查天气"})
+    # Fix-68: task_depth/task_max_depth 由 runtime 写入 AgentContext.services
+    ctx.agent_context.services["task_depth"] = 1
+    ctx.agent_context.services["task_max_depth"] = 1
 
     result = await tool.execute(ctx)
 
@@ -138,10 +139,10 @@ async def test_delegate_task_depth_limit_rejects() -> None:
 async def test_task_tool_depth_limit_rejects() -> None:
     """递归深度上限 (默认 3): task_depth >= max_depth 时拒绝继续委派。"""
     services = _make_supervisor_services(_runner_success)
-    services["task_depth"] = 3  # 已达上限
-    services["task_max_depth"] = 3
     tool = TaskTool()
     ctx = _make_ctx(services, {"task": "查天气"})
+    ctx.agent_context.services["task_depth"] = 3  # 已达上限
+    ctx.agent_context.services["task_max_depth"] = 3
     result = await tool.execute(ctx)
     assert result.is_error
     assert "递归深度" in result.content or "上限" in result.content

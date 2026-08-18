@@ -233,6 +233,19 @@ class TestCSRFProtection:
         response = client.get("/api/v1/agents")
         assert response.status_code == 200
 
+    def test_relogin_with_existing_cookie_not_blocked_by_csrf(self) -> None:
+        """Fix-47: 带着已存在的会话 Cookie 重新登录 (进程重启 secret 重生成 /
+        token 轮换后的真实场景) 不得被 CSRF 拦下 —— POST /auth/session 的认证
+        强度来自 body token 而非 Cookie; 此前该路径会因"Cookie 存在但无
+        X-CSRF-Token"返回 403, 用户必须手动清 Cookie 才能重新登录。"""
+        client = TestClient(_make_app())
+        self._login(client)  # client 现在持有 isac_session + csrf_token 两个 Cookie
+        # 不带 X-CSRF-Token 头重新登录 (修复前: 403 CSRF_REQUIRED)
+        response = client.post("/api/v1/auth/session", json={"token": "secret-token-123"})
+        assert response.status_code == 200
+        # 重新登录后 Cookie 被刷新, 读请求仍可用
+        assert client.get("/api/v1/agents").status_code == 200
+
 
 class TestCSRFWithTokenScopeModel:
     """Fix-12 的 tokens[] scope 模型与 Fix-17 的会话 Cookie 机制必须协同工作:

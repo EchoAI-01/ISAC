@@ -31,11 +31,27 @@ class ChannelRegistry:
         return list(self._adapters.values())
 
     async def start_all(self) -> None:
+        # N5b 批次G: 单个适配器启动失败不应中断其余平台 (此前裸 for + await, 任一
+        # platform.start() 抛异常则后续平台全部不启动, 多平台部署下一个配置错即全停)。
         for adapter in self._adapters.values():
             logger.info("启动平台适配器", platform=adapter.platform_name)
-            await adapter.start()
+            try:
+                await adapter.start()
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "平台适配器启动失败, 跳过该平台 (其余继续)",
+                    platform=adapter.platform_name, error=str(exc), exc_info=True,
+                )
 
     async def stop_all(self) -> None:
+        # N5b 批次G: 关闭同样需错误隔离 —— 一个适配器 stop() 抛异常不应阻止其余
+        # 适配器关闭 (否则连接/子进程泄漏残留, 下次启动冲突)。
         for adapter in self._adapters.values():
             logger.info("停止平台适配器", platform=adapter.platform_name)
-            await adapter.stop()
+            try:
+                await adapter.stop()
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "平台适配器停止失败, 继续停止其余",
+                    platform=adapter.platform_name, error=str(exc), exc_info=True,
+                )

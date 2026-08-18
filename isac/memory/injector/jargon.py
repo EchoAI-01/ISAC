@@ -29,8 +29,10 @@ class JargonInjector(MemoryInjector):
         content = str(getattr(context.current_message, "content", "") or "")
         if not content:
             return ""
+        # U4: agent 键统一用 pipeline.namespace (与 consolidator 行话写侧同键)。
+        agent_key = str(getattr(self.pipeline, "namespace", "") or getattr(context.session, "agent_id", ""))
         try:
-            entries = await metadata.list_jargon(getattr(context.session, "agent_id", ""))
+            entries = await metadata.list_jargon(agent_key)
         except Exception:
             return ""
         matched = [entry for entry in entries if str(entry.get("word", "")) and str(entry.get("word", "")) in content]

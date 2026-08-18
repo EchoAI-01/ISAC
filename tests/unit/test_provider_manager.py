@@ -111,6 +111,25 @@ async def test_final_failed_attempt_does_not_sleep_before_fallback(
 
 
 @pytest.mark.asyncio
+async def test_rate_limit_error_uses_longer_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """架构债清偿: RateLimitError (429) 退避基数翻倍, 比普通可重试错误等更久。"""
+    from isac.core.exceptions import RateLimitError
+
+    sleeps: list[float] = []
+
+    async def _record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", _record_sleep)
+    manager = ProviderManager({})
+    primary = _AlwaysRaisesProvider(RateLimitError("429 限流"))
+
+    await manager.chat_with_retry(primary, system="s", messages=[])
+    # 3 次尝试全失败 (无 fallback → 降级); RateLimitError 退避翻倍: attempt 0→2, 1→4, 2 不 sleep
+    assert sleeps == [2, 4]
+
+
+@pytest.mark.asyncio
 async def test_retries_share_trace_id_but_have_distinct_request_ids() -> None:
     """J1: 每次物理尝试 (含重试与回退) 独立记录、request_id 各不相同, 但共享同一
     trace_id (ARCHITECTURE.md: 最终聚合时用 trace_id 归并); 回退到 fallback 时记录

@@ -730,6 +730,16 @@ class Reranker:
         """重排序模型是否可用"""
 ```
 
+**多租户隔离 (O1/U4 机制强制)**:
+
+隔离由三层机制叠加, 全部经唯一机制入口 `TenantBoundDB` (`memory/storage/tenant_bound.py`), 调用方无法自行拼装谓词绕过:
+
+1. **命名空间前缀**: `memory_factory` 对 namespace 应用 `guard.namespace_for()` (非默认租户加 `org:tenant:` 前缀), episodes/profile/jargon 按键天然分区; 写/读/整合/注入/工具五处键口径统一为 `pipeline.namespace` (U4)。
+2. **行级租户标 + 作用域**: 五张记忆表 (episodes/person_profiles/jargon_entries/memory_revisions/memory_audit) 均带 `organization_id`/`tenant_id` 列; 写入经 `row_values()` 打标, SELECT 经 `scoped()` (enforce 子查询包裹, 防 AND/OR 优先级绕过), UPDATE/DELETE 经 `predicate()` 规范谓词。
+3. **审计闭环**: 治理操作 (freeze/protect/correct/delete/restore/export) 落 memory_audit 带租户标, 跨租户审计不可见。
+
+`tenancy.enabled=false` 或默认租户时全部机制直通 (单租户零行为变化)。
+
 ---
 
 ### 3.7 Gating System — 门控
@@ -814,11 +824,43 @@ class FocusMode:
     def exit(self, session_id: str): ...
 ```
 
+**门控策略化 (U3)**: 评分权重与三类问询词表 (question/request/consult) 不再硬编码 ——
+统一收口到 `GatingProfile` (isac/gating/profile.py): 权重读 `config.gating.weights`
+(缺省回落 constants), 词表按 `config.gating.locale` 从 locales 双语包装载
+(zh_CN 为原中文词表迁入, en_US 新增英文词表), `config.gating.markers` 可整体覆盖。
+内容判定经 `GatingStrategy` 可插拔四档 (isac/gating/strategy.py):
+
+| 档位 | 行为 |
+|---|---|
+| `off` | 恒无内容信号 (群聊普通消息仅凭 @/提及/压力分触发) |
+| `keywords` (默认) | 词表匹配, U3 前语义原样 |
+| `llm-judge` | 小模型判群聊发言相关性; 缺失/异常/返回 None/超频率上限 fail-safe 回落 keywords |
+| `hybrid` | keywords 先行, 无任何问询信号时升级 llm-judge 复判 |
+
+策略只产出内容信号 (is_question/is_request/is_consult), 分数换算仍归
+ReplyNecessityJudge —— 单一调用点, 策略可换而评分模型不变。zh_CN 默认配置下
+行为与 U3 前完全一致 (默认 profile = 框架常量)。
+
+**llm-judge 成本与频率**: 判定器走 ProviderManager fallback 链**最便宜档**
+(拍板 #3, 任务简单小模型够用), 每条待判定消息 ≤1 次短请求; 滑动窗口频率上限
+`llm_judge_max_per_minute` (默认 10 次/分钟) 兜底成本, 超限回落 keywords。
+单群中等活跃度下每分钟 ≤10 次最便宜档短调用, 成本近零; judge 故障时
+fail-safe 回落 keywords, 不因判定器不可用改变门控可用性。
+
 ---
 
 ### 3.8 Plugin System — AstrBot / MaiBot 兼容 + 原生 SDK
 
 插件格式识别、兼容范围矩阵、权限模型、生命周期和兼容测试见 [PLUGIN_COMPATIBILITY.md](./PLUGIN_COMPATIBILITY.md)。
+
+**信任分级与隔离默认化 (U6)**: 有 manifest 的原生插件**默认经 PluginIsolationHost
+在子进程隔离加载** (spawn 子进程 + rlimits 资源限额 + IPC 超时); manifest `trust`
+字段两档 —— `sandboxed` (缺省) 隔离, `hosted` 需部署配置 `trust_hosted` 清单按目录名
+显式确认 (运营方显式确认信任) 才宿主进程内加载, 未确认仍隔离。隔离宿主参数
+(rlimits/ipc_timeout/max_restart_attempts) 经 `control.plugins.isolation` 部署配置接线。
+卸载/热重载时运行中 Agent 的工具/命令/注入器按来源 (source) 同步清除, 零残留不留至重启。
+无 manifest 的 AstrBot/MaiBot 兼容层插件当前机制无法隔离, 宿主进程内加载 + 显式告警
+(降级承诺, 处置决策见 PLUGIN_COMPATIBILITY.md §5.4)。
 
 **兼容层架构**:
 
@@ -1069,6 +1111,136 @@ QUEUED → RUNNING → WAITING_TOOL → RUNNING
 
 ---
 
+### 3.14 Session Event Sourcing Kernel — 事件溯源会话内核 (U1)
+
+会话存储从可变表升级为**事件溯源** (2026-08-17 全景 Review 决策, 范式参考 deepseek-harness 会话内核与 SubAgentJournal): append-only 会话事件表是唯一事实源, 消息历史/滑动窗口/压缩全部从事件**派生**, 存储本身不可涂改。
+
+```text
+入站消息 (burst 合并后)
+  │ message.user 事件追加 + flush (LLM 请求前强制落盘)
+  ▼
+SessionEventStore  (data/gateway/session_events.db, WAL + write-behind)
+  │ 分区键 session_key = agent_id:platform:group/user (与 SessionManager 口径一致)
+  │ seq 分区内原子单调 (INSERT...SELECT COALESCE(MAX(seq),0)+1)
+  ▼
+SessionHistoryDeriver  (无状态派生器)
+  ├─ fold: 全量折叠 (turn.compressed 以 source_seqs 溯源替代原始区间)
+  ├─ derive_window: 滑动窗口 (最近 N 轮 + budget 感知截断)
+  └─ 未知事件类型拒绝重建; IGNORABLE 白名单安全跳过
+  ▼
+AgentManager._dispatch_message
+  │ messages = derive_window(历史事件) + [当前 burst]
+  ▼
+LLM 回复 → turn.completed 事件追加 → episodes 事件投影写入记忆
+```
+
+核心规则：
+
+- **Model-visible ⟺ Logged**: 任何可能进入 LLM 上下文的入站消息, 必须先作为 `message.user` 事件落盘 (副作用前 `flush()`), 才允许发起 LLM 请求。
+- **不可变 + 可溯源**: 压缩不删改原始事件, 而是追加 `turn.compressed` replace 事件 (payload.source_seqs 指向被替代区间); 摘要不小于原文时拒绝提交 (`validate_compression`)。
+- **未知事件默认拒绝重建**: 白名单外事件类型触发 `UnknownSessionEventError`, 仅 `IGNORABLE_EVENT_TYPES` (如 `session.migrated` 迁移标记) 可安全跳过 —— 前向兼容且不静默吞语义变化。
+- **torn-tail 容忍**: kill -9 可能留下孤儿 `tool.called` (无 outcome); 启动时逐分区 `repair_torn_tail` 合成 `OUTCOME_UNKNOWN` 结果事件, 不猜结果。
+- **episodes 是事件投影**: 记忆写入侧从事件流读回本回合 `message.user`/`turn.completed` 事件对作为内容源 (检索面不变), 事件流不可用时回退直写。
+- **零依赖开箱可用**: 历史派生只依赖事件流, memory/embedding 关闭时窗口仍工作 (底线场景)。
+- 配置: `session.history.enabled` (默认 true) / `window_turns` (默认 10) / `budget_tokens`; 旧会话迁移见 `python -m isac.session.migrate`。
+
+---
+
+### 3.15 Tool Permission Pipeline — 工具权限管线 + HITL 审批 (U5)
+
+工具权限从静态三态表升级为**四段管线** (参考 deepseek-harness 集中权限管线 + RikkaHub 消息内审批范式):
+
+```text
+LLM tool_call
+  │
+  ▼ 阶段 1: pre-execute waterfall (ToolRegistry.execute)
+  │  effective_policy = ToolPermission(全局默认 ∘ Agent tools_policy) ∘ EnableMatrix(Channel 覆盖)
+  │  四档: allow 放行 / restricted 查后端服务门 / deny 拒 / ask → 人工审批
+  ▼ 阶段 2: 单调 DenyGuard
+  │  本会话该工具曾被拒 (人工拒绝/超时) → 直接拒绝, 不可翻回 (无撤销 API,
+  │  拒绝经 tool.outcome=DENIED 事件持久化, 启动时 restore_from_events 重建)
+  ▼ 阶段 3: 执行 (tool.execute, 异常隔离)
+  ▼ 阶段 4: post 审计留痕 (U1 会话事件表)
+     tool.called (执行前, 副作用前 flush) / tool.outcome (执行后或拒绝)
+     payload 带 decision + decider + reason (规范词汇表 decision_reasons.py)
+```
+
+**ask 档 HITL 闭环** (ApprovalGate):
+
+- 卡片投递: ask 工具执行前经 `channel_registry` 向本会话发结构化审批卡片 (审批码 + 工具 + 参数摘要); 各适配器暂无交互按钮能力, 卡片为文本 + 审批码, 未来支持按钮回调时只需把回调接到 `decide()`。
+- 回流两路: ①IM 回复 `同意/拒绝 <审批码>` 被 `process_message` 入口拦截直达 `ApprovalGate.decide` (不触发对话回合); ②控制面 `POST /api/v1/approvals/{id}/decide` (运维侧)。
+- **超时 fail-closed**: `tools.approval.timeout_seconds` (默认 300s) 内无回复自动拒绝并登记 DenyGuard。
+- 决策留痕查询: `GET /api/v1/approvals/history` 读 U1 事件表全部 tool.* 决策记录。
+
+**决策理由词汇表**: decision/decider/reason 字段一律取 `decision_reasons.py` 规范值 (如 `ask_approved`/`human`/`human_approved`), 未知档位值 fail-closed 归 deny; drift test 断言管线产出的理由不越表。
+
+**命名空间注册管线**: mcp:/compat/native 工具统一经 `ToolRegistry.register` 自动 `<plugin>:` 前缀 (U0 Fix-88 机制化), 机制上不可能覆盖内置工具。
+
+---
+
+### 3.16 Data-Driven Agent — prompt 文件化 + 能力快照 + category 路由 (U7)
+
+Agent 的"人格与模型选择"从代码/配置常量升级为**数据文件驱动** (参考 oh-my-openagent 数据化三件套):
+
+**①prompt 文件化** (`isac/agent/prompt_files.py`): 人格/规则写
+`<control.agents_dir>/<agent_id>/prompts/*.md`, frontmatter 声明
+`family` (prompt 族: persona/rules/自定义) + `variant` (变体键, 默认 `default`,
+模型族变体如 `claude`/`gpt`) + `priority`/`enabled`。装配时 persona 族文件
+**替代** config.persona.description 的身份注入, 其余族追加; 变体按当前模型族选择
+(`config.llm.model_family` 覆盖优先, 否则按模型名前缀推断), 未命中回落 default。
+**改人格 = 改文件; 新增一个模型族 = 加一个 variant 文件, 零代码改动**。无 prompt
+文件时落回 config 路径 (零行为变化)。frontmatter 用无依赖子集解析器 (key: value)。
+
+**②模型能力快照** (`isac/provider/capabilities.py` + `scripts/gen_model_capabilities.py`):
+数据源 models.dev api.json (拍板 #4, 覆盖 2700+ 模型), 归一化为
+`data/model_capabilities.json` (context_window/supports_tools/模态/cost 标注);
+CI 每周刷新 (`.github/workflows/model-capabilities.yml`) + 新鲜度 drift 测试
+(快照 >60 天即失败报警); 国产新模型晚收录用 `data/model_capabilities.overrides.json`
+手动补录 (同键覆盖)。启动时 primary LLM 的 ModelDescriptor 合并快照能力注册进
+ModelCatalog; `ProviderManager.model_router` 接线后 `chat_with_retry` 成功/最终失败
+上报健康 (`record_health` 生产接线, 限流除外), **fallback 链按能力与可达性过滤**。
+
+**③category 路由** (`isac/provider/category_routing.py`): 委派任务
+(`delegate_task.category`) 按四类画像选模型链 —— qa (快+便宜) / creative (放宽成本) /
+tool_heavy (必须 supports_tools) / chat (最便宜档); 画像可经
+`config.model_routing.categories` 覆盖。选择经既有 ModelRouter (能力/成本/延迟/
+健康过滤 + 打分), 命中另一个已注册 LLM provider 时子 Agent 换模型执行, 无候选回落
+父 Agent 模型 (fail-safe)。
+
+---
+
+### 3.17 SessionWriteGate + 治理门禁 (U8)
+
+**SessionWriteGate** (`isac/runtime/write_gate.py`): 会话写入统一仲裁门 ——
+主动/注入式写入 (强制话轮 proactive、handoff 归属转移、插件注入、记忆注入) 动手前
+`reserve(session_key, source)` 取租约:
+
+- **先预约后写入**: 同一 session_key 同时只允许一个活跃租约 (先到者得, 后来者拿
+  None 即放弃, 不排队不抢锁); 未登记来源 (`_ALLOWED_SOURCES` 之外) 直接拒绝。
+- **hold 窗口**: 租约默认 30s (clamp 1~600s, monotonic), 超时作废。
+- **fail-closed**: `commit` 在过期/已取消/被接手时返回 False —— 写入方必须丢弃
+  产出 (租约失效意味着另一写者可能已接手会话, 继续推送会互踩状态机 —— Fix-81/82
+  两次补丁的根因收编进该门)。反应式消息回合不经此门 (由会话锁串行)。
+- **AST 审计常驻** (tests/unit/test_u8_write_gate.py): 扫描 isac/ 全部源文件,
+  门之外出现 `forced_turn` 赋值或 `transition_to(` 调用即失败 —— 故意绕过当场捕获
+  (允许清单: manager.py 门内写者 + conversation 状态机本体)。
+
+**治理门禁** (scripts/ + CI):
+
+- **工具 catalog** (`scripts/gen_tool_catalog.py`): 自动发现 isac/agent/tools/
+  全部 Tool 子类 (name/description + 默认策略), 归一化 `data/catalogs/tools.json`;
+- **配置 catalog** (`scripts/gen_config_catalog.py`): config.sample.jsonc 顶层/二级
+  键面 → `data/catalogs/config_keys.json`。
+- 两者均带 `--check` 漂移检测: 工具面/配置键面变更后未重新生成入库 catalog →
+  CI `catalog-drift` job 失败, 强制变更留档。
+- **快照回放** (tests/integration/test_u8_snapshot_replay.py): 脱敏 IM 事件流 JSON
+  夹具经真实主链路 (EventBus → Router → Gating → AgentManager → LLM → Channel)
+  回放, 无真实凭据跑整条 bot 链路 (回复序列对齐 + 门在场零干扰断言)。
+- **evidence 规范化**: 真机证据必留档 `evidence/YYYY-MM-DD-<slug>/`
+  (`scripts/new_evidence_dir.py` 创建目录 + README 骨架)。
+
+---
+
 ## 五、消息生命周期
 
 ```
@@ -1151,8 +1323,11 @@ ISAC/
 │
 ├── isac/                           # 主包
 │   ├── __init__.py                 # 版本号
-│   ├── __main__.py                 # 入口
-│   ├── main.py                     # 应用入口
+│   ├── __main__.py                 # CLI 入口 (run/password/secret/plugin 子命令)
+│   ├── main.py                     # 薄入口 (U2: 纯 re-export 兼容面, ≤120 行红线)
+│   ├── dispatch.py                 # U2 消息主链路 (入站→路由→Agent→出站)
+│   ├── wiring.py                   # U2 服务装配 (build_services → ServiceContainer)
+│   ├── bootstrap.py                # U2 启动编排 (main 运行时生命周期)
 │   │
 │   ├── core/                       # 核心框架
 │   │   ├── __init__.py
@@ -1192,6 +1367,13 @@ ISAC/
 │   │   ├── lock.py                 # SessionLockManager (并发控制)
 │   │   └── models.py               # Session/Profile 数据模型
 │   │
+│   ├── session/                    # U1 事件溯源会话内核
+│   │   ├── __init__.py
+│   │   ├── models.py               # SessionEvent + 事件类型白名单
+│   │   ├── event_store.py          # SessionEventStore (append-only, WAL + write-behind)
+│   │   ├── history.py              # SessionHistoryDeriver (折叠/窗口/压缩溯源)
+│   │   └── migrate.py              # 旧 sessions 数据迁移脚本
+│   │
 │   ├── router/                     # 消息路由 (Agent 归属)
 │   │   ├── __init__.py
 │   │   ├── router.py               # MessageRouter
@@ -1201,6 +1383,8 @@ ISAC/
 │   ├── gating/                     # 门控系统
 │   │   ├── __init__.py
 │   │   ├── system.py               # GatingSystem (门面)
+│   │   ├── profile.py              # U3 GatingProfile (权重+词表配置化)
+│   │   ├── strategy.py             # U3 GatingStrategy 四档 (off/keywords/llm-judge/hybrid)
 │   │   ├── reply_necessity.py      # 回复必要性
 │   │   ├── turn_scheduler.py       # 话轮调度
 │   │   ├── turn_gates.py           # 触发门控
@@ -1212,6 +1396,7 @@ ISAC/
 │   │   ├── loop.py                 # ISACAgentLoop
 │   │   ├── hooks.py                # AgentHooks / HookRegistry
 │   │   ├── prompt_builder.py       # SystemPromptBuilder
+│   │   ├── prompt_files.py         # U7 prompt 文件化 (frontmatter + 模型族变体)
 │   │   ├── injector.py             # PromptInjector 兼容 re-export（新代码从 core.injector 导入）
 │   │   ├── injectors/              # 内置注入器
 │   │   │   ├── __init__.py
@@ -1324,6 +1509,8 @@ ISAC/
 │   │   ├── manager.py              # ProviderManager
 │   │   ├── catalog.py              # ModelCatalog / ModelDescriptor
 │   │   ├── router.py               # 按能力/授权/健康/成本/延迟选模型
+│   │   ├── capabilities.py         # U7 模型能力快照 (models.dev → 本地 JSON)
+│   │   ├── category_routing.py     # U7 category 路由 (委派任务按类型选模型链)
 │   │   ├── llm/                    # LLM / Vision Providers
 │   │   ├── embed/                  # Embedding Providers
 │   │   ├── rerank/                 # Reranking Providers
@@ -1530,6 +1717,22 @@ drift_rule = load_text("attention_drift.subtle", locale="zh_CN")
 - MCP Server 让外部 Agent 系统也能管理 ISAC（顺应 MCP 生态）
 - 默认 127.0.0.1 + Token，攻击面可控
 - 预留 Workflow 编排与插件 Admin Routes，支撑未来商业化功能
+
+---
+
+### ADR-012: 为什么前后端分离？
+
+**上下文**: WebUI v2 作为控制面静态托管的 SPA (`control/webui/`, Vanilla JS) 随 J3 落地。随着管理域持续增长（十域页面、配置编辑事务、实时日志台、插件市场），前后端同仓同发布的耦合代价上升：前端产物进后端发布包、页面迭代受后端发版节奏制约、前端技术选型被锁死在零构建方案。
+
+**决策** (2026-08-15): 转入前后端分离。后端（本仓库）演进为纯 API 服务：REST (`/api/v1`) + SSE (`/events/stream`、`/logs/tail`) + OpenAPI 契约；前端独立成项目，围绕冻结的 API 契约开发。**先后端、后前端**；迁移期内置 WebUI 标记 deprecated 保留可用，前端接管（F2）后移除。
+
+**原因**:
+- 控制面在 J3/G1 已按"后端业务逻辑由 Control API 提供、WebUI 不得绕过 REST API"设计（CONTROL_PLANE_SPEC §八），分离是既有边界的自然延伸
+- 前端独立迭代/选型/发布，不再拖累后端发版；后端发布包不含前端产物
+- API 契约（OpenAPI + CONTROL_PLANE_SPEC）同时服务第三方集成与 MCP/Webhook 自动化，契约先行收益外溢
+- 认证已具备双轨基础（Session Cookie + CSRF 与 Bearer Token），跨源适配成本可控
+
+**代价与约束**: 跨源认证需 CORS/SameSite 策略（FE1）；开箱体验在迁移期依赖过渡方案（control 默认开 + 保留内置 WebUI 至 F2 完成）；API 破坏性变更须升 `/api/v1` 版本。节点定义见 DEVELOPMENT_PLAN §四 FE。
 
 ---
 

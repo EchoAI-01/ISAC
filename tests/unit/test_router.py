@@ -113,3 +113,36 @@ class TestHandoffCleanup:
         fake_now["t"] = 1020.0  # 未过期 (expires_at=1100)
         run(router.route(make_isac_message(user_id="userY", group_id=None)))
         assert "qq:user:userX" in router._handoffs
+
+
+class TestHandoffLiveness:
+    """Fix-70: 接手 Agent 不可路由 (被 stop/destroy) 时 handoff 覆盖自愈回落。"""
+
+    def test_route_clears_handoff_to_dead_agent_and_falls_back(self):
+        """handoff 目标不在 agents_provider 中 → 清除登记, 回落常规路由
+        (此前死 Agent 劫持会话最长一个 TTL, 每条消息都被丢弃)。"""
+        rules = RoutingRules(default_agents={"qq": "fallback"})
+        router = make_router(agents=[], rules=rules)  # provider 无任何可路由 Agent
+        router.set_handoff("qq", None, "userX", "agent_x", ttl_seconds=3600)
+
+        decision = run(router.route(make_isac_message(user_id="userX", group_id=None)))
+        assert decision is not None
+        assert decision.agent_id == "fallback"  # 回落默认 Agent
+        assert decision.matched_by == "default"
+        assert "qq:user:userX" not in router._handoffs  # 残留登记被清除
+
+    def test_route_keeps_handoff_to_running_agent(self):
+        """目标可路由时 handoff 覆盖照常生效。"""
+        agents = [SimpleNamespace(agent_id="agent_x", trigger_words=[])]
+        router = make_router(agents=agents)
+        router.set_handoff("qq", None, "userX", "agent_x", ttl_seconds=3600)
+
+        decision = run(router.route(make_isac_message(user_id="userX", group_id=None)))
+        assert decision is not None
+        assert decision.agent_id == "agent_x"
+        assert decision.matched_by == "handoff"
+
+    def test_is_agent_routable(self):
+        router = make_router(agents=[SimpleNamespace(agent_id="alive", trigger_words=[])])
+        assert router.is_agent_routable("alive") is True
+        assert router.is_agent_routable("ghost") is False

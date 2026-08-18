@@ -468,3 +468,103 @@ class TestMetricsInjection:
             "/api/v1/metrics", headers={"Authorization": "Bearer secret-token-123"}
         )
         assert json_response.json()["counters"]["isac_messages_received_total"] == 7.0
+
+
+# ── Fix-91: GET /agents/{id}/config 凭据脱敏 + PATCH 哨兵还原 ──
+
+
+class TestAgentConfigCredentialRedaction:
+    """Fix-91: GET 回显脱敏 api_key; PATCH 回传哨兵不覆盖真实凭据。"""
+
+    _AUTH = {"Authorization": "Bearer secret-token-123"}
+
+    def _create_with_key(self, client, agent_id: str = "redact-target") -> None:
+        response = client.post(
+            "/api/v1/agents",
+            headers=self._AUTH,
+            json={
+                "agent_id": agent_id,
+                "display_name": "R",
+                "llm": {"provider": "openai", "api_key": "sk-super-secret-123"},
+            },
+        )
+        assert response.status_code == 200
+
+    def test_get_config_redacts_api_key(self, control_app) -> None:
+        import json as _json
+
+        client, _ = control_app
+        self._create_with_key(client)
+        resp = client.get("/api/v1/agents/redact-target/config", headers=self._AUTH)
+        assert resp.status_code == 200
+        body = resp.json()
+        # 真实 key 不得出现在回显里
+        assert "sk-super-secret-123" not in _json.dumps(body)
+        assert body["llm"]["api_key"] == "__ISAC_REDACTED__"
+
+    def test_patch_with_redacted_sentinel_preserves_real_key(self, control_app) -> None:
+        """WebUI 流程: GET (脱敏) → 改 display_name → PATCH 回传整个 config。
+        哨兵值不得覆盖真实 api_key —— 直接断言落盘文件里真实 key 仍在。"""
+        import json as _json
+
+        client, tmp_path = control_app
+        self._create_with_key(client)
+        current = client.get("/api/v1/agents/redact-target/config", headers=self._AUTH).json()
+        revision = current["revision"]
+        assert current["llm"]["api_key"] == "__ISAC_REDACTED__"  # 回显确为哨兵
+        # 回传整个 config (含哨兵 api_key), 只改 display_name
+        payload = dict(current)
+        payload["display_name"] = "Renamed"
+        resp = client.patch(
+            "/api/v1/agents/redact-target",
+            headers={**self._AUTH, "If-Match": str(revision)},
+            json=payload,
+        )
+        assert resp.status_code == 200
+        # 落盘配置: 真实 key 保留, 未被哨兵污染
+        saved = _json.loads(
+            (tmp_path / "agents" / "redact-target" / "config.jsonc").read_text(encoding="utf-8")
+        )
+        assert saved["llm"]["api_key"] == "sk-super-secret-123"
+        assert saved["display_name"] == "Renamed"
+
+    def test_patch_with_new_api_key_updates_it(self, control_app) -> None:
+        import json as _json
+
+        client, tmp_path = control_app
+        self._create_with_key(client)
+        current = client.get("/api/v1/agents/redact-target/config", headers=self._AUTH).json()
+        revision = current["revision"]
+        payload = {"llm": {"provider": "openai", "api_key": "sk-new-key-456"}}
+        resp = client.patch(
+            "/api/v1/agents/redact-target",
+            headers={**self._AUTH, "If-Match": str(revision)},
+            json=payload,
+        )
+        assert resp.status_code == 200
+        saved = _json.loads(
+            (tmp_path / "agents" / "redact-target" / "config.jsonc").read_text(encoding="utf-8")
+        )
+        # 客户端真传了新 key → 落盘为新值 (非哨兵、非旧值)
+        assert saved["llm"]["api_key"] == "sk-new-key-456"
+
+
+def test_restore_redacted_list_extension_not_truncated() -> None:
+    """Fix-91 回归: 列表按 merged 逐元素还原, 不得用 zip 按短列表截断 ——
+    trigger_words 由 [] 改为 ['hi'] 时若 zip(merged, original) 会丢更新。"""
+    from isac.control.api.routes_agents import REDACTED_SENTINEL, _restore_redacted
+
+    # 列表扩展: merged 比 original 长, 全部保留
+    assert _restore_redacted({"trigger_words": ["hi"]}, {"trigger_words": []}) == {
+        "trigger_words": ["hi"]
+    }
+    # 敏感键哨兵还原 + 同级列表扩展并存
+    merged = {"llm": {"api_key": REDACTED_SENTINEL, "models": ["a", "b"]}}
+    original = {"llm": {"api_key": "sk-real", "models": []}}
+    restored = _restore_redacted(merged, original)
+    assert restored["llm"]["api_key"] == "sk-real"  # 哨兵 → 真实值
+    assert restored["llm"]["models"] == ["a", "b"]  # 列表扩展保留
+    # 敏感键传新值 → 保留新值
+    assert _restore_redacted(
+        {"llm": {"api_key": "sk-new"}}, {"llm": {"api_key": "sk-old"}}
+    ) == {"llm": {"api_key": "sk-new"}}

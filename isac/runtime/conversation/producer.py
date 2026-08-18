@@ -27,6 +27,29 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Fix-131: 生产者去重标记表的会话数上限。这些标记表按 session_id 累积, 长期运行
+# 下会话只增不减会无界增长。超限按插入顺序淘汰最旧条目 —— 被淘汰的会话只是丢失
+# "本窗口已提醒过"的记录, 最坏后果是该会话下次重新武装时多主动一次, 不影响正确性。
+_MAX_MARKER_SESSIONS = 1000
+
+
+def _move_to_end(marker: dict[Any, Any], key: Any) -> None:
+    """普通 dict 的 move_to_end: 弹出再插入即移到末尾 (dict 保插入序)。"""
+    value = marker.pop(key)
+    marker[key] = value
+
+
+def _bound_marker(marker: dict[Any, Any], touched_key: Any = None, cap: int = _MAX_MARKER_SESSIONS) -> None:
+    """Fix-131: 去重标记表 LRU 封顶。
+
+    touched_key 非 None 时先把它移到表尾 (最近使用), 再按插入顺序从最旧淘汰。
+    这样长期活跃的会话不会被误淘汰 (只有真正久未触及的条目才被逐出)。
+    """
+    if touched_key is not None and touched_key in marker:
+        _move_to_end(marker, touched_key)
+    while len(marker) > cap:
+        marker.pop(next(iter(marker)), None)
+
 
 class IdleReengageProducer:
     """空闲重连生产者: 会话静默超过 idle_seconds 时产出一个主动 re-engage 任务。
@@ -64,6 +87,7 @@ class IdleReengageProducer:
             if self._reengaged_marker.get(session_id, 0.0) >= last_activity:
                 continue  # 本次静默窗口已 re-engage 过 (等新消息重置)
             self._reengaged_marker[session_id] = last_activity
+            _bound_marker(self._reengaged_marker, session_id)  # Fix-131: 会话数封顶
             tasks.append(
                 ProactiveTask(
                     task_id=f"reengage-{uuid.uuid4().hex[:12]}",
@@ -189,6 +213,7 @@ class DateReminderProducer:
                 if self._fired_marker.get(key, 0) >= now_struct.tm_year:
                     continue  # 本年已提醒过
                 self._fired_marker[key] = now_struct.tm_year
+                _bound_marker(self._fired_marker, key)  # Fix-131: 标记条目封顶
                 tasks.append(
                     ProactiveTask(
                         task_id=f"date-{uuid.uuid4().hex[:12]}",
@@ -256,6 +281,7 @@ class TopicFollowupProducer:
             if not _looks_unfinished(tail):
                 continue
             self._fired_marker[session_id] = last_activity
+            _bound_marker(self._fired_marker, session_id)  # Fix-131: 会话数封顶
             tasks.append(
                 ProactiveTask(
                     task_id=f"followup-{uuid.uuid4().hex[:12]}",
@@ -362,6 +388,8 @@ class MemoryAssociationProducer:
         recent.append(hit_id)
         if len(recent) > self._DEDUP_PER_SESSION:
             del recent[: len(recent) - self._DEDUP_PER_SESSION]
+        # Fix-131: 外层会话表封顶 (单会话内层 list 已由 _DEDUP_PER_SESSION 截断)。
+        _bound_marker(self._recent_hits, session_id)
 
     def _build_task(self, session_id: str, best: Any, now: float) -> ProactiveTask:
         content = str(getattr(best, "content", "") or "")

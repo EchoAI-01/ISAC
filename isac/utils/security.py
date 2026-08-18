@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from typing import Any
 
 
 class SecretStore:
@@ -124,3 +125,77 @@ def _generate_nonce() -> bytes:
     import secrets
 
     return secrets.token_bytes(12)
+
+
+# R5: secret: 前缀约定 —— 配置中 api_key 值形如 "secret:<key>" 时经 SecretStore 解密。
+SECRET_PREFIX = "secret:"
+
+
+async def resolve_secret_async(value: str, secret_store: SecretStore | None) -> str:
+    """解析 ``secret:<key>`` 前缀的密钥引用, 返回真实明文值。
+
+    - 非 ``secret:`` 前缀 (含明文 / 占位符 / env 覆盖值) 原样返回。
+    - ``secret:`` 前缀但 secret_store 为 None (未配置 ISAC_SECRET_KEY env) → 回退
+      原值 + warning (不静默降级到明文, 但也不硬阻断 —— 用户可能尚未配置 env)。
+    - ``secret:`` 前缀 + store 非 None → ``store.get(key)``; 不存在返回空串 + warning。
+    """
+    if not value or not value.startswith(SECRET_PREFIX):
+        return value
+    key = value[len(SECRET_PREFIX) :]
+    if secret_store is None:
+        import warnings
+
+        warnings.warn(
+            f"配置值 {value} 引用 SecretStore 但 ISAC_SECRET_KEY 未配置, 无法解密",
+            stacklevel=2,
+        )
+        return value
+    resolved = await secret_store.get(key)
+    if resolved is None:
+        import warnings
+
+        warnings.warn(f"SecretStore 中未找到 {key}, 该密钥引用将无法使用", stacklevel=2)
+        return ""
+    return resolved
+
+
+async def _resolve_secret_field(
+    container: Any, field: str, secret_store: SecretStore | None
+) -> None:
+    """就地解析单个 dict 里某字段的 ``secret:`` 引用 (非 dict/缺字段/非 str 时 no-op)。"""
+    if not isinstance(container, dict):
+        return
+    value = container.get(field)
+    if isinstance(value, str):
+        container[field] = await resolve_secret_async(value, secret_store)
+
+
+async def resolve_secrets_in_config(config: dict, secret_store: SecretStore | None) -> None:
+    """就地解析 global_config 中所有 ``secret:`` 前缀的密钥引用 (R5)。
+
+    扫描:
+    - ``llm.api_key`` + ``llm.multimodal[*].api_key`` (主 LLM / 旧式多模态节);
+    - ``multimodal_providers[*].api_key`` (J2 多模态 Provider, register_multimodal_providers
+      直接读此键);
+    - ``mcp.servers[*].token`` (R3 全局 MCP Server 定义, MCPClient 作为 Bearer 用)。
+
+    Fix-106: 此前仅覆盖 llm.api_key + llm.multimodal[*].api_key, 用户在
+    multimodal_providers[] / mcp.servers[].token 写 ``secret:xxx`` 会原样透传给
+    Provider/MCPClient (字面 "secret:xxx" 当密钥用 → 注册失败/鉴权恒错)。统一收口。
+    在 build_services / register_llm_provider 之前调用, 使同步注册函数拿到明文。
+    """
+    llm = config.get("llm")
+    await _resolve_secret_field(llm, "api_key", secret_store)
+    mm = llm.get("multimodal") if isinstance(llm, dict) else None
+    if isinstance(mm, list):
+        for entry in mm:
+            await _resolve_secret_field(entry, "api_key", secret_store)
+    mm_providers = config.get("multimodal_providers")
+    if isinstance(mm_providers, list):
+        for entry in mm_providers:
+            await _resolve_secret_field(entry, "api_key", secret_store)
+    mcp = config.get("mcp")
+    mcp_servers = mcp.get("servers") if isinstance(mcp, dict) else None
+    if isinstance(mcp_servers, dict):
+        for entry in mcp_servers.values():
+            await _resolve_secret_field(entry, "token", secret_store)

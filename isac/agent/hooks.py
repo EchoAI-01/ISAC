@@ -22,12 +22,33 @@ class AgentHooks:
 
     def __init__(self) -> None:
         self._hooks: dict[AgentHookPoint, list[tuple[int, int, Callable]]] = {}
+        # N5b 批次C C2: 与 _hooks[point] 同索引的来源列表, 供按来源 deregister。
+        self._hook_sources: dict[AgentHookPoint, list[str]] = {}
+        # on_load 期间设置的默认来源 (激活模块 set_current_source(plugin_name))。
+        self._current_source: str | None = None
         self._seq = 0  # 同优先级按注册顺序执行
 
-    def register(self, point: AgentHookPoint, fn: Callable, priority: int = 0) -> None:
+    def register(self, point: AgentHookPoint, fn: Callable, priority: int = 0, *, source: str | None = None) -> None:
         """注册钩子。priority 越大越先执行。"""
         self._hooks.setdefault(point, []).append((priority, self._seq, fn))
+        self._hook_sources.setdefault(point, []).append(source or self._current_source or "builtin")
         self._seq += 1
+
+    def set_current_source(self, source: str | None) -> None:
+        """设置后续 register() 的默认来源 (on_load 期间设为插件名, 结束后置 None)。"""
+        self._current_source = source
+
+    def deregister_by_source(self, source: str) -> int:
+        """移除指定来源的全部钩子 (各 point), 返回被移除数量 (C2 热重载同步)。"""
+        removed = 0
+        for point in list(self._hooks.keys()):
+            hooks = self._hooks[point]
+            srcs = self._hook_sources.get(point, [])
+            keep = [(h, s) for h, s in zip(hooks, srcs) if s != source]
+            removed += len(hooks) - len(keep)
+            self._hooks[point] = [h for h, _ in keep]
+            self._hook_sources[point] = [s for _, s in keep]
+        return removed
 
     def _sorted_hooks(self, point: AgentHookPoint) -> list[tuple[int, int, Callable]]:
         """返回按优先级排序后的钩子列表。"""

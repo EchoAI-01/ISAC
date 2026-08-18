@@ -82,6 +82,8 @@ class ISACMCPServer:
         bus: InterAgentBus | None = None,
         plugin_manager: PluginManager | None = None,
         parsed_tokens: list[Any] | None = None,
+        agents_dir: str = "data/agents",
+        audit_log: Any | None = None,
     ):
         self.services = services
         self.api_token = api_token
@@ -89,9 +91,17 @@ class ISACMCPServer:
         self._router = router or services.get("router")
         self._bus = bus or services.get("bus")
         self._plugin_manager = plugin_manager or services.get("plugin_manager")
+        # Fix-58: agents_dir 由接线方注入 (与 HTTP 控制面 config["agents_dir"]
+        # 同源) —— 此前工具实现硬编码 Path("data/agents"), 自定义 agents_dir 的
+        # 部署中 MCP 写配置会与真实持久化目录分叉。
+        self._agents_dir = agents_dir
         # C2: parsed_tokens 为 None (未配置 tokens[]) 时回退到扁平 api_token,
         # 与 HTTP 端点行为一致 (向后兼容默认行为不变); 非 None 时按 scope 校验。
         self._parsed_tokens = parsed_tokens
+        # Fix-93: 注入 AuditLog (与 HTTP 控制面同实例) —— 此前 11 个写工具完全
+        # 绕过审计 (agent_update_config 甚至显式传 audit_log=None 给 _do_patch_agent),
+        # 使 MCP 通道成为无追溯的写后门。每次写工具成功后经 _audit_write 留痕。
+        self._audit_log = audit_log
         self._initialized = False
 
     async def serve_stdio(
@@ -122,26 +132,42 @@ class ISACMCPServer:
                 await writer.drain()
 
     async def _serve_native_stdio(self) -> None:
-        """直接用 sys.stdin/stdout.buffer 的简化实现。"""
-        while True:
-            line = sys.stdin.buffer.readline()
-            if not line:
-                break
-            try:
-                request = json.loads(line.decode("utf-8"))
-            except json.JSONDecodeError as exc:
-                err = self._error_response(None, -32700, f"Parse error: {exc}")
-                sys.stdout.buffer.write(
-                    (json.dumps(err, ensure_ascii=False) + "\n").encode("utf-8")
-                )
-                sys.stdout.buffer.flush()
-                continue
-            response = await self._handle_request(request)
-            if response is not None:
-                sys.stdout.buffer.write(
-                    (json.dumps(response, ensure_ascii=False) + "\n").encode("utf-8")
-                )
-                sys.stdout.buffer.flush()
+        """直接用 sys.stdin/stdout.buffer 的简化实现。
+
+        Fix-44: readline 是同步阻塞调用, 直接在协程里执行会阻塞整个事件循环
+        (stdin 无即时数据时第一次 readline 即无限期卡死主 loop, 所有平台消息
+        处理停摆)。改用 asyncio.to_thread 卸载到线程池。
+
+        Fix-60: 整个循环包 try/except —— MCP 客户端异常断开时 stdout 写会抛
+        BrokenPipeError、stdin 关闭后 readline 抛 ValueError/OSError; 若任其冒泡,
+        spawn 所在的共享 TaskGroup 语义会 cancel 所有兄弟任务 (uvicorn/各 channel
+        adapter), 而 serve_forever 仍阻塞在 stop_event → 数据面全停但进程不退出。
+        MCP 任务故障必须就地隔离 (记日志 + 退出本循环)。
+        """
+        try:
+            while True:
+                line = await asyncio.to_thread(sys.stdin.buffer.readline)
+                if not line:
+                    break
+                try:
+                    request = json.loads(line.decode("utf-8"))
+                except json.JSONDecodeError as exc:
+                    err = self._error_response(None, -32700, f"Parse error: {exc}")
+                    sys.stdout.buffer.write(
+                        (json.dumps(err, ensure_ascii=False) + "\n").encode("utf-8")
+                    )
+                    sys.stdout.buffer.flush()
+                    continue
+                response = await self._handle_request(request)
+                if response is not None:
+                    sys.stdout.buffer.write(
+                        (json.dumps(response, ensure_ascii=False) + "\n").encode("utf-8")
+                    )
+                    sys.stdout.buffer.flush()
+        except (BrokenPipeError, ValueError, OSError) as exc:
+            logger.warning("MCP stdio 连接异常, 服务退出 (已隔离, 不影响主进程)", error=str(exc))
+        except Exception as exc:  # noqa: BLE001 兜底隔离: 任何异常都不得拖垮 TaskGroup 兄弟任务
+            logger.error("MCP stdio 服务意外异常退出", error=str(exc), exc_info=True)
 
     async def _handle_request(self, request: dict[str, Any]) -> dict[str, Any] | None:
         """JSON-RPC 2.0 分发: 返回 response 或 None (通知不响应)。"""
@@ -151,7 +177,15 @@ class ISACMCPServer:
 
         # protocol-level 方法 (initialize / tools/list / shutdown) 不需要 token
         # tools/call 需要 token 认证
-        if method == "tools/call" and (self.api_token or self._parsed_tokens):
+        if method == "tools/call":
+            if not (self.api_token or self._parsed_tokens):
+                # Fix-43: 未配置任何凭证时 fail-closed 拒绝 —— 此前此分支整体跳过
+                # 认证 → tools/call 零认证执行。MCP stdio 无网络边界但可经桥接暴露,
+                # 比 HTTP 开发模式更应收紧。
+                return self._error_response(
+                    request_id, -32001,
+                    "Unauthorized: 控制面未配置凭证 (api_token/tokens), 拒绝执行工具",
+                )
             auth_header = params.get("meta", {}).get("authorization", "") if isinstance(params, dict) else ""
             from isac.control.auth import extract_bearer
 
@@ -234,22 +268,36 @@ class ISACMCPServer:
             return None
         raise MCPError(-32601, f"Method not found: {method}")
 
+    async def _check_scope_if_needed(self, name: str, params: dict[str, Any]) -> None:
+        """C2: parsed_tokens 启用时按 tool→scope 映射校验 (抽自 _call_tool 降复杂度)。"""
+        if self._parsed_tokens is None:
+            return
+        auth_header = params.get("meta", {}).get("authorization", "")
+        from isac.control.auth import extract_bearer
+
+        scopes = self._find_token_scope(extract_bearer(auth_header))
+        if scopes is None:
+            raise MCPError(-32001, "Unauthorized: invalid or missing token")
+        if not self._check_tool_scope(name, scopes):
+            required = TOOL_SCOPE_MAP.get(name, "unknown")
+            raise MCPError(-32003, f"Forbidden: missing scope {required}")
+
     async def _call_tool(self, params: dict[str, Any]) -> dict[str, Any]:
-        """调用 MCP 工具, 委托到 AgentManager/Router/Bus。"""
+        """调用 MCP 工具, 委托到 AgentManager/Router/Bus。
+
+        Fix-93: 工具执行成功后统一经 _audit_write 留痕 (覆盖全部 11 个写工具,
+        含经 _call_r2_tools 的分支); 审计失败不阻塞工具结果。
+        """
         name = params.get("name", "")
         args = params.get("arguments", {}) or {}
-        # C2: parsed_tokens 启用时按 tool→scope 映射校验
-        if self._parsed_tokens is not None:
-            auth_header = params.get("meta", {}).get("authorization", "")
-            from isac.control.auth import extract_bearer
+        # C2: parsed_tokens 启用时按 tool→scope 映射校验 (抽 helper 降复杂度)
+        await self._check_scope_if_needed(name, params)
+        result = await self._call_tool_impl(name, args)
+        await self._audit_write(name, args, params)
+        return result
 
-            token = extract_bearer(auth_header)
-            scopes = self._find_token_scope(token)
-            if scopes is None:
-                raise MCPError(-32001, "Unauthorized: invalid or missing token")
-            if not self._check_tool_scope(name, scopes):
-                required = TOOL_SCOPE_MAP.get(name, "unknown")
-                raise MCPError(-32003, f"Forbidden: missing scope {required}")
+    async def _call_tool_impl(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """工具执行主体 (抽自 _call_tool, 供其在成功后统一审计)。"""
         if name == "agent_create" and self._agent_manager is not None:
             # CR3-L1: MCP 自动化创建同样走受限默认配置 (bash/task deny +
             # plugins_deny=["*"]), 调用方 arguments 里的能力字段被丢弃并告警。
@@ -276,7 +324,45 @@ class ISACMCPServer:
             rules.default_agents[args.get("platform", "")] = args.get("agent_id", "")
             self._router.set_rules(rules)
             return _text_result({"status": "updated"})
+        # R2-④: 5 个新工具抽到模块级 helper 降 _call_tool 复杂度
+        extra = await _call_r2_tools(name, args, self)
+        if extra is not None:
+            return extra
         raise MCPError(-32602, f"Unknown tool or missing dependency: {name}")
+
+    async def _audit_write(self, name: str, args: dict[str, Any], params: dict[str, Any]) -> None:
+        """Fix-93: MCP 写工具审计留痕 (与 HTTP 控制面 _audit 同口径)。
+
+        actor 用 token 指纹 (不回显原 token); target 优先取 agent_id, 缺省 platform。
+        审计失败仅记日志, 不影响已成功的工具结果返回。
+        """
+        if self._audit_log is None:
+            return
+        try:
+            target = str(args.get("agent_id", "") or args.get("platform", "") or "")
+            await self._audit_log.record(
+                actor=self._token_fingerprint(params),
+                method="MCP",
+                path=f"mcp://{name}",
+                action=name,
+                target=target,
+                detail=json.dumps(args, ensure_ascii=False)[:500],
+                status_code=200,
+            )
+        except Exception:  # noqa: BLE001 审计失败不阻塞工具结果
+            logger.warning("MCP 工具审计写入失败", tool=name, exc_info=True)
+
+    def _token_fingerprint(self, params: dict[str, Any]) -> str:
+        """Fix-93: 从请求提取 token 并返回短指纹 (审计标识来源, 不泄露原 token)。"""
+        import hashlib
+
+        auth_header = str((params.get("meta") or {}).get("authorization", "") or "")
+        from isac.control.auth import extract_bearer
+
+        token = extract_bearer(auth_header)
+        if not token:
+            return "mcp:anonymous"
+        return f"mcp:{hashlib.sha256(token.encode('utf-8')).hexdigest()[:8]}"
 
     async def _send_error(self, writer: asyncio.StreamWriter, request_id: Any, code: int, message: str) -> None:
         response = self._error_response(request_id, code, message)
@@ -295,6 +381,86 @@ class ISACMCPServer:
 def _text_result(payload: dict[str, Any]) -> dict[str, Any]:
     """构造 MCP tools/call 返回格式 (content 数组带 text 块)。"""
     return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]}
+
+
+async def _call_r2_tools(name: str, args: dict[str, Any], server: Any) -> dict[str, Any] | None:
+    """R2-④: 5 个声明未实现的工具 (channel_bind/unbind, agent_update_config,
+    plugin_set_enabled, message_send) 的实现, 抽到模块级降 _call_tool 复杂度。
+
+    返回 None 表示该工具不属于本 helper 或依赖缺失, 交给调用方兜底 raise。
+    """
+    if name == "channel_bind_agent" and server._router is not None:
+        from isac.router.rules import ChannelBinding
+
+        rules = server._router.get_rules()
+        rules.bindings.append(ChannelBinding(
+            platform=str(args.get("platform", "")), agent_id=str(args.get("agent_id", "")),
+            group_id=args.get("group_id"), user_id=args.get("user_id"),
+        ))
+        server._router.set_rules(rules)
+        return _text_result({"status": "bound"})
+    if name == "channel_unbind_agent" and server._router is not None:
+        rules = server._router.get_rules()
+        plat, gid, uid = args.get("platform", ""), args.get("group_id"), args.get("user_id")
+        before = len(rules.bindings)
+        rules.bindings = [
+            b for b in rules.bindings
+            if not (b.platform == plat and b.group_id == gid and b.user_id == uid)
+        ]
+        server._router.set_rules(rules)
+        return _text_result({"status": "unbound", "removed": before - len(rules.bindings)})
+    if name == "agent_update_config" and server._agent_manager is not None:
+        from pathlib import Path
+
+        from isac.control.api.routes_agents import _do_patch_agent
+
+        result = await _do_patch_agent(
+            server._agent_manager, args.get("agent_id", ""),
+            args.get("config", {}), args.get("if_match"), None, Path(server._agents_dir),
+        )
+        return _text_result(result)
+    if name == "plugin_set_enabled" and server._agent_manager is not None:
+        from pathlib import Path
+
+        from isac.control.api.routes_plugins import _as_str_list
+        from isac.runtime.config import save_agent_config
+
+        agent_id = args.get("agent_id", "")
+        # Fix-58: 与 HTTP PUT /agents/{id}/plugins (Fix-48) 同一套原语 ——
+        # ① _as_str_list 规范化 (此前 list(str) 逐字符拆分, 传字符串 deny 失效
+        # fail-open); ② 同一把按 agent_id 配置锁 (此前与 PATCH 并发丢更新);
+        # ③ get 在锁内 (此前锁外取实例, reload_config 替换实例后陈旧引用写盘)。
+        async with server._agent_manager.acquire_config_lock(agent_id):
+            instance = await server._agent_manager.get(agent_id)
+            if instance is None:
+                raise MCPError(-32602, f"agent not found: {agent_id}")
+            instance.config.plugins_allow = _as_str_list(args.get("plugins_allow", ["*"]))
+            instance.config.plugins_deny = _as_str_list(args.get("plugins_deny", []))
+            save_agent_config(Path(server._agents_dir) / agent_id / "config.jsonc", instance.config)
+        return _text_result({"status": "updated", "agent_id": agent_id})
+    if name == "message_send" and server._agent_manager is not None:
+        import time
+
+        from isac.channel.model import ISACMessage
+        from isac.gateway.models import Session
+        from isac.utils.helpers import new_id, unix_now
+
+        agent_id = args.get("agent_id", "")
+        platform = str(args.get("platform", "mcp"))
+        user_id = str(args.get("user_id", "mcp"))
+        message = ISACMessage(
+            msg_id=new_id("mcp"), platform=platform, timestamp=int(time.time()),
+            user_id=user_id, user_name="", group_id=args.get("group_id"),
+            content=str(args.get("content", "")),
+        )
+        session = Session(
+            session_id=new_id("sess"), user_id=user_id, agent_id=agent_id,
+            platform=platform, group_id=args.get("group_id"),
+            is_group=args.get("group_id") is not None, created_at=unix_now(),
+        )
+        reply = await server._agent_manager.handle_message_serialized(agent_id, message, session, None)
+        return _text_result({"status": "sent", "reply": reply or ""})
+    return None
 
 
 class MCPError(Exception):

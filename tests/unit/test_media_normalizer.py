@@ -61,6 +61,33 @@ def test_normalize_valid_png(normalizer: MediaNormalizer, tmp_path: Path) -> Non
     assert media.uri.endswith("test.png")
 
 
+def test_normalize_rejects_forged_extension(normalizer: MediaNormalizer, tmp_path: Path) -> None:
+    """magic-byte 校验: 扩展名 .png 但内容非 PNG 头 → 拒 (防扩展名伪造)。"""
+    fake = tmp_path / "artifacts" / "evil.png"
+    fake.write_bytes(b"<html>not a png</html>")  # 非 PNG magic 头
+    with pytest.raises(MediaValidationError, match="签名与"):
+        normalizer.normalize(str(fake))
+
+
+def test_normalize_valid_wav_passes_magic_check(normalizer: MediaNormalizer, tmp_path: Path) -> None:
+    """WAV RIFF 头通过 magic-byte 校验 (RIFF@0)。"""
+    wav = tmp_path / "artifacts" / "clip.wav"
+    _write_wav(wav, size_bytes=100)
+    media = normalizer.normalize(str(wav))
+    assert media.kind == "audio"
+    assert media.mime_type == "audio/x-wav"
+
+
+def test_normalize_skips_magic_for_unregistered_mime(
+    normalizer: MediaNormalizer, tmp_path: Path
+) -> None:
+    """未登记签名的 MIME (如 image/webp) 跳过 magic 校验, 不引入新拒 (向后兼容)。"""
+    webp = tmp_path / "artifacts" / "pic.webp"
+    webp.write_bytes(b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 80)  # webp 未登记, 跳过校验
+    media = normalizer.normalize(str(webp))
+    assert media.kind == "image"
+
+
 def test_normalize_path_traversal_rejected(normalizer: MediaNormalizer, tmp_path: Path) -> None:
     artifacts_dir = tmp_path / "artifacts"
     png_path = artifacts_dir / "test.png"

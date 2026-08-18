@@ -160,3 +160,34 @@ def test_manager_conversation_enabled_when_configured() -> None:
 
     manager = AgentManager({"global_config": {"conversation": {"enabled": True}}})
     assert manager._conversation_enabled() is True
+
+
+def test_rewind_processed_lets_successor_turn_reclaim_interrupted_burst() -> None:
+    """Fix-57: 被打断回合的输入回拨 drain 指针后, 接替回合能重新取到。
+
+    场景: 回合 A drain 走 [m1] 进 Loop 后被打断 (回复抑制/不写记忆); 若指针
+    不回拨, 接替回合 (触发打断的 m2) drain 只拿到 [m2], m1 三方皆失。回拨后
+    接替回合合并处理 [m1, m2]。
+    """
+    rt = ConversationRuntime("a1", "s1")
+    rt.register_message(_msg("m1"))
+    burst_a = rt.drain_new_messages()
+    assert [m.content for m in burst_a] == ["m1"]
+    # 回合 A 被打断 → manager 回拨本回合输入
+    rt.rewind_processed(len(burst_a))
+    # 触发打断的新消息 m2 到达
+    rt.register_message(_msg("m2"))
+    burst_b = rt.drain_new_messages()
+    assert [m.content for m in burst_b] == ["m1", "m2"]  # m1 被接替回合合并处理
+
+
+def test_rewind_processed_floor_at_zero_and_noop_for_nonpositive() -> None:
+    """Fix-57 边界: 回拨不下穿 0; 0/负数无操作。"""
+    rt = ConversationRuntime("a1", "s1")
+    rt.register_message(_msg("m1"))
+    rt.drain_new_messages()
+    rt.rewind_processed(5)  # 超出已处理数量
+    assert rt.last_processed_index == 0
+    rt.rewind_processed(0)
+    rt.rewind_processed(-3)
+    assert rt.last_processed_index == 0

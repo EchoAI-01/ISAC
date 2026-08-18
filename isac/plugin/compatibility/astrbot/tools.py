@@ -7,12 +7,17 @@ AstrBot 的 FunctionTool 通常带 name/description/parameters 描述,
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 from typing import Any
 
 from isac.agent.tools.base import Tool, ToolContext
 from isac.core.types import ToolResult
+
+# Fix-129: host 插件工具执行超时默认值 (秒)。host 信任级插件的工具在宿主进程内直接
+# 运行 (不经隔离层 ipc_timeout), 挂死的插件函数此前会无限阻塞 Agent Loop。
+DEFAULT_HOST_TOOL_TIMEOUT_SECONDS = 60.0
 
 
 class FunctionToolAdapter(Tool):
@@ -23,12 +28,21 @@ class FunctionToolAdapter(Tool):
     或同步/异步, 返回字符串/对象。本适配器做兼容。
     """
 
-    def __init__(self, name: str, description: str, func: Any, parameters: dict | None = None):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        func: Any,
+        parameters: dict | None = None,
+        timeout_seconds: float = DEFAULT_HOST_TOOL_TIMEOUT_SECONDS,
+    ):
         self._name = name
         self._description = description
         self._func = func
         self._parameters = parameters or _infer_parameters(func)
         self._is_async = inspect.iscoroutinefunction(func)
+        # Fix-129: 执行超时可注入 (非正值回落默认)。
+        self._timeout = max(0.01, float(timeout_seconds))
 
     @property
     def name(self) -> str:
@@ -47,6 +61,9 @@ class FunctionToolAdapter(Tool):
 
         AstrBot 调用约定: (ctx, args) 两参, ctx 是 ContextAdapter;
         ISAC 调用约定: ToolContext 含 args 与 services。
+
+        Fix-129: 执行受 timeout 约束 —— 异步函数直接 wait_for; 同步函数经 to_thread
+        移出事件循环再 wait_for (既不阻塞 loop, 超时也能按时返回错误, 不再无限挂起)。
         """
         # 构造 ContextAdapter 兼容对象 (注入 services)
         from isac.plugin.compatibility.astrbot.context import ContextAdapter
@@ -56,9 +73,14 @@ class FunctionToolAdapter(Tool):
             args_json = json.dumps(context.args, ensure_ascii=False)
             args_obj = json.loads(args_json) if args_json else {}
             if self._is_async:
-                raw = await self._func(ctx, args_obj)
+                pending = self._func(ctx, args_obj)
             else:
-                raw = self._func(ctx, args_obj)
+                pending = asyncio.to_thread(self._func, ctx, args_obj)
+            raw = await asyncio.wait_for(pending, timeout=self._timeout)
+        except TimeoutError:
+            return ToolResult(
+                content=f"工具 {self._name} 执行超时 (> {self._timeout}s), 已放弃等待。", is_error=True
+            )
         except Exception as exc:
             return ToolResult(content=f"工具 {self._name} 执行失败: {exc}", is_error=True)
         if isinstance(raw, ToolResult):
@@ -67,9 +89,12 @@ class FunctionToolAdapter(Tool):
         return ToolResult(content=text)
 
 
-def bridge_function_tool(name: str, description: str, func: Any, parameters: dict | None = None) -> Tool:
+def bridge_function_tool(
+    name: str, description: str, func: Any, parameters: dict | None = None,
+    timeout_seconds: float = DEFAULT_HOST_TOOL_TIMEOUT_SECONDS,
+) -> Tool:
     """将 AstrBot FunctionTool 桥接为 ISAC Tool 实例。"""
-    return FunctionToolAdapter(name, description, func, parameters=parameters)
+    return FunctionToolAdapter(name, description, func, parameters=parameters, timeout_seconds=timeout_seconds)
 
 
 def _infer_parameters(func: Any) -> dict:

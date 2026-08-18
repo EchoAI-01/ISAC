@@ -12,8 +12,11 @@ S5 激活: 把已实现的 WorkflowEngine 的 Stage.action 真正路由到生产
 condition_evaluator: 一个极简 DSL, 与 WorkflowEngine._evaluate 的默认行为等价
 (空字符串/"true"/"1" 为真, 其余为假), 作为后续扩展点。
 
-不实现 "Agent 主动触发 workflow 的工具入口" (HANDOFF 明确为 P5 决策项, 有意
-未做, 避免半接线死代码)。
+不实现 "Agent 主动触发 workflow 的工具入口" (R6-③ 决策落地: engine 有 ``start``
+agent-facing 方法, 但 assembly 不接收 workflow_engine, 接入需跨
+build_services/assemble_agent 两层 plumbing 与收益不匹配; ``agent:`` stage→agent
+路由属另一方向, 依赖 agent intent 调用协议, 超出 R6 范围。见 DEVELOPMENT_PLAN
+§四 R6 + 架构债表)。
 """
 
 from __future__ import annotations
@@ -55,10 +58,12 @@ def build_default_action_handler(
             await _invoke_tool(agent_manager_resolver, stage, tool_name, params)
             return
         if action.startswith(_AGENT_PREFIX):
-            # agent:<id>:<intent> 形式暂未实现真实路由 (留作 P5 Agent 工具入口),
-            # 当前记 warning noop, 不抛异常阻塞工作流。
+            # R6-③ 决策落地: ``agent:<id>:<intent>`` stage→agent 路由经决策不在 R6 实现
+            # (依赖"agent intent 调用协议"定义, 超出"企业化激活"范围), 此处保留明确
+            # 占位 noop 而非悬空 —— 见 DEVELOPMENT_PLAN.md §四 R6 "③Workflow Agent 工具
+            # 入口决策落地" 与架构债表。消除"悬空"语义: 本分支是有意决策, 非遗漏。
             logger.warning(
-                "workflow stage action=agent:* 暂未实现真实路由, 视为 noop",
+                "workflow stage action=agent:* 经决策不实现 stage→agent 路由, 视为 noop",
                 stage_id=getattr(stage, "stage_id", ""), action=action,
             )
             return

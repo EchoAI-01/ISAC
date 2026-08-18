@@ -82,6 +82,10 @@ class ProactiveTask:
     # CR2-Fix-7: 供 ProactiveScheduler.authorize 做来源令牌校验 (source_tokens 配置了
     # 对应 source 时必须匹配); 默认空串, 未配置 source_tokens 时不参与校验 (向后兼容)。
     caller_token: str = ""
+    # Fix-118: 唤醒回调失败后的重投递计数。此前任务被 poll_ready 取出后, wake_callback
+    # 失败即被静默丢弃 (提醒永久丢失); 现在失败重新入队, attempts 达到调度器上限才
+    # 放弃 (防毒任务无限重放)。默认 0, 不影响既有构造。
+    attempts: int = 0
 
 
 @dataclass

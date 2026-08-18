@@ -1,8 +1,10 @@
 """进程级 smoke test: python -m isac 在无 Channel / 仅 Control / 启用 Channel 三种
 模式下持续驻留, SIGTERM 优雅关闭无 pending task warning (K1, DEVELOPMENT_PLAN.md)。
 
-测试用 subprocess 启动真实 python -m isac, 等 1 秒让它进入 serve_forever, 发送
-SIGTERM, 等待退出, 检查退出码 0 且 stderr 不含 "Task was destroyed but it is pending"。
+测试用 subprocess 启动真实 python -m isac, **轮询输出等就绪标记出现** (U9 根治:
+此前固定 sleep 1.5s, 全套件负载下子进程启动慢于该窗口 → SIGTERM 落在启动期,
+偶发 flake), 然后 SIGTERM, 等待退出, 检查退出码 0 且无
+"Task was destroyed but it is pending"。
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import os
 import signal
 import subprocess
 import sys
-import time
+import threading
 from pathlib import Path
 
 import pytest
@@ -50,17 +52,43 @@ def _start_isac(tmp_path: Path, config: dict | None = None, env_overrides: dict 
     )
 
 
-def _wait_and_terminate(proc: subprocess.Popen, runtime_seconds: float = 1.5) -> tuple[int, str]:  # type: ignore[type-arg]
-    """等进程进入驻留态后 SIGTERM, 等退出, 返回 (returncode, combined_output)。"""
-    time.sleep(runtime_seconds)
+def _wait_and_terminate(
+    proc: subprocess.Popen,  # type: ignore[type-arg]
+    ready_marker: str = "ISAC 启动完成",
+    ready_timeout: float = 30.0,
+) -> tuple[int, str]:
+    """轮询输出等就绪标记 (进入驻留态) 后 SIGTERM, 等退出, 返回 (returncode, output)。
+
+    U9 根治: 后台线程持续读管道 (兼防管道缓冲写满阻塞子进程), 就绪标记出现才发
+    SIGTERM —— 不再依赖固定 sleep, 高负载环境启动变慢也不再 flake。就绪超时视为失败。
+    """
+    output_lines: list[str] = []
+    ready = threading.Event()
+
+    def _reader() -> None:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            output_lines.append(line)
+            if ready_marker in line:
+                ready.set()
+
+    reader = threading.Thread(target=_reader, daemon=True)
+    reader.start()
+
+    if not ready.wait(ready_timeout):
+        proc.kill()
+        proc.wait(timeout=5)
+        reader.join(timeout=5)
+        return proc.returncode if proc.returncode is not None else -9, "".join(output_lines)
+
     proc.send_signal(signal.SIGTERM)
     try:
-        out, _ = proc.communicate(timeout=10)
+        proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
         proc.kill()
-        out, _ = proc.communicate(timeout=5)
-        return proc.returncode, out or ""
-    return proc.returncode, out or ""
+        proc.wait(timeout=5)
+    reader.join(timeout=5)
+    return proc.returncode if proc.returncode is not None else -9, "".join(output_lines)
 
 
 _UNIX_ONLY = pytest.mark.skipif(
@@ -102,7 +130,7 @@ def test_smoke_control_plane_only_mode_resident_and_sigterm_clean(tmp_path: Path
         "ISAC_API_TOKEN": "",
     }
     proc = _start_isac(tmp_path, env_overrides=env_overrides)
-    returncode, output = _wait_and_terminate(proc, runtime_seconds=3.5)
+    returncode, output = _wait_and_terminate(proc)
 
     assert returncode == 0, f"exit={returncode}\noutput={output}"
     assert "Task was destroyed but it is pending" not in output

@@ -110,11 +110,18 @@ class OpenAICompatRerankerProvider(RerankerProvider):
                 retriable=False,
                 context={"body": response.text[:500]},
             ) from exc
-        # 按协议取 result (cohere) 或 results (jina)
-        items = data.get("result") if self.protocol == "cohere" else data.get("results")
+        # Fix-64: Cohere v1/v2 /rerank 与 Jina 实际都返回 "results" (复数);
+        # 此前 cohere 协议取 "result" (单数) —— 对真实 Cohere/vLLM 兼容端点
+        # 必然取不到 → 每次 rerank 抛不可重试 LLMError → 上层吞异常回退原序,
+        # 记忆召回重排序被静默关闭 (测试 fixture 用 {"result":...} 自造形状
+        # 与实现互相印证, 同 Fix-37/56 协议假设错误模式)。现: 优先取官方
+        # "results", 兼容回退 "result" (不破坏既有自托管端点)。
+        items = data.get("results")
+        if items is None:
+            items = data.get("result")
         if not isinstance(items, list):
             raise LLMError(
-                f"Rerank 响应无 {self.protocol} 字段或非 list",
+                f"Rerank 响应无 results/result 字段或非 list (protocol={self.protocol})",
                 retriable=False,
                 context={"body": json.dumps(data)[:500]},
             )

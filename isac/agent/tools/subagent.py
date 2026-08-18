@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 
 # 工具默认等待子任务终态的超时 (秒); 超时返回当前状态, 不阻塞主链路
 _DEFAULT_WAIT_TIMEOUT = 30.0
+# U0 顺带批清: _wait_timeout 上限 clamp (对齐 utility/task.py 的 _MAX_WAIT_TIMEOUT),
+# 此前 LLM 可传任意大 _wait_timeout 让 delegate_task 阻塞过久。
+_MAX_WAIT_TIMEOUT = 300.0
 # 工具 poll 间隔
 _POLL_INTERVAL = 0.05
 
@@ -54,6 +57,14 @@ class DelegateTaskTool(_SupervisorToolBase):
             "properties": {
                 "objective": {"type": "string", "description": "子任务目标"},
                 "summary": {"type": "string", "description": "给子 Agent 的最小背景摘要"},
+                "category": {
+                    "type": "string",
+                    "enum": ["qa", "creative", "tool_heavy", "chat"],
+                    "description": (
+                        "任务类型 (U7 category 路由): qa=问答检索, creative=创作生成, "
+                        "tool_heavy=工具密集, chat=轻量闲聊; runner 按类型选模型链, 缺省用父 Agent 模型"
+                    ),
+                },
             },
             "required": ["objective"],
         }
@@ -68,8 +79,13 @@ class DelegateTaskTool(_SupervisorToolBase):
             return ToolResult(content="缺少 objective, 无法派生子任务。", is_error=True)
 
         summary = str(context.args.get("summary", "") or "")
-        depth = int(context.services.get("task_depth", 0) or 0)
-        max_depth = int(context.services.get("task_max_depth", 1) or 1)
+        # U7: category 路由 —— 任务类型透传 runner, 按类型经 ModelRouter 选模型链;
+        # 非法值透传后 runner profile_for 返回 None → 回落父 Agent 模型 (fail-safe)。
+        category = str(context.args.get("category", "") or "").strip().lower()
+        # Fix-68: task_depth 由 runner 写入 AgentContext.services, 此前从
+        # ToolContext.services (收窄后的 loop.services) 读恒 0 → 深度守卫失效。
+        depth = int(context.agent_context.services.get("task_depth", 0) or 0)
+        max_depth = int(context.agent_context.services.get("task_max_depth", 1) or 1)
         if depth >= max_depth:
             return ToolResult(
                 content=f"子任务递归深度已达上限 ({max_depth}), 拒绝继续委派。",
@@ -85,13 +101,16 @@ class DelegateTaskTool(_SupervisorToolBase):
             session_id=getattr(agent_ctx.session, "session_id", ""),
             trace_id=str(agent_ctx.services.get("task_id", "") or task_id),
             objective=objective,
-            context={"summary": summary, "task_depth": depth + 1},
+            context={"summary": summary, "task_depth": depth + 1, "category": category},
             policy=SubAgentPolicy(max_depth=max_depth),
             created_at=int(time.time()),
         )
         # submit → 等终态 → 返回摘要
         run = await supervisor.submit(task)
-        wait_timeout = float(context.args.get("_wait_timeout", _DEFAULT_WAIT_TIMEOUT) or _DEFAULT_WAIT_TIMEOUT)
+        wait_timeout = min(
+            _MAX_WAIT_TIMEOUT,
+            float(context.args.get("_wait_timeout", _DEFAULT_WAIT_TIMEOUT) or _DEFAULT_WAIT_TIMEOUT),
+        )
         # 等待终态 (poll get_status)
         deadline = time.monotonic() + wait_timeout
         while time.monotonic() < deadline:

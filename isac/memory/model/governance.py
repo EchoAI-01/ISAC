@@ -67,15 +67,57 @@ class MemoryGovernor:
         *,
         sparse_resolver: Callable[[str], SparseBM25Index | None] | None = None,
         vector_resolver: Callable[[str], Any] | None = None,
+        tenant_guard: Any = None,
+        tenant_context: Any = None,
     ) -> None:
         self._store = metadata_store
         self._sparse_resolver = sparse_resolver
         self._vector_resolver = vector_resolver
+        # U0 Fix-85: 租户作用域。未显式注入时从所包装的 MetadataStore 读取其
+        # _tenant_guard/_tenant_context (生产接线里 store 已带租户上下文, 见 main.py
+        # build_services), 让治理 SQL 与检索/写入走同一套租户隔离。此前治理操作直连
+        # db_path 裸 SQL 只按 agent_id 过滤, 绕过租户谓词 —— 两租户共享同一 memory.db
+        # 时 (见 test_p5 _make_tenanted_pipeline), 租户 A 凭据可对租户 B 的记忆
+        # freeze/correct/delete, 是多租户卖点面上的越权实洞。
+        self._tenant_guard = (
+            tenant_guard if tenant_guard is not None else getattr(metadata_store, "_tenant_guard", None)
+        )
+        self._tenant_context = (
+            tenant_context if tenant_context is not None else getattr(metadata_store, "_tenant_context", None)
+        )
 
     def _db_path(self) -> str | None:
         if self._store is None:
             return None
         return self._store.db_path
+
+    def _tenant_db(self) -> Any | None:
+        """U4: 租户机制强制层 (与 MetadataStore 共用同一套原语, 谓词逻辑唯一实现)。
+
+        无 store 时返回 None (各操作已前置 _db_path() 判空)。
+        """
+        from isac.memory.storage.tenant_bound import TenantBoundDB
+
+        db_path = self._db_path()
+        if db_path is None:
+            return None
+        return TenantBoundDB(
+            db_path, tenant_guard=self._tenant_guard, tenant_context=self._tenant_context
+        )
+
+    def _tenant_predicate(self) -> tuple[str, list[str]]:
+        """U0 Fix-85 / U4: episodes 表 UPDATE/DELETE 的租户谓词片段 + 参数。
+
+        委托 TenantBoundDB.predicate() (唯一实现): 隔离启用且非默认租户时返回
+        ``(" AND organization_id = ? AND tenant_id = ?", [org, tenant])``,
+        否则 ``("", [])`` —— 与 MetadataStore._tenant_scope/enforce 语义一致
+        (默认租户/未启用直通, 零行为变化)。UPDATE/SELECT 的读侧 U4 起改走
+        scoped() 子查询包裹; 本方法仅留给无法子查询包裹的 UPDATE 路径。
+        """
+        tdb = self._tenant_db()
+        if tdb is None:
+            return "", []
+        return tdb.predicate()
 
     def _sync_sparse(self, agent_id: str, item_id: str, content: str | None) -> None:
         """同步内存 BM25 索引: content=None 表示移除, 否则重建该文档 (CR3-L3)。
@@ -120,11 +162,19 @@ class MemoryGovernor:
         里的 {agent_id} 段形同摆设 —— 任何 agent_id 都能操作任意 item_id, 只要
         item 存在。加 agent_id 条件后, item 存在但属于别的 agent 时视为"不存在"
         (幂等语义: 返回 False, 不泄露"item 存在但属于别人"的信息)。
+
+        U0 Fix-85 / U4: 经 TenantBoundDB.scoped() 子查询包裹追加租户作用域 ——
+        item 存在但属于别的租户时同样视为"不存在", 拦截跨租户越权。
         """
-        async with aiosqlite.connect(db_path) as db:
-            cursor = await db.execute(
-                "SELECT 1 FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
-            )
+        tdb = self._tenant_db()
+        if tdb is None:
+            return False
+        query, params = tdb.scoped(
+            "SELECT id, organization_id, tenant_id FROM episodes WHERE id = ? AND agent_id = ?",
+            [item_id, agent_id],
+        )
+        async with tdb.connect() as db:
+            cursor = await db.execute(query, params)
             return await cursor.fetchone() is not None
 
     async def _write_audit(
@@ -137,30 +187,43 @@ class MemoryGovernor:
         operator: str = "",
         detail: str = "",
     ) -> None:
-        """写审计日志 (失败不阻塞主操作)。CR3-L5: 真实落 operator + agent_id。"""
+        """写审计日志 (失败不阻塞主操作)。CR3-L5: 真实落 operator + agent_id;
+        U4: 审计行打租户标 (memory_audit 已补租户列)。"""
+        tdb = self._tenant_db()
+        if tdb is None:
+            return
         try:
-            async with aiosqlite.connect(db_path) as db:
+            organization_id, tenant_id = tdb.row_values()
+            async with tdb.connect() as db:
                 await db.execute(
-                    "INSERT INTO memory_audit (audit_id, item_id, action, operator, agent_id, occurred_at, detail) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (uuid.uuid4().hex, item_id, action, operator, agent_id, int(time.time()), detail),
+                    "INSERT INTO memory_audit "
+                    "(audit_id, item_id, action, operator, agent_id, occurred_at, detail, "
+                    "organization_id, tenant_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (uuid.uuid4().hex, item_id, action, operator, agent_id, int(time.time()), detail,
+                     organization_id, tenant_id),
                 )
                 await db.commit()
         except Exception as exc:  # noqa: BLE001
             logger.warning("审计日志写入失败, 已忽略", action=action, item_id=item_id, error=str(exc))
 
     async def list_audit(self, item_id: str) -> list[dict[str, Any]]:
-        """读取某条目的审计历史 (供导出/排查)。无 store 时返回空列表。"""
-        db_path = self._db_path()
-        if db_path is None:
+        """读取某条目的审计历史 (供导出/排查)。无 store 时返回空列表。
+
+        U4: 经租户作用域读取 (跨租户审计记录不可见)。
+        """
+        tdb = self._tenant_db()
+        if tdb is None:
             return []
-        async with aiosqlite.connect(db_path) as db:
+        query, params = tdb.scoped(
+            "SELECT audit_id, item_id, action, operator, agent_id, occurred_at, detail, "
+            "organization_id, tenant_id "
+            "FROM memory_audit WHERE item_id = ? ORDER BY occurred_at ASC",
+            [item_id],
+        )
+        async with tdb.connect() as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT audit_id, item_id, action, operator, agent_id, occurred_at, detail "
-                "FROM memory_audit WHERE item_id = ? ORDER BY occurred_at ASC",
-                (item_id,),
-            )
+            cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
         return [
             {
@@ -178,12 +241,14 @@ class MemoryGovernor:
     async def freeze(self, item_id: str, agent_id: str, *, operator: str = "") -> bool:
         """冻结记忆条目 (不再自动更新); 幂等。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
+        tdb = self._tenant_db()
+        if db_path is None or tdb is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
-        async with aiosqlite.connect(db_path) as db:
+        pred, tparams = tdb.predicate()
+        async with tdb.connect() as db:
             await db.execute(
-                "UPDATE episodes SET frozen = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (int(time.time()), item_id, agent_id),
+                f"UPDATE episodes SET frozen = 1, updated_at = ? WHERE id = ? AND agent_id = ?{pred}",
+                (int(time.time()), item_id, agent_id, *tparams),
             )
             await db.commit()
         logger.info("记忆条目已冻结", item_id=item_id, agent_id=agent_id)
@@ -193,12 +258,14 @@ class MemoryGovernor:
     async def protect(self, item_id: str, agent_id: str, *, operator: str = "") -> bool:
         """保护记忆条目 (不被自动清理/覆盖); 幂等。无 store 或不属于 agent_id 返回 False。"""
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
+        tdb = self._tenant_db()
+        if db_path is None or tdb is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
-        async with aiosqlite.connect(db_path) as db:
+        pred, tparams = tdb.predicate()
+        async with tdb.connect() as db:
             await db.execute(
-                "UPDATE episodes SET protected = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (int(time.time()), item_id, agent_id),
+                f"UPDATE episodes SET protected = 1, updated_at = ? WHERE id = ? AND agent_id = ?{pred}",
+                (int(time.time()), item_id, agent_id, *tparams),
             )
             await db.commit()
         logger.info("记忆条目已保护", item_id=item_id, agent_id=agent_id)
@@ -211,17 +278,24 @@ class MemoryGovernor:
         无 store、不属于 agent_id 或条目已 frozen (不再自动更新, 与 delete() 对
         protected 的拒绝方式一致) 时返回 False。new_content 超长时截断
         (见 _MAX_CORRECTED_CONTENT_BYTES), 防止治理接口被当作任意大小文本载体。
+        U4: revision 行打租户标。
         """
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
+        tdb = self._tenant_db()
+        if db_path is None or tdb is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
         revision_id = uuid.uuid4().hex
         now = int(time.time())
         new_content = _truncate_content(new_content)
-        async with aiosqlite.connect(db_path) as db:
-            cursor = await db.execute(
-                "SELECT content, frozen, deleted FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
-            )
+        pred, tparams = tdb.predicate()
+        organization_id, tenant_id = tdb.row_values()
+        read_query, read_params = tdb.scoped(
+            "SELECT content, frozen, deleted, organization_id, tenant_id "
+            "FROM episodes WHERE id = ? AND agent_id = ?",
+            [item_id, agent_id],
+        )
+        async with tdb.connect() as db:
+            cursor = await db.execute(read_query, read_params)
             row = await cursor.fetchone()
             if row and row[1] == 1:
                 logger.info("记忆条目已冻结, 拒绝纠正", item_id=item_id)
@@ -229,13 +303,17 @@ class MemoryGovernor:
             old_content = row[0] if row else ""
             is_deleted = bool(row and row[2] == 1)
             await db.execute(
-                "INSERT INTO memory_revisions (revision_id, item_id, old_content, new_content, corrected_at, reason) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (revision_id, item_id, old_content, new_content, now, "correct"),
+                "INSERT INTO memory_revisions "
+                "(revision_id, item_id, old_content, new_content, corrected_at, reason, "
+                "organization_id, tenant_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (revision_id, item_id, old_content, new_content, now, "correct",
+                 organization_id, tenant_id),
             )
             await db.execute(
-                "UPDATE episodes SET content = ?, corrected_by = ?, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (new_content, revision_id, now, item_id, agent_id),
+                f"UPDATE episodes SET content = ?, corrected_by = ?, updated_at = ? "
+                f"WHERE id = ? AND agent_id = ?{pred}",
+                (new_content, revision_id, now, item_id, agent_id, *tparams),
             )
             await db.commit()
         logger.info("记忆条目已纠正", item_id=item_id, revision_id=revision_id)
@@ -260,19 +338,23 @@ class MemoryGovernor:
         不再污染存活项的 IDF/长度归一 (此前只有重启 warm_up 才能纠正)。
         """
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
+        tdb = self._tenant_db()
+        if db_path is None or tdb is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
-        async with aiosqlite.connect(db_path) as db:
-            cursor = await db.execute(
-                "SELECT protected FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
-            )
+        pred, tparams = tdb.predicate()
+        read_query, read_params = tdb.scoped(
+            "SELECT protected, organization_id, tenant_id FROM episodes WHERE id = ? AND agent_id = ?",
+            [item_id, agent_id],
+        )
+        async with tdb.connect() as db:
+            cursor = await db.execute(read_query, read_params)
             row = await cursor.fetchone()
             if row and row[0] == 1:
                 logger.info("记忆条目受保护, 拒绝删除", item_id=item_id)
                 return False
             await db.execute(
-                "UPDATE episodes SET deleted = 1, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (int(time.time()), item_id, agent_id),
+                f"UPDATE episodes SET deleted = 1, updated_at = ? WHERE id = ? AND agent_id = ?{pred}",
+                (int(time.time()), item_id, agent_id, *tparams),
             )
             await db.commit()
         logger.info("记忆条目已软删除", item_id=item_id, agent_id=agent_id)
@@ -287,16 +369,20 @@ class MemoryGovernor:
         CR3-L3: 恢复后把内容重新 add 回 BM25 内存索引 (delete 时已 remove)。
         """
         db_path = self._db_path()
-        if db_path is None or not await self._item_exists(db_path, item_id, agent_id):
+        tdb = self._tenant_db()
+        if db_path is None or tdb is None or not await self._item_exists(db_path, item_id, agent_id):
             return False
-        async with aiosqlite.connect(db_path) as db:
+        pred, tparams = tdb.predicate()
+        read_query, read_params = tdb.scoped(
+            "SELECT content, organization_id, tenant_id FROM episodes WHERE id = ? AND agent_id = ?",
+            [item_id, agent_id],
+        )
+        async with tdb.connect() as db:
             await db.execute(
-                "UPDATE episodes SET deleted = 0, frozen = 0, updated_at = ? WHERE id = ? AND agent_id = ?",
-                (int(time.time()), item_id, agent_id),
+                f"UPDATE episodes SET deleted = 0, frozen = 0, updated_at = ? WHERE id = ? AND agent_id = ?{pred}",
+                (int(time.time()), item_id, agent_id, *tparams),
             )
-            cursor = await db.execute(
-                "SELECT content FROM episodes WHERE id = ? AND agent_id = ?", (item_id, agent_id)
-            )
+            cursor = await db.execute(read_query, read_params)
             row = await cursor.fetchone()
             await db.commit()
         logger.info("记忆条目已恢复", item_id=item_id, agent_id=agent_id)
@@ -318,16 +404,18 @@ class MemoryGovernor:
         CR2-Fix-15: 此前一次性吐出该 Agent 全部记忆, 记忆量大时是无限量查询;
         加 limit/offset 分页 (默认 limit=500), 配合 offset 翻页取完, 保留
         "含软删除内容也导出"的既有合规/迁移设计不变。
+        U4: 经 scoped() 子查询包裹 (SELECT * 投影含租户列)。
         """
-        db_path = self._db_path()
-        if db_path is None:
+        tdb = self._tenant_db()
+        if tdb is None:
             return []
-        async with aiosqlite.connect(db_path) as db:
+        query, params = tdb.scoped(
+            "SELECT * FROM episodes WHERE agent_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+            [agent_id, max(1, int(limit)), max(0, int(offset))],
+        )
+        async with tdb.connect() as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM episodes WHERE agent_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
-                (agent_id, max(1, int(limit)), max(0, int(offset))),
-            )
+            cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
         items: list[MemoryItem] = []
         for row in rows:

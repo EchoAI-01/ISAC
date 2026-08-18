@@ -30,12 +30,16 @@ from typing import TYPE_CHECKING, Any
 
 from isac.channel.base import PlatformAdapter
 from isac.channel.model import ISACMessage, MessageSegment
+from isac.channel.text_chunk import chunk_text
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+# Fix-98: Discord 单条文本上限 (message content 2000 字符)
+_DISCORD_MAX_TEXT_CHARS = 2000
 
 
 class DiscordAdapter(PlatformAdapter):
@@ -53,6 +57,9 @@ class DiscordAdapter(PlatformAdapter):
         self._poll_task: asyncio.Task[Any] | None = None
         self._last_message_ids: dict[str, str] = {}  # channel_id -> last seen message id
         self._http_client: Any = None
+        # N5b 批次G: 缓存 Bot 自身 user_id, _to_isac_message 据此过滤自身发出的消息,
+        # 避免 REST polling 把 Bot 回复当入站消息重新 dispatch → 自回应死循环。
+        self._bot_user_id: str = ""
 
     @property
     def platform_name(self) -> str:
@@ -69,7 +76,10 @@ class DiscordAdapter(PlatformAdapter):
         me = await self._call_api("GET", "/users/@me")
         if me is None:
             raise RuntimeError("Discord bot_token 无效或网络异常")
-        logger.info("Discord Bot 已连接", bot_username=me.get("username"))
+        # N5b 批次G: 缓存 Bot 自身 user_id 用于过滤自身发出的消息 (REST polling 返回
+        # 频道内全部消息含 Bot 回复, 不过滤则回复被重新当入站 → 自回应死循环)。
+        self._bot_user_id = str(me.get("id", "") or "")
+        logger.info("Discord Bot 已连接", bot_username=me.get("username"), bot_user_id=self._bot_user_id)
         self._poll_task = asyncio.create_task(self._poll_loop())
 
     async def stop(self) -> None:
@@ -86,17 +96,28 @@ class DiscordAdapter(PlatformAdapter):
             self._http_client = None
 
     async def send(self, message: ISACMessage) -> bool:
-        """发送文本消息到 Discord channel。"""
+        """发送文本消息到 Discord channel。
+
+        Fix-98: Discord 单条上限 2000 字符, 超长整条提交 → 平台 400 → 回复静默
+        丢失。按上限分段发送 (优先换行边界); 任一段失败整体记 False 但继续发余下段。
+        """
         channel_id = message.group_id or message.user_id
         if not channel_id:
             logger.warning("Discord send 缺少 channel_id")
             return False
-        result = await self._call_api(
-            "POST",
-            f"/channels/{channel_id}/messages",
-            json_body={"content": message.content},
-        )
-        return result is not None
+        chunks = chunk_text(str(message.content or ""), _DISCORD_MAX_TEXT_CHARS)
+        if not chunks:
+            chunks = [""]
+        ok = True
+        for chunk in chunks:
+            result = await self._call_api(
+                "POST",
+                f"/channels/{channel_id}/messages",
+                json_body={"content": chunk},
+            )
+            if result is None:
+                ok = False
+        return ok
 
     async def _poll_loop(self) -> None:
         """轮询 watch_channels 拉新消息。"""
@@ -147,6 +168,10 @@ class DiscordAdapter(PlatformAdapter):
         if not msg_id:
             return None
         author = dc_message.get("author", {})
+        # N5b 批次G: 丢弃 Bot 自身发出的消息 (author.bot 标志或 id==bot_user_id),
+        # 否则 REST polling 把 Bot 回复当入站消息重新 dispatch → 自回应死循环。
+        if author.get("bot") or (self._bot_user_id and str(author.get("id", "")) == self._bot_user_id):
+            return None
         user_id = str(author.get("id", ""))
         user_name = author.get("username", "")
         content = str(dc_message.get("content", "") or "")

@@ -342,6 +342,48 @@ class TestScopeFiltering:
             chunks = list(resp.iter_text())
             assert "ADMIN-CAN-SEE-THIS" in chunks[0]
 
+    def test_session_cookie_caller_resolves_scopes(self) -> None:
+        """Fix-45: 浏览器 EventSource 无法发自定义 Header, WebUI 只靠会话 Cookie
+        认证 —— 此前 _resolve_caller_scopes 只看 Authorization 头, Cookie 客户端
+        拿到空 scope 集 → 全部事件被过滤, SSE 功能性失效。现按 Cookie 解出 token
+        再匹配 scope, 通配 Cookie 客户端应能看到事件。"""
+        from isac.control.auth import (
+            SESSION_COOKIE_NAME,
+            generate_session_secret,
+            make_token_only_dependency,
+            parse_token_scopes,
+            sign_session_cookie,
+        )
+
+        event_bus = EventBus()
+        secret = generate_session_secret()
+        parsed = parse_token_scopes({"tokens": [{"token": "admin", "scopes": ["*"]}]})
+
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        app.include_router(
+            routes_events.build_router(
+                event_bus,
+                auth_dependency=make_token_only_dependency(parsed, secret),
+                tokens=parsed,
+                session_secret=secret,
+            ),
+            prefix="/api/v1",
+        )
+        # 事件必须在 build_router 订阅之后发 (否则不进 state.buffer)
+        self._fire(event_bus, "model.usage_recorded", 7)
+        cookie_value = sign_session_cookie("admin", secret)
+        client = TestClient(app)
+        with client.stream(
+            "GET",
+            "/api/v1/events/stream?heartbeat_seconds=5&max_chunks=1",
+            cookies={SESSION_COOKIE_NAME: cookie_value},
+        ) as resp:
+            assert resp.status_code == 200
+            joined = "".join(resp.iter_text())
+            assert '"n": 7' in joined  # Cookie 客户端收到其 scope 允许的事件
+
     def test_create_control_app_wires_tokens_into_events_route(self) -> None:
         """回归防护: Fix-12 曾出现 server.py 解析出 scope 模型却没有真正传给
         路由 (auth_dependency 仍用扁平 api_token) 的接线遗漏; 这里直接走

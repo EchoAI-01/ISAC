@@ -8,10 +8,16 @@ Link 持久化由外部注入可选的 persist_callback (main.py 把 data/links.
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from isac.core.exceptions import InterAgentLinkDeniedError
+from isac.core.exceptions import (
+    InterAgentLinkDeniedError,
+    InterAgentRecursionError,
+    InterAgentTimeoutError,
+)
 from isac.runtime.config import AGENT_ID_PATTERN
 from isac.utils.logger import get_logger
 
@@ -22,6 +28,18 @@ DeliverFn = Callable[[str, "InterAgentMessage"], Awaitable[str | None]]
 # 持久化回调: 由 main.py 注入, 把当前 links 快照写入 data/links.jsonc。
 # 失败时回调内自行决定是抛异常还是仅记录日志 (CODE_REVIEW_REPORT.md #3/#20)。
 PersistFn = Callable[[], None] | None
+
+# Fix-111: 互联投递超时默认值 (秒)。目标 Agent 处理挂起时不得无限阻塞发起方
+# (A2A 工具跑在发起方 Loop 内, 占着会话锁与话轮)。可按部署调优。
+DEFAULT_SEND_TIMEOUT_SECONDS = 60.0
+# Fix-111: 互联嵌套深度上限。A 调 B、B 的处理过程再调 A……每层是一次完整的
+# handle_message + Loop, 无上限时可无限嵌套耗尽资源。8 层足够覆盖任何合理协作链。
+MAX_DELIVERY_DEPTH = 8
+# 投递深度沿"投递链"传播: bus.send 在 _deliver 期间把 depth+1 写入该 contextvar,
+# 投递处理内再发起的 bus.send 自然读到加深后的值 (无需经消息字段/会话状态中转)。
+_delivery_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "isac_a2a_delivery_depth", default=0
+)
 
 
 @dataclass
@@ -84,10 +102,21 @@ class InterAgentMessage:
 class InterAgentBus:
     """Agent 间通信总线。"""
 
-    def __init__(self, deliver: DeliverFn | None = None, persist: PersistFn = None):
+    def __init__(
+        self,
+        deliver: DeliverFn | None = None,
+        persist: PersistFn = None,
+        *,
+        send_timeout_seconds: float = DEFAULT_SEND_TIMEOUT_SECONDS,
+        max_delivery_depth: int = MAX_DELIVERY_DEPTH,
+    ):
         self._links: list[InterAgentLink] = []
         self._deliver = deliver
         self._persist = persist
+        # Fix-111: 投递超时与递归深度上限 (均可经构造调优; 非正值回落默认)。
+        # 超时下限 0.01s: 生产默认 60s, 极小值仅供测试注入慢投递快速触发超时。
+        self._send_timeout_seconds = max(0.01, float(send_timeout_seconds))
+        self._max_delivery_depth = max(1, int(max_delivery_depth))
 
     def set_deliver(self, deliver: DeliverFn) -> None:
         """注入投递回调 (由 main.py 接线)。"""
@@ -151,7 +180,13 @@ class InterAgentBus:
         notify 也真实投递, 只是忽略目标 Agent 的响应 (fire-and-forget 语义:
         不构造 response 消息返回); 投递失败的异常正常冒泡, 让调用方如实报告失败。
 
-        TODO: handoff 类型的会话摘要交接; 超时控制。
+        Fix-111: 补上两处此前缺失的防护 (原 TODO):
+        - **递归深度**: 投递深度经 contextvar 沿投递链传播 (send 在 _deliver 期间
+          depth+1), 超过 max_delivery_depth 抛 InterAgentRecursionError —— A↔B 互调
+          的嵌套链不再可能无限展开 (每层是一次完整 handle_message + Loop)。
+        - **投递超时**: _deliver 经 asyncio.wait_for 限时 (send_timeout_seconds),
+          超时抛 InterAgentTimeoutError 并取消投递任务 —— 目标 Agent 挂起时发起方
+          的 A2A 工具不再无限等待。
         """
         if not self.can_talk(message.from_agent, message.to_agent):
             logger.warning(
@@ -160,6 +195,20 @@ class InterAgentBus:
                 to_agent=message.to_agent,
             )
             raise InterAgentLinkDeniedError(f"Agent {message.from_agent} 无权与 {message.to_agent} 通信")
+
+        depth = _delivery_depth.get()
+        if depth >= self._max_delivery_depth:
+            logger.warning(
+                "互联递归深度超限, 拒绝投递",
+                from_agent=message.from_agent,
+                to_agent=message.to_agent,
+                depth=depth,
+                max_depth=self._max_delivery_depth,
+            )
+            raise InterAgentRecursionError(
+                f"Agent 互联嵌套深度超限 ({depth} >= {self._max_delivery_depth}): "
+                f"{message.from_agent} → {message.to_agent}"
+            )
 
         # MVP-Fix: 未显式传 trace_id 时从当前日志上下文继承 —— 一次跨 Agent
         # 协作的日志因此能与发起方的消息处理串联 (SPECIFICATION 2.10 / LOGGING.md)。
@@ -176,11 +225,33 @@ class InterAgentBus:
         )
         if self._deliver is None:
             return None
-        if message.type == "notify":
-            await self._deliver(message.to_agent, message)
-            return None
+        try:
+            # Fix-111: depth+1 覆盖整个投递窗口 —— 投递处理内部再发起的 bus.send
+            # (如 B 的处理里调 ask_agent 回 A) 读到的就是加深后的深度。
+            token = _delivery_depth.set(depth + 1)
+            try:
+                if message.type == "notify":
+                    await asyncio.wait_for(
+                        self._deliver(message.to_agent, message), timeout=self._send_timeout_seconds
+                    )
+                    return None
+                response_content = await asyncio.wait_for(
+                    self._deliver(message.to_agent, message), timeout=self._send_timeout_seconds
+                )
+            finally:
+                _delivery_depth.reset(token)
+        except TimeoutError as exc:
+            logger.warning(
+                "互联投递超时, 已取消投递任务",
+                from_agent=message.from_agent,
+                to_agent=message.to_agent,
+                timeout_seconds=self._send_timeout_seconds,
+            )
+            raise InterAgentTimeoutError(
+                f"Agent {message.from_agent} → {message.to_agent} 投递超时 "
+                f"({self._send_timeout_seconds}s)"
+            ) from exc
 
-        response_content = await self._deliver(message.to_agent, message)
         return InterAgentMessage(
             from_agent=message.to_agent,
             to_agent=message.from_agent,

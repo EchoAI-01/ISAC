@@ -22,7 +22,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from isac.utils.logger import get_logger
-from isac.utils.ssrf import SSRFBlockedError, validate_webhook_url
+from isac.utils.ssrf import SSRFBlockedError, redact_url, validate_webhook_url
 
 __all__ = [
     "DEFAULT_MAX_RETRIES",
@@ -68,6 +68,20 @@ class WebhookManager:
         self._http_client = http_client
         self._allow_local_urls = allow_local_urls
 
+    # Fix-80: 事件名以 CONTROL_PLANE_SPEC.md §5.1 目录为准。此前 dispatch 直接
+    # 发 EventBus 枚举值 ("post_message"/"post_send"), 与文档目录 (message.*)
+    # 不一致 —— 按文档订阅 message.responded 的接收方永远收不到推送。订阅/
+    # 派发两侧统一经 canonical_event 归一, 旧名订阅自动落到规范名上。
+    _LEGACY_EVENT_ALIASES: dict[str, str] = {
+        "post_message": "message.responded",  # 消息处理完成 (Agent 已回复)
+        "post_send": "message.sent",  # 回复发送完成
+    }
+
+    @classmethod
+    def canonical_event(cls, event: str) -> str:
+        """Fix-80: 旧 EventBus 枚举名 → 规范事件名 (规范名原样返回)。"""
+        return cls._LEGACY_EVENT_ALIASES.get(event, event)
+
     def subscribe(self, event: str, url: str) -> None:
         """订阅事件 → URL (经 SSRF 校验)。
 
@@ -82,20 +96,24 @@ class WebhookManager:
             parsed = urlparse(url)
             if parsed.scheme not in ("http", "https"):
                 raise SSRFBlockedError(f"Webhook URL scheme 必须是 http/https: {url}")
+        event = self.canonical_event(event)
         self._subscriptions.setdefault(event, []).append(url)
-        logger.info("Webhook 已订阅", event_name=event, url=url)
+        # Fix-109: 日志脱敏 (URL 可能内嵌 token); 存储/投递仍用原 URL。
+        logger.info("Webhook 已订阅", event_name=event, url=redact_url(url))
 
     def unsubscribe(self, event: str, url: str) -> None:
         """取消订阅。"""
+        event = self.canonical_event(event)
         urls = self._subscriptions.get(event, [])
         if url in urls:
             urls.remove(url)
-            logger.info("Webhook 已取消订阅", event_name=event, url=url)
+            logger.info("Webhook 已取消订阅", event_name=event, url=redact_url(url))
 
     def list_subscriptions(self, event: str | None = None) -> dict[str, list[str]]:
         """列出订阅清单 (event=None 返回全部)。"""
         if event is None:
             return {e: list(urls) for e, urls in self._subscriptions.items()}
+        event = self.canonical_event(event)
         return {event: list(self._subscriptions.get(event, []))}
 
     async def dispatch(self, event: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -103,6 +121,7 @@ class WebhookManager:
 
         返回 {url: "ok"/"failed: <error>"} 报告。
         """
+        event = self.canonical_event(event)
         urls = self._subscriptions.get(event, [])
         if not urls:
             return {}
@@ -131,7 +150,7 @@ class WebhookManager:
                 last_error = exc
                 logger.warning(
                     "Webhook 推送失败, 准备重试",
-                    url=url,
+                    url=redact_url(url),
                     attempt=attempt + 1,
                     error=str(exc),
                 )
@@ -168,5 +187,5 @@ class WebhookManager:
                 )
                 return 200 <= response.status_code < 300
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Webhook HTTP POST 异常", url=url, error=str(exc))
+            logger.warning("Webhook HTTP POST 异常", url=redact_url(url), error=str(exc))
             raise

@@ -1,5 +1,14 @@
 """中文 (默认) 语言包。"""
 
+# U3 门控词表 (i18n): 疑问/请求/征询 标记词。键集合须与各语言包一致
+# (drift test: tests/unit/test_u3_gating_strategy.py 校验键一致性)。
+# 中文词表自 isac/core/constants.py 迁入 (值不变, zh_CN 默认行为零变化)。
+GATING_MARKERS: dict[str, tuple[str, ...]] = {
+    "question": ("?", "？", "吗", "呢", "什么", "怎么", "为什么", "如何", "哪", "谁", "多少", "几"),
+    "request": ("请", "帮我", "帮忙", "能不能", "可以吗", "麻烦", "求"),
+    "consult": ("你觉得", "怎么看", "好不好", "行不行", "选哪个", "你说呢", "有没有建议", "给点建议"),
+}
+
 TEXTS: dict[str, str] = {
     "base_identity": "你是 ISAC，一个智能社交陪伴 AI。",
     "attention_drift.subtle": "漂移档位：轻微漂移。只在最近消息里出现非常自然的触发点时才短暂联想，立刻回到当前话题。",

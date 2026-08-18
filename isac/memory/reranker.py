@@ -22,9 +22,12 @@ class Reranker:
         config: dict[str, Any],
         *,
         provider: RerankerProvider | None = None,
+        usage_recorder: Any = None,
     ) -> None:
         self.config = config
         self._provider = provider
+        # R1-③: 多模态用量计量 (record_rerank); None 时 no-op。
+        self._usage_recorder = usage_recorder
 
     async def rerank(self, query: str, candidates: list[MemoryHit]) -> list[MemoryHit]:
         """对候选结果重排序。
@@ -40,12 +43,35 @@ class Reranker:
         except Exception:  # noqa: BLE001
             # 任何异常 (网络/解析) 都不阻塞主链路: 回退到原顺序
             return candidates
+        # R1-③: 计 rerank 用量 (model/provider 取 config, 与 pricing 对齐)
+        self._record_rerank(n_candidates=len(candidates))
         if len(scores) != len(candidates):
             return candidates
+        # Fix-65: 后处理也纳入降级保护 —— 脏分数 (None/字符串混杂) 会让 sort 抛
+        # TypeError 冒泡到 pipeline.search 外层 except → 整次检索返回 [] 而非
+        # 降级原序 (与"rerank 失败回退原顺序"承诺相悖)。先强制转 float, 不可
+        # 数值化的分数按 0.0 计; 整体转换异常则回退原顺序。
+        try:
+            numeric = [float(s) if s is not None else 0.0 for s in scores]
+        except (TypeError, ValueError):
+            return candidates
         # 按分数倒序排 (provider 返回相关性分数, 越大越相关)
-        paired = list(zip(candidates, scores, strict=False))
+        paired = list(zip(candidates, numeric, strict=False))
         paired.sort(key=lambda x: x[1], reverse=True)
         return [hit for hit, _ in paired]
+
+    def _record_rerank(self, *, n_candidates: int) -> None:
+        """R1-③: 计 rerank 用量。"""
+        if self._usage_recorder is None:
+            return
+        try:
+            self._usage_recorder.record_rerank(
+                model=str(self.config.get("model", "")),
+                provider=str(self.config.get("provider", "")),
+                n_candidates=n_candidates,
+            )
+        except Exception:  # noqa: BLE001 计量失败不阻塞检索
+            pass
 
     def is_available(self) -> bool:
         """注入了 Provider 视为可用。"""

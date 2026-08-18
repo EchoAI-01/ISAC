@@ -23,6 +23,7 @@ from isac.router.router import MessageRouter
 from isac.router.types import RoutingRules
 from isac.runtime.application import ApplicationRuntime
 from isac.runtime.config import AgentConfig
+from isac.runtime.services import ServiceContainer
 
 
 class _RecordingAgentManager:
@@ -136,10 +137,10 @@ class TestRegisterUsageLifecycle:
     @pytest.mark.asyncio
     async def test_start_opens_store_before_starting_periodic_flush(self) -> None:
         calls: list[str] = []
-        services = {
+        services = ServiceContainer({
             "usage_store": self._FakeStore(calls),
             "usage_recorder": self._FakeRecorder(calls),
-        }
+        })
         runtime = ApplicationRuntime()
         _register_usage_lifecycle(runtime, services)
 
@@ -154,10 +155,10 @@ class TestRegisterUsageLifecycle:
         """recorder.stop() (含最终 flush) 必须先于 store.stop() (关连接), 否则最后
         一批缓冲事件落库时连接已关闭。"""
         calls: list[str] = []
-        services = {
+        services = ServiceContainer({
             "usage_store": self._FakeStore(calls),
             "usage_recorder": self._FakeRecorder(calls),
-        }
+        })
         runtime = ApplicationRuntime()
         _register_usage_lifecycle(runtime, services)
 
@@ -169,7 +170,7 @@ class TestRegisterUsageLifecycle:
 
     def test_no_registration_when_usage_disabled(self) -> None:
         runtime = ApplicationRuntime()
-        _register_usage_lifecycle(runtime, {"usage_store": None})
+        _register_usage_lifecycle(runtime, ServiceContainer({"usage_store": None}))
         assert runtime._lifecycle == []
 
 
@@ -209,6 +210,35 @@ class TestRegisterLLMProvider:
 
         assert isinstance(provider, StubProvider)
 
+    def test_placeholder_api_key_falls_back_to_stub(self) -> None:
+        """T1: config.sample.jsonc 的占位符 "sk-your-key" 被当有效 key → 真实调用 401。
+        占位符检测把它视为未配置, 走 Stub + 引导去配, 不再静默 401。"""
+        manager = ProviderManager({})
+        register_llm_provider(
+            manager,
+            {"provider": "openai", "api_key": "sk-your-key", "model": "gpt-4o"},
+        )
+
+        provider = manager.for_agent(AgentConfig(agent_id="agent_a"))
+
+        assert isinstance(provider, StubProvider)
+
+    def test_placeholder_key_variants_all_fall_back_to_stub(self) -> None:
+        """T1: 各占位形态 (your-key/changeme/xxx/replace/example/placeholder) 均判占位。"""
+        from isac.utils.config_schema import is_placeholder_key
+
+        assert is_placeholder_key("sk-your-key")
+        assert is_placeholder_key("your-internal-key")
+        assert is_placeholder_key("changeme")
+        assert is_placeholder_key("replace-me-please")
+        assert is_placeholder_key("sk-EXAMPLE-1234")
+        assert is_placeholder_key("xxx")
+        assert is_placeholder_key("")
+        assert is_placeholder_key(None)
+        # 真实 key 不含占位子串, 不判占位
+        assert not is_placeholder_key("sk-proj-abc123def456ghi789")
+        assert not is_placeholder_key("sk-test")
+
     @pytest.mark.asyncio
     async def test_real_provider_config_degrades_gracefully_instead_of_silently_replying(
         self, monkeypatch: pytest.MonkeyPatch
@@ -217,8 +247,6 @@ class TestRegisterLLMProvider:
         但经 chat_with_retry() 兜底后仍能拿到降级回复, 而不是让异常冒泡崩溃消息链路。
         """
         import asyncio
-
-        from isac.provider.manager import DEGRADED_REPLY
 
         async def _instant_sleep(_seconds: float) -> None:
             return None
@@ -231,4 +259,8 @@ class TestRegisterLLMProvider:
 
         result = await manager.chat_with_retry(provider, system="s", messages=[])
 
-        assert result.content == DEGRADED_REPLY
+        # T4: 降级回复现在是可操作文案 (引用真实配置路径或友好提示), 而非固定泛化常量。
+        # OpenAICompatProvider 真实 HTTP 调用失败 (sk-test 连不上/占位), last_error 映射成
+        # "无法连接/鉴权失败/..." 等含配置路径的提示; 只要拿到非空可操作回复即通过。
+        assert result.content
+        assert result.content != ""

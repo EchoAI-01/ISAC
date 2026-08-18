@@ -10,11 +10,35 @@ from __future__ import annotations
 
 import ipaddress
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 
 class SSRFBlockedError(ValueError):
     """URL 被 SSRF 校验拒绝 (内网/链路本地/保留地址)。"""
+
+
+def redact_url(url: str) -> str:
+    """Fix-109: 日志/审计用的 URL 脱敏 (出站 URL 常内嵌凭据)。
+
+    webhook/回调投递地址常把 token 放在 query (?token=...) 或 userinfo (user:pass@)。
+    直接把这些 URL 写进审计/运行日志会把凭据泄进明文日志面。保留 scheme/host/path
+    (运维定位信息), 掩掉 userinfo 与全部 query 值。解析失败 → 返回占位符, 绝不回显
+    原值。真实投递仍用原 URL, 本函数仅供记录场景。放在 utils 层 (最底层), 供
+    control/webhooks 与 control/api 两侧复用, 避免两份实现漂移。
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "<invalid-url>"
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    if parts.username or parts.password:
+        host = f"***@{host}"
+    masked = f"{parts.scheme}://{host}{parts.path}" if parts.scheme else f"{host}{parts.path}"
+    if parts.query:
+        masked += "?***"
+    return masked
 
 
 _CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")

@@ -203,6 +203,94 @@ async def test_session_get_uses_index_not_scan() -> None:
     assert await mgr.get("nonexistent") is None
 
 
+@pytest.mark.asyncio
+async def test_session_concurrent_create_different_sessions_not_serialized() -> None:
+    """Fix-78: 不同会话的首次创建互不阻塞 —— per-key 锁只串行同一会话的
+    check-create (此前单一全局锁把所有会话连同 DB I/O 串成一条队列)。"""
+    from isac.gateway.session import SessionManager
+
+    mgr = SessionManager()
+
+    async def _create(uid: str) -> str:
+        msg = ISACMessage(
+            msg_id=f"m-{uid}", platform="fake", timestamp=int(time.time()),
+            user_id=uid, user_name=uid, group_id=None, content="hi",
+        )
+        s = await mgr.get_or_create(msg, agent_id="a")
+        return s.session_id
+
+    ids = await asyncio.gather(*[_create(f"u{i}") for i in range(30)])
+    assert len(set(ids)) == 30  # 每个会话独立 session_id
+
+    # 同一会话并发首触仍只创建一个 (per-key 锁保证)
+    same = await asyncio.gather(*[
+        mgr.get_or_create(
+            ISACMessage(
+                msg_id=f"s{i}", platform="fake", timestamp=int(time.time()),
+                user_id="shared", user_name="shared", group_id=None, content="hi",
+            ),
+            agent_id="a",
+        ) for i in range(8)
+    ])
+    assert len({s.session_id for s in same}) == 1
+
+
+@pytest.mark.asyncio
+async def test_session_persistence_roundtrips_platform_session_id_and_user_ids(tmp_path: Path) -> None:
+    """Fix-79: platform_session_id/user_ids 写穿并随重启 hydrate 恢复 ——
+    此前 schema 缺这两列, 重启后出站主动消息丢失平台路由键。"""
+    from isac.gateway.session import SessionManager
+
+    db = str(tmp_path / "sessions.db")
+    mgr = SessionManager({}, db_path=db)
+    msg = ISACMessage(
+        msg_id="m1", platform="webchat", timestamp=int(time.time()),
+        user_id="u1", user_name="u1", group_id=None, content="hi",
+        session_id="client-side-sess",
+    )
+    session = await mgr.get_or_create(msg, agent_id="a")
+    session.platform_session_id = "client-side-sess"
+    session.user_ids = {"webchat": "u1", "qq": "10001"}
+    key = mgr.make_session_key("a", "webchat", "u1", None)
+    await mgr._persist(session, key)  # noqa: SLF001
+
+    # 模拟重启: 新 manager 从库 hydrate
+    mgr2 = SessionManager({}, db_path=db)
+    restored = await mgr2._load_from_db(key)  # noqa: SLF001
+    assert restored is not None
+    assert restored.session_id == session.session_id
+    assert restored.platform_session_id == "client-side-sess"
+    assert restored.user_ids == {"webchat": "u1", "qq": "10001"}
+
+
+@pytest.mark.asyncio
+async def test_session_schema_migration_adds_columns_to_legacy_db(tmp_path: Path) -> None:
+    """Fix-79: 旧 schema 建的库 (无新列) 打开时自动 ALTER 补列, 不报错。"""
+    import aiosqlite
+
+    from isac.gateway.session import SessionManager
+
+    db = str(tmp_path / "legacy.db")
+    async with aiosqlite.connect(db) as raw:
+        await raw.execute(
+            "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, session_key TEXT NOT NULL, "
+            "user_id TEXT, agent_id TEXT, platform TEXT, group_id TEXT, is_group INTEGER, "
+            "created_at INTEGER, last_active INTEGER, state TEXT)"
+        )
+        await raw.commit()
+
+    mgr = SessionManager({}, db_path=db)
+    msg = ISACMessage(
+        msg_id="m1", platform="fake", timestamp=int(time.time()),
+        user_id="u1", user_name="u1", group_id=None, content="hi",
+    )
+    session = await mgr.get_or_create(msg, agent_id="a")  # 触发建表/迁移 + 写穿
+    assert session.session_id
+    # 再开一次验证迁移幂等 (duplicate column 静默跳过)
+    mgr2 = SessionManager({}, db_path=db)
+    assert await mgr2.get_or_create(msg, agent_id="a") is not None
+
+
 # ── SessionLockManager 引用计数回收 ─────────────────────
 
 
@@ -277,6 +365,40 @@ async def test_webchat_pending_replies_bounded() -> None:
     assert len(replies) == 3
     assert replies[0]["content"] == "reply-2"
     assert replies[2]["content"] == "reply-4"
+
+
+@pytest.mark.asyncio
+async def test_webchat_session_count_bounded() -> None:
+    """Fix-75: 会话**个数**也有上限 —— 海量随机 session_id 从不 poll 时,
+    字典不再无限增长 (先清过期, 仍超限逐出最久未回复的会话)。"""
+    from isac.channel.adapters.webchat.adapter import WebChatAdapter
+
+    adapter = WebChatAdapter({"max_sessions": 5, "max_message_age_seconds": 300})
+    for i in range(20):
+        await adapter.send(ISACMessage(
+            msg_id=f"m{i}", platform="webchat", timestamp=0,
+            user_id=f"u{i}", user_name=f"u{i}", group_id=None,
+            content=f"reply-{i}", session_id=f"sess-{i}",
+        ))
+    assert len(adapter._pending_replies) <= 5  # noqa: SLF001
+    # 最新的会话仍在 (逐出的是最旧的)
+    replies = await adapter.poll_replies("sess-19")
+    assert len(replies) == 1 and replies[0]["content"] == "reply-19"
+
+
+@pytest.mark.asyncio
+async def test_webchat_poll_removes_session_entry() -> None:
+    """Fix-75: poll 后条目删除而非置空列表 —— abandon 会话不以空列表永久驻留。"""
+    from isac.channel.adapters.webchat.adapter import WebChatAdapter
+
+    adapter = WebChatAdapter({})
+    await adapter.send(ISACMessage(
+        msg_id="m1", platform="webchat", timestamp=0,
+        user_id="u1", user_name="u1", group_id=None,
+        content="hi", session_id="sess-a",
+    ))
+    await adapter.poll_replies("sess-a")
+    assert "sess-a" not in adapter._pending_replies  # noqa: SLF001
 
 
 # ── bash kill 后 await proc.wait ─────────────────────────
@@ -359,3 +481,122 @@ async def test_read_file_only_reads_max_bytes(tmp_path: Path) -> None:
     assert not result.is_error
     # 内容长度应 <= MAX_READ_BYTES (截断)
     assert len(result.content) < MAX_READ_BYTES * 2
+
+
+# ── R5: SessionManager SQLite 持久化 + SecretStore 接入 ───────────────
+
+
+def _r5_msg(user_id: str = "u1") -> ISACMessage:
+    return ISACMessage(
+        msg_id="m", platform="fake", timestamp=int(time.time()),
+        user_id=user_id, user_name=user_id, group_id=None, content="hi",
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_persistence_restart_recovers_session_id(tmp_path: Path) -> None:
+    """R5: 重启后新实例同 db_path 恢复既有 session_id (不新建)。"""
+    from isac.gateway.session import SessionManager
+
+    db = str(tmp_path / "sessions.db")
+    mgr1 = SessionManager({}, db_path=db)
+    s1 = await mgr1.get_or_create(_r5_msg(), agent_id="a")
+    sid = s1.session_id
+    # 模拟重启: 新实例同 db_path, 内存缓存为空
+    mgr2 = SessionManager({}, db_path=db)
+    s2 = await mgr2.get_or_create(_r5_msg(), agent_id="a")
+    assert s2.session_id == sid  # 恢复既有 session_id, 未新建
+
+
+@pytest.mark.asyncio
+async def test_session_no_db_path_is_in_memory(tmp_path: Path) -> None:
+    """R5: 不传 db_path 时纯内存, 不创建 SQLite 文件 (向后兼容)。"""
+    from isac.gateway.session import SessionManager
+
+    mgr = SessionManager({})
+    await mgr.get_or_create(_r5_msg(), agent_id="a")
+    assert not (tmp_path / "sessions.db").exists()
+
+
+@pytest.mark.asyncio
+async def test_session_concurrent_no_double_create(tmp_path: Path) -> None:
+    """R5: 并发 get_or_create 同一会话不双创建 session_id (锁串行 check-then-create)。"""
+    from isac.gateway.session import SessionManager
+
+    mgr = SessionManager({}, db_path=str(tmp_path / "sessions.db"))
+    msg = _r5_msg()
+    s1, s2 = await asyncio.gather(
+        mgr.get_or_create(msg, agent_id="a"),
+        mgr.get_or_create(msg, agent_id="a"),
+    )
+    assert s1.session_id == s2.session_id
+
+
+@pytest.mark.asyncio
+async def test_session_close_deletes_from_db(tmp_path: Path) -> None:
+    """R5: close 后库行删除, 重启不再恢复。"""
+    from isac.gateway.session import SessionManager
+
+    db = str(tmp_path / "sessions.db")
+    mgr1 = SessionManager({}, db_path=db)
+    s = await mgr1.get_or_create(_r5_msg(), agent_id="a")
+    await mgr1.close(s.session_id)
+    mgr2 = SessionManager({}, db_path=db)
+    s2 = await mgr2.get_or_create(_r5_msg(), agent_id="a")
+    assert s2.session_id != s.session_id  # 旧的已 close 删除, 新建了新 session_id
+
+
+@pytest.mark.asyncio
+async def test_resolve_secret_plain_value_passthrough() -> None:
+    """R5: 非 secret: 前缀值原样返回。"""
+    from isac.utils.security import resolve_secret_async
+
+    assert await resolve_secret_async("sk-real-key", None) == "sk-real-key"
+    assert await resolve_secret_async("", None) == ""
+
+
+@pytest.mark.asyncio
+async def test_resolve_secret_secret_prefix_resolves(tmp_path: Path) -> None:
+    """R5: secret:<key> 前缀经 SecretStore 解密为真实值。"""
+    from isac.utils.security import SecretStore, resolve_secret_async
+
+    os.environ["ISAC_SECRET_KEY"] = base64.b64encode(b"0" * 32).decode()
+    try:
+        store = SecretStore(str(tmp_path / ".secrets.enc"))
+        await store.set("openai", "sk-from-store")
+        assert await resolve_secret_async("secret:openai", store) == "sk-from-store"
+    finally:
+        os.environ.pop("ISAC_SECRET_KEY", None)
+
+
+@pytest.mark.asyncio
+async def test_resolve_secret_store_none_falls_back(tmp_path: Path) -> None:
+    """R5: secret: 前缀但 store 为 None (未配 env) → 原值回退 + warning。"""
+    from isac.utils.security import resolve_secret_async
+
+    # store=None 模拟 ISAC_SECRET_KEY 未配置
+    assert await resolve_secret_async("secret:openai", None) == "secret:openai"
+
+
+@pytest.mark.asyncio
+async def test_resolve_secrets_in_config_scans_llm_and_multimodal(tmp_path: Path) -> None:
+    """R5: resolve_secrets_in_config 就地解析 llm.api_key + multimodal[].api_key。"""
+    from isac.utils.security import SecretStore, resolve_secrets_in_config
+
+    os.environ["ISAC_SECRET_KEY"] = base64.b64encode(b"0" * 32).decode()
+    try:
+        store = SecretStore(str(tmp_path / ".secrets.enc"))
+        await store.set("llm_key", "sk-llm")
+        await store.set("mm_key", "sk-mm")
+        config = {
+            "llm": {
+                "api_key": "secret:llm_key",
+                "model": "gpt-4o",
+                "multimodal": [{"kind": "image_gen", "api_key": "secret:mm_key"}],
+            }
+        }
+        await resolve_secrets_in_config(config, store)
+        assert config["llm"]["api_key"] == "sk-llm"
+        assert config["llm"]["multimodal"][0]["api_key"] == "sk-mm"
+    finally:
+        os.environ.pop("ISAC_SECRET_KEY", None)

@@ -62,12 +62,22 @@ class _MediaToolBase(Tool):
         provider = pm.multimodal_provider(descriptor.provider_id, descriptor.model_id)
         if provider is None:
             return ToolResult(content=_NO_PROVIDER, is_error=True)
+        import time
+
+        started = time.time()
         try:
-            return await self._call_provider(provider, context, artifact_store)
+            result = await self._call_provider(provider, context, artifact_store)
         except LLMError as exc:
+            _record_media_usage(self._operation, context, descriptor, status="failed", latency_ms=_ms(started))
             return ToolResult(content=f"模型调用失败: {exc.message}", is_error=True)
         except Exception as exc:  # noqa: BLE001
+            _record_media_usage(self._operation, context, descriptor, status="failed", latency_ms=_ms(started))
             return ToolResult(content=f"工具执行异常: {exc}", is_error=True)
+        # R1-③: 成功调用 provider 后计多模态用量 (传 provider_id/model_id 与 pricing 对齐)。
+        # _NOT_WIRED (video 等) 返回 is_error, 不计 (无真实 provider 调用)。
+        if not result.is_error:
+            _record_media_usage(self._operation, context, descriptor, status="success", latency_ms=_ms(started))
+        return result
 
     async def _call_provider(
         self,
@@ -85,8 +95,64 @@ def _format_artifact_refs(refs: list[ArtifactRef]) -> str:
         return "未生成任何制品"
     parts = []
     for ref in refs:
-        parts.append(f"artifact:{ref.artifact_id[:12]} (kind={ref.kind}, size={ref.size_bytes})")
+        # R1-①: 输出完整 artifact_id (此前 [:12] 截断, _send_reply 无法解析回完整 id)。
+        parts.append(f"artifact:{ref.artifact_id} (kind={ref.kind}, size={ref.size_bytes})")
     return "已生成制品: " + "; ".join(parts)
+
+
+def _ms(started: float) -> int:
+    """R1-③: 计算调用延迟 (毫秒)。"""
+    import time
+
+    return int((time.time() - started) * 1000)
+
+
+def _record_media_usage(
+    operation: str,
+    context: ToolContext,
+    descriptor: Any,
+    *,
+    status: str,
+    latency_ms: int,
+) -> None:
+    """R1-③: 媒体工具调用 provider 后计多模态用量 (传 provider_id/model_id 与 pricing 对齐)。
+
+    operation (工具 _operation) → recorder 方法映射:
+      image_gen→record_image_gen, video_gen/video_understand→record_video,
+      stt→record_stt, tts→record_tts。vision (vision_chat) 不在此计 (record_llm 已在
+      provider manager 接)。usage_recorder 经 context.services 取, None 时 no-op。
+    """
+    recorder = context.services.get("usage_recorder")
+    if recorder is None:
+        return
+    session = getattr(context.agent_context, "session", None)
+    agent_id = getattr(session, "agent_id", "") if session else ""
+    session_id = getattr(session, "session_id", "") if session else ""
+    model = str(getattr(descriptor, "model_id", "") or "")
+    provider = str(getattr(descriptor, "provider_id", "") or "")
+    try:
+        if operation == "image_gen":
+            recorder.record_image_gen(
+                model=model, provider=provider, status=status, latency_ms=latency_ms,
+                agent_id=agent_id, session_id=session_id,
+            )
+        elif operation == "stt":
+            recorder.record_stt(
+                model=model, provider=provider, status=status, latency_ms=latency_ms,
+                agent_id=agent_id, session_id=session_id,
+            )
+        elif operation == "tts":
+            recorder.record_tts(
+                model=model, provider=provider, status=status, latency_ms=latency_ms,
+                agent_id=agent_id, session_id=session_id,
+            )
+        elif operation in ("video_gen", "video_understand"):
+            recorder.record_video(
+                operation=operation, model=model, provider=provider, status=status,
+                latency_ms=latency_ms, agent_id=agent_id, session_id=session_id,
+            )
+    except Exception:  # noqa: BLE001 计量失败不阻塞工具返回
+        pass
 
 
 class GenerateImageTool(_MediaToolBase):
@@ -117,7 +183,13 @@ class GenerateImageTool(_MediaToolBase):
         self, provider: Any, context: ToolContext, artifact_store: Any
     ) -> ToolResult:
         prompt = str(context.args.get("prompt", ""))
-        n = int(context.args.get("n", 1) or 1)
+        # Fix-121: n 夹到 schema 声明的 [1,10] —— LLM 可能传 0/负数/超大值, 不夹则
+        # 0 张无意义调用、超大值触发批量生成造成成本/资源放大。非数字回落 1。
+        try:
+            n = int(context.args.get("n", 1) or 1)
+        except (TypeError, ValueError):
+            n = 1
+        n = max(1, min(n, 10))
         refs = await provider.generate(prompt, n=n)
         return ToolResult(content=_format_artifact_refs(refs), is_error=False)
 

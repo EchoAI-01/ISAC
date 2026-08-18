@@ -117,6 +117,10 @@ class ArtifactStore:
         self.ttl_days = ttl_days
         self._db_path = str(Path(root_dir) / "meta.db")
         self._initialized = False
+        # Fix-84: schema 初始化双重检查锁 —— 并发 put 同内容时多个协程同时看到
+        # _initialized=False, 各自开连接跑 executescript + PRAGMA journal_mode=WAL
+        # (切 WAL 要求无并发写事务), 与旁路 put 的写事务互撞触发 database is locked。
+        self._schema_lock = asyncio.Lock()
         self._ttl_task: asyncio.Task[Any] | None = None
         self._running = False
 
@@ -125,19 +129,22 @@ class ArtifactStore:
         await asyncio.to_thread(_ensure_dir_sync, Path(self.root_dir))
         if self._initialized:
             return
-        async with aiosqlite.connect(self._db_path) as db:
-            # Fix-28: metadata/vector/graph/usage 四处存储都设了 WAL, 本store 是
-            # 唯一遗漏的一个——journal_mode 是数据库文件级持久属性 (不像
-            # busy_timeout 是连接级, 只设一次即对该文件之后的所有连接生效),
-            # 这里只需在 schema 初始化这一次性代码路径设置。put/get/sweep_expired
-            # 各自开短连接, 不设 WAL 时默认走 rollback-journal, 写事务互斥更容易
-            # 在多模态制品并发写入量大时触发 database is locked。busy_timeout 不用
-            # 显式设置: aiosqlite.connect 透传 stdlib sqlite3 默认 timeout=5.0s,
-            # 与其它 store 显式设置的 busy_timeout=5000 等价。
-            await db.execute("PRAGMA journal_mode=WAL")
-            await db.executescript(SCHEMA_SQL)
-            await db.commit()
-        self._initialized = True
+        async with self._schema_lock:
+            if self._initialized:
+                return
+            async with aiosqlite.connect(self._db_path) as db:
+                # Fix-28: metadata/vector/graph/usage 四处存储都设了 WAL, 本store 是
+                # 唯一遗漏的一个——journal_mode 是数据库文件级持久属性 (不像
+                # busy_timeout 是连接级, 只设一次即对该文件之后的所有连接生效),
+                # 这里只需在 schema 初始化这一次性代码路径设置。put/get/sweep_expired
+                # 各自开短连接, 不设 WAL 时默认走 rollback-journal, 写事务互斥更容易
+                # 在多模态制品并发写入量大时触发 database is locked。busy_timeout 不用
+                # 显式设置: aiosqlite.connect 透传 stdlib sqlite3 默认 timeout=5.0s,
+                # 与其它 store 显式设置的 busy_timeout=5000 等价。
+                await db.execute("PRAGMA journal_mode=WAL")
+                await db.executescript(SCHEMA_SQL)
+                await db.commit()
+            self._initialized = True
 
     @staticmethod
     def _compute_artifact_id(data: bytes) -> str:
@@ -182,12 +189,29 @@ class ArtifactStore:
         exp = self._compute_expires_at(expires_at)
         meta_json = json.dumps(metadata or {}, ensure_ascii=False)
         async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            # Fix-69: 同内容制品 (sha256 相同) 保留**首次**登记的行 —— 此前
+            # INSERT OR REPLACE 让第二个 put (kind/mime/metadata/TTL 不同) 覆盖
+            # DB 行: ① 第一个 ArtifactRef 的 kind/mime/metadata/expires_at 被篡改;
+            # ② TTL sweep 按覆盖后的短 TTL 把共享文件删掉, 两个引用同时失效。
+            # 文件字节本就相同 (内容寻址), kind/mime/metadata 以首次登记为准。
+            # Fix-102: 但 expires_at 须**只延长不缩短** —— 此前 INSERT OR IGNORE
+            # 连 TTL 也保留首次值, 首次注册的短 TTL 过期后 (sweep 未及清扫) 再次 put
+            # 同内容拿到的 ref 已过期, 下次 get 直接删文件。用 ON CONFLICT DO UPDATE
+            # 把 expires_at 取两者较长: 0=永不过期优先 (任一为 0 结果即 0), 否则取大。
+            # 并发 put 撞 UNIQUE 由 ON CONFLICT 天然收口 (SQLite 写串行), 统一走
+            # "回读 DB 行构造 ref"一条路径。
             await db.execute(
                 """
-                INSERT OR REPLACE INTO artifacts (
+                INSERT INTO artifacts (
                     artifact_id, kind, mime_type, size_bytes, duration_seconds,
                     created_at, expires_at, uri, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(artifact_id) DO UPDATE SET
+                    expires_at = CASE
+                        WHEN artifacts.expires_at = 0 OR excluded.expires_at = 0 THEN 0
+                        ELSE MAX(artifacts.expires_at, excluded.expires_at)
+                    END
                 """,
                 (
                     artifact_id, kind, mime_type, len(data), duration_seconds,
@@ -195,16 +219,24 @@ class ArtifactStore:
                 ),
             )
             await db.commit()
+            cursor = await db.execute(
+                "SELECT artifact_id, kind, mime_type, size_bytes, duration_seconds, "
+                "created_at, expires_at, uri, metadata FROM artifacts WHERE artifact_id = ?",
+                (artifact_id,),
+            )
+            row = await cursor.fetchone()
+        if row is None:  # pragma: no cover - INSERT OR IGNORE 后必能回读到行
+            raise RuntimeError(f"ArtifactStore 写入后回读失败: {artifact_id}")
         return ArtifactRef(
-            artifact_id=artifact_id,
-            kind=kind,
-            mime_type=mime_type,
-            uri=str(file_path),
-            size_bytes=len(data),
-            duration_seconds=duration_seconds,
-            created_at=now,
-            expires_at=exp,
-            metadata=metadata or {},
+            artifact_id=str(row["artifact_id"]),
+            kind=str(row["kind"]),
+            mime_type=str(row["mime_type"] or ""),
+            uri=str(row["uri"]),
+            size_bytes=int(row["size_bytes"] or 0),
+            duration_seconds=float(row["duration_seconds"] or 0.0),
+            created_at=int(row["created_at"] or 0),
+            expires_at=int(row["expires_at"] or 0),
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
         )
 
     async def get(self, artifact_id: str) -> bytes | None:
@@ -232,6 +264,44 @@ class ArtifactStore:
                 await self._delete_artifact(db, artifact_id)
                 await db.commit()
         return got
+
+    async def get_ref(self, artifact_id: str) -> ArtifactRef | None:
+        """R1-①: 查 artifacts 表构造 ArtifactRef (供 MediaResolver 转 segment 发送)。
+
+        不读取二进制 (只取 kind/mime_type/uri/size_bytes/duration/metadata 元数据);
+        不存在/已过期返回 None (过期行一并清理, 仿 get)。
+        """
+        await self._ensure_schema()
+        now = int(time.time())
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                "SELECT kind, mime_type, uri, size_bytes, duration_seconds, expires_at, metadata "
+                "FROM artifacts WHERE artifact_id = ?",
+                (artifact_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return None
+            exp = row[5]
+            if exp > 0 and exp < now:
+                await self._delete_artifact(db, artifact_id)
+                await db.commit()
+                return None
+            import json as _json
+
+            try:
+                meta = _json.loads(row[6]) if row[6] else {}
+            except (ValueError, TypeError):
+                meta = {}
+        return ArtifactRef(
+            artifact_id=artifact_id,
+            kind=str(row[0] or "file"),
+            mime_type=str(row[1] or ""),
+            uri=str(row[2] or ""),
+            size_bytes=int(row[3] or 0),
+            duration_seconds=float(row[4] or 0.0),
+            metadata=meta,
+        )
 
     async def _delete_artifact(self, db: aiosqlite.Connection, artifact_id: str) -> None:
         """删 DB 行 + 对应磁盘文件 (文件不存在时静默)。"""

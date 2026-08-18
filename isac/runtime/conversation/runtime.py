@@ -242,3 +242,15 @@ class ConversationRuntime:
         new = self.message_cache[self.last_processed_index :]
         self.last_processed_index = len(self.message_cache)
         return new
+
+    def rewind_processed(self, count: int) -> None:
+        """Fix-57: 把已处理指针回拨 count 条 (下限 0, 负数/0 无操作)。
+
+        被打断 (interrupted) 的回合回复被抑制、也不写记忆; 若 drain 指针已越过
+        该回合的输入, 这些消息将永远不会被任何回合再取到 —— 用户消息三方皆失
+        (无回复、无记忆、未并入接替回合)。回拨让接替回合 (触发打断的新消息的
+        回合) 重新 drain 到这段 burst 并合并处理。
+        """
+        if count <= 0:
+            return
+        self.last_processed_index = max(0, self.last_processed_index - count)

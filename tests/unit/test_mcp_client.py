@@ -107,7 +107,7 @@ class TestMCPClientHTTPFlow:
         client._connected = True
         tools = await client.list_tools()
         assert len(tools) == 2
-        assert tools[0].name == "search"
+        assert tools[0].name == "mcp:server1:search"
         assert tools[0].description == "搜索"
         assert isinstance(tools[0], MCPToolBridge)
 
@@ -278,8 +278,8 @@ class TestMCPToolBridge:
             }
         })
         client._connected = True
-        bridge = MCPToolBridge(client, "my_tool", "描述", {"type": "object"})
-        assert bridge.name == "my_tool"
+        bridge = MCPToolBridge(client, "server1", "my_tool", "描述", {"type": "object"})
+        assert bridge.name == "mcp:server1:my_tool"
         assert bridge.description == "描述"
         result = await bridge.execute(_make_tool_context({"x": 1}))
         assert result.is_error is False

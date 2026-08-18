@@ -33,12 +33,29 @@ class ConfigValidationError(ValueError):
 # 会被 pydantic 拒绝并在启动期抛 ConfigValidationError 崩溃——而历史行为 (加
 # schema 校验之前) 对这些字段一律按 falsy/未配置处理, 完全无害。
 _CONTROL_FIELD_DEFAULTS: dict[str, Any] = {
-    "enabled": False,
+    "enabled": True,
     "host": "127.0.0.1",
     "port": 8765,
     "api_token": "",
     "tokens": [],
+    "cors": {},
+    "setup_enabled": True,
 }
+
+
+class CorsConfig(BaseModel):
+    """前后端分离的 CORS 配置 (FE1, DEVELOPMENT_PLAN.md §四 FE1)。
+
+    origins 默认空 = 不加 CORSMiddleware (同源部署或纯 API 网关场景, 零行为变化)。
+    配置非空时, 对这些前端 origin 放开跨源请求 + allow_credentials=True (供分离
+    部署的 WebUI 用 Session Cookie); 此时 Session Cookie 的 SameSite 从 strict
+    降为 lax (跨源可带)。生产推荐同源反代 (前端与 API 同 origin), 无需配置本字段。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    origins: list[str] = Field(default_factory=list)
+    allow_credentials: bool = True
 
 
 class ControlConfig(BaseModel):
@@ -46,13 +63,15 @@ class ControlConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    enabled: bool = False
+    enabled: bool = True
     host: str = "127.0.0.1"
     port: int = Field(default=8765, ge=1, le=65535)
     api_token: str = ""
     tokens: list[Any] = Field(default_factory=list)
+    cors: CorsConfig = Field(default_factory=CorsConfig)
+    setup_enabled: bool = True
 
-    @field_validator("enabled", "host", "port", "api_token", "tokens", mode="before")
+    @field_validator("enabled", "host", "port", "api_token", "tokens", "cors", "setup_enabled", mode="before")
     @classmethod
     def _none_means_unset(cls, v: Any, info: ValidationInfo) -> Any:
         """显式 null 等价于该字段未配置, 落回默认值; 其余非法值 (类型错/越界)
@@ -96,7 +115,9 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         raise ConfigValidationError(f"配置校验失败: {details}") from exc
 
     control = model.control
-    if control.enabled and not control.api_token and not control.tokens:
+    # T3-backend: setup_enabled=true 时首登强制设密码 (admin 端点 428 直到 setup),
+    # 视为已有认证保护, 不再 CRITICAL; 仅"启用 control 但既无凭证又无 setup"才告警。
+    if control.enabled and not control.api_token and not control.tokens and not control.setup_enabled:
         logger.critical(
             "控制面已启用但未配置认证 (api_token 与 tokens[] 均为空) — 所有 Admin API "
             "(Agent 管理/配置编辑/记忆治理/插件加载) 将无认证暴露。生产部署必须配置 "
@@ -105,3 +126,38 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
             control_port=control.port,
         )
     return config
+
+
+# T1: 占位符 api_key 检测。config.sample.jsonc 的 llm.api_key 默认值 "sk-your-key"
+# 此前被 register_llm_provider 当作有效 key (只检查非空), 真实调用 OpenAI 接口
+# 永远 401, 用户看到"发消息收不到回复"且日志无明显错误。这些子串覆盖 sample 里的
+# 占位形态 ("sk-your-key" / "your-internal-key") 与常见占位习惯 ("changeme" / "xxx"
+# / "replace_me" / "example")。命中即视为未配置 → 走 StubProvider + 引导去配。
+_PLACEHOLDER_KEY_MARKERS: tuple[str, ...] = (
+    "sk-your",
+    "your-key",
+    "your-internal-key",
+    "changeme",
+    "replace",
+    "example",
+    "placeholder",
+    "xxx",
+    "todo",
+    "fill-in",
+    "fillme",
+)
+
+
+def is_placeholder_key(api_key: str | None) -> bool:
+    """判断 api_key 是否为占位符 (非真实 key)。
+
+    空/None → True (未配置); 命中占位子串 → True; 否则 False。
+    小写匹配, 避免 "sk-Your-Key" 漏判。
+
+    不用长度阈值: 测试用 key 如 "sk-test" (7 字符) 不含占位子串, 应视为真实 key;
+    真实 key 短于 8 字符极罕见但并非不可, 长度阈值会误伤。
+    """
+    if not api_key:
+        return True
+    lowered = api_key.strip().lower()
+    return any(marker in lowered for marker in _PLACEHOLDER_KEY_MARKERS)

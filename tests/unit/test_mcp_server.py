@@ -186,6 +186,46 @@ class TestToolCall:
         assert "error" in response
         assert response["error"]["code"] == -32602
 
+    @pytest.mark.asyncio
+    async def test_channel_bind_and_unbind(self, mcp_server) -> None:
+        """R2-④: channel_bind_agent + channel_unbind_agent 操作 RoutingRules.bindings。"""
+        params = {"meta": {"authorization": "Bearer mcp-secret"}, "name": "", "arguments": {}}
+        for tool in ("channel_bind_agent",):
+            p = {**params, "name": tool, "arguments": {"platform": "webchat", "agent_id": "a1"}}
+            resp = await mcp_server._handle_request({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": p})
+            result = json.loads(resp["result"]["content"][0]["text"])
+            assert result["status"] == "bound"
+        rules = mcp_server._router.get_rules()
+        assert any(b.platform == "webchat" and b.agent_id == "a1" for b in rules.bindings)
+        # unbind
+        p = {**params, "name": "channel_unbind_agent", "arguments": {"platform": "webchat", "agent_id": "a1"}}
+        resp = await mcp_server._handle_request({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": p})
+        result = json.loads(resp["result"]["content"][0]["text"])
+        assert result["status"] == "unbound"
+        assert result["removed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_plugin_set_enabled(self, mcp_server, tmp_path, monkeypatch) -> None:
+        """R2-④: plugin_set_enabled 调整 plugins_allow/deny 并持久化。"""
+        from isac.runtime.config import AgentConfig
+
+        cfg = AgentConfig(agent_id="r2plug", display_name="R2")
+        # chdir 到 tmp_path, 让工具内 save_agent_config 的 "data/agents" 相对路径落到临时目录
+        monkeypatch.chdir(tmp_path)
+        await mcp_server._agent_manager.create(cfg)
+        resp = await mcp_server._handle_request({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"meta": {"authorization": "Bearer mcp-secret"}, "name": "plugin_set_enabled",
+                       "arguments": {"agent_id": "r2plug", "plugins_allow": ["p1"], "plugins_deny": ["bad"]}},
+        })
+        result = json.loads(resp["result"]["content"][0]["text"])
+        assert result["status"] == "updated"
+        inst = await mcp_server._agent_manager.get("r2plug")
+        assert inst.config.plugins_allow == ["p1"]
+        assert inst.config.plugins_deny == ["bad"]
+        # 持久化文件已写 (含自增 revision)
+        assert (tmp_path / "data" / "agents" / "r2plug" / "config.jsonc").exists()
+
 
 class TestNotification:
     @pytest.mark.asyncio
@@ -353,3 +393,123 @@ class TestScopeModel:
         )
         assert "result" in response
 
+
+
+# ── Fix-42/43: 认证一致性 (tokens[] scope 接线 + 无凭证 fail-closed) ──
+
+
+@pytest.mark.asyncio
+async def test_tools_call_fail_closed_without_credentials() -> None:
+    """Fix-43: api_token 与 tokens[] 均未配置时, tools/call 必须拒绝 ——
+    此前认证条件 (api_token or parsed_tokens) 为假时整段跳过 → 零认证执行。"""
+    server = ISACMCPServer(services={})
+    resp = await server._handle_request({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "agent_create", "arguments": {}},
+    })
+    assert resp is not None and "error" in resp
+    assert resp["error"]["code"] == -32001
+
+
+@pytest.mark.asyncio
+async def test_tools_call_scope_enforced_with_parsed_tokens(tmp_path) -> None:
+    """Fix-42: main 接线传入 parsed_tokens 后, tokens[] scope 模型对 MCP 生效 ——
+    usage:read 窄 scope token 调 agent_create (需 agent:write) → Forbidden。"""
+    from isac.control.auth import TokenScope
+
+    services = {
+        "global_config": {},
+        "provider_manager": _StubProviderManager(),
+        "memory_factory": lambda namespace: _StubMemory(namespace),
+    }
+    agent_manager = AgentManager(services)
+    server = ISACMCPServer(
+        services=services,
+        parsed_tokens=[TokenScope(token="scoped-tok", scopes=frozenset({"usage:read"}))],
+        agent_manager=agent_manager,
+    )
+    resp = await server._handle_request({
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {
+            "name": "agent_create", "arguments": {},
+            "meta": {"authorization": "Bearer scoped-tok"},
+        },
+    })
+    assert resp is not None and "error" in resp
+    assert resp["error"]["code"] == -32003  # Forbidden: missing scope agent:write
+    # 未带 token 同样拒绝
+    resp2 = await server._handle_request({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "agent_create", "arguments": {}},
+    })
+    assert resp2 is not None and resp2["error"]["code"] == -32001
+
+
+# ── Fix-93: MCP 写工具审计留痕 ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mcp_write_tools_are_audited(tmp_path) -> None:
+    """Fix-93: MCP 写工具 (agent_create 等) 成功后必须经 AuditLog 留痕 ——
+    此前 11 个写工具完全绕过审计, MCP 通道成为无追溯的写后门。"""
+    from isac.control.audit import AuditLog
+
+    services = {
+        "global_config": {},
+        "provider_manager": _StubProviderManager(),
+        "memory_factory": lambda namespace: _StubMemory(namespace),
+    }
+    agent_manager = AgentManager(services)
+    audit_log = AuditLog(log_path=str(tmp_path / "audit.ndjson"))
+    server = ISACMCPServer(
+        services=services,
+        api_token="mcp-secret",
+        agent_manager=agent_manager,
+        audit_log=audit_log,
+    )
+    resp = await server._handle_request({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {
+            "name": "agent_create",
+            "arguments": {"agent_id": "audited-agent", "display_name": "A"},
+            "meta": {"authorization": "Bearer mcp-secret"},
+        },
+    })
+    assert resp is not None and "result" in resp
+    # 审计已记录: action=agent_create, target=agent_id, method=MCP
+    entries = audit_log.query(action="agent_create")
+    assert entries and entries[0]["target"] == "audited-agent"
+    assert entries[0]["method"] == "MCP"
+    assert entries[0]["actor"].startswith("mcp:")
+
+
+@pytest.mark.asyncio
+async def test_mcp_audit_failure_does_not_block_tool(tmp_path) -> None:
+    """Fix-93: 审计写入异常不得阻塞已成功的工具结果返回。"""
+    services = {
+        "global_config": {},
+        "provider_manager": _StubProviderManager(),
+        "memory_factory": lambda namespace: _StubMemory(namespace),
+    }
+    agent_manager = AgentManager(services)
+
+    class _BrokenAudit:
+        async def record(self, **kwargs):
+            raise RuntimeError("audit backend down")
+
+    server = ISACMCPServer(
+        services=services,
+        api_token="mcp-secret",
+        agent_manager=agent_manager,
+        audit_log=_BrokenAudit(),
+    )
+    resp = await server._handle_request({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {
+            "name": "agent_create",
+            "arguments": {"agent_id": "still-works", "display_name": "A"},
+            "meta": {"authorization": "Bearer mcp-secret"},
+        },
+    })
+    # 审计挂了但工具结果正常返回
+    assert resp is not None and "result" in resp

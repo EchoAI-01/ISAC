@@ -21,21 +21,43 @@ class EmbeddingManager:
         config: dict[str, Any],
         *,
         provider: EmbeddingProvider | None = None,
+        usage_recorder: Any = None,
     ) -> None:
         self.config = config
         self._provider = provider
+        # R1-③: 多模态用量计量 (record_embed); None 时 no-op。
+        self._usage_recorder = usage_recorder
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """批量向量化; 未注入 Provider 时返回空 (触发降级)。"""
         if self._provider is None:
             return []
-        return await self._provider.embed(texts)
+        result = await self._provider.embed(texts)
+        self._record_embed(n_texts=len(texts))
+        return result
 
     async def embed_query(self, query: str) -> list[float]:
         """查询向量化; 未注入 Provider 时返回空。"""
         if self._provider is None:
             return []
-        return await self._provider.embed_query(query)
+        result = await self._provider.embed_query(query)
+        self._record_embed(n_texts=1)
+        return result
+
+    def _record_embed(self, *, n_texts: int) -> None:
+        """R1-③: 计 embedding 用量 (model/provider 取 config, 与 pricing 对齐)。"""
+        if self._usage_recorder is None:
+            return
+        try:
+            dim = self._provider_dim()
+            self._usage_recorder.record_embed(
+                model=str(self.config.get("model", "")),
+                provider=str(self.config.get("provider", "")),
+                n_texts=n_texts,
+                dim=dim,
+            )
+        except Exception:  # noqa: BLE001 计量失败不阻塞检索
+            pass
 
     def get_fingerprint(self) -> dict:
         """返回模型指纹。"""
