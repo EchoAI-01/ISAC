@@ -157,7 +157,8 @@ class ProgressEvent:
     task_id: str
     agent_id: str
     session_id: str
-    # "planned" | "tool_started" | "tool_finished" | "tool_failed" | "completed" | "interrupted"
+    # "planned" | "tool_started" | "tool_finished" | "tool_failed" | "completed"
+    # | "interrupted" | "budget_exhausted" (Fix-119: 预算耗尽收尾)
     stage: str
     tool_name: str | None = None
     summary: str = ""  # 已脱敏的事实摘要

@@ -185,6 +185,10 @@ class ISACAgentLoop:
             if context.should_compress():
                 await self.hooks.fire(AgentHookPoint.COMPRESS, messages, context)
 
+        # Fix-119: 预算耗尽退出前发终态进度事件 —— 此前该路径直接静默返回, 已报告
+        # 过 planned 的多步任务在用户侧"无声消失" (无 completed/interrupted 收尾)。
+        # budget_exhausted 属任务级终态 (progress.py), 同样触发任务收束清理。
+        await self._emit_progress_if_task_started(context, reported_task_progress, "budget_exhausted")
         return AgentResult(stopped_by_budget=True)
 
     def _interrupt_seq(self, context: AgentContext) -> int:

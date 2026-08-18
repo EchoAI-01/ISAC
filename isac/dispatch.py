@@ -238,6 +238,13 @@ async def _apply_mesh_routing(
     from isac.runtime.mesh.router import MeshRouter
 
     mesh_decision = MeshRouter(agent_roles=roles).to_mesh_decision(decision)
+    # Fix-113: session_mgr.get_or_create 会把 message.session_id 改写为**它创建/
+    # 恢复的那个会话**的内部 id (副作用)。下方 observer/candidate 各自 get_or_create
+    # 后, message.session_id 停留在最后一个 observer/candidate 的会话 id 上 ——
+    # 仲裁未切换回复者时, 主链路 (handle_message/出站/事件流) 会带着别人的会话 id
+    # 继续处理 primary 的消息。进入 mesh 路由前先快照 primary 的会话 id, 退出时还原
+    # (仲裁切换路径由调用方对 final_agent 重新 get_or_create, 再次改写是预期行为)。
+    primary_session_id = message.session_id
     # observer 旁听: 后台并发写各自记忆, 不阻塞 primary 回复 (R2-3)。get_or_create
     # 是内存操作可直接 await; 真正耗时的 observe_message (store_episode 可能含
     # embedding 调用) 派生为后台任务, 由 AgentManager._memory_tasks 承接并在优雅
@@ -246,6 +253,7 @@ async def _apply_mesh_routing(
         observer_session = await session_mgr.get_or_create(message, agent_id=observer_id)
         agent_manager.schedule_observe_message(observer_id, message, observer_session, profile)
     if not mesh_decision.candidate_agent_ids:
+        message.session_id = primary_session_id
         return decision.agent_id
     # 候选仲裁: primary 与各候选各自评分 (纯启发式, 不调 LLM)
     scores: dict[str, float] = {
@@ -261,6 +269,7 @@ async def _apply_mesh_routing(
         logger.info(
             "Mesh 仲裁改写回复者", primary=decision.agent_id, winner=winner, reason=mesh_decision.reason
         )
+    message.session_id = primary_session_id
     return winner or decision.agent_id
 
 

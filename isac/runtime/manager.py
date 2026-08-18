@@ -999,6 +999,10 @@ class AgentManager:
         finally 才解除, notify_incoming 仍会 request_interrupt) —— 否则下一回合被
         InterruptInjector 注入"上一轮被打断"的错误提示; loop 自身被打断
         (interrupted=True) 时保留, 交由接替回合的 Injector 正常消费。
+        Fix-116: 会话锁获取移入 try —— 此前取锁 await 在 try 之外, 预约到租约后
+        若在取锁阶段异常/被取消, finally 的 cancel 不在执行路径上, 租约泄漏到
+        hold 超时 (期间该会话写入面被一个永不提交也不取消的幽灵租约挡住)。
+        Fix-115: 正常完成且租约有效时把产出落 U1 事件 (见 _record_forced_turn_events)。
         """
         import time as _time
 
@@ -1011,11 +1015,12 @@ class AgentManager:
 
         lock_mgr = self._services.get("session_lock")
         lock_key = f"{session.platform}:{session.user_id or 'unknown'}:{session.group_id or 'private'}"
-        lock = await lock_mgr.acquire(lock_key) if lock_mgr is not None else None
+        lock = None  # Fix-116: 取锁移入 try, lock/acquired 预置供 finally 判定
         acquired = False
         turn_owns_state = False  # Fix-81: 仅当本协程设置过 forced_turn/THINKING 才复位
         try:
-            if lock is not None:
+            if lock_mgr is not None:
+                lock = await lock_mgr.acquire(lock_key)
                 await lock.acquire()
                 acquired = True
             if runtime is not None:
@@ -1042,6 +1047,10 @@ class AgentManager:
                         )
                     else:
                         instance.gating.get_turn_scheduler(session.session_id).record_reply()
+                        # Fix-115: 产出落 U1 事件流 (在推送前, 推送失败不丢事件)。
+                        await self._record_forced_turn_events(
+                            instance, agent_context.current_message, content, result.content
+                        )
                         await self._send_proactive_reply(instance, session, result.content)
         except Exception:  # noqa: BLE001
             logger.error("强制话轮执行异常", task_id=task.task_id, exc_info=True)
@@ -1051,6 +1060,49 @@ class AgentManager:
             if gate is not None and reservation is not None:
                 gate.cancel(reservation)
             self._finish_forced_turn(runtime, turn_owns_state, lock_mgr, lock_key, lock, acquired)
+
+    async def _record_forced_turn_events(
+        self,
+        instance: AgentInstance,
+        message: ISACMessage,
+        proactive_content: str,
+        reply_content: str,
+    ) -> None:
+        """Fix-115: 强制话轮产出落 U1 事件流 (best-effort, 失败仅记日志)。
+
+        此前只有消息回合路径写 message.user/turn.completed, 强制话轮 (主动发言)
+        完全绕过事件流 —— LLM 实际看到的主动 prompt 与发出的回复在会话事件流中
+        不存在: 后续回合的历史窗口看不到这段交互, 无法支撑"主动说过什么"的上下文。
+        合成 prompt (带 proactive 标记) 与回复成对写入。session_key 经 _history_parts
+        复用 SessionManager 口径; 历史未启用/未注入时静默跳过 (零行为变化)。
+        """
+        parts = self._history_parts(instance, message)
+        if parts is None:
+            return
+        store, _, session_key = parts
+        from isac.session.models import EVENT_TURN_COMPLETED, EVENT_USER_MESSAGE, SessionEvent
+
+        try:
+            now = int(time.time())
+            await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_USER_MESSAGE,
+                    timestamp=now,
+                    payload={"content": proactive_content, "proactive": True},
+                )
+            )
+            await store.append(
+                SessionEvent(
+                    session_key=session_key,
+                    event_type=EVENT_TURN_COMPLETED,
+                    timestamp=now,
+                    payload={"content": reply_content},
+                )
+            )
+            await store.flush()
+        except Exception as exc:  # noqa: BLE001 事件落盘失败不阻塞主动回复
+            logger.warning("强制话轮事件落盘失败", error=str(exc))
 
     @staticmethod
     def _finish_forced_turn(
@@ -1432,7 +1484,10 @@ class AgentManager:
                 await instance.memory.store_episode(
                     content=f"{speaker}: {message.content}",
                     session_id=session.session_id,
-                    user_id=message.user_id,
+                    # Fix-112: 与 _write_memory (N5b 批次E 项1) 同口径用归一 master_id
+                    # (user_profile.user_id) —— 此前旁听用平台 id, 主写作用 master_id,
+                    # 同一用户在旁听/主写两侧键分裂, 按 master_id 检索召回不到旁听记忆。
+                    user_id=(getattr(user_profile, "user_id", "") or message.user_id),
                     group_id=message.group_id or "",
                     metadata={"importance": 0.3, "observed": True},
                 )

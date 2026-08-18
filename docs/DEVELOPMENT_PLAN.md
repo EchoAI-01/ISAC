@@ -139,7 +139,7 @@
 
 **剩余 (~40 项 Minor)**: 另立批次, 优先级让位于 N2 环境准入与 N4 前端轨道。
 
-### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1~4 全部完成 (全量 2021 通过), 剩余 Major/Minor 另立批次**
+### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1~5 全部完成 (全量 2041 通过), 剩余 Minor 另立批次**
 
 **方法**: U0-U9 架构演进后按同规格再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 主审逐条回码复核。去重后 **1 Critical + 21 Major + 44 Minor**。
 
@@ -180,6 +180,20 @@
 - [x] **Fix-110** 插件操作错误信息受控 —— install/reload/retry 失败此前把 `str(exc)` 原样回显客户端 (git clone stderr 等可含 URL/路径/凭据); 新增 `_client_error_message`: 受控 ValueError (人工审定的校验/安全消息) 原样返回, 其余异常掩为通用消息, 明细留给服务端审计与日志, 对齐全局异常处理器口径。
 
 顺带: `create_control_app`/`resolve_secrets_in_config` 触 ruff C901 上限, 分别抽 `_audit_read_deps`/`_resolve_secret_field` 降复杂度。新增 13 例批 4 回归测试。**全量 2021 通过**, ruff/mypy (295 源文件) 全绿。其余 Major/Minor (observe_message master_id / A2A bus 超时 / 无界增长卫生等) 另立批次。
+
+**批 5 已完成 (正确性 + 会话内核, Fix-111~119)**:
+
+- [x] **Fix-111** A2A `bus.send` 补**投递超时** (默认 60s, 可配; `asyncio.wait_for` 到期取消投递并抛 `InterAgentTimeoutError`) 与**递归深度保护** (contextvar 沿投递链传播, 默认 8 层, 超限抛 `InterAgentRecursionError`) —— 修"目标 Agent 挂起则发起方 A2A 工具无限等待"与"A↔B 互调链无限嵌套耗尽资源"。
+- [x] **Fix-112** `observe_message` 旁听记忆 `episode.user_id` 改用归一 master_id (`user_profile.user_id`, 与 `_write_memory` 的 N5b 口径一致) —— 修旁听/主写两侧键分裂导致按 master_id 检索召回不到旁听记忆; user_profile 为 None 回退平台 id。
+- [x] **Fix-113** `_apply_mesh_routing` 退出时还原 primary 的 `message.session_id` —— observer/candidate 的 `get_or_create` 会覆写该字段, 仲裁未切换回复者时主链路此前带着别人的会话 id 继续处理 primary 消息。
+- [x] **Fix-114** `SubAgentSupervisor.cancel` 不再无差别吞 CancelledError —— 用 `Task.cancelling()` 区分"后台任务被取消"(吞, 正常) 与"当前任务自身被取消"(>0 时重新抛出), 修优雅关闭/打断传播时取消协议失效。
+- [x] **Fix-115** 强制话轮产出落 U1 事件流 —— 主动发言的合成 prompt (带 proactive 标记) 与回复成对写 `message.user`/`turn.completed` (此前完全绕过事件流, 后续回合历史窗口看不到主动说过什么)。
+- [x] **Fix-116** 强制话轮取会话锁移入 try —— 此前取锁 await 在 try 外, 预约到租约后若在取锁阶段异常/取消, finally 的 cancel 不在路径上, 租约泄漏到 hold 超时挡住该会话写入。
+- [x] **Fix-117** handoff 工具 gate 顺序 + 失败不 commit —— ① 预约前置 (拿不到 SessionWriteGate 租约立即返回, 不再先投递摘要造成半程移交); ② 仅成功路径 commit, 失败/异常一律 cancel (此前 finally 无条件 commit)。
+- [x] **Fix-118** 主动任务唤醒回调失败重入队 —— 此前任务被 `poll_ready` 取出后回调失败即静默丢弃 (提醒永久丢失); 现在 `attempts` 计数重入队, 达 `MAX_WAKE_RETRIES` (3) 或队列满才放弃。
+- [x] **Fix-119** Agent Loop 预算耗尽退出前发 `budget_exhausted` 终态进度事件 —— 登记进 `_TERMINAL_STAGES`/`_TASK_TERMINAL_STAGES`/模板, 修多步任务进度"无声消失"。
+
+顺带: `handoff execute`/`scheduler._loop` 触 C901 上限, 抽 `_transfer_ownership`/`_produce_tasks`/`_fire_task` 降复杂度; services 残余访问维持 204 (未新增)。新增 20 例批 5 回归测试。**全量 2041 通过**, ruff/mypy (295 源文件) 全绿。剩余 Minor (restricted 工具 `_required_service` / 插件工具名 `:` 绕过 Fix-88 / DenyGuard 重建只读 500 事件 / 无界增长卫生 / audit.ndjson 轮转等) 另立批次。
 
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 

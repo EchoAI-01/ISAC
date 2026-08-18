@@ -2,6 +2,18 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 5 清偿 (Fix-111~119: 正确性 + 会话内核, 全量 2041 通过)**。
+> **Fix-111** A2A `bus.send` 补投递超时 (默认 60s, `asyncio.wait_for` 到期取消投递并抛 `InterAgentTimeoutError`) + 递归深度保护 (contextvar 沿投递链传播, 默认 8 层, 超限抛 `InterAgentRecursionError`) —— 修目标 Agent 挂起则发起方无限等待、A↔B 互调链无限嵌套耗尽资源。
+> **Fix-112** `observe_message` 旁听记忆 `episode.user_id` 改用归一 master_id (与 `_write_memory` 口径一致), 修旁听/主写键分裂致按 master_id 检索召回不到旁听记忆; user_profile 为 None 回退平台 id。
+> **Fix-113** `_apply_mesh_routing` 退出时还原 primary 的 `message.session_id` —— observer/candidate 的 get_or_create 会覆写该字段, 仲裁未切换回复者时主链路此前带着别人的会话 id 继续处理。
+> **Fix-114** `SubAgentSupervisor.cancel` 用 `Task.cancelling()` 区分"后台任务被取消"(吞) 与"当前任务自身被取消"(重新抛出), 不再无差别吞 CancelledError 致优雅关闭/打断传播失效。
+> **Fix-115** 强制话轮产出落 U1 事件流 —— 主动发言的合成 prompt (带 proactive 标记) 与回复成对写 message.user/turn.completed, 后续回合历史窗口可见主动说过什么。
+> **Fix-116** 强制话轮取会话锁移入 try, 取锁阶段异常/取消时租约也能被 finally cancel, 不泄漏到 hold 超时挡住会话写入。
+> **Fix-117** handoff 工具: 预约 SessionWriteGate 前置 (拿不到租约立即返回, 不再先投递摘要造成半程移交); 仅成功路径 commit, 失败/异常一律 cancel。
+> **Fix-118** 主动任务唤醒回调失败重入队 (attempts 达 MAX_WAKE_RETRIES=3 或队列满才放弃), 修提醒被 poll_ready 取出后静默丢失。
+> **Fix-119** Agent Loop 预算耗尽退出前发 `budget_exhausted` 终态进度事件 (登记进终态集合 + 模板), 修多步任务进度无声消失。
+> 顺带: `handoff execute`/`scheduler._loop` 触 C901 上限, 抽 `_transfer_ownership`/`_produce_tasks`/`_fire_task` 降复杂度; services 残余访问维持 204。新增 20 例批 5 回归测试。**全量 2041 通过**, ruff/mypy (295 源文件) 全绿。剩余 Minor 见 DEVELOPMENT_PLAN N1d。
+>
 > ⚠️ **最近更新: 2026-08-18 —— 第三轮审查批 4 清偿 (Fix-104~110: 注入安全 + 鉴权/审计加固, 全量 2021 通过)**。
 > **Fix-104** 行话 `context` 与 `meaning` 同为 LLM 归纳产物 (素材是攻击者可控的群聊原文), 此前仅 meaning 过注入防护, context 直接落盘并被 JargonInjector 拼入系统 prompt; 两者同口径 `_sanitize_llm_induction`, 间接 prompt injection 不得经 context 进入。
 > **Fix-105** 中期记忆压缩摘要落盘 `episodes.summary` 前补注入防护 (此前仅去引号/代码块), 该摘要由 MidTermMemoryInjector 注入, 指令前缀行不得经压缩摘要进入系统 prompt (对齐 profile_text 口径)。
