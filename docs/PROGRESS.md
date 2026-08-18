@@ -2,6 +2,15 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— 第三轮全量代码审查批 1 清偿 (Fix-89~94: C1 沙箱逃逸 + 5 项安全治理)**。U0-U9 演进后再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 去重后 1 Critical + 21 Major + 44 Minor。批 1 清偿最高优先级 6 项:
+> **Fix-89 [Critical]** 隔离插件 IPC 用 multiprocessing.Pipe (recv=pickle 反序列化) → 承载不可信插件的子进程可构造恶意 pickle 载荷在宿主 recv 时 RCE, 击穿 U6 信任倒转边界; 已实测复现。换 socketpair + 长度前缀 JSON 字节帧 (_JsonFrameTransport, 解码路径零代码执行) + 帧长上限 16MB; 顺带 _on_crash 补 SIGKILL 兜底 (抗 SIGTERM 插件不再泄漏孤儿进程/阻塞线程)。
+> **Fix-90** IM 审批回流零鉴权 → ApprovalGate.decide 增会话归属 + 发起人校验 (审批码发回群聊, 此前任何成员/得知审批码者均可裁决 ask 档高危工具)。
+> **Fix-91** GET /agents/{id}/config 明文回显 llm.api_key → 序列化脱敏 + PATCH 哨兵还原 (防 WebUI 编辑回存覆盖真 key; 修 _restore_redacted 列表 zip 截断丢更新回归)。
+> **Fix-92** 审批 decide 审计误把 AuditLog 当可调用对象 → 恒抛 TypeError 被静默吞, HITL 写操作零审计; 改 record()。
+> **Fix-93** MCP 11 个写工具绕过审计 → 注入共享 AuditLog (与 HTTP 控制面同实例), 写工具成功即留痕 (token 指纹 actor)。
+> **Fix-94** /sessions/{id}/messages 裸 SQL 绕过 U4 租户谓词 (多租户共库可跨租户读会话原文) → 改 store._tenant_db.scoped() 同构 routes_memory; 收紧 U4 裸 SQL 守卫清单。
+> 新增对抗性回归测试 (pickle 载荷不执行 / 超长帧拒绝 / 审批越权 / 凭据脱敏 / MCP 审计 / 跨租户隔离)。**全量 1979 通过**, ruff/mypy (293 源文件) 全绿。批 2 (平台协议可用性) / 批 3 (会话内核) 见 DEVELOPMENT_PLAN N1d。
+>
 > ⚠️ **最近更新: 2026-08-18 —— U9 A+ 复评门禁完成, U 架构演进轮 U0-U9 全部清偿**。
 > **①复评报告**归档 docs/U9_ARCHITECTURE_REVIEW.md: 12 模块逐项评级**无 C 项、B 项 2** (B-1 services 残余访问棘轮 / B-2 语义关系抽取层架构债, 均带收敛路径), 其余 A-/A; 实测 1962 passed 零失败 + ruff/mypy (293 源文件) 全绿。
 > **②"定义了未接线"清零常驻**: test_u9_release_gate.py UNWIRED_LEDGER 登记册 (7 历史符号使用点审计) + 安全模块零 TODO 卫生检查, 零残留。

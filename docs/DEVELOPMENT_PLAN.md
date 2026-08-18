@@ -139,6 +139,23 @@
 
 **剩余 (~40 项 Minor)**: 另立批次, 优先级让位于 N2 环境准入与 N4 前端轨道。
 
+### N1d 第三轮全量代码审查修复轮 (2026-08-18, Fix-89~) — **批 1 完成 (全量 1979 通过), 批 2/批 3 进行中**
+
+**方法**: U0-U9 架构演进后按同规格再做 5 路并行全量审查 (通道/运行时/记忆/控制面/Agent 核心), 主审逐条回码复核。去重后 **1 Critical + 21 Major + 44 Minor**。
+
+**批 1 已完成 (C1 沙箱逃逸 + 5 项安全治理, Fix-89~94)**:
+
+- [x] **Fix-89 [Critical]** 隔离插件 IPC pickle 传输沙箱逃逸 RCE → socketpair + 长度前缀 JSON 字节帧 + 帧长上限; _on_crash 补 SIGKILL 兜底。
+- [x] **Fix-90** IM 审批回流会话归属 + 发起人鉴权 (审批码旁路 HITL)。
+- [x] **Fix-91** /agents/{id}/config 凭据脱敏 + PATCH 哨兵还原 (含列表 zip 截断回归)。
+- [x] **Fix-92** 审批 decide 审计 TypeError (AuditLog 误当可调用)。
+- [x] **Fix-93** MCP 11 写工具审计留痕 (共享 AuditLog)。
+- [x] **Fix-94** /sessions/{id}/messages 租户谓词 (裸 SQL 绕过 U4)。
+
+**批 2 进行中 (平台协议可用性)**: QQ 频道出站 metadata 透传 + 事件去重; 飞书 mentions 解析; Telegram/Discord 超长回复分段; OneBot 入站媒体 loopback 白名单。
+
+**批 3 待清偿 (会话内核正确性)**: U1 打断孤儿事件补偿; /命令打断 drain; ArtifactStore TTL 延长语义; SessionManager 锁回收竞态。其余 Major/Minor 另立批次。
+
 ### N2 环境准入项清偿 (T7/R7 收尾, ~2-3 轮, 依赖 docker daemon + 浏览器环境 + 真实 LLM key)
 
 > 对应 `docs/RELEASE_AUDIT.md` 第三节。验收铁律适用: 每项附真实输出。
