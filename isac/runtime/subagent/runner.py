@@ -134,11 +134,11 @@ def _select_llm_for_task(instance: Any, task: SubAgentTask) -> Any:
     category = str(task.context.get("category", "") or "").strip().lower()
     if not category:
         return instance.loop.llm
-    model_router = instance.services.get("model_router")
+    model_router = instance.services.model_router
     provider_manager = instance.loop.provider_manager
     if model_router is None or provider_manager is None:
         return instance.loop.llm
-    global_config = instance.services.get("global_config") or {}
+    global_config = instance.services.global_config or {}
     routing_config = (global_config.get("model_routing") or {}).get("categories")
     selection = select_for_category(
         model_router, category, config=routing_config if isinstance(routing_config, dict) else None

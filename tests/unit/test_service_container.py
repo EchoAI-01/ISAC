@@ -36,6 +36,26 @@ def test_every_registered_key_has_tolerant_property() -> None:
         assert getattr(container, key) is None, f"属性 {key} 缺失或非宽容"
 
 
+# assembly 合并进 instance.services 的 per-Agent 键 (与 _AGENT_KEYS 一致)。
+_PER_AGENT_KEYS = {
+    "memory", "agent_id", "conversation_enabled", "conversation_registry",
+    "conversation_state_store", "mcp_clients", "memory_consolidator",
+    "mesh_action_broker", "proactive_scheduler", "progress_reporter_factory",
+    "plugin_tools", "plugin_commands", "plugin_agent_hooks", "plugin_prompt_builder",
+}
+
+
+def test_per_agent_keys_tolerant_and_readable() -> None:
+    """per-Agent 键: 空容器宽容返回 None; instance.services 合并面属性可读。"""
+    container = ServiceContainer()
+    for key in sorted(_PER_AGENT_KEYS):
+        assert getattr(container, key) is None
+    merged = ServiceContainer({**container, "memory": "mem", "agent_id": "a1"})
+    assert merged.memory == "mem"
+    assert merged.agent_id == "a1"
+    assert merged.mcp_clients is None  # 未写入的 per-Agent 键仍宽容
+
+
 def test_property_returns_registered_value() -> None:
     sentinel = object()
     container = ServiceContainer({"global_config": {"a": 1}, "bus": sentinel})

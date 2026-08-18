@@ -384,7 +384,7 @@ async def _shutdown_message_pipeline(
     await drain_inflight()
     await agent_manager.drain_background_tasks()
     for instance in await agent_manager.list():
-        scheduler = instance.services.get("proactive_scheduler")
+        scheduler = instance.services.proactive_scheduler
         if scheduler is not None:
             await scheduler.stop()
         # R3: 断开该 Agent 的 MCPClient (子进程/HTTP 连接), 避免关闭时泄漏。

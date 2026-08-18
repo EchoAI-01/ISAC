@@ -271,6 +271,7 @@ async def test_assemble_agent_default_no_mcp_no_plugins_zero_change() -> None:
 async def test_disconnect_mcp_clients_iterates_and_isolates_failures() -> None:
     """R3: AgentManager._disconnect_mcp_clients 逐个 disconnect, 异常隔离不阻塞停止。"""
     from isac.runtime.manager import AgentManager
+    from isac.runtime.services import ServiceContainer
 
     disconnected: list[str] = []
 
@@ -286,7 +287,9 @@ async def test_disconnect_mcp_clients_iterates_and_isolates_failures() -> None:
             raise RuntimeError("boom")
 
     class _FakeInstance:
-        services = {"mcp_clients": [_FakeClient("a"), _FakeClient("b"), _FakeClientFail()]}
+        services = ServiceContainer(
+            {"mcp_clients": [_FakeClient("a"), _FakeClient("b"), _FakeClientFail()]}
+        )
 
     mgr = AgentManager.__new__(AgentManager)  # 跳过 __init__, 仅测本方法
     await mgr._disconnect_mcp_clients(_FakeInstance())

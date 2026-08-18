@@ -2,6 +2,10 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— N5/Z1-B ServiceContainer 迁移次批: per-Agent 面 (全量 2141 通过)**。
+> 容器属性扩 14 个 per-Agent 键 (memory/mcp_clients/proactive_scheduler/conversation_*/plugin_* 等); `assemble_agent` 归一化裸 dict (`_as_container` 抽出避免 C901), per-Agent 袋改由 ServiceContainer 构造 (全局快照 ∪ per-Agent 键, dict 子类零破坏); `instance.services` 属性访问迁移 manager 19 处 + dispatch 关停链 + subagent runner 模型路由; provider_manager/memory_factory 装配不变量经 cast 收敛 (不加 C901 分支)。
+> 红线棘轮**再收紧 167→130** (累计 205→130, -75); 容器测试补 per-Agent 键宽容/合并面用例。测试适配: u7/runtime_assembly 的 fake instance 改构造容器。剩余 `context.services` (Loop/工具热路径) 与 control 路由面另立批 C。**全量 2141 通过**, ruff/mypy (295 源文件)/红线全绿。
+>
 > ⚠️ **最近更新: 2026-08-18 —— N5/Z1-A ServiceContainer 强类型迁移首批完成 (全量 2140 通过)**。
 > 容器属性扩至全部 **36 注册键**并统一**宽容语义** (缺键返回 None, 与既有防御式取值同义); bootstrap (12 处) / AgentManager (23 处全局容器访问) 迁移为属性访问。生产路径容器**直通同一对象** —— bootstrap 先构造 AgentManager 再注册 bus/router/session_* 等键, 拷贝会丢后注册键 (裸 dict `__class__` 提升不可行: dict 静态类型禁止, 曾致 150 用例回归后改直通+归一化拷贝双路); 测试裸 dict 构造时归一化为容器。
 > 红线棘轮**收紧 205→167** (残余字符串键访问 -37); 新增 42 例容器测试 (全键宽容/属性-键名一致/直通同一性/归一化)。剩余 per-Agent `instance.services` 面与 control 路由面另立批 B/C。**全量 2140 通过**, ruff/mypy (295 源文件)/红线全绿。

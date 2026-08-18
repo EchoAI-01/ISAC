@@ -31,6 +31,7 @@ from isac.provider.catalog import ModelCatalog, ModelDescriptor
 from isac.provider.category_routing import profile_for, select_for_category
 from isac.provider.manager import ProviderManager
 from isac.provider.router import ModelRouter
+from isac.runtime.services import ServiceContainer
 from isac.runtime.subagent.models import SubAgentTask
 from isac.runtime.subagent.runner import _select_llm_for_task
 
@@ -387,7 +388,7 @@ def _task(category: str) -> SubAgentTask:
 def _fake_instance(llm: Any, provider_manager: Any, services: dict[str, Any]) -> Any:
     return SimpleNamespace(
         loop=SimpleNamespace(llm=llm, provider_manager=provider_manager),
-        services=services,
+        services=ServiceContainer(services),
     )
 
 

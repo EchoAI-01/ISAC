@@ -53,7 +53,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 2. **N2 环境准入项清偿** — Docker 冒烟 + browser CI 复核 (I 节点 85%→100%) + release_checklist 七段 + **24h soak** (需 docker daemon/浏览器环境/真实 LLM key)。
 3. **N3 T5 真实 IM 验收** (外部阻塞) — 凭据准备清单先行, OneBot 先行联调, 飞书/QQ 官方/wecom 逐个真机验证。
 4. **N4 前端轨道启动** — API 基线已冻结 (FE0 openapi.json + FE1 CORS + T3-backend setup API + config schema 端点); 技术栈决策 → F1 登录/setup 向导 → F2 十域迁移 (完成后移除内置 WebUI) → F3 实时 → F4 插件市场 UI。
-5. **N5 剩余架构债并行线** — services 强类型化 Z1 批 A 已完成 (36 键宽容属性 + bootstrap/manager 迁移, 棘轮 205→167; 批 B/C 剩 per-Agent 面) / Z2 main.py 拆分已由 U2 收敛 / 同步 IO 异步化 / reload_config 差量更新。
+5. **N5 剩余架构债并行线** — services 强类型化 Z1 批 A+B 已完成 (50 键宽容属性 + 全局容器/per-Agent 面迁移, 棘轮 205→130; 批 C 剩 context.services 热路径与 control 路由面) / Z2 main.py 拆分已由 U2 收敛 / 同步 IO 异步化 / reload_config 差量更新。
 
 **里程碑**: M-T1 ✅ → M-T2 后端段 ✅ (前端 F1/F2 落地即全达成) → M-T3 可接入 (N2+N3) → M-T4 可扩展 ✅ (R3+T6) → **M-GA** = N2 全过 + N3 至少一个平台真机通过 + F2 完成。GA 后进入 §四 GA 后开发计划 (V/X/Y/Z)。
 

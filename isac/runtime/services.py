@@ -180,3 +180,63 @@ class ServiceContainer(dict):
     @property
     def mcp_servers(self) -> Any:
         return self.get("mcp_servers")
+
+    # ── per-Agent 键 (assembly 合并进 instance.services) ─────
+    # instance.services = 全局容器快照 ∪ 下列键; 属性集覆盖两面, 同一实例经
+    # 属性访问两面的键都成立 (全局键在 per-Agent 袋上是合并快照)。
+
+    @property
+    def memory(self) -> Any:
+        return self.get("memory")
+
+    @property
+    def agent_id(self) -> Any:
+        return self.get("agent_id")
+
+    @property
+    def conversation_enabled(self) -> Any:
+        return self.get("conversation_enabled")
+
+    @property
+    def conversation_registry(self) -> Any:
+        return self.get("conversation_registry")
+
+    @property
+    def conversation_state_store(self) -> Any:
+        return self.get("conversation_state_store")
+
+    @property
+    def mcp_clients(self) -> Any:
+        return self.get("mcp_clients")
+
+    @property
+    def memory_consolidator(self) -> Any:
+        return self.get("memory_consolidator")
+
+    @property
+    def mesh_action_broker(self) -> Any:
+        return self.get("mesh_action_broker")
+
+    @property
+    def proactive_scheduler(self) -> Any:
+        return self.get("proactive_scheduler")
+
+    @property
+    def progress_reporter_factory(self) -> Any:
+        return self.get("progress_reporter_factory")
+
+    @property
+    def plugin_tools(self) -> Any:
+        return self.get("plugin_tools")
+
+    @property
+    def plugin_commands(self) -> Any:
+        return self.get("plugin_commands")
+
+    @property
+    def plugin_agent_hooks(self) -> Any:
+        return self.get("plugin_agent_hooks")
+
+    @property
+    def plugin_prompt_builder(self) -> Any:
+        return self.get("plugin_prompt_builder")
