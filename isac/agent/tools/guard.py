@@ -113,7 +113,11 @@ class DenyGuard:
         except Exception as exc:  # noqa: BLE001 重建失败不阻塞工具执行
             logger.warning("DenyGuard 惰性重建会话拒绝集失败", session_key=session_key, error=str(exc))
             return
-        self._denials[session_key] = denied
+        # 2026-08-19 (M1): 整体赋值改合并 —— 分页扫描期间存在 await(store.fetch),
+        # 若同会话另一工具调用并发被拒并 register_denial 写入 _denials[session_key],
+        # 收尾整体赋值会覆盖该并发写入 → 已登记拒绝丢失、is_denied 返回 False、被拒
+        # 工具可再执行 (单调性在并发下被破坏)。setdefault().update() 保留并发写入。
+        self._denials.setdefault(session_key, set()).update(denied)
         self._denials.move_to_end(session_key)
         self._evict_if_needed()
 

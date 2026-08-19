@@ -284,3 +284,47 @@ class TestMCPToolBridge:
         result = await bridge.execute(_make_tool_context({"x": 1}))
         assert result.is_error is False
         assert result.content == "ok"
+
+
+class TestM6StdioEnv:
+    """2026-08-19 Medium 批清回归 (M6): stdio 子进程 env 继承 + 合并。"""
+
+    @pytest.mark.asyncio
+    async def test_stdio_env_inherits_os_environ_and_merges_custom(self, monkeypatch) -> None:
+        """M6: 此前直接把 config.env (默认 {}) 作为子进程 env → 空环境 (无 PATH/HOME)。
+
+        修复后必须继承 os.environ 并用自定义键覆盖。用 monkeypatch 捕获 create_subprocess_exec
+        收到的 env, 不真正启动子进程。
+        """
+        import os as _os
+
+        captured: dict[str, Any] = {}
+
+        async def _fake_exec(*args, **kwargs):
+            captured["env"] = kwargs.get("env")
+
+            class _P:
+                stdin = None
+                stdout = None
+                stderr = None
+
+            return _P()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        client = MCPClient(
+            "srv", {"transport": "stdio", "command": "echo", "env": {"CUSTOM_KEY": "v"}}
+        )
+        await client._connect_stdio()
+        # 让 _connect_stdio 里创建的两个后台读任务跑完 (stdout/stderr 为 None 会立即返回)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        env = captured["env"]
+        assert env is not None
+        # 继承 os.environ: PATH 必在 (此前空 dict 会导致子进程无 PATH 无法启动)
+        assert "PATH" in env
+        for key in ("PATH", "HOME"):
+            if key in _os.environ:
+                assert env[key] == _os.environ[key]
+        # 自定义键合并进来
+        assert env.get("CUSTOM_KEY") == "v"

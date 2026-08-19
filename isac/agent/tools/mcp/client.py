@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import TYPE_CHECKING, Any
 
 from isac.agent.tools.base import Tool, ToolContext
@@ -78,7 +79,10 @@ class MCPClient:
         """启动子进程 + 拿 stdin/stdout 流。"""
         command = self.config.get("command")
         args = list(self.config.get("args", []))
-        env = self.config.get("env", {})
+        # 2026-08-19 (M6): 此前直接把 config.env (默认 {}) 作为子进程 env —— 空 dict
+        # 会让 MCP 子进程拿到**完全为空**的环境 (无 PATH/HOME 等), 绝大多数命令
+        # 无法启动。改为继承 os.environ 并用 config.env 覆盖 (自定义键优先)。
+        env = {**os.environ, **dict(self.config.get("env", {}))}
         if not command:
             raise ValueError("stdio 传输需要 command 配置")
         try:

@@ -646,3 +646,73 @@ def test_routes_approvals_read_requires_tools_read_scope() -> None:
     for path in ("/api/v1/approvals", "/api/v1/approvals/history"):
         assert client.get(path, headers={"Authorization": "Bearer narrow"}).status_code == 403
         assert client.get(path, headers={"Authorization": "Bearer reader"}).status_code == 200
+
+
+# ── 2026-08-19 Medium 批清回归 (M1/M2) ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_m1_denyguard_restore_merges_concurrent_denial() -> None:
+    """M1: 惰性重建收尾用合并 (setdefault().update()) 而非整体赋值。
+
+    分页扫描期间存在 await(store.fetch), 若同会话另一工具并发被拒并 register_denial
+    先写入 _denials[session_key], 收尾整体赋值会覆盖该并发写入 → 已登记拒绝丢失、
+    被拒工具可再执行 (单调性在并发下被破坏)。合并写法必须保留并发写入。
+    """
+
+    class _Event:
+        def __init__(self, tool_name: str, seq: int) -> None:
+            self.event_type = "tool.outcome"
+            self.payload = {"outcome": OUTCOME_DENIED, "tool_name": tool_name}
+            self.seq = seq
+
+    class _RaceStore:
+        """首次 fetch 的 await 窗口内模拟并发 register_denial (另一工具)。"""
+
+        def __init__(self, guard_ref: dict) -> None:
+            self._guard_ref = guard_ref
+            self._injected = False
+
+        async def fetch(self, session_key: str, after_seq: int = 0, limit: int = 1000):
+            if after_seq == 0:
+                if not self._injected:
+                    self._injected = True
+                    self._guard_ref["guard"].register_denial(session_key, "concurrent_tool")
+                return [_Event("event_tool", 1)]
+            return []
+
+    guard = DenyGuard()
+    guard_ref = {"guard": guard}
+    guard.bind_store(_RaceStore(guard_ref))
+    # "sk" 不在内存 → is_denied 触发 _restore_session; 扫描窗口注入 concurrent_tool
+    assert await guard.is_denied("sk", "event_tool") is True
+    # 并发登记的拒绝不能被收尾整体赋值覆盖 (旧 bug 下此处为 False)
+    assert await guard.is_denied("sk", "concurrent_tool") is True
+
+
+@pytest.mark.asyncio
+async def test_m2_restricted_without_mapping_fail_closed(tmp_path: Path) -> None:
+    """M2: restricted 工具未登记 _required_service 映射时拒绝 (fail-closed)。
+
+    此前 `if required:` 为假直接跳过服务检查 → 等效 allow (任何经 tools_policy 设为
+    restricted 的插件工具都落入此洞)。受限工具必须声明依赖服务方可校验。
+    """
+    store = await _started_store(tmp_path)
+    try:
+        tool = FlagTool(name="custom_plugin_tool")  # 不在 _required_service 映射内
+        registry = ToolRegistry(ToolPermission({"custom_plugin_tool": "restricted"}))
+        registry.register(tool)
+        services = {"session_event_store": store, "session_mgr": _SessionMgr()}
+        result = await registry.execute(
+            ToolCall(id="c1", name="custom_plugin_tool", arguments={}),
+            make_agent_context(), services=services,
+        )
+        # fail-closed: 拒绝且不执行
+        assert result.is_error is True and tool.executed is False
+        assert "未登记依赖服务映射" in result.content
+        events = await store.fetch(SESSION_KEY)
+        outcome = next(e for e in events if e.event_type == EVENT_TOOL_OUTCOME)
+        assert outcome.payload["outcome"] == OUTCOME_DENIED
+        assert outcome.payload["reason"] == "service_missing"
+    finally:
+        await store.stop()
