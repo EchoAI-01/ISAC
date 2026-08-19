@@ -17,6 +17,7 @@ from isac.core.exceptions import AgentNotFoundError
 from isac.gateway.lock import conversation_lock_key
 from isac.gating.types import GateKind
 from isac.memory.pipeline import is_shared_namespace
+from isac.memory.salience import score_importance
 from isac.runtime.assembly import assemble_agent
 from isac.runtime.config import AgentConfig
 from isac.runtime.conversation import (
@@ -1339,7 +1340,12 @@ class AgentManager:
                 # consolidation 时即死); user_profile 为 None 时回退平台 id 向后兼容。
                 user_id=(getattr(user_profile, "user_id", "") or message.user_id),
                 group_id=message.group_id or "",
-                metadata={"importance": 0.5},
+                # 阶段2-4 (P1-3): importance 改由规则显著度评分器产出真实分布 ——
+                # 此前恒 0.5 使 consolidator 剪枝 (阈值 <0.2) 永远删不到东西。
+                # 琐碎寒暄落 <0.2 可被时间衰减剪掉, 含记住/偏好/事实/约定的回合居高位。
+                metadata={"importance": score_importance(
+                    said, reply, observed=False, is_group=bool(message.group_id),
+                )},
             )
             await self._update_person_profile(instance, message, user_profile)
             # P1(L5): conversation 启用时顺带保存会话拟人状态快照 (启动恢复的数据源)
@@ -1500,7 +1506,15 @@ class AgentManager:
                     # 同一用户在旁听/主写两侧键分裂, 按 master_id 检索召回不到旁听记忆。
                     user_id=(getattr(user_profile, "user_id", "") or message.user_id),
                     group_id=message.group_id or "",
-                    metadata={"importance": 0.3, "observed": True},
+                    # 阶段2-4 (P1-3): 旁听同样走显著度评分, observed=True 施加折扣 ——
+                    # 此前恒 0.3。旁听非本 Agent 主回合, 评分器内部乘 OBSERVED_FACTOR,
+                    # 整体低于主写, 与"旁听记忆次要"的语义一致。
+                    metadata={
+                        "importance": score_importance(
+                            message.content, "", observed=True, is_group=bool(message.group_id),
+                        ),
+                        "observed": True,
+                    },
                 )
                 await self._update_person_profile(instance, message, user_profile)
                 logger.debug("旁听消息已入记忆", agent_id=agent_id)
