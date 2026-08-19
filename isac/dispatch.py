@@ -273,6 +273,17 @@ async def _apply_mesh_routing(
     return winner or decision.agent_id
 
 
+async def _cancel_lingering_tasks(tasks: set[asyncio.Task[None]]) -> None:
+    """2026-08-19 (M5): 取消 drain 超时后的残留任务并 gather 收尾。
+
+    抽出独立函数既复用取消语义, 也让 make_message_dispatcher 的嵌套分支不堆叠
+    (C901)。_process_locked 的 finally 会在取消传播时释放会话锁。
+    """
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
 def make_message_dispatcher(
     *,
     event_bus: EventBus,
@@ -364,7 +375,11 @@ def make_message_dispatcher(
         logger.info("等待在途消息处理完成", count=len(pending))
         _done, still_pending = await asyncio.wait(pending, timeout=drain_timeout_seconds)
         if still_pending:
-            logger.warning("在途消息处理未在超时内完成, 继续关闭", count=len(still_pending))
+            # 2026-08-19 (M5): 超时后必须取消残留任务 —— 此前只记 warning 不取消,
+            # 随后 LIFO 链关闭 providers/store, 残留任务在已关闭资源上继续运行并各自
+            # 抛错, 优雅关闭的"不丢消息"承诺在超时分支不成立。
+            logger.warning("在途消息处理未在超时内完成, 取消残留任务", count=len(still_pending))
+            await _cancel_lingering_tasks(still_pending)
 
     return handle_message, drain_inflight
 
