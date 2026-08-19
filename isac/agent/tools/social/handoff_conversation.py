@@ -104,18 +104,25 @@ class HandoffConversationTool(Tool):
                 return ToolResult(
                     content=f"移交 {target} 失败 (Link 未配置或未授予 handoff 权限)", is_error=True
                 )
+            # 2026-08-19 (H3) fail-closed: commit 移到归属转移**之前**。此前先
+            # _transfer_ownership (会话归属已转移) 再 commit, 租约过期只记 warning、
+            # 归属不回滚, 与 fail-closed 相悖。现对照 manager._run_forced_turn 的
+            # "commit 通过才推送产出"模式: 租约失效 (commit 失败) 时放弃归属转移,
+            # 仅摘要已投递 (一次性通知, 幂等), 不做难以撤回的路由归属变更。
+            if gate is not None and reservation is not None:
+                if not gate.commit(reservation):
+                    logger.warning(
+                        "handoff 租约失效, 放弃归属转移 (fail-closed)",
+                        target=target, session_id=getattr(session, "session_id", ""),
+                    )
+                    return ToolResult(
+                        content="移交暂缓: 会话写入租约已过期, 请稍后重试。", is_error=True
+                    )
+                reservation = None  # 已 commit, finally 的 cancel 幂等无操作
             # P2: 会话归属转移 —— router 经 services 注入 (无 router 时降级为仅投递摘要)。
             # MVP-Fix: 移交带 TTL (router.DEFAULT_HANDOFF_TTL_SECONDS), 到期归属自动
             # 回落常规路由; 接手方把会话移交回原归属者即可提前撤销。
             result = _transfer_ownership(router, session, agent_id, target, summary)
-            # Fix-117②: 仅成功路径 commit; 置空后 finally 的 cancel 对本租约无操作。
-            if gate is not None and reservation is not None:
-                if not gate.commit(reservation):
-                    logger.warning(
-                        "handoff 租约提交未生效 (可能已过期), 归属转移已完成",
-                        target=target, session_id=getattr(session, "session_id", ""),
-                    )
-                reservation = None
             return result
         finally:
             if gate is not None and reservation is not None:

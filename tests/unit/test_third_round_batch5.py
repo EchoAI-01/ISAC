@@ -649,3 +649,38 @@ async def test_handoff_commits_only_on_success() -> None:
     assert result2.is_error
     assert router2.set_calls == []  # 归属未转移
     assert gate2.active("s1") is None  # 租约已 cancel, 无泄漏
+
+
+class _CommitFailingGate:
+    """reserve 成功但 commit 恒失败 (模拟租约在 hold 期内过期)。"""
+
+    def reserve(self, session_key: str, source: str):
+        return SimpleNamespace(session_key=session_key, source=source)
+
+    def commit(self, reservation) -> bool:
+        return False
+
+    def cancel(self, reservation) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_handoff_commit_failure_skips_ownership_transfer() -> None:
+    """2026-08-19 (H3) fail-closed 回归: 租约 commit 失败 (过期) 时不得执行归属转移。
+
+    此前先 _transfer_ownership 再 commit, commit 失败只记 warning、归属不回滚。
+    现 commit 前置于归属转移, 失败则放弃移交 (对照 manager 强制话轮 commit 通过
+    才推送产出)。断言: router.set_handoff 零调用 + 返回 is_error。
+    """
+    from isac.agent.tools.social.handoff_conversation import HandoffConversationTool
+
+    class _OkBroker:
+        async def handoff(self, *args, **kwargs) -> bool:
+            return True
+
+    session = Session(session_id="s1", user_id="u1", agent_id="agent_a", platform="fake")
+    router = _FakeRouter()
+    ctx = _handoff_context(_OkBroker(), router, _CommitFailingGate(), session)
+    result = await HandoffConversationTool().execute(ctx)  # type: ignore[arg-type]
+    assert result.is_error
+    assert router.set_calls == []  # commit 失败 → 归属未转移 (fail-closed)
