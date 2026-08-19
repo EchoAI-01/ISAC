@@ -2,6 +2,12 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-19 —— 阶段3-2 压缩闭环 + 幂等重试 全部完成 (全量 2152 通过)**。
+> **①入站幂等去重 (M4)**: 新增 `isac/gateway/inbound_dedup.py` InboundDeduplicator (LRU+TTL 双限, 同 qq_official Fix-96 同构), dispatch 入口统一接线一次覆盖全渠道 (此前仅 qq_official 有适配器级去重, OneBot WS 重连/webhook 重试会重复落事件+重复回复); 重复消息记 isac_messages_deduplicated_total 指标后丢弃。顺带抽 `_emit_incoming_signal` 降 dispatch 复杂度。
+> **②U1 会话压缩写侧闭环 (M2)**: 新增 `isac/session/compressor.py` SessionCompressor —— 保留活跃窗口, 旧前缀内容事件 LLM 归纳为摘要 (增量卷起), validate_compression 拒负压缩, 追加 turn.compressed replace 事件 (summary+source_seqs); 保留 GC (event_store.delete_events/count_events) 物理删被替代**内容**事件遏制无界增长, 但保留 tool.*/aborted/migrated (DenyGuard/torn-tail 安全边界); 摘要注入防护 (对齐 Fix-105)。生产接线默认关 (session.compression.enabled), assembly 经 dict 字面量注入 + manager 走类型化属性 (不新增 services 字符串键, U9 红线保持 35)。此前 EVENT_TURN_COMPRESSED 零写入点、validate_compression 零调用方、事件表无限增长。
+> **③出站投递保障 (M4)**: `_send_reply` 有界重试 (默认 3 次短退避, 成功即停防重复投递, 异常按失败重试) + OutboundDeadLetter 死信环 (有界 deque + ERROR 日志, 不再静默丢)。此前发送失败即丢无重试无死信。
+> 新增 26 例 (去重 7 + 压缩 13 + 出站 6); config catalog 重生成; **全量 2152 单测通过**, ruff/mypy/红线全绿。
+>
 > ⚠️ **最近更新: 2026-08-19 —— 阶段3-1 富媒体第一波: Telegram 入站媒体解析 + 429/Retry-After + CGNAT 封堵 (全量 2126 通过)**。
 > **入站媒体 (Telegram, 此前仅 OneBot 可用)**: `_extract_media` 解析 photo/voice/video/animation/audio/document 的 file_id (photo 取分辨率最高、animation 归 image、kind 对齐下载管线); `_resolve_file_url` 经 getFile 换下载 URL; `_attach_media_segments` 追加 media segment 供既有入站下载管线落盘 (单媒体失败隔离)。配套安全: incoming_media 日志 URL 脱敏 (/bot<token>/ 与 token 查询参数掩码), 避免 Telegram 文件 URL 内嵌 bot token 泄露到日志。
 > **429/Retry-After (M7)**: 新增 `isac/utils/retry.py` parse_retry_after (整数秒解析 + 封顶 60s); RateLimitError 携带 retry_after; openai_compat 429 读 Retry-After 头; ProviderManager._retry_backoff 尊重 retry_after (取与指数退避较大者), 避免配额未恢复就盲目重发再次 429。
