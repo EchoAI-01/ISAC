@@ -31,9 +31,14 @@ _REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
 # U0 Fix-86: safe_extractall 流式解压的读块大小 (累计实际写盘字节用)
 _EXTRACT_CHUNK_BYTES = 65536
 
+# 2026-08-19 (M6): RFC6598 CGNAT 段 —— ipaddress.is_private 不覆盖, 须显式拒。
+# 对齐 isac/utils/ssrf.py 的 is_private_or_reserved_ip 口径 (此前插件下载与入站媒体
+# 下载经 safe_download_bytes 可指向 CGNAT 内网, 与 webhook 投递的 SSRF 口径不一致)。
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
 
 def _is_ip_unsafe(ip: Any, allow_loopback: bool) -> bool:
-    """IP 是否不安全 (loopback/private/link-local/reserved/multicast/0.0.0.0/8)。
+    """IP 是否不安全 (loopback/private/link-local/reserved/multicast/CGNAT/0.0.0.0/8)。
 
     allow_loopback=True 时整体豁免 loopback —— 127.0.0.0/8 既是 loopback 也属
     private, 必须在 loopback 分支提前豁免, 否则会被 is_private 误拒。
@@ -41,6 +46,9 @@ def _is_ip_unsafe(ip: Any, allow_loopback: bool) -> bool:
     if ip.is_loopback:
         return not allow_loopback
     if ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        return True
+    # M6: CGNAT (100.64.0.0/10) 是运营商级内网, is_private 不覆盖, 显式拒。
+    if ip in _CGNAT_NETWORK:
         return True
     # 0.0.0.0/8 ("当前网络") 统一拒
     return ip.version == 4 and str(ip).startswith("0.")

@@ -155,6 +155,9 @@ class TelegramAdapter(PlatformAdapter):
         isac_msg = self._to_isac_message(message)
         if isac_msg is None:
             return
+        # 阶段3-1: 解析入站富媒体 (photo/voice/video/document/audio) file_id → 下载
+        # URL segment, 供 dispatch 入站下载管线落盘 (此前 Telegram 入站仅 text)。
+        await self._attach_media_segments(message, isac_msg)
         if self.on_message is not None:
             try:
                 await self.on_message(isac_msg)
@@ -196,6 +199,73 @@ class TelegramAdapter(PlatformAdapter):
             content=content,
             segments=segments,
         )
+
+    # ── 入站富媒体解析 (阶段3-1 第一波) ────────────────────────
+
+    @staticmethod
+    def _extract_media(tg_message: dict[str, Any]) -> list[dict[str, Any]]:
+        """从 Telegram message 提取媒体描述符 (纯函数, 可单测)。
+
+        返回 [{kind, file_id, file_name}]。photo 取最后一个 (分辨率最高); voice/
+        video/animation/audio/document 各取其 file_id。kind 对齐入站下载管线
+        ``_SEGMENT_KIND`` (image/audio/video/file)。无媒体返回空列表。
+        """
+        media: list[dict[str, Any]] = []
+        photo = tg_message.get("photo")
+        if isinstance(photo, list) and photo:
+            largest = photo[-1]
+            if isinstance(largest, dict) and largest.get("file_id"):
+                media.append({"kind": "image", "file_id": str(largest["file_id"]), "file_name": ""})
+        for field, kind in (
+            ("voice", "voice"),
+            ("video", "video"),
+            ("animation", "image"),
+            ("audio", "audio"),
+            ("document", "file"),
+        ):
+            obj = tg_message.get(field)
+            if isinstance(obj, dict) and obj.get("file_id"):
+                media.append(
+                    {
+                        "kind": kind,
+                        "file_id": str(obj["file_id"]),
+                        "file_name": str(obj.get("file_name", "") or ""),
+                    }
+                )
+        return media
+
+    async def _resolve_file_url(self, file_id: str) -> str | None:
+        """经 getFile 把 file_id 解析为可下载 URL; 失败返回 None。
+
+        Telegram 文件下载 URL 形如 ``{api_base}/file/bot{token}/{file_path}`` ——
+        内嵌 bot token (标准 API 使然), 故调用方不得把它写进日志 (见 incoming_media
+        的 URL 脱敏)。
+        """
+        result = await self._call_api("getFile", {"file_id": file_id})
+        if not isinstance(result, dict):
+            return None
+        file_path = str(result.get("file_path", "") or "")
+        if not file_path:
+            return None
+        return f"{self._api_base}/file/bot{self._bot_token}/{file_path}"
+
+    async def _attach_media_segments(self, tg_message: dict[str, Any], isac_msg: ISACMessage) -> None:
+        """解析入站媒体 file_id → 下载 URL, 追加 media segment (供下载管线落盘)。
+
+        单个媒体解析/下载 URL 失败只跳过该项 (不阻塞消息); 全部失败时消息仍按文本处理。
+        """
+        for item in self._extract_media(tg_message):
+            try:
+                url = await self._resolve_file_url(item["file_id"])
+            except Exception as exc:  # noqa: BLE001 单项失败隔离
+                logger.warning("Telegram 媒体 URL 解析失败, 跳过", file_id=item["file_id"], error=str(exc))
+                continue
+            if not url:
+                continue
+            data: dict[str, Any] = {"url": url, "file_id": item["file_id"]}
+            if item["file_name"]:
+                data["file_name"] = item["file_name"]
+            isac_msg.segments.append(MessageSegment(type=item["kind"], data=data))
 
     async def _call_api(self, method: str, params: dict[str, Any] | None = None) -> Any:
         """调用 Telegram Bot API。返回 result 字段 (失败返回 None)。"""

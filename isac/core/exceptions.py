@@ -39,6 +39,19 @@ class RateLimitError(LLMError):
     code = "RATE_LIMIT"
     retriable = True
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after: float | None = None,
+        context: dict | None = None,
+        retriable: bool | None = None,
+    ):
+        super().__init__(message, context=context, retriable=retriable)
+        # M7: 服务端建议的 Retry-After 秒数 (解析自 429 响应头)。chat_with_retry
+        # 退避时以此为下限, 避免配额未恢复就盲目重发再次 429。None = 服务端未给。
+        self.retry_after = retry_after
+
 
 class MemoryError(ISACError):
     """记忆系统错误"""

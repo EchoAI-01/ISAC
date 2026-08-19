@@ -24,6 +24,7 @@ from isac.core.exceptions import LLMError, RateLimitError
 from isac.core.types import LLMChunk, LLMResponse, TokenUsage, ToolCall
 from isac.provider.base import LLMProvider, ModelCapabilities
 from isac.utils.logger import get_logger
+from isac.utils.retry import parse_retry_after
 
 if TYPE_CHECKING:
     from isac.artifacts.models import MediaInput
@@ -104,7 +105,7 @@ class OpenAICompatProvider(LLMProvider):
             async with client.stream("POST", "/chat/completions", json=payload) as response:
                 if response.status_code >= 400:
                     body = await response.aread()
-                    raise self._map_http_error(response.status_code, body)
+                    raise self._map_http_error(response.status_code, body, response.headers)
                 async for chunk in self._parse_sse_stream(response):
                     yield chunk
         except (LLMError, RateLimitError):
@@ -221,7 +222,7 @@ class OpenAICompatProvider(LLMProvider):
         except Exception as exc:
             raise self._wrap_network_error(exc) from exc
         if response.status_code >= 400:
-            raise self._map_http_error(response.status_code, response.content)
+            raise self._map_http_error(response.status_code, response.content, response.headers)
         try:
             return response.json()
         except (json.JSONDecodeError, ValueError) as exc:
@@ -392,11 +393,16 @@ class OpenAICompatProvider(LLMProvider):
         return tool_calls
 
     @staticmethod
-    def _map_http_error(status_code: int, body: bytes) -> LLMError | RateLimitError:
+    def _map_http_error(
+        status_code: int, body: bytes, headers: Any = None
+    ) -> LLMError | RateLimitError:
         """按 HTTP 状态码分类错误, 返回引用真实配置路径的中文可操作提示 (T4)。
 
         错误消息要让用户知道"哪儿错了、去哪修", 而不是英文堆栈。引用 data/config.jsonc
         的对应字段 (llm.api_key / llm.base_url), 由 chat_with_retry 降级时透给用户。
+
+        M7: 429 时解析 ``Retry-After`` 响应头挂到 RateLimitError.retry_after, 供
+        chat_with_retry 退避尊重服务端建议等待, 避免配额未恢复就盲目重发。
         """
         try:
             text = body.decode("utf-8", errors="replace")[:200]
@@ -415,8 +421,16 @@ class OpenAICompatProvider(LLMProvider):
                 retriable=False,
             )
         if status_code == 429:
+            # M7: 读 Retry-After 头 (服务端建议等待秒数), 供退避尊重。
+            retry_after = None
+            if headers is not None:
+                try:
+                    retry_after = parse_retry_after(headers.get("retry-after"))
+                except Exception:  # noqa: BLE001 - headers 取值失败不影响错误分类
+                    retry_after = None
             return RateLimitError(
-                f"LLM 限流 (429): 请求过于频繁, 稍后会自动重试 (服务端返回: {text})"
+                f"LLM 限流 (429): 请求过于频繁, 稍后会自动重试 (服务端返回: {text})",
+                retry_after=retry_after,
             )
         if status_code >= 500:
             return LLMError(

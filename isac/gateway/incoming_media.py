@@ -16,6 +16,7 @@ ISACMessage 无 attachments 字段, MediaNormalizer 显式拒绝 URL 输入, 入
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from isac.utils.logger import get_logger
@@ -34,6 +35,19 @@ _SEGMENT_KIND: dict[str, str] = {
     "video": "video",
     "file": "file",
 }
+
+# 阶段3-1 (M7 配套): 入站下载 URL 日志脱敏。Telegram 文件 URL 内嵌 bot token
+# (``/file/bot<token>/<path>``), 直接打日志会泄露凭据。匹配 ``/bot<token>/`` 段与
+# 常见 token 查询参数, 一律掩码。
+_BOT_TOKEN_PATH_RE = re.compile(r"/bot[A-Za-z0-9:._-]+/")
+_TOKEN_QUERY_RE = re.compile(r"((?:access_token|token|key|signature)=)[^&\s]+", re.IGNORECASE)
+
+
+def _mask_url_for_log(url: str) -> str:
+    """日志用 URL 脱敏: 掩掉 ``/bot<token>/`` 段与 token 类查询参数。"""
+    masked = _BOT_TOKEN_PATH_RE.sub("/bot***masked***/", url)
+    masked = _TOKEN_QUERY_RE.sub(r"\1***", masked)
+    return masked
 
 
 async def download_inbound_media(
@@ -76,9 +90,9 @@ async def download_inbound_media(
             ref = await artifact_store.put(content, kind=kind, mime_type=mime_type)
             data["media_uri"] = ref.uri
             downloaded += 1
-            logger.info("入站媒体已下载落盘", kind=kind, url=url, artifact_id=ref.artifact_id)
+            logger.info("入站媒体已下载落盘", kind=kind, url=_mask_url_for_log(url), artifact_id=ref.artifact_id)
         except Exception as exc:  # noqa: BLE001 异常隔离
-            logger.warning("入站媒体下载落盘失败, 跳过该 segment", url=url, error=str(exc))
+            logger.warning("入站媒体下载落盘失败, 跳过该 segment", url=_mask_url_for_log(url), error=str(exc))
     return downloaded
 
 

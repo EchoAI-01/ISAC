@@ -15,6 +15,7 @@ from isac.core.exceptions import LLMError, RateLimitError
 from isac.core.types import LLMResponse
 from isac.provider.base import LLMProvider
 from isac.utils.logger import get_logger
+from isac.utils.retry import MAX_RETRY_AFTER_SECONDS
 
 if TYPE_CHECKING:
     from isac.observability.metrics import MetricsCollector
@@ -259,7 +260,10 @@ class ProviderManager:
             except RateLimitError as exc:
                 last_error = exc
                 logger.warning("LLM 限流，退避重试", attempt=attempt + 1)
-                await self._retry_backoff(attempt, rate_limited=True)
+                # M7: 把服务端 Retry-After 建议传给退避, 尊重配额恢复节奏。
+                await self._retry_backoff(
+                    attempt, rate_limited=True, retry_after=getattr(exc, "retry_after", None)
+                )
             except LLMError as exc:
                 last_error = exc
                 logger.warning("LLM 调用失败", attempt=attempt + 1, error=str(exc))
@@ -300,16 +304,22 @@ class ProviderManager:
         return LLMResponse(content=_degraded_reply_from_error(last_error))
 
     @staticmethod
-    async def _retry_backoff(attempt: int, *, rate_limited: bool = False) -> None:
+    async def _retry_backoff(
+        attempt: int, *, rate_limited: bool = False, retry_after: float | None = None
+    ) -> None:
         """指数退避; 最后一次重试后不再 sleep。
 
         rate_limited (429) 时退避基数翻倍, 给服务端配额恢复更多时间。
+        M7: retry_after (服务端 Retry-After 建议秒数) 非空时, 退避至少等这么久 ——
+        尊重服务端配额恢复节奏, 避免盲目提前重发再次 429 (封顶防异常大值)。
         """
         if attempt >= 2:
             return
         delay = 2 ** attempt
         if rate_limited:
             delay *= 2
+        if retry_after is not None and retry_after > 0:
+            delay = max(delay, min(float(retry_after), MAX_RETRY_AFTER_SECONDS))
         await asyncio.sleep(delay)
 
     async def _call_and_record(
