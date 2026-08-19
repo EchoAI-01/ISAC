@@ -218,6 +218,28 @@ async def test_shared_namespace_acl_rejects_without_user_or_group(tmp_path) -> N
 
 
 @pytest.mark.asyncio
+async def test_tenant_prefixed_shared_namespace_acl_rejects_without_anchor(tmp_path) -> None:
+    """2026-08-19 shared ACL 口径统一回归: 租户前缀 shared 命名空间同样强制 ACL。
+
+    此前 pipeline 仅用 `namespace == "shared"` 字面量判断, 租户模式下命名空间为
+    `org:tenant:shared` 失配 → 强制 ACL 被绕过, 可无锚点全量检索该租户 shared 空间。
+    is_shared_namespace 统一口径后, 前缀形态无 user_id/group_id 也必须被拒。
+    """
+    from isac.observability import get_default_metrics
+
+    metrics = get_default_metrics()
+    pipeline = await make_pipeline(tmp_path, namespace="org1:tenantA:shared", metrics=metrics)
+    await pipeline.store_episode("tenant secret", "sess-1", "u1")
+
+    hits = await pipeline.search("tenant secret", user_id="", group_id="")
+    assert hits == []
+    assert metrics.counter("isac_memory_acl_rejections_total").value() == 1
+
+    hits = await pipeline.search("tenant secret", user_id="u1")
+    assert len(hits) == 1
+
+
+@pytest.mark.asyncio
 async def test_store_episode_failure_records_error_metric(tmp_path) -> None:
     """K3: 写入失败时记 isac_memory_store_errors_total 指标, 不阻塞返回空 ID。"""
     from isac.observability import get_default_metrics

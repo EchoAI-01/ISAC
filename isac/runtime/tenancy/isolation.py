@@ -85,3 +85,21 @@ class TenantIsolationGuard:
         new_query = f"SELECT * FROM ({query}) AS _tenant_scoped WHERE organization_id = ? AND tenant_id = ?"
         new_params = list(params) + [tenant.organization_id, tenant.tenant_id]
         return new_query, new_params
+
+
+def warn_if_default_tenant_fail_open(guard: TenantIsolationGuard, tenant: TenantContext) -> None:
+    """2026-08-19 租户 fail-open 止血: 把"静默失效"变成"启动即大声告警"。
+
+    ``enabled=true`` 但租户上下文退化为 default (未配 organization_id/tenant_id) 时,
+    ``namespace_for``/``enforce`` 对 default 租户直通, 隔离静默全失效 —— 危险配置态。
+    按请求级租户解析 + token↔tenant 绑定属 U4 (DEVELOPMENT_PLAN §四 U4) 范畴; 此处
+    先在装配期告警, 提示运维补齐租户身份或关闭 tenancy.enabled, 避免误以为隔离已生效。
+    (放在 tenancy 模块而非 wiring, 以免推高 build_services 圈复杂度/行数红线。)
+    """
+    if guard.enabled and tenant.is_default:
+        logger.warning(
+            "tenancy.enabled=true 但租户身份为默认值 (default/default), 租户隔离实际未生效 "
+            "(默认租户直通)。请在 tenancy.organization_id/tenant_id 配置真实租户身份, "
+            "或关闭 tenancy.enabled; 按请求级租户鉴权见 U4。",
+            tenancy_enabled=True,
+        )
