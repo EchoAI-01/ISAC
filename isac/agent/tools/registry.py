@@ -170,17 +170,21 @@ class ToolRegistry:
     def effective_policy(self, tool_name: str, platform: str = "") -> str:
         """返回工具有效策略: allow / restricted / ask / deny。
 
-        合并顺序: ToolPermission (全局默认+Agent tools_policy) → EnableMatrix (Channel 覆盖)。
-        U5: 引入 ask 档 (人工审批)。Channel 明确 deny/restricted/ask 覆盖基础策略。
+        合并顺序: 框架基线 (DEFAULT_POLICY ∪ Agent tools_policy) → 配置层显式覆盖
+        (全局运维 → Agent → Channel)。
+        U5: 引入 ask 档 (人工审批)。
+        M3: 配置层传**纯 Agent 层** (permission.agent_policy, 不混 DEFAULT_POLICY),
+        且仅在配置层有显式条目 (非空返回) 时覆盖基线 —— 此前 DEFAULT_POLICY 条目
+        混在 Agent 层传入, 恒覆盖全局运维 tools_policy; 无配置时兜底 allow 又会误
+        覆盖框架默认 deny。
         """
         policy = self.permission.check(tool_name)
         if self.enable_matrix is not None:
-            agent_policy_dict = self.permission.policy
             platform_policy = self.enable_matrix.tool_policy(
-                tool_name, agent_policy_dict, agent_id=self.agent_id, platform=platform
+                tool_name, self.permission.agent_policy, agent_id=self.agent_id, platform=platform
             )
-            # Channel 明确 deny / restricted / ask 优先
-            if platform_policy in ("deny", "restricted", "ask"):
+            # 配置层有显式条目才覆盖基线 ("" = 三层均未配置, 保留框架基线)
+            if platform_policy:
                 policy = platform_policy
         return policy
 

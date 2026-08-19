@@ -105,6 +105,10 @@ class ToolPermission:
     }
 
     def __init__(self, policy: dict[str, str] | None = None):
+        # M3: 保留**纯 Agent 配置层** (不混 DEFAULT_POLICY) —— 供 EnableMatrix 合并时
+        # 作 Agent 层。此前 effective_policy 把合并后的 self.policy (含 DEFAULT_POLICY)
+        # 当 Agent 层传入, 框架默认条目会覆盖全局运维 tools_policy (语义陷阱)。
+        self.agent_policy = dict(policy or {})
         self.policy = {**self.DEFAULT_POLICY, **(policy or {})}
 
     def check(self, tool_name: str) -> str:
