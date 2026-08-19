@@ -6,6 +6,8 @@ dispatch.py 保留 re-export 供既有 import 路径不变。
 
 from __future__ import annotations
 
+import asyncio
+from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -16,6 +18,53 @@ from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# 阶段3-2 (M4): 出站投递保障 —— 发送失败的有界重试次数与退避基数 (秒)。
+# 此前 _send_reply 失败即丢 (无重试/无死信)。重试保守 (默认共 3 次, 短退避),
+# 避免对已送达却误报失败的发送造成重复投递; 全部失败落死信环 (可观测不静默丢)。
+_SEND_MAX_ATTEMPTS = 3
+_SEND_RETRY_BACKOFF_SECONDS = 0.5
+_DEAD_LETTER_MAXLEN = 200
+
+
+class OutboundDeadLetter:
+    """出站发送最终失败的死信环 (有界 deque, 近期可查 + 结构化日志)。
+
+    阶段3-2 (M4): 让"回复发不出去"从静默丢失变为可观测 (log + 近期条目可查)。
+    内存有界 (maxlen), 不落盘 —— 持久化死信表留后续 (需独立存储与清理策略)。
+    """
+
+    def __init__(self, maxlen: int = _DEAD_LETTER_MAXLEN) -> None:
+        self._entries: deque[dict[str, Any]] = deque(maxlen=max(1, int(maxlen)))
+
+    def record(
+        self, *, platform: str, agent_id: str, session_id: str, attempts: int, error: str = ""
+    ) -> None:
+        self._entries.append(
+            {
+                "platform": platform,
+                "agent_id": agent_id,
+                "session_id": session_id,
+                "attempts": attempts,
+                "error": error,
+            }
+        )
+        logger.error(
+            "出站回复重试耗尽, 记入死信",
+            platform=platform, agent_id=agent_id, session_id=session_id,
+            attempts=attempts, error=error,
+        )
+
+    def recent(self, limit: int = 50) -> list[dict[str, Any]]:
+        """近期死信条目 (最新在后)。"""
+        return list(self._entries)[-max(0, int(limit)):]
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+
+# 默认死信环 (模块级单例, _send_reply 未显式注入时使用)。
+_DEFAULT_DEAD_LETTER = OutboundDeadLetter()
+
 
 async def _send_reply(
     channel_registry: ChannelRegistry,
@@ -25,6 +74,7 @@ async def _send_reply(
     platform_session_id: str = "",
     *,
     artifact_store: Any = None,
+    dead_letter: OutboundDeadLetter | None = None,
 ) -> None:
     """把 Agent 的文本回复经原 Channel 适配器发送。
 
@@ -35,6 +85,8 @@ async def _send_reply(
     取元数据 + MediaResolver.resolve_for_channel 转 Channel segment append 到
     reply.segments (此前只发文本, 生成的图/语音发不出去)。MediaResolver 不支持的
     平台 (webchat/telegram/discord) 跳过 segment, 仅文本。
+    M4: 出站投递保障 —— 发送失败有界重试 (默认 3 次, 短退避); 全部失败记入死信环
+    (dead_letter, 缺省用模块级 _DEFAULT_DEAD_LETTER), 不再静默丢失。
     """
     adapter = channel_registry.get(incoming.platform)
     if adapter is None:
@@ -61,11 +113,32 @@ async def _send_reply(
     # R1-①: 扫 artifact 引用转 segment (artifact_store 注入时)
     if artifact_store is not None:
         await _append_artifact_segments(reply, artifact_store, incoming.platform)
-    success = await adapter.send(reply)
-    if not success:
-        logger.warning("回复发送失败", platform=incoming.platform, agent_id=agent_id)
-    else:
+    # 阶段3-2 (M4): 出站投递保障 —— 有界重试 (短退避), 全部失败记死信不静默丢。
+    success = False
+    for attempt in range(1, _SEND_MAX_ATTEMPTS + 1):
+        try:
+            success = await adapter.send(reply)
+        except Exception as exc:  # noqa: BLE001 适配器异常按失败重试
+            success = False
+            logger.warning(
+                "出站发送异常, 准备重试", platform=incoming.platform,
+                agent_id=agent_id, attempt=attempt, error=str(exc),
+            )
+        if success:
+            break
+        if attempt < _SEND_MAX_ATTEMPTS:
+            await asyncio.sleep(_SEND_RETRY_BACKOFF_SECONDS * attempt)
+    if success:
         logger.info("Agent 回复已发送", agent_id=agent_id, platform=incoming.platform, length=len(reply_text))
+    else:
+        dl = dead_letter if dead_letter is not None else _DEFAULT_DEAD_LETTER
+        dl.record(
+            platform=incoming.platform,
+            agent_id=agent_id,
+            session_id=platform_session_id or incoming.session_id,
+            attempts=_SEND_MAX_ATTEMPTS,
+            error="send returned False / exception after retries",
+        )
 
 
 async def _append_artifact_segments(reply: ISACMessage, artifact_store: Any, platform: str) -> None:
