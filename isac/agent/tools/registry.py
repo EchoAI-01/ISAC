@@ -43,6 +43,7 @@ from isac.agent.tools.decision_reasons import (
 from isac.agent.tools.guard import OUTCOME_DENIED
 from isac.core.exceptions import ToolError
 from isac.core.types import AgentContext, ToolCall, ToolResult
+from isac.runtime.services import ServiceContainer
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -346,7 +347,8 @@ class ToolRegistry:
         await self._log_tool_event(
             services, session_key, tool.name, "called", decision=decision, decider=decider, reason=reason,
         )
-        context = ToolContext(args=tool_call.arguments, agent_context=agent_context, services=services or {})
+        container = services if isinstance(services, ServiceContainer) else ServiceContainer(services or {})
+        context = ToolContext(args=tool_call.arguments, agent_context=agent_context, services=container)
         try:
             result = await tool.execute(context)
         except ToolError:
@@ -494,7 +496,7 @@ class ToolRegistry:
         没有列入的 restricted 工具默认只要求 services 非空 (任意后端存在即可)。
 
         U0 Fix-87: mcp: 桥接工具映射到 "mcp_clients" —— MCP 接线时 assembly 注入
-        agent_services["mcp_clients"] (非空列表); 未接线则缺失/为空, restricted 门
+        per-Agent 服务的 `mcp_clients` 键 (非空列表); 未接线则缺失/为空, restricted 门
         拒绝。此前 mcp: 工具在 ToolPermission.check 默认 restricted 但本映射无对应项
         → restricted 等效 allow (语义矛盾: "受限"却恒放行)。补映射后 restricted 语义
         落实: LLM 直调未接线 Agent 的 mcp 工具被拒。

@@ -37,6 +37,7 @@ from isac.runtime.bus import InterAgentBus, InterAgentLink, InterAgentMessage
 from isac.runtime.config import AgentConfig
 from isac.runtime.manager import AgentManager
 from isac.runtime.mesh.actions import MeshActionBroker
+from isac.runtime.services import ServiceContainer
 from tests.fixtures.fakes import FakeChannel, FakeLLMProvider, make_final_reply
 
 
@@ -283,7 +284,7 @@ async def test_handoff_transfers_session_ownership() -> None:
     session = Session(session_id="s1", user_id="u1", agent_id="a", platform="fake")
     context = type("Ctx", (), {})()
     context.args = {"target_agent": "b", "summary": "用户在问天气, 请接手"}
-    context.services = {"mesh_action_broker": broker, "agent_id": "a", "router": router}
+    context.services = ServiceContainer({"mesh_action_broker": broker, "agent_id": "a", "router": router})
     context.agent_context = AgentContext(
         session=session, user_profile=None, current_message=_msg("x", at=False)
     )

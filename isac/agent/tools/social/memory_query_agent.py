@@ -38,13 +38,13 @@ class MemoryQueryAgentTool(Tool):
         工具只能说"响应异步返回"而查询方永远拿不到结果); 策略按 Link 解析,
         visible_memory_scopes 由接收端 (main._deliver_to_agent) 真实裁剪。
         """
-        broker = context.services.get("mesh_action_broker")
+        broker = context.services.mesh_action_broker
         if broker is None:
             return ToolResult(content="memory_query_agent 未接入 mesh_action_broker", is_error=True)
-        policy: MeshLinkPolicy | None = context.services.get("mesh_link_policy")
+        policy: MeshLinkPolicy | None = context.services.mesh_link_policy
         target = str(context.args.get("target_agent", ""))
         query = str(context.args.get("query", ""))
-        agent_id = str(context.services.get("agent_id", ""))
+        agent_id = str(context.services.agent_id or "")
         response = await broker.memory_query(agent_id, target, query, policy)
         if response is None:
             return ToolResult(

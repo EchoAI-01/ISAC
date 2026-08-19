@@ -70,14 +70,14 @@ class HandoffConversationTool(Tool):
         ② **失败不 commit** —— 此前 finally 无条件 commit, 投递/转移失败也把租约标
         记为"写入成功"。改为: 成功路径显式 commit, 其余 (失败返回/异常) 一律 cancel。
         """
-        broker = context.services.get("mesh_action_broker")
+        broker = context.services.mesh_action_broker
         if broker is None:
             return ToolResult(content="handoff_conversation 未接入 mesh_action_broker", is_error=True)
-        policy: MeshLinkPolicy | None = context.services.get("mesh_link_policy")
+        policy: MeshLinkPolicy | None = context.services.mesh_link_policy
         target = str(context.args.get("target_agent", ""))
         summary = str(context.args.get("summary", ""))
-        agent_id = str(context.services.get("agent_id", ""))
-        router = context.services.get("router")
+        agent_id = str(context.services.agent_id or "")
+        router = context.services.router
         # Fix-70: 登记前存活性检查 —— 目标不在 agents_provider (生产即非 running)
         # 时拒绝移交: 否则摘要白发, 且会话被一个无人接手的 handoff 覆盖劫持到
         # TTL 到期。交还 (target==自己) 不受此限制, 撤销路径必须始终可用。
@@ -88,7 +88,7 @@ class HandoffConversationTool(Tool):
         # Fix-117①: 归属转移是会话流写入, 先预约后写入 (fail-closed) —— 预约必须
         # 在任何投递副作用之前, 被仲裁拒绝时不产生半程移交。
         session = context.agent_context.session
-        gate = context.services.get("session_write_gate")
+        gate = context.services.session_write_gate
         reservation = None
         if gate is not None:
             session_key = getattr(session, "session_id", "") or f"handoff:{agent_id}"

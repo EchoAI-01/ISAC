@@ -14,6 +14,7 @@ from isac.agent.tools.registry import ToolRegistry
 from isac.channel.model import ISACMessage
 from isac.core.types import AgentContext, Budget
 from isac.gateway.models import Session
+from isac.runtime.services import ServiceContainer
 from isac.runtime.subagent.models import SubAgentResult, SubAgentTask
 from isac.utils.logger import get_logger
 
@@ -97,12 +98,12 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
                 remaining_iterations=max(1, task.policy.max_tool_calls + 1),
                 max_tokens=task.policy.max_tokens,
             ),
-            services={
+            services=ServiceContainer({
                 "agent_id": task.parent_agent_id,
                 "task_id": task.task_id,
                 "task_depth": int(task.context.get("task_depth", 0)),
                 "task_max_depth": task.policy.max_depth,
-            },
+            }),
         )
         result = await loop.run([{"role": "user", "content": user_content}], context)
         status = "succeeded" if not result.stopped_by_budget else "failed"

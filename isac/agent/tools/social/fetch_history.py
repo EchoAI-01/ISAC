@@ -1,6 +1,6 @@
 """fetch_history 工具: 拉取聊天历史 (ARCHITECTURE.md 3.5)。
 
-经 services["channel_history"] 拉取平台历史消息; 未注入时返回友好错误。
+经服务袋 `channel_history` 键拉取平台历史消息; 未注入时返回友好错误。
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ class FetchHistoryTool(Tool):
 
     async def execute(self, context: ToolContext) -> ToolResult:
         """经 channel_history 拉取平台历史消息并格式化。"""
-        fetcher = context.services.get("channel_history")
+        fetcher = context.services.channel_history
         if fetcher is None:
             return ToolResult(content="当前未启用历史拉取能力，无法获取聊天记录。", is_error=True)
 

@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from isac.runtime.manager import AgentManager
@@ -54,6 +56,54 @@ def test_per_agent_keys_tolerant_and_readable() -> None:
     assert merged.memory == "mem"
     assert merged.agent_id == "a1"
     assert merged.mcp_clients is None  # 未写入的 per-Agent 键仍宽容
+
+
+# manager 构造 AgentContext.services / loop 经 ToolContext.services 透传的 per-turn 键。
+_PER_TURN_KEYS = {
+    "conversation_runtime", "progress_slow_tool_threshold_seconds",
+    "progress_report_before_slow_tool", "task_id", "task_depth", "task_max_depth",
+    "task_runner", "tool_call_id", "channel_history", "channel_send",
+    "channel_forward", "image_gen", "session_topic", "mesh_link_policy",
+    "web_search", "gating", "agent_manager",
+}
+
+
+def test_per_turn_keys_tolerant() -> None:
+    container = ServiceContainer()
+    for key in sorted(_PER_TURN_KEYS):
+        assert getattr(container, key) is None, f"per-turn 属性 {key} 缺失或非宽容"
+    filled = ServiceContainer({"task_id": "t1", "gating": "g"})
+    assert filled.task_id == "t1"
+    assert filled.gating == "g"
+    assert filled.task_depth is None
+
+
+def test_agent_context_normalizes_plain_dict() -> None:
+    """Z1-C: AgentContext/ToolContext 传裸 dict 经 __post_init__ 归一为容器。"""
+    from isac.agent.tools.base import ToolContext
+    from isac.core.types import AgentContext
+
+    session = SimpleNamespace(session_id="s1")
+    msg = SimpleNamespace()
+    ctx = AgentContext(session=session, user_profile=None, current_message=msg,
+                       services={"agent_id": "a1", "task_id": "t1"})
+    assert isinstance(ctx.services, ServiceContainer)
+    assert ctx.services.agent_id == "a1"
+    assert ctx.services.task_id == "t1"
+    assert ctx.services.task_depth is None  # 缺键宽容
+
+    tool_ctx = ToolContext(args={}, agent_context=ctx, services={"memory": "m"})
+    assert isinstance(tool_ctx.services, ServiceContainer)
+    assert tool_ctx.services.memory == "m"
+
+
+def test_agent_context_default_services_is_container() -> None:
+    from isac.core.types import AgentContext
+
+    ctx = AgentContext(session=SimpleNamespace(), user_profile=None,
+                       current_message=SimpleNamespace())
+    assert isinstance(ctx.services, ServiceContainer)
+    assert ctx.services.agent_id is None
 
 
 def test_property_returns_registered_value() -> None:

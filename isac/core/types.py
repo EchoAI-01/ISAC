@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from isac.runtime.services import ServiceContainer
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -206,13 +208,19 @@ class AgentContext(RuntimeContext):
     # on_error 让调用方知道"已推送部分后失败", 可以选择向用户追加错误标记
     # 或回滚已推送的 chunks (取决于具体场景)。
     on_error: Callable[[Exception], Awaitable[None]] | None = None
-    # 共享服务字典 (runtime/assembly 注入): gating/agent_manager/session_mgr 等
+    # 共享服务 (runtime/assembly 注入): gating/agent_manager/session_mgr 等
     # 让 Command 实现能访问 Agent 子系统 (CODE_REVIEW_REPORT.md #10)。
-    services: dict[str, Any] = field(default_factory=dict)
+    # Z1-C: 类型化为 ServiceContainer (宽容属性读取); 裸 dict 传入经 __post_init__ 归一。
+    services: ServiceContainer = field(default_factory=ServiceContainer)
     # 任务进度回调 (D9): Agent Loop 只提交 ProgressEvent，实际发送由 ProgressReporter 负责。
     # 默认 None 时进度报告关闭，主链路热路径零变化。返回值 (ProgressReporter.report
     # 返回 bool 表示是否实际发送) 由调用方按需读取, 故声明为 Awaitable[Any]。
     report_progress: Callable[[ProgressEvent], Awaitable[Any]] | None = None
+
+    def __post_init__(self) -> None:
+        # Z1-C: 裸 dict → ServiceContainer (测试/兼容层可能传裸 dict)。
+        if type(self.services) is dict:
+            self.services = ServiceContainer(self.services)
 
     def should_compress(self) -> bool:
         """上下文是否过大需要压缩（触发 COMPRESS hook）。

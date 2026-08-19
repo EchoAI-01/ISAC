@@ -224,9 +224,9 @@ async def _setup_conversation_runtime(
     agent_services["conversation_enabled"] = conversation_enabled
 
     def _interrupt_runtime_provider(session_id: str):  # noqa: ANN001, ANN202
-        if not agent_services["conversation_enabled"]:
+        if not agent_services.conversation_enabled:
             return None
-        return agent_services["conversation_registry"].get(config.agent_id, session_id)
+        return agent_services.conversation_registry.get(config.agent_id, session_id)
 
     prompt_builder.register(InterruptInjector(runtime_provider=_interrupt_runtime_provider))
     recovery_injector = RecoveryInjector()
@@ -241,7 +241,7 @@ async def _setup_conversation_runtime(
     # 消费者, 队列恒空, 主动任务功能不可达)。默认 idle_reengage_seconds=0 时不构造,
     # 主链路零行为变化; 配置 > 0 时会话静默超阈值即主动关心一次 (按新消息重新武装)。
     task_producer = _build_task_producer(
-        config, proactive_cfg, agent_services["conversation_registry"], memory=memory
+        config, proactive_cfg, agent_services.conversation_registry, memory=memory
     )
     agent_services["proactive_scheduler"] = ProactiveScheduler(
         min_interval_seconds=float(proactive_cfg.get("min_interval_seconds", 600) or 0),

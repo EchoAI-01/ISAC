@@ -91,7 +91,7 @@ async def _register_control_plane(
                 # (无法注册事件订阅/互联钩子/Admin Route)。event_bus/inter_agent_bus/
                 # router 都是生产实例, 插件经 on_event_intercept/on_event_async 的
                 # 订阅会真实参与 process_message 主链路。R3 起 tools/commands/
-                # prompt_builder 改为进程级共享注册表 (services["plugin_tools"] 等),
+                # prompt_builder 改为进程级共享注册表 (`plugin_tools` 等服务键),
                 # native 插件 on_load register 真实写入, 兼容层 (AstrBot/MaiBot) 经
                 # _adapt_compat_plugins 桥接 @filter.llm_tool/@register_action;
                 # assemble_agent 合并进 per-Agent registry。详见 _fire_plugin_on_load docstring。

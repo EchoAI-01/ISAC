@@ -46,9 +46,9 @@ class _MediaToolBase(Tool):
     _modalities_out: set[str] = set()
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        router: ModelRouter | None = context.services.get("model_router")
-        pm: Any = context.services.get("provider_manager")
-        artifact_store: ArtifactStore | None = context.services.get("artifact_store")
+        router: ModelRouter | None = context.services.model_router
+        pm: Any = context.services.provider_manager
+        artifact_store: ArtifactStore | None = context.services.artifact_store
         if router is None or pm is None:
             return ToolResult(content=_NO_ROUTER, is_error=True)
         selection = router.select(
@@ -122,7 +122,7 @@ def _record_media_usage(
       stt→record_stt, tts→record_tts。vision (vision_chat) 不在此计 (record_llm 已在
       provider manager 接)。usage_recorder 经 context.services 取, None 时 no-op。
     """
-    recorder = context.services.get("usage_recorder")
+    recorder = context.services.usage_recorder
     if recorder is None:
         return
     session = getattr(context.agent_context, "session", None)
@@ -248,7 +248,7 @@ class TranscribeAudioTool(_MediaToolBase):
     async def _call_provider(
         self, provider: Any, context: ToolContext, artifact_store: Any
     ) -> ToolResult:
-        normalizer: MediaNormalizer | None = context.services.get("media_normalizer")
+        normalizer: MediaNormalizer | None = context.services.media_normalizer
         if normalizer is None:
             return ToolResult(content=_NO_NORMALIZER, is_error=True)
         media_uri = str(context.args.get("media_uri", ""))
@@ -367,7 +367,7 @@ class VisionUnderstandTool(_MediaToolBase):
     async def _call_provider(
         self, provider: Any, context: ToolContext, artifact_store: Any
     ) -> ToolResult:
-        normalizer: MediaNormalizer | None = context.services.get("media_normalizer")
+        normalizer: MediaNormalizer | None = context.services.media_normalizer
         if normalizer is None:
             return ToolResult(content=_NO_NORMALIZER, is_error=True)
         media_uri = str(context.args.get("media_uri", ""))

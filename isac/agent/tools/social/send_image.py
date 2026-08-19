@@ -1,6 +1,6 @@
 """send_image 工具: 发送图片 (ARCHITECTURE.md 3.5)。
 
-生成图片需要 Image Gen Provider; 当前 MVP 阶段, 若 services["image_gen"] 未注入,
+生成图片需要 Image Gen Provider; 当前 MVP 阶段, 若服务袋 `image_gen` 键未注入,
 返回友好错误, 而非抛 NotImplementedError 把桩状态暴露给 LLM。
 """
 
@@ -38,8 +38,8 @@ class SendImageTool(Tool):
         if not prompt:
             return ToolResult(content="send_image 缺少 prompt。", is_error=True)
 
-        sender = context.services.get("channel_send")
-        image_gen = context.services.get("image_gen")
+        sender = context.services.channel_send
+        image_gen = context.services.image_gen
         if sender is None:
             return ToolResult(content="当前未启用 Channel 发送能力，无法发送图片。", is_error=True)
         if image_gen is None:

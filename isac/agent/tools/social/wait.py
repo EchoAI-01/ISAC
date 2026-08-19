@@ -42,14 +42,14 @@ class WaitTool(Tool):
         # N5b 批次F: 上限 600s (10 分钟), 防 LLM 传超大值致会话长期挂起。
         seconds = min(600, max(1, int(context.args.get("seconds", 5) or 5)))
         session_id = getattr(context.agent_context.session, "session_id", "")
-        agent_id = str(context.services.get("agent_id", "") or "")
-        registry = context.services.get("conversation_registry")
-        enabled = bool(context.services.get("conversation_enabled", False))
+        agent_id = str(context.services.agent_id or "")
+        registry = context.services.conversation_registry
+        enabled = bool(context.services.conversation_enabled)
         if not enabled or registry is None:
             return ToolResult(content=f"已记录等待意图：等待 {seconds} 秒或等待对方继续说。session_id={session_id}")
         # L2: 注册 WaitState, await future 唤醒, 回填实际等待 + 原因
         runtime = registry.get(agent_id, session_id)
-        tool_call_id = context.services.get("tool_call_id") or f"wait_{uuid.uuid4().hex}"
+        tool_call_id = context.services.tool_call_id or f"wait_{uuid.uuid4().hex}"
         wait = WaitState(
             tool_call_id=tool_call_id,
             started_at=time.time(),

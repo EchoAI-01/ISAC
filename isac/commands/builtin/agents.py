@@ -18,7 +18,7 @@ class AgentsCommand(Command):
 
     async def execute(self, message: ISACMessage, args: str, context: AgentContext) -> str:
         """经注入的 AgentManager.list() 生成清单。"""
-        agent_manager = context.services.get("agent_manager")
+        agent_manager = context.services.agent_manager
         if agent_manager is None:
             return "Agent 管理器未注入, 无法列举。"
         instances = await agent_manager.list()

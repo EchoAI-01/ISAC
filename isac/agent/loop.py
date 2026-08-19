@@ -28,6 +28,7 @@ from isac.core.types import (
     ToolCall,
     ToolResult,
 )
+from isac.runtime.services import ServiceContainer
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -70,7 +71,11 @@ class ISACAgentLoop:
         self.hooks = hooks
         self.tools = tools
         self.provider_manager = provider_manager
-        self.services = services or {}
+        # Z1-C: 归一化为 ServiceContainer (宽容属性读取)。
+        self.services = (
+            services if isinstance(services, ServiceContainer)
+            else ServiceContainer(services or {})
+        )
 
     async def run(self, messages: list[dict], context: AgentContext) -> AgentResult:
         """执行 Agent 循环，直到产出最终回复 / 被打断 / 预算耗尽。
@@ -196,7 +201,7 @@ class ISACAgentLoop:
 
     def _interrupt_seq(self, context: AgentContext) -> int:
         """P1(L4): 当前会话的打断序号 (单调递增); 无 runtime 时恒 0。"""
-        conv_runtime = self.services.get("conversation_runtime") or context.services.get("conversation_runtime")
+        conv_runtime = self.services.conversation_runtime or context.services.conversation_runtime
         if conv_runtime is None:
             return 0
         return int(getattr(conv_runtime, "interrupt_seq", 0) or 0)
@@ -222,7 +227,7 @@ class ISACAgentLoop:
         if any(r is False for r in results):
             return ToolResult(content=f"工具 {tool_call.name} 被权限策略阻止", is_error=True)
 
-        metrics = self.services.get("metrics")
+        metrics = self.services.metrics
         if metrics is not None:
             metrics.counter("isac_tool_calls_total").inc()
 
@@ -231,7 +236,7 @@ class ISACAgentLoop:
         # report_progress 为 None、或 Agent 配置 report_before_slow_tool=False 时
         # 不创建哨兵任务 (保持零行为变化 / 尊重显式关闭)。
         slow_tool_task: asyncio.Task[None] | None = None
-        if context.report_progress is not None and context.services.get("progress_report_before_slow_tool", True):
+        if context.report_progress is not None and context.services.progress_report_before_slow_tool is not False:
             slow_tool_task = asyncio.create_task(self._emit_slow_tool_started(context, tool_call.name))
         try:
             result = await self.tools.execute(tool_call, context, services=self.services)
@@ -275,8 +280,8 @@ class ISACAgentLoop:
 
     async def _emit_slow_tool_started(self, context: AgentContext, tool_name: str) -> None:
         """D9: sleep 阈值后报告 tool_started; 工具正常完成时被外层 cancel, 永不触发。"""
-        threshold = float(context.services.get("progress_slow_tool_threshold_seconds", 2.0))
-        await asyncio.sleep(threshold)
+        threshold = context.services.progress_slow_tool_threshold_seconds
+        await asyncio.sleep(float(2.0 if threshold is None else threshold))
         await self._emit_progress(context, "tool_started", tool_name=tool_name)
 
     async def _emit_progress(
@@ -297,8 +302,8 @@ class ISACAgentLoop:
             return
         event = ProgressEvent(
             event_id=uuid.uuid4().hex,
-            task_id=str(context.services.get("task_id") or context.session.session_id),
-            agent_id=str(context.services.get("agent_id", "")),
+            task_id=str(context.services.task_id or context.session.session_id),
+            agent_id=str(context.services.agent_id or ""),
             session_id=context.session.session_id,
             stage=stage,
             tool_name=tool_name,
@@ -401,9 +406,9 @@ class ISACAgentLoop:
         trace_id 复用 D9 已经为每轮消息生成的 task_id, 不新增字段。
         """
         return (
-            str(context.services.get("agent_id", "")),
+            str(context.services.agent_id or ""),
             context.session.session_id,
-            str(context.services.get("task_id", "")),
+            str(context.services.task_id or ""),
         )
 
     _MAX_TOOL_RESULT_CHARS = 8000

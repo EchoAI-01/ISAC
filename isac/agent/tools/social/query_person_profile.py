@@ -25,7 +25,7 @@ class QueryPersonProfileTool(Tool):
 
     async def execute(self, context: ToolContext) -> ToolResult:
         """查询人物画像。"""
-        memory = context.services.get("memory")
+        memory = context.services.memory
         metadata = getattr(memory, "metadata", None) if memory is not None else None
         if metadata is None or not hasattr(metadata, "get_person_profile"):
             return ToolResult(content="未启用人物画像存储，无法查询画像。", is_error=True)

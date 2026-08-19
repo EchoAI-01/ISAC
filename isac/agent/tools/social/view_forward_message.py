@@ -1,6 +1,6 @@
 """view_forward_message 工具: 查看转发的合并消息内容 (ARCHITECTURE.md 3.5)。
 
-经 services["channel_history"] 获取合并转发消息的详细内容; 未注入时返回友好错误。
+经服务袋 `channel_forward` 键获取合并转发消息的详细内容; 未注入时返回友好错误。
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class ViewForwardMessageTool(Tool):
         if not forward_id:
             return ToolResult(content="view_forward_message 缺少 forward_id。", is_error=True)
 
-        fetcher = context.services.get("channel_forward")
+        fetcher = context.services.channel_forward
         if fetcher is None:
             return ToolResult(
                 content="当前未启用合并转发消息读取能力，无法查看转发内容。",

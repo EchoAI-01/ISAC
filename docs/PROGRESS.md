@@ -2,6 +2,10 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-18 —— N5/Z1-C ServiceContainer 迁移热路径面 (全量 2144 通过)**。
+> `AgentContext.services` / `ToolContext.services` **类型化为 ServiceContainer** (裸 dict 经 `__post_init__` 归一, 测试零改动); loop `self.services` 归一化; 全部内置工具 (bash/read/write/web_search/task/task_runner + social 全套 + media + subagent) 与 commands (agents/focus) / supervisor / activation 的字符串键读取迁宽容属性; manager progress/turn/命令上下文构造改容器。`runtime/services` 8 个类型导入移入 TYPE_CHECKING 断开运行时依赖, core/types 得以模块级引用容器 (无环)。
+> 红线棘轮**再收紧 130→35** (累计 205→35, -170); 容器测试补 per-turn 17 键 + Context 归一化用例 (共 46 例)。剩余 35 = 装配写侧灌键 + 控制面/兼容层少数回退读 + 2 处动态键 (有意保留)。**全量 2144 通过**, ruff/mypy (295 源文件)/红线全绿。Z1 三面 (全局/per-Agent/热路径) 迁移完毕。
+>
 > ⚠️ **最近更新: 2026-08-18 —— N5/Z1-B ServiceContainer 迁移次批: per-Agent 面 (全量 2141 通过)**。
 > 容器属性扩 14 个 per-Agent 键 (memory/mcp_clients/proactive_scheduler/conversation_*/plugin_* 等); `assemble_agent` 归一化裸 dict (`_as_container` 抽出避免 C901), per-Agent 袋改由 ServiceContainer 构造 (全局快照 ∪ per-Agent 键, dict 子类零破坏); `instance.services` 属性访问迁移 manager 19 处 + dispatch 关停链 + subagent runner 模型路由; provider_manager/memory_factory 装配不变量经 cast 收敛 (不加 C901 分支)。
 > 红线棘轮**再收紧 167→130** (累计 205→130, -75); 容器测试补 per-Agent 键宽容/合并面用例。测试适配: u7/runtime_assembly 的 fake instance 改构造容器。剩余 `context.services` (Loop/工具热路径) 与 control 路由面另立批 C。**全量 2141 通过**, ruff/mypy (295 源文件)/红线全绿。

@@ -29,8 +29,8 @@ class QueryMemoryTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        """经 services["memory"] 检索长期记忆并格式化。"""
-        memory = context.services.get("memory")
+        """经服务袋 `memory` 键检索长期记忆并格式化。"""
+        memory = context.services.memory
         if memory is None:
             return ToolResult(content="未启用记忆服务，无法查询长期记忆。", is_error=True)
 

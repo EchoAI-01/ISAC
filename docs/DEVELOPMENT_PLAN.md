@@ -267,7 +267,7 @@
 
 ### N5 并行线: 剩余架构债与加固 (见缝插针)
 
-- [~] **Z1** `services` 弱类型 → ServiceContainer 强类型 —— **批 A+B 已完成 (2026-08-18)**: 容器属性扩至全部 36 全局注册键 + 14 per-Agent 键, 统一宽容语义 (缺键 None); bootstrap/AgentManager 全局容器访问 + assembly/manager/dispatch/subagent-runner 的 per-Agent (`instance.services`) 读取迁移属性访问; 生产容器直通同一对象 (后注册键可见), 裸 dict 测试夹具归一化拷贝 (assemble_agent/AgentManager 入口)。红线棘轮 205→167→130。剩余: `context.services` (Agent Loop/工具热路径) 与 control 路由 `(services or {})` 面另立批 C。
+- [~] **Z1** `services` 弱类型 → ServiceContainer 强类型 —— **批 A+B+C 已完成 (2026-08-18)**: 容器属性扩至 36 全局键 + 14 per-Agent 键 + 17 per-turn/工具键, 统一宽容语义 (缺键 None); 全局容器 / per-Agent (`instance.services`) / 热路径 (`AgentContext.services` + `ToolContext.services` 类型化为 ServiceContainer, 裸 dict 经 `__post_init__` 归一) 三面读取全部迁属性访问; loop / 全部内置工具 (utility/social/media/subagent) / commands / supervisor / activation 收口。runtime/services 的 8 个类型导入移入 TYPE_CHECKING 断开运行时依赖, 使 core/types 可模块级引用容器。红线棘轮 205→167→130→35。剩余 35 = 装配写侧灌键 (bootstrap/assembly/manager) + 控制面 mcp_server 回退读 (含未注册键 plugin_manager) + astrbot 兼容层读 (event_bus/tools) + 2 处动态键 (registry restricted 候选 / routes_plugins), 均为有意保留。
 - [x] **Z2** `main.py` 拆分 —— 已由 **U2 收敛 (2026-08-17)**: main.py 82 行薄入口, 装配拆 isac/bootstrap.py + isac/wiring.py + isac/dispatch.py + isac/control/bootstrap.py (各受 ≤500 行红线)。
 - [ ] 同步 IO 异步化 (audit/bus persist/routes_routing 写盘)。
 - [ ] `reload_config` 差量更新 (观察项, 不紧急; N1e 热重载当前走全重建路径)。

@@ -4,7 +4,7 @@
 逻辑, 供 reload/install 后激活使用。新增 ``sync_plugin_tools_to_agents`` 把共享
 注册表的变更同步到运行中 Agent 的 per-Agent registry —— ISAC 是 per-Agent
 ToolRegistry (非 AstrBot 全局表), reload 后新工具只进了进程级共享表
-(``services["plugin_tools"]``), 运行中 Agent 的 ``instance.tools`` 仍是旧的, 必须
+(`plugin_tools` 服务键), 运行中 Agent 的 ``instance.tools`` 仍是旧的, 必须
 遍历 ``agent_manager.list()`` 把旧工具 deregister + 新工具 register 同步到每个
 运行中 Agent, 热重载才对运行中会话真正生效。
 
@@ -173,9 +173,12 @@ async def sync_plugin_tools_to_agents(
 
     返回 ``{agent_id: [被移除的工具名]}`` 供审计/日志。
     """
-    shared_tools = services.get("plugin_tools")
-    shared_commands = services.get("plugin_commands")
-    shared_prompt = services.get("plugin_prompt_builder")
+    from isac.runtime.services import ServiceContainer
+
+    container = services if isinstance(services, ServiceContainer) else ServiceContainer(services)
+    shared_tools = container.plugin_tools
+    shared_commands = container.plugin_commands
+    shared_prompt = container.plugin_prompt_builder
     result: dict[str, list[str]] = {}
     if shared_tools is None:
         return result

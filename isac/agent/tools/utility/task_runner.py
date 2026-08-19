@@ -36,7 +36,8 @@ class TaskRunner:
     ) -> ToolResult:
         """执行子任务, 返回 ToolResult。
 
-        Fix-34: 递归深度由调用方 (TaskTool, 已从其 services["task_depth"] 读出)
+        Fix-34: 递归深度由调用方 (TaskTool, 已从其 AgentContext.services 的
+        `task_depth` 键读出)
         显式传入, 不再从 self._loop.services 读写。self._loop 是宿主 Agent
         全生命周期共享的单个 loop 实例——它的 services 字典也随之在同一 Agent
         的所有会话间共享 (非并发安全的按次调用状态), 之前若往里写 task_depth,
@@ -72,9 +73,11 @@ class TaskRunner:
             current_message=parent_context.current_message,
             budget=Budget(max_tokens=child_budget, max_iterations=10),
         )
-        child_services = dict(self._loop.services)
-        child_services["task_depth"] = depth + 1
-        child_services["task_max_depth"] = max_depth
+        child_services = {
+            **self._loop.services,
+            "task_depth": depth + 1,
+            "task_max_depth": max_depth,
+        }
         child_loop = ISACAgentLoop(
             llm=self._loop.llm,
             prompt_builder=self._loop.prompt_builder,
@@ -96,10 +99,10 @@ class TaskRunner:
 
 
 def make_task_runner(loop: ISACAgentLoop) -> Callable[..., Awaitable[ToolResult]]:
-    """工厂: 用 Agent Loop 构造 TaskRunner (供 services["task_runner"] 注入)。
+    """工厂: 用 Agent Loop 构造 TaskRunner (供服务袋 `task_runner` 键注入)。
 
     Fix-34: 返回 TaskRunner.run 的绑定方法, 而不是 TaskRunner 实例本身——
-    调用方 (TaskTool) 把 services["task_runner"] 当作可直接调用的函数使用
+    调用方 (TaskTool) 把 `task_runner` 服务当作可直接调用的函数使用
     (``runner(task, budget=..., parent_context=..., depth=..., max_depth=...)``),
     TaskRunner 没有实现 __call__, 裸实例传过去会在调用时报
     "'TaskRunner' object is not callable"。
