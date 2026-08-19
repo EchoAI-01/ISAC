@@ -41,6 +41,8 @@ def build_router(
     # 读操作维持"只要 auth_dependency 认证通过即可", 不额外收窄。
     routing_write_deps = [Depends(scope_dependency("routing:write"))] if scope_dependency else []
     link_write_deps = [Depends(scope_dependency("link:write"))] if scope_dependency else []
+    # #29 审计 actor 归因: handler 经此依赖拿真实调用方身份写入审计。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
 
     @api.get("/routing/rules")
     async def get_rules() -> dict:
@@ -51,7 +53,7 @@ def build_router(
         }
 
     @api.put("/routing/rules", dependencies=routing_write_deps)
-    async def put_rules(body: dict) -> dict:
+    async def put_rules(body: dict, caller: str = caller_dep) -> dict:
         rules = RoutingRules(
             bindings=[ChannelBinding(**b) for b in body.get("bindings", [])],
             default_agents=dict(body.get("default_agents", {})),
@@ -60,7 +62,7 @@ def build_router(
         save_rules(Path(routing_rules_path), rules)
         if audit_log is not None:
             await audit_log.record(
-                actor="authenticated",
+                actor=caller,
                 method="PUT",
                 path="/api/v1/routing/rules",
                 action="update_routing_rules",
@@ -74,7 +76,7 @@ def build_router(
         return [vars(link) for link in bus.list_links()]
 
     @api.post("/links", dependencies=link_write_deps)
-    async def add_link(body: dict) -> dict:
+    async def add_link(body: dict, caller: str = caller_dep) -> dict:
         from fastapi import HTTPException
 
         try:
@@ -95,17 +97,17 @@ def build_router(
         _persist_links_or_raise(bus, Path(links_path))
         await _audit_link_change(
             audit_log, method="POST", path="/api/v1/links", action="add_link",
-            target=f"{link.from_agent}->{link.to_agent}",
+            target=f"{link.from_agent}->{link.to_agent}", actor=caller,
         )
         return {"status": "added"}
 
     @api.delete("/links", dependencies=link_write_deps)
-    async def remove_link(from_agent: str, to_agent: str) -> dict:
+    async def remove_link(from_agent: str, to_agent: str, caller: str = caller_dep) -> dict:
         bus.remove_link(from_agent, to_agent)
         _persist_links_or_raise(bus, Path(links_path))
         await _audit_link_change(
             audit_log, method="DELETE", path="/api/v1/links", action="remove_link",
-            target=f"{from_agent}->{to_agent}",
+            target=f"{from_agent}->{to_agent}", actor=caller,
         )
         return {"status": "removed"}
 
@@ -135,12 +137,13 @@ async def _audit_link_change(
     path: str,
     action: str,
     target: str,
+    actor: str = "authenticated",
 ) -> None:
-    """Link 变更的统一审计记录 (audit_log 为 None 时跳过)。"""
+    """Link 变更的统一审计记录 (audit_log 为 None 时跳过)。actor 归因 (#29)。"""
     if audit_log is None:
         return
     await audit_log.record(
-        actor="authenticated",
+        actor=actor,
         method=method,
         path=path,
         action=action,

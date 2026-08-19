@@ -186,12 +186,14 @@ def make_auth_dependency(
     ) -> str:
         token = _resolve_token(authorization, session_cookie, session_secret)
         if expected_token and verify_token(token, expected_token):
-            return "authenticated"
+            # 审计归因: 区分凭据来源 —— Authorization 头命中为 api_token,
+            # 否则 (仅会话 Cookie 命中) 为 session。返回值供路由写审计 actor。
+            return "api_token" if extract_bearer(authorization) is not None else "session"
         if setup_manager is not None:
             # T3-backend: setup_manager 注入后, 认证只认 api_token 或 setup 密码;
             # setup 完成且 token 无效 → 401 (不再回退开发模式 anonymous)。
             if setup_manager.is_password_valid(token):
-                return "authenticated"
+                return "setup_password"
             if setup_manager.is_setup_required:
                 raise HTTPException(
                     status_code=428,
@@ -213,17 +215,37 @@ def make_auth_dependency(
 
 @dataclass(frozen=True)
 class TokenScope:
-    """一个 Token 及其被授予的 scope 集合 (CONTROL_PLANE_SPEC.md §6.1)。"""
+    """一个 Token 及其被授予的 scope 集合 (CONTROL_PLANE_SPEC.md §6.1)。
+
+    name: 可选人类可读标识 (tokens[].name), 供审计归因显示; 缺省时审计落
+    不可逆指纹 (token:<tok-xxx>), 绝不落裸 Token。
+    """
 
     token: str
     scopes: frozenset[str]
+    name: str = ""
+
+
+def actor_for_token(matched: TokenScope | None) -> str:
+    """把匹配到的 TokenScope 转成审计 actor (可区分且不泄露凭据)。
+
+    有 name → ``token:<name>``; 无 name → ``token:<tok-指纹>`` (SHA-256 前缀,
+    不可逆)。供 make_token_only_dependency / scope 依赖返回, 路由据此写审计
+    (此前依赖恒返回 "authenticated" 或裸 token, 审计无法回答"谁做的")。
+    """
+    if matched is None:
+        return "authenticated"
+    if matched.name:
+        return f"token:{matched.name}"
+    return f"token:{token_fingerprint(matched.token)}"
 
 
 def parse_token_scopes(config: dict[str, Any]) -> list[TokenScope] | None:
-    """从控制面配置解析 ``tokens: [{token, scopes}, ...]``。
+    """从控制面配置解析 ``tokens: [{token, scopes, name?}, ...]``。
 
     未配置 (或配置为空/全部缺 token 字段) 时返回 None, 表示继续使用现有单一
     ``api_token`` 扁平认证, 不引入 scope 校验 (向后兼容默认行为不变)。
+    name 可选 (审计归因用); 缺省空串。
     """
     raw_tokens = config.get("tokens")
     if not raw_tokens:
@@ -234,7 +256,8 @@ def parse_token_scopes(config: dict[str, Any]) -> list[TokenScope] | None:
         if not token:
             continue
         scopes = frozenset(str(s) for s in (entry.get("scopes") or []))
-        parsed.append(TokenScope(token=token, scopes=scopes))
+        name = str((entry or {}).get("name") or "")
+        parsed.append(TokenScope(token=token, scopes=scopes, name=name))
     return parsed or None
 
 
@@ -268,10 +291,12 @@ def make_token_only_dependency(
         token = _resolve_token(authorization, session_cookie, session_secret)
         matched = _find_matching_token(tokens, token)
         if matched is not None:
-            return matched.token
+            # 审计归因: 返回可区分且不泄露凭据的 actor (token:<name> 或
+            # token:<tok-指纹>) —— 此前返回裸 matched.token, 若被写入审计即泄露凭据。
+            return actor_for_token(matched)
         if setup_manager is not None:
             if setup_manager.is_password_valid(token):
-                return "authenticated"
+                return "setup_password"
             if setup_manager.is_setup_required:
                 raise HTTPException(
                     status_code=428,
@@ -314,7 +339,8 @@ def make_scope_dependency_factory(
                     status_code=403,
                     detail={"code": "SCOPE_FORBIDDEN", "message": f"缺少 scope: {required_scope}"},
                 )
-            return matched.token
+            # 审计归因: 同 make_token_only_dependency, 返回掩码 actor 而非裸 token。
+            return actor_for_token(matched)
 
         return _check
 

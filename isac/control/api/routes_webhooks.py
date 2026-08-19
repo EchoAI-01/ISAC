@@ -37,37 +37,48 @@ def build_router(
     read_deps = [Depends(scope_dependency("webhook:read"))] if scope_dependency else []
     write_deps = [Depends(scope_dependency("webhook:write"))] if scope_dependency else []
     _http_exc = HTTPException  # 闭包内引用 (helper 在模块级)
+    # #29 审计 actor 归因: handler 经此依赖拿真实调用方身份写入审计。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
 
     @router.get("/webhooks", dependencies=read_deps)
     async def list_webhooks(event: str | None = None) -> dict:
         return webhook_manager.list_subscriptions(event)
 
     @router.post("/webhooks", dependencies=write_deps)
-    async def subscribe_webhook(body: dict) -> dict:
-        return await _do_subscribe(webhook_manager, audit_log, body, _http_exc)
+    async def subscribe_webhook(body: dict, caller: str = caller_dep) -> dict:
+        return await _do_subscribe(webhook_manager, audit_log, body, _http_exc, actor=caller)
 
     @router.delete("/webhooks", dependencies=write_deps)
-    async def unsubscribe_webhook(event: str, url: str) -> dict:
+    async def unsubscribe_webhook(event: str, url: str, caller: str = caller_dep) -> dict:
         webhook_manager.unsubscribe(event, url)
-        await _audit_webhook(audit_log, "DELETE", "unsubscribe_webhook", event, f"url={_redact_url(url)}")
+        await _audit_webhook(
+            audit_log, "DELETE", "unsubscribe_webhook", event, f"url={_redact_url(url)}",
+            actor=caller,
+        )
         return {"status": "unsubscribed", "event": event, "url": url}
 
     @router.post("/automation/trigger", dependencies=write_deps)
-    async def trigger_webhook(body: dict) -> dict:
-        return await _do_trigger(webhook_manager, audit_log, body, _http_exc)
+    async def trigger_webhook(body: dict, caller: str = caller_dep) -> dict:
+        return await _do_trigger(webhook_manager, audit_log, body, _http_exc, actor=caller)
 
     return router
 
 
-async def _audit_webhook(audit_log: AuditLog | None, method: str, action: str, target: str, detail: str) -> None:
+async def _audit_webhook(
+    audit_log: AuditLog | None, method: str, action: str, target: str, detail: str,
+    actor: str = "authenticated",
+) -> None:
     if audit_log is not None:
         await audit_log.record(
-            actor="authenticated", method=method, path="/api/v1/webhooks",
+            actor=actor, method=method, path="/api/v1/webhooks",
             action=action, target=target, detail=detail, status_code=200,
         )
 
 
-async def _do_subscribe(webhook_manager: Any, audit_log: AuditLog | None, body: dict, _http_exc: Any) -> dict:
+async def _do_subscribe(
+    webhook_manager: Any, audit_log: AuditLog | None, body: dict, _http_exc: Any,
+    actor: str = "authenticated",
+) -> dict:
     event = str(body.get("event", "") or "")
     url = str(body.get("url", "") or "")
     if not event or not url:
@@ -76,11 +87,14 @@ async def _do_subscribe(webhook_manager: Any, audit_log: AuditLog | None, body: 
         webhook_manager.subscribe(event, url)
     except Exception as exc:  # noqa: BLE001 SSRFBlockedError 等
         raise _http_exc(status_code=400, detail={"code": "WEBHOOK_REJECTED", "message": str(exc)}) from exc
-    await _audit_webhook(audit_log, "POST", "subscribe_webhook", event, f"url={_redact_url(url)}")
+    await _audit_webhook(audit_log, "POST", "subscribe_webhook", event, f"url={_redact_url(url)}", actor=actor)
     return {"status": "subscribed", "event": event, "url": url}
 
 
-async def _do_trigger(webhook_manager: Any, audit_log: AuditLog | None, body: dict, _http_exc: Any) -> dict:
+async def _do_trigger(
+    webhook_manager: Any, audit_log: AuditLog | None, body: dict, _http_exc: Any,
+    actor: str = "authenticated",
+) -> dict:
     event = str(body.get("event", "") or "")
     data = body.get("data", {}) or {}
     if not event:
@@ -88,7 +102,7 @@ async def _do_trigger(webhook_manager: Any, audit_log: AuditLog | None, body: di
     result = await webhook_manager.trigger(event, data)
     if audit_log is not None:
         await audit_log.record(
-            actor="authenticated", method="POST", path="/api/v1/automation/trigger",
+            actor=actor, method="POST", path="/api/v1/automation/trigger",
             action="trigger_webhook", target=event, detail=f"targets={len(result)}", status_code=200,
         )
     return {"event": event, "delivered": result}

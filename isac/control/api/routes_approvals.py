@@ -45,7 +45,8 @@ def _normalize_decision(payload: dict | None) -> str | None:
 
 
 async def _do_decide(
-    approval_gate: Any, audit_log: Any, approval_id: str, decision: str, _http_exc: Any
+    approval_gate: Any, audit_log: Any, approval_id: str, decision: str, _http_exc: Any,
+    actor: str = "authenticated",
 ) -> dict:
     """decide 端点主体 (抽自 build_router 降 C901)。"""
     ok = approval_gate.decide(approval_id, decision, decider="human:control_plane")
@@ -57,7 +58,7 @@ async def _do_decide(
             # 无 __call__, 每次 decide 都抛 TypeError 又被静默吞掉, 导致 HITL 最关键
             # 写操作零审计。改为与其他路由一致的 record() 调用。
             await audit_log.record(
-                actor="authenticated",
+                actor=actor,
                 method="POST",
                 path=f"/api/v1/approvals/{approval_id}/decide",
                 action="approval_decide",
@@ -102,6 +103,8 @@ def build_router(
     # 审批是写操作面 (能放行高危工具), scope 按 tools:write 收窄; 未配 tokens[]
     # 时 scope_dependency 为 None, 只受 auth_dependency 约束 (向后兼容)。
     write_deps = [Depends(scope_dependency("tools:write"))] if scope_dependency else []
+    # #29 审计 actor 归因: handler 经此依赖拿真实调用方身份写入审计。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
     # 2026-08-19 scope 门禁补齐: 两个读端点原只有路由级 auth_dependency, 无 scope ——
     # tokens[] 模式下任何窄权限 token 都能读全部待审上下文与决策历史。审批读面按
     # tools:read 收窄 (与写面 tools:write 同域); 未配 tokens[] 时仍只受认证约束。
@@ -117,11 +120,11 @@ def build_router(
         return await _do_history(session_event_store, limit, HTTPException)
 
     @router.post("/approvals/{approval_id}/decide", dependencies=write_deps)
-    async def decide_approval(approval_id: str, payload: dict) -> dict:
+    async def decide_approval(approval_id: str, payload: dict, caller: str = caller_dep) -> dict:
         decision = _normalize_decision(payload)
         if decision is None:
             raise HTTPException(status_code=400, detail="decision 必须是 approved 或 rejected")
-        return await _do_decide(approval_gate, audit_log, approval_id, decision, HTTPException)
+        return await _do_decide(approval_gate, audit_log, approval_id, decision, HTTPException, actor=caller)
 
     return router
 

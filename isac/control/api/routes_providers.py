@@ -39,10 +39,12 @@ def build_router(
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(tags=["providers"], dependencies=deps)
+    # #29 审计 actor 归因: handler 经此依赖拿真实调用方身份写入审计。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
 
-    _register_provider_routes(router, provider_manager, model_catalog, scope_dependency, audit_log)
+    _register_provider_routes(router, provider_manager, model_catalog, scope_dependency, audit_log, caller_dep)
     if artifact_store is not None:
-        _register_artifact_routes(router, artifact_store, scope_dependency, audit_log)
+        _register_artifact_routes(router, artifact_store, scope_dependency, audit_log, caller_dep)
     return router
 
 
@@ -52,6 +54,7 @@ def _register_provider_routes(
     model_catalog: ModelCatalog,
     scope_dependency: Any = None,
     audit_log: AuditLog | None = None,
+    caller_dep: Any = None,
 ) -> None:
     """注册 /providers/* 端点。"""
     from fastapi import Depends, HTTPException
@@ -72,7 +75,7 @@ def _register_provider_routes(
         return {"models": models}
 
     @router.post("/providers/{provider_id}/test", dependencies=write_deps)
-    async def test_provider(provider_id: str, model_id: str = "") -> dict:
+    async def test_provider(provider_id: str, model_id: str = "", caller: str = caller_dep) -> dict:
         found = any(
             pid == provider_id and (not model_id or mid == model_id)
             for (pid, mid) in provider_manager._multimodal_providers.keys()
@@ -85,6 +88,7 @@ def _register_provider_routes(
         await _audit(
             audit_log, "POST", f"/api/v1/providers/{provider_id}/test",
             "test_provider", f"{provider_id}/{model_id}" if model_id else provider_id,
+            actor=caller,
         )
         return {"provider_id": provider_id, "status": "ok"}
 
@@ -94,6 +98,7 @@ def _register_artifact_routes(
     artifact_store: ArtifactStore,
     scope_dependency: Any = None,
     audit_log: AuditLog | None = None,
+    caller_dep: Any = None,
 ) -> None:
     """注册 /artifacts/* 端点 (仅 artifact_store 非 None 时调用)。"""
     from fastapi import Depends, HTTPException
@@ -117,7 +122,7 @@ def _register_artifact_routes(
         return meta
 
     @router.delete("/artifacts/{artifact_id}", dependencies=delete_deps)
-    async def delete_artifact(artifact_id: str) -> dict:
+    async def delete_artifact(artifact_id: str, caller: str = caller_dep) -> dict:
         meta = await _get_artifact_meta(artifact_store, artifact_id)
         if meta is None:
             raise HTTPException(
@@ -125,7 +130,10 @@ def _register_artifact_routes(
                 detail={"code": "ARTIFACT_NOT_FOUND", "message": artifact_id},
             )
         await _delete_artifact(artifact_store, artifact_id)
-        await _audit(audit_log, "DELETE", f"/api/v1/artifacts/{artifact_id}", "delete_artifact", artifact_id)
+        await _audit(
+            audit_log, "DELETE", f"/api/v1/artifacts/{artifact_id}", "delete_artifact",
+            artifact_id, actor=caller,
+        )
         return {"artifact_id": artifact_id, "status": "deleted"}
 
 
@@ -135,12 +143,16 @@ async def _audit(
     path: str,
     action: str,
     target: str,
+    actor: str = "authenticated",
 ) -> None:
-    """记录审计日志 (audit_log 为 None 时跳过, 与 routes_agents.py 的既有约定一致)。"""
+    """记录审计日志 (audit_log 为 None 时跳过, 与 routes_agents.py 的既有约定一致)。
+
+    actor 归因 (#29): 由 handler 注入的真实调用方身份; 未传兜底 "authenticated"。
+    """
     if audit_log is None:
         return
     await audit_log.record(
-        actor="authenticated",
+        actor=actor,
         method=method,
         path=path,
         action=action,
