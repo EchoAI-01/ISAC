@@ -251,6 +251,30 @@ class TestScopeFiltering:
             assert len(chunks) == 1
             assert '"n": 9' in chunks[0]
 
+    def test_unregistered_non_public_event_type_is_fail_closed(self) -> None:
+        """2026-08-19 fail-closed 回归: 未在 _EVENT_TYPE_SCOPES 登记、也不在
+        _PUBLIC_EVENT_TYPES 白名单的事件类型, 窄 scope token 不可见 (仅 "*")。
+
+        此前"已识别但未登记"一律直接放行 (fail-open) —— 新增敏感事件忘登记 scope
+        会静默广播。现与 model.usage_recorded (usage:read 可见) 同批发射, 窄 token
+        只应看到后者。"""
+        event_bus = EventBus()
+        app = _make_app(event_bus, tokens=[{"token": "usage-only", "scopes": ["usage:read"]}])
+        self._fire(event_bus, "custom.unregistered_event", 7)  # 未登记且非公开 → 应被过滤
+        self._fire(event_bus, "model.usage_recorded", 8)  # usage:read 可见
+
+        client = TestClient(app)
+        with client.stream(
+            "GET",
+            "/api/v1/events/stream?heartbeat_seconds=5&max_chunks=1",
+            headers={"Authorization": "Bearer usage-only"},
+        ) as resp:
+            assert resp.status_code == 200
+            chunks = list(resp.iter_text())
+            assert len(chunks) == 1
+            assert '"n": 8' in chunks[0]
+            assert '"n": 7' not in chunks[0]
+
     def test_unconfigured_tokens_leaves_stream_unfiltered(self) -> None:
         """未配置 control.tokens[] (纯扁平 api_token) 时行为不变: 全部事件都可见,
         不引入任何过滤 (向后兼容)。"""
