@@ -30,7 +30,10 @@ from isac.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # 允许经门预约的写入来源 (门内名单; 新写者接入须在此登记 + 过审计测试)。
-_ALLOWED_SOURCES = frozenset({"proactive", "handoff", "plugin_injection", "memory_injection"})
+# 2026-08-19 (U8 名实相符): 移除 plugin_injection/memory_injection —— 二者全仓零
+# reserve() 写者 (实际写者仅 proactive=manager 强制话轮、handoff=会话移交), 留在
+# 名单里是"登记了不存在的能力"。未来插件/记忆注入真要经门写入时再登记并补审计测试。
+_ALLOWED_SOURCES = frozenset({"proactive", "handoff"})
 
 # hold 窗口上下限 (防配置误填): 太短租约做不完事, 太长卡死会话写入面。
 _MIN_HOLD_SECONDS = 1.0
