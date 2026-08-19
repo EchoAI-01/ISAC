@@ -261,7 +261,9 @@
   "control": {
     "enabled": true,
     "host": "127.0.0.1",
-    "port": 8091,
+    // 2026-08-19: 与 docker-compose.yml / CI / QUICKSTART 全链路统一为 8765
+    // (此前样例误写 8091, 照抄会与部署链路端口矛盾)。
+    "port": 8765,
     "agents_dir": "data/agents",
     "api_token": "",
     // T3-backend: 首登强制设密码 (对标 AstrBot password_change_required)。开箱控制面
