@@ -130,7 +130,16 @@ class PluginLoader:
         )
 
     async def _load_astrbot(self, plugin_path: Path) -> LoadedPlugin:
-        """AstrBot: 加载 plugin.py 找 Star 子类。"""
+        """AstrBot: 加载 plugin.py 找 Star 子类。
+
+        M12: 加载前安装 import 重定向沙箱 —— 真实 AstrBot 插件的
+        ``from astrbot.api.star import Star`` 在 exec_module 时经 sys.meta_path
+        重定向到 ISAC 兼容层。此前 install_sandbox 全仓零调用, 真实 AstrBot 插件
+        必然 ImportError (测试都直接 import ISAC 侧 shim, 未暴露此缺口)。
+        """
+        from isac.plugin.compatibility.astrbot.sandbox import install_sandbox
+
+        install_sandbox()
         entry_path = plugin_path / "plugin.py"
         if not entry_path.exists():
             raise FileNotFoundError(f"插件入口不存在: {entry_path}")
