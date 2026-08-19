@@ -362,7 +362,8 @@ def _merge_shared_plugin_tools(
 
 
 async def _wire_mcp_clients(
-    config: AgentConfig, services: ServiceContainer, tools: ToolRegistry
+    config: AgentConfig, services: ServiceContainer, tools: ToolRegistry,
+    enable_matrix: EnableMatrix | None = None,
 ) -> list[Any]:
     """R3: 按 AgentConfig.mcp_servers 构造并连接 MCPClient, MCP 工具注册进 tools。
 
@@ -372,6 +373,10 @@ async def _wire_mcp_clients(
     返回 MCPClient 实例列表 (供 per-Agent `mcp_clients` 键存储, stop/destroy 时
     disconnect)。默认 mcp_servers=[] 或无全局定义时返回空列表, 零行为变化。
     逐 server 错误隔离, 失败不阻塞 Agent 启动。
+
+    M4: 接线层经 EnableMatrix.is_mcp_enabled 门控 (Agent 白名单 ∩ Channel 矩阵) ——
+    此前该函数零生产调用 (死代码), policy 宣称的 "mcp_servers ∩ Channel 矩阵" 未落实。
+    接线阶段无 platform 上下文, Channel 门控在调用层 (effective_policy) 按平台生效。
     """
     mcp_clients: list[Any] = []
     mcp_servers_def = services.mcp_servers or {}
@@ -380,6 +385,15 @@ async def _wire_mcp_clients(
     from isac.agent.tools.mcp.client import MCPClient
 
     for _srv_name in config.mcp_servers:
+        # M4: 启用矩阵门控 (白名单 + Channel); 无矩阵时回退直连 (向后兼容)。
+        if enable_matrix is not None and not enable_matrix.is_mcp_enabled(
+            _srv_name, config.mcp_servers, agent_id=config.agent_id
+        ):
+            logger.info(
+                "MCP server 被启用矩阵禁用, 跳过接线",
+                server=_srv_name, agent_id=config.agent_id,
+            )
+            continue
         _srv_cfg = mcp_servers_def.get(_srv_name)
         if not _srv_cfg:
             logger.warning(
@@ -654,7 +668,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # AgentConfig.mcp_servers 构造+connect+list_tools 注册 MCP 工具进 tools。client
     # 存 per-Agent 服务的 mcp_clients 键供 stop/destroy disconnect。默认空, 零行为变化。
     _merge_shared_plugin_tools(services, tools, prompt_builder, config)
-    mcp_clients = await _wire_mcp_clients(config, services, tools)
+    mcp_clients = await _wire_mcp_clients(config, services, tools, enable_matrix)
 
     prompt_builder.register(ToolsAvailableInjector(tools))
 

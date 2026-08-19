@@ -148,6 +148,18 @@ class EnableMatrix:
 
     # ── mcp ─────────────────────────────────────────────────
 
+    def mcp_channel_enabled(self, server_name: str, platform: str = "") -> bool:
+        """Channel 层 MCP 门控: 该平台的 mcp 配置是否禁用此 server。
+
+        M4: 抽出供两处共用 —— 接线层 (_wire_mcp_clients) 与调用层
+        (ToolRegistry.effective_policy 对 mcp:* 工具按 platform 检查)。
+        无 platform / 无 Channel 配置时放行 (默认允许)。
+        """
+        channel_cfg = self._channel_resource(platform, "mcp")
+        if isinstance(channel_cfg, dict) and channel_cfg.get(server_name) is False:
+            return False
+        return True
+
     def is_mcp_enabled(
         self,
         server_name: str,
@@ -158,14 +170,11 @@ class EnableMatrix:
         """Agent 的 mcp_servers 白名单 ∩ Channel 允许。
 
         空 mcp_servers 表示该 Agent 不使用任何 MCP Server。
+        M4: Channel 检查经 mcp_channel_enabled (接线层权威门控, 不再是死代码)。
         """
         if server_name not in agent_mcp_servers:
             return False
-        channel_cfg = self._channel_resource(platform, "mcp")
-        if isinstance(channel_cfg, dict):
-            if channel_cfg.get(server_name) is False:
-                return False
-        return True
+        return self.mcp_channel_enabled(server_name, platform)
 
     # ── 内部 ────────────────────────────────────────────────
 

@@ -186,6 +186,13 @@ class ToolRegistry:
             # 配置层有显式条目才覆盖基线 ("" = 三层均未配置, 保留框架基线)
             if platform_policy:
                 policy = platform_policy
+            # M4: mcp:* 工具按平台做 Channel 级 MCP 门控 —— 该平台 mcp 配置禁用此
+            # server 时拒绝 (接线层无 platform 上下文, Channel 门控在此生效)。
+            if policy != "deny" and tool_name.startswith("mcp:"):
+                parts = tool_name.split(":", 2)
+                server = parts[1] if len(parts) >= 3 else ""
+                if server and not self.enable_matrix.mcp_channel_enabled(server, platform):
+                    policy = "deny"
         return policy
 
     def definitions(self, platform: str = "") -> list[dict]:
