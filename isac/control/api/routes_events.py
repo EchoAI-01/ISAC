@@ -60,6 +60,13 @@ _EVENT_TYPE_SCOPES: dict[str, str] = {
     "audit.created": "usage:detail",
 }
 
+# 2026-08-19 fail-closed: 显式"无需 scope 收窄即可见"的事件类型白名单。
+# 此前 _event_visible 对"已识别但未在 _EVENT_TYPE_SCOPES 登记"的类型一律直接放行
+# (fail-open) —— 一旦新增携带敏感数据的事件类型却忘了登记 scope, 就会静默广播给
+# 所有持窄 scope 的 token。现改为: 未登记且不在本白名单的类型, 仅 "*" 通配可见。
+# channel.status_changed 是 spec §8.3 明确的连接状态事件 (不含聊天原文/密钥), 保留公开。
+_PUBLIC_EVENT_TYPES: frozenset[str] = frozenset({"channel.status_changed"})
+
 
 def build_router(
     event_bus: EventBus,
@@ -150,16 +157,17 @@ def _event_visible(event_type: str, caller_scopes: frozenset[str] | None) -> boo
     """caller_scopes 为 None (未配置 tokens[]) 时不过滤; "unknown" (Fix-22: 无法
     从 payload 判断真实类型, 生产环境的 POST_MESSAGE/ON_START 均落在此) 只对
     通配符 "*" scope 放行, 避免真实敏感 payload 被误当作"无需收窄"直接广播;
-    已正确识别但 spec 未定义所需 scope 的类型才视为不需要收窄, 直接放行;
-    其余要求 caller 持有该 scope 或通配符 "*"。"""
+    已在 _EVENT_TYPE_SCOPES 登记的类型要求 caller 持有对应 scope 或 "*";
+    其余未登记类型 fail-closed (2026-08-19): 仅 _PUBLIC_EVENT_TYPES 白名单内的
+    连接状态类事件放行, 其余只对 "*" 可见 —— 防"新增敏感事件忘登记 scope"静默广播。"""
     if caller_scopes is None:
         return True
     if event_type == "unknown":
         return "*" in caller_scopes
     required = _EVENT_TYPE_SCOPES.get(event_type)
-    if required is None:
-        return True
-    return required in caller_scopes or "*" in caller_scopes
+    if required is not None:
+        return required in caller_scopes or "*" in caller_scopes
+    return event_type in _PUBLIC_EVENT_TYPES or "*" in caller_scopes
 
 
 class _EventStreamState:

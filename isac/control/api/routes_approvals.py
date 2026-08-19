@@ -102,12 +102,16 @@ def build_router(
     # 审批是写操作面 (能放行高危工具), scope 按 tools:write 收窄; 未配 tokens[]
     # 时 scope_dependency 为 None, 只受 auth_dependency 约束 (向后兼容)。
     write_deps = [Depends(scope_dependency("tools:write"))] if scope_dependency else []
+    # 2026-08-19 scope 门禁补齐: 两个读端点原只有路由级 auth_dependency, 无 scope ——
+    # tokens[] 模式下任何窄权限 token 都能读全部待审上下文与决策历史。审批读面按
+    # tools:read 收窄 (与写面 tools:write 同域); 未配 tokens[] 时仍只受认证约束。
+    read_deps = [Depends(scope_dependency("tools:read"))] if scope_dependency else []
 
-    @router.get("/approvals")
+    @router.get("/approvals", dependencies=read_deps)
     async def list_approvals() -> dict:
         return {"approvals": approval_gate.pending_requests()}
 
-    @router.get("/approvals/history")
+    @router.get("/approvals/history", dependencies=read_deps)
     async def approval_history(limit: int = Query(default=100, ge=1, le=500)) -> dict:
         """U5 决策留痕查询: 事件表全部 tool.* 决策记录 (decision/decider/reason)。"""
         return await _do_history(session_event_store, limit, HTTPException)
