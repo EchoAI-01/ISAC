@@ -4,10 +4,12 @@
 // PricingCatalog 恒为空目录, ModelUsageEvent.estimated_cost 一律 None, 成本计量
 // 开箱即失效。现提供随包默认价目表, 让成本估算开箱可用。
 //
-// 查表键 = (provider, model, modality)。provider 当前为 Provider 类名
-// (ProviderManager._call_and_record 记录 type(provider).__name__), 生产 LLM 主链路
-// 为 OpenAICompatProvider; modality 文本为 "text"。单价为"每 unit 字符串", text
-// 的 unit_name="token" (即每 token 价)。金额为该模型官方计价币种, 默认 USD。
+// 查表键 = (provider, model, modality)。provider 为 Provider 实例类名
+// (H4 统一口径: LLM 记 type(provider).__name__, embed/rerank/media 亦已对齐记实例
+// 类名 —— 此前 media 记 provider_id、embed/rerank 记 config["provider"] 恒空, 三口径
+// 无法命中同一价目表致成本恒 None)。生产 LLM 主链路为 OpenAICompatProvider;
+// modality 文本为 "text"。单价为"每 unit 字符串", text 的 unit_name="token"
+// (即每 token 价)。金额为该模型官方计价币种, 默认 USD。
 //
 // 下方为常见模型的参考单价 (约值, 供成本趋势参考, 非实时报价); 请按实际签约价
 // 增改。新增模型照抄一条即可; 未登记的 (provider, model, modality) 估算仍为 None

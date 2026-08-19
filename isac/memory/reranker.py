@@ -43,7 +43,7 @@ class Reranker:
         except Exception:  # noqa: BLE001
             # 任何异常 (网络/解析) 都不阻塞主链路: 回退到原顺序
             return candidates
-        # R1-③: 计 rerank 用量 (model/provider 取 config, 与 pricing 对齐)
+        # R1-③: 计 rerank 用量 (H4: provider 取实例类名, 对齐 pricing 口径)
         self._record_rerank(n_candidates=len(candidates))
         if len(scores) != len(candidates):
             return candidates
@@ -61,13 +61,22 @@ class Reranker:
         return [hit for hit, _ in paired]
 
     def _record_rerank(self, *, n_candidates: int) -> None:
-        """R1-③: 计 rerank 用量。"""
+        """R1-③: 计 rerank 用量 (H4: provider 取实例类名, 对齐 pricing 键口径)。
+
+        此前 provider 取 config.get("provider") (默认配置无该键 → 恒空 → 计价断链);
+        改用 provider 实例类名, 与 embedder/LLM 侧 type(provider).__name__ 口径一致。
+        """
         if self._usage_recorder is None:
             return
         try:
+            provider_name = (
+                type(self._provider).__name__
+                if self._provider is not None
+                else str(self.config.get("provider", ""))
+            )
             self._usage_recorder.record_rerank(
                 model=str(self.config.get("model", "")),
-                provider=str(self.config.get("provider", "")),
+                provider=provider_name,
                 n_candidates=n_candidates,
             )
         except Exception:  # noqa: BLE001 计量失败不阻塞检索

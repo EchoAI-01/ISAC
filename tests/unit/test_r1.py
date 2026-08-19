@@ -240,7 +240,9 @@ async def test_media_tool_records_usage() -> None:
     # 成功 → 应计 record_image_gen
     assert len(calls) == 1
     assert calls[0][1]["model"] == "dall-e-3"
-    assert calls[0][1]["provider"] == "openai"
+    # H4: provider 键统一为实例类名 (此处为 _PM2.multimodal_provider 内的 _P),
+    # 不再是 descriptor.provider_id "openai"。
+    assert calls[0][1]["provider"] == "_P"
 
 
 # ── helpers ─────────────────────────────────────────────
