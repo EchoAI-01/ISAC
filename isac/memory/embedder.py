@@ -45,14 +45,26 @@ class EmbeddingManager:
         return result
 
     def _record_embed(self, *, n_texts: int) -> None:
-        """R1-③: 计 embedding 用量 (model/provider 取 config, 与 pricing 对齐)。"""
+        """R1-③: 计 embedding 用量 (H4: provider 取实例类名, 对齐 pricing.jsonc 键)。
+
+        此前 provider 取 config.get("provider") —— 默认配置无该键 → 恒空串 →
+        PricingCatalog.lookup (provider, model, modality) 永不命中, embed 成本恒 None。
+        改用 provider 实例类名 (如 OpenAICompatEmbeddingProvider), 与价目表及 LLM 侧
+        type(provider).__name__ 口径一致 (H4 三口径统一第一步)。provider 缺失时回退
+        config["provider"] (向后兼容)。
+        """
         if self._usage_recorder is None:
             return
         try:
             dim = self._provider_dim()
+            provider_name = (
+                type(self._provider).__name__
+                if self._provider is not None
+                else str(self.config.get("provider", ""))
+            )
             self._usage_recorder.record_embed(
                 model=str(self.config.get("model", "")),
-                provider=str(self.config.get("provider", "")),
+                provider=provider_name,
                 n_texts=n_texts,
                 dim=dim,
             )
