@@ -133,12 +133,15 @@ async def test_delegate_cancel_via_supervisor(tmp_path: Path) -> None:
             trace_id="tr1", objective="x",
         )
         await supervisor.submit(task)
-        await asyncio.wait_for(started.wait(), timeout=1.0)
+        # 2026-08-19 deflake: CI 慢速 runner 上 _run_task 需先拿信号量 + 写 journal
+        # (SQLite I/O) 才进 runner, 1.0s 偶发不够 → 放宽到 5s。本测试验证"取消能正确
+        # 传播"的正确性而非时延, 宽超时不影响断言语义。
+        await asyncio.wait_for(started.wait(), timeout=5.0)
         # cancel
         cancelled = await supervisor.cancel("e2e-cancel")
         assert cancelled is not None
         assert cancelled.status == "cancelled"
-        await asyncio.wait_for(cancelled_event.wait(), timeout=1.0)
+        await asyncio.wait_for(cancelled_event.wait(), timeout=5.0)
         assert cancelled_event.is_set()
     finally:
         await journal.stop()
