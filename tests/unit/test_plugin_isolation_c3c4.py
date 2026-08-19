@@ -35,9 +35,9 @@ def test_apply_rlimits_uses_custom_config(monkeypatch: pytest.MonkeyPatch) -> No
     _apply_rlimits({"cpu": (5, 5), "nofile": (128, 128)})
     assert calls.get(_r.RLIMIT_CPU) == (5, 5)
     assert calls.get(_r.RLIMIT_NOFILE) == (128, 128)
-    # 默认 None 用内置默认值
+    # 默认 None 用内置默认值 (M11: cpu 默认由不可用的 (1,1) 提到 (60,60), 对齐 sample)
     _apply_rlimits(None)
-    assert calls.get(_r.RLIMIT_CPU) == (1, 1)
+    assert calls.get(_r.RLIMIT_CPU) == (60, 60)
 
 
 def test_host_init_accepts_rlimits_param() -> None:
