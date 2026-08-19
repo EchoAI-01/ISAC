@@ -2,6 +2,14 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-19 —— 全景 Review 后加固轮: 阶段1 止血 (7 项) + 阶段2 (SubAgent/U4/Medium 批清/记忆 importance) 全部完成, 全量 2093 通过**。
+> 依据 2026-08-19 五路并行全量代码审查 (报告归档 `.tmpfiles/agent-review-2026-08-19/`), 按"先止血、再缺陷批清、后功能接线"推进, 全部提交已推 dev:
+> **阶段1 止血 (7 项 Critical/Major)**: ①CI 修复至全绿; ②群聊锁粒度 (锁键与会话键同粒度, 三处入口统一权威派生); ③append-only 后门封堵 (显式 seq 改纯 INSERT, 撞既有 seq 主键冲突报错); ④shared ACL 口径统一 + 租户 fail-open 止血; ⑤审批读端点补 tools:read scope + SSE 未登记事件 fail-closed; ⑥插件来源追踪 + per-Agent 启用矩阵接线; ⑦发货面 pricing.jsonc 入仓随包 + sample 端口统一 8765。
+> **阶段2-1** SubAgent 纳入 U5 权限管线 (H3: 工具调用留痕 + 单调拒绝继承)。**阶段2-2** U4 租户鉴权首段 (handoff 租约 fail-closed + SessionWriteGate 死来源清理)。
+> **阶段2-3 Medium 缺陷批清 (10 项, 3 批, 各配回归测试)**: M1 DenyGuard 惰性重建竞态 (收尾改合并保并发写入); M2 restricted fail-closed (未登记服务映射的受限工具拒绝); M13 workflow_id 路径穿越 (register 拒绝 ../ 与分隔符); M6 MCP stdio 空环境 (继承 os.environ 覆盖); M7 git 安装防护对齐 zip (入口特征+symlink 拒绝+体积上限); M8 loader entry 路径穿越 (resolve+is_relative_to 断言子树); M9 CommandRegistry 同名覆盖留痕; M10 list_subagents 跨 Agent 泄漏 (requester 身份强制只列自身子任务); M11 rlimits 静默失效+默认值不可用 (失败记日志 + cpu (1,1)→(60,60)); M5 drain_inflight 超时取消残留任务。剩余设计/功能型 Medium (tools M3/M4/MCP 重连/AstrBot 兼容/审计 actor 归因) 另立任务, 不半实现。
+> **阶段2-4 记忆 importance 接线 (P1-3)**: 新增 `isac/memory/salience.py` 规则显著度评分器 (纯函数、确定性、无 LLM/IO 依赖, 单一 score() 接口留 LLM 升级位), 产出真实分布 (琐碎 <0.2 / 普通居中 / 值得记 >0.5), 替换 manager 两处写入点 (_write_memory / observe_message) 硬编码 0.5/0.3, 使 consolidator "重要性+时间衰减剪枝" 由恒空转转为真正可用。28 例评分器单测 + 2 例剪枝闭环联动测试。
+> **全量 2093 单测通过**, ruff/mypy 全绿, wiring.py 498 行未破红线。
+>
 > ⚠️ **最近更新: 2026-08-18 —— N5/Z1-C ServiceContainer 迁移热路径面 (全量 2144 通过)**。
 > `AgentContext.services` / `ToolContext.services` **类型化为 ServiceContainer** (裸 dict 经 `__post_init__` 归一, 测试零改动); loop `self.services` 归一化; 全部内置工具 (bash/read/write/web_search/task/task_runner + social 全套 + media + subagent) 与 commands (agents/focus) / supervisor / activation 的字符串键读取迁宽容属性; manager progress/turn/命令上下文构造改容器。`runtime/services` 8 个类型导入移入 TYPE_CHECKING 断开运行时依赖, core/types 得以模块级引用容器 (无环)。
 > 红线棘轮**再收紧 130→35** (累计 205→35, -170); 容器测试补 per-turn 17 键 + Context 归一化用例 (共 46 例)。剩余 35 = 装配写侧灌键 + 控制面/兼容层少数回退读 + 2 处动态键 (有意保留)。**全量 2144 通过**, ruff/mypy (295 源文件)/红线全绿。Z1 三面 (全局/per-Agent/热路径) 迁移完毕。
