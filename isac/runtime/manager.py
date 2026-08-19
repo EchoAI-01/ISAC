@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from isac.core.constants import DEFAULT_AGENT_ID, INTERAGENT_PLATFORM
 from isac.core.exceptions import AgentNotFoundError
+from isac.gateway.lock import conversation_lock_key
 from isac.gating.types import GateKind
 from isac.runtime.assembly import assemble_agent
 from isac.runtime.config import AgentConfig
@@ -399,10 +400,10 @@ class AgentManager:
         lock_mgr = self._services.session_lock
         if lock_mgr is None:
             return await self.handle_message(agent_id, message, session, user_profile, progress_sender)
-        lock_key = (
-            f"{session.platform}:{agent_id}:"
-            f"{session.user_id or 'unknown'}:{session.group_id or 'private'}"
-        )
+        # 2026-08-19 Critical 修复: 会话段统一走 conversation_lock_key 的"群 或 用户"
+        # 粒度 (群聊忽略 user_id); 前缀 agent_id 保留"目标 Agent × 会话"精确隔离。
+        # 平台段恒为 INTERAGENT_PLATFORM, 与普通入口键空间天然隔离。
+        lock_key = f"{agent_id}:{conversation_lock_key(session.platform, session.user_id, session.group_id)}"
         lock = await lock_mgr.acquire(lock_key)
         acquired = False
         try:
@@ -1020,7 +1021,10 @@ class AgentManager:
             return
 
         lock_mgr = self._services.session_lock
-        lock_key = f"{session.platform}:{session.user_id or 'unknown'}:{session.group_id or 'private'}"
+        # 2026-08-19 Critical 修复: 强制话轮与普通消息必须共用同一锁键空间才能真正
+        # 串行同一会话 —— 统一走 conversation_lock_key (与 dispatch._process_locked 同款)。
+        # 此前自拼 platform:user:group 与普通入口键不一致, 主动话轮与在途消息仍会并发。
+        lock_key = conversation_lock_key(session.platform, session.user_id, session.group_id)
         lock = None  # Fix-116: 取锁移入 try, lock/acquired 预置供 finally 判定
         acquired = False
         turn_owns_state = False  # Fix-81: 仅当本协程设置过 forced_turn/THINKING 才复位

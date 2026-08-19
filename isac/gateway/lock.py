@@ -11,6 +11,22 @@ from __future__ import annotations
 import asyncio
 
 
+def conversation_lock_key(platform: str, user_id: str, group_id: str | None) -> str:
+    """会话级锁键的唯一权威派生 (2026-08-19 Critical 修复)。
+
+    与 ``SessionManager.make_session_key`` 同粒度: **群聊按 group 聚合 (忽略
+    user_id, 一个群=一个会话), 私聊按 user**。此前各调用点自行拼 ``platform:user:group``
+    (含 user_id), 导致同群不同成员拿到不同锁却并发操作同一会话 —— 事件流交织、
+    THINKING 状态互踩、互相打断。
+
+    所有需要"同一会话串行"的入口 (dispatch 普通消息、_run_forced_turn 强制话轮、
+    跨 Agent 投递) **必须共用本函数**, 保证落在同一键空间; 任何入口自拼键都会重新
+    引入该竞态。
+    """
+    target = f"group:{group_id}" if group_id else f"user:{user_id or 'unknown'}"
+    return f"{platform}:{target}"
+
+
 class SessionLockManager:
     """会话级锁管理器 (K7: 引用计数回收)。"""
 
