@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-19T06:28:24+00:00",
+ "generated_at": "2026-08-19T12:26:40+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 6839,
+ "model_count": 6837,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -15739,9 +15739,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.45,
-    "output": 3.2,
-    "cache_read": 0.04499999999999999
+    "input": 0.4,
+    "output": 3,
+    "cache_read": 0.039999999999999994
    }
   },
   "chutes/unsloth/mistral-nemo-instruct-2407-tee": {
@@ -39785,9 +39785,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
+    "input": 3.2664,
+    "output": 16.332,
+    "cache_read": 0.32664
    }
   },
   "hyper/llama-3.3-70b-instruct": {
@@ -67913,38 +67913,6 @@
     "cache_read": 0.04
    }
   },
-  "nano-gpt/tee/deepseek-v4-pro-0813": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.132
-   }
-  },
-  "nano-gpt/tee/deepseek-v4-pro-0813:thinking": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.132
-   }
-  },
   "nano-gpt/tee/gemma-3-27b-it": {
    "context_window": 131072,
    "supports_tools": false,
@@ -78755,7 +78723,7 @@
     }
    }
   },
-  "opencode-go/muse-spark-1.2": {
+  "opencode-go/muse-spark-1.2-contributor": {
    "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
@@ -81693,9 +81661,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.044
+    "input": 1.44,
+    "output": 2.88,
+    "cache_read": 0.1215
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -81709,9 +81677,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.044
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.022
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
