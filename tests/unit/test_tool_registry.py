@@ -436,3 +436,65 @@ def test_fix88_current_source_prefix_on_on_load() -> None:
     registry.set_current_source(None)
     assert registry.get("myplug:helper") is not None
     assert registry.source_of("myplug:helper") == "myplug"
+
+
+# ── M3: 策略合并语义 (全局运维配置不再被 DEFAULT_POLICY 遮蔽) ─────
+
+
+def test_m3_global_ops_policy_not_shadowed_by_default_policy() -> None:
+    """M3 核心验收: 运维全局 tools_policy 对内置工具的档位真实生效。
+
+    此前 effective_policy 把含 DEFAULT_POLICY 的合并 policy 当 Agent 层传给
+    EnableMatrix.tool_policy, 框架默认条目 (bash: deny) 恒覆盖全局运维配置
+    (bash: allow) —— 全局配置只对插件/mcp 等表外工具有效。
+    """
+    from isac.core.policy import EnableMatrix
+
+    matrix = EnableMatrix(global_policy={"tools_policy": {"bash": "allow"}})
+    # Agent 无配置 (ToolPermission() 不传 policy) → agent_policy 为空,
+    # 全局 bash=allow 不再被 DEFAULT_POLICY 的 deny 压掉。
+    registry = ToolRegistry(ToolPermission(), enable_matrix=matrix)
+    assert registry.effective_policy("bash") == "allow"
+
+
+def test_m3_unconfigured_keeps_framework_baseline() -> None:
+    """三层均未配置 → 保留框架基线 (DEFAULT_POLICY), 不被兜底 allow 覆盖。"""
+    from isac.core.policy import EnableMatrix
+
+    matrix = EnableMatrix(global_policy={})  # 全局无 tools_policy
+    registry = ToolRegistry(ToolPermission(), enable_matrix=matrix)
+    # bash 框架默认 deny 必须保持 (无配置 ≠ 放行)
+    assert registry.effective_policy("bash") == "deny"
+    # send_emoji 框架默认 allow 保持
+    assert registry.effective_policy("send_emoji") == "allow"
+
+
+def test_m3_agent_layer_overrides_global_ops() -> None:
+    """层级优先级: Agent 配置 > 全局运维 > 框架默认。"""
+    from isac.core.policy import EnableMatrix
+
+    matrix = EnableMatrix(global_policy={"tools_policy": {"bash": "allow"}})
+    # Agent 显式 restricted 覆盖全局 allow
+    registry = ToolRegistry(ToolPermission({"bash": "restricted"}), enable_matrix=matrix)
+    assert registry.effective_policy("bash") == "restricted"
+
+
+def test_m3_channel_layer_overrides_agent() -> None:
+    """Channel 层仍是最高覆盖。"""
+    from isac.core.policy import EnableMatrix
+
+    matrix = EnableMatrix(
+        global_policy={"tools_policy": {"bash": "allow"}},
+        channel_overrides={"qq": {"tools": {"bash": "deny"}}},
+    )
+    registry = ToolRegistry(ToolPermission({"bash": "allow"}), enable_matrix=matrix)
+    assert registry.effective_policy("bash", platform="qq") == "deny"
+
+
+def test_m3_permission_agent_policy_pure() -> None:
+    """ToolPermission.agent_policy 是纯 Agent 层 (不含 DEFAULT_POLICY)。"""
+    perm = ToolPermission({"bash": "allow"})
+    assert perm.agent_policy == {"bash": "allow"}
+    # 合并视图仍含框架默认 (check 用)
+    assert perm.policy["bash"] == "allow"
+    assert perm.policy.get("web_search") == "deny"  # DEFAULT_POLICY 条目仍在合并视图

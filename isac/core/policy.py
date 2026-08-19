@@ -88,14 +88,23 @@ class EnableMatrix:
         agent_id: str = "",
         platform: str = "",
     ) -> str:
-        """返回工具的有效策略: allow / restricted / deny。
+        """返回工具在配置层的显式策略; 三层均无显式条目时返回 "" (= 无覆盖)。
 
-        合并顺序 (后者覆盖前者): 全局默认 → Agent 配置 → Channel 覆盖。
+        合并顺序 (后者覆盖前者): 全局运维配置 → Agent 配置 → Channel 覆盖。
+
+        M3 修复要点:
+        - agent_tools_policy 必须传**纯 Agent 配置层** (ToolPermission.agent_policy),
+          不得混入 DEFAULT_POLICY —— 否则框架默认条目被当作 Agent 层, 覆盖全局运维
+          的 tools_policy (如运维全局 bash: allow 恒被框架默认 deny 压掉)。
+        - 三层都未显式配置时返回 "" 而非兜底 allow —— 调用方据此保留框架基线
+          (DEFAULT_POLICY), 避免"无配置"被误当成"放行"覆盖框架默认 deny。
         """
-        # 全局默认
+        policy = ""
+        # 全局运维配置层
         global_tools = self.global_policy.get("tools_policy", {})
-        policy = global_tools.get(tool_name, DECISION_ALLOW)
-        # Agent 覆盖
+        if tool_name in global_tools:
+            policy = str(global_tools[tool_name])
+        # Agent 配置层覆盖
         if tool_name in agent_tools_policy:
             policy = agent_tools_policy[tool_name]
         # Channel 覆盖

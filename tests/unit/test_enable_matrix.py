@@ -31,9 +31,15 @@ class TestPluginMatrix:
 
 
 class TestToolMatrix:
-    def test_default_allow(self):
+    def test_unconfigured_returns_empty_no_override(self):
+        """M3: 三层均无显式配置 → 返回 "" (= 无覆盖, 调用方保留框架基线)。
+
+        此前无配置兜底返回 "allow", 会误覆盖框架 DEFAULT_POLICY 的默认 deny
+        (如 bash), 是 M3 语义陷阱的一半; 另一半 (DEFAULT_POLICY 混入 Agent 层
+        覆盖全局运维配置) 见 test_tool_registry 的 M3 端到端验收。
+        """
         matrix = EnableMatrix()
-        assert matrix.tool_policy("bash", {}) == "allow"
+        assert matrix.tool_policy("bash", {}) == ""
 
     def test_agent_policy_overrides_global(self):
         matrix = EnableMatrix(global_policy={"tools_policy": {"bash": "deny"}})
