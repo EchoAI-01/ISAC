@@ -29,7 +29,10 @@ jobs:
       - name: Pytest
         # K8: branch coverage + 最低覆盖率门禁 (statement 75%, branch 45%)
         # 覆盖率下滑会阻止合并; 关键安全/启动路径 (K7/K1/K4) 已有专项测试
-        run: uv run pytest --cov=isac --cov-branch --cov-report=term-missing --cov-fail-under=75
+        # 2026-08-19 CI 修复: check job 未装 chromium, 排除 tests/browser (归 browser job
+        # 专跑) —— 此前 testpaths 含 browser 致收集期 2 ERROR, check 恒败、build/docker
+        # 因 needs: check 从未执行 (gh 核查 100/100 失败的结构性根因之一)。
+        run: uv run pytest --ignore=tests/browser --cov=isac --cov-branch --cov-report=term-missing --cov-fail-under=75
 
   catalog-drift:
     # U8 治理门禁: catalog 漂移检测 —— 工具面/配置键面/模型能力快照变更后未重新
