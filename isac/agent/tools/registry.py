@@ -272,19 +272,31 @@ class ToolRegistry:
             return ToolResult(content=f"工具 {tool_name} 已被配置禁用", is_error=True)
         if policy == "restricted":
             required = self._required_service(tool_name)
-            if required:
-                # Q0: 支持备选服务键 (tuple) —— 任一后端注入即放行, 如 task 工具
-                # 的 subagent_supervisor (生产) / task_runner (旧路径向后兼容)。
-                candidates = required if isinstance(required, tuple) else (required,)
-                if not services or all(services.get(key) is None for key in candidates):
-                    await self._log_tool_event(
-                        services, session_key, tool_name, "denied",
-                        decision=DECISION_DENY, decider=DECIDER_SYSTEM, reason=REASON_SERVICE_MISSING,
-                    )
-                    return ToolResult(
-                        content=f"工具 {tool_name} 为受限工具, 需注入服务 {' 或 '.join(candidates)} 后方可使用。",
-                        is_error=True,
-                    )
+            if not required:
+                # 2026-08-19 (M2) fail-closed: 未登记 _required_service 映射的 restricted
+                # 工具, 此前 `if required:` 为假直接跳过检查 → 等效 allow (语义矛盾,
+                # 任何经 tools_policy 设为 restricted 的插件工具都落入此洞)。受限工具
+                # 必须声明依赖服务方可校验; 无映射时拒绝并提示补登记。
+                await self._log_tool_event(
+                    services, session_key, tool_name, "denied",
+                    decision=DECISION_DENY, decider=DECIDER_SYSTEM, reason=REASON_SERVICE_MISSING,
+                )
+                return ToolResult(
+                    content=f"工具 {tool_name} 为受限工具但未登记依赖服务映射, 已拒绝 (fail-closed)。",
+                    is_error=True,
+                )
+            # Q0: 支持备选服务键 (tuple) —— 任一后端注入即放行, 如 task 工具
+            # 的 subagent_supervisor (生产) / task_runner (旧路径向后兼容)。
+            candidates = required if isinstance(required, tuple) else (required,)
+            if not services or all(services.get(key) is None for key in candidates):
+                await self._log_tool_event(
+                    services, session_key, tool_name, "denied",
+                    decision=DECISION_DENY, decider=DECIDER_SYSTEM, reason=REASON_SERVICE_MISSING,
+                )
+                return ToolResult(
+                    content=f"工具 {tool_name} 为受限工具, 需注入服务 {' 或 '.join(candidates)} 后方可使用。",
+                    is_error=True,
+                )
         return None
 
     async def _run_ask_gate(

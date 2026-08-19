@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -32,6 +33,18 @@ logger = get_logger(__name__)
 
 DEFAULT_BASE_DIR = "data/workflows"
 DEFAULT_MAX_RETRIES = 3
+
+# 2026-08-19 (M13): workflow_id 直接拼进持久化路径 data/workflows/<id>.json,
+# 含路径分隔符/".." 的 id 可路径穿越写盘。限定为安全标识符 (字母数字 _ - .),
+# register 入口拒绝不合规 id。
+_WORKFLOW_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _validate_workflow_id(workflow_id: str) -> None:
+    """校验 workflow_id 为安全标识符, 否则 raise ValueError (防路径穿越)。"""
+    if not workflow_id or not _WORKFLOW_ID_RE.match(workflow_id) or ".." in workflow_id:
+        raise ValueError(f"非法 workflow_id (仅允许字母数字 _ - .): {workflow_id!r}")
+
 
 # 动作处理器签名: (Stage) -> None (异常视为失败, 触发重试)
 ActionHandler = Callable[[Stage], "Awaitable[None]"]
@@ -57,7 +70,12 @@ class WorkflowEngine:
         self._condition_evaluator = evaluator
 
     def register(self, workflow: Workflow) -> None:
-        """登记一个工作流定义 (重名覆盖)."""
+        """登记一个工作流定义 (重名覆盖)。
+
+        2026-08-19 (M13): 登记前校验 workflow_id, 拒绝路径穿越字符 (持久化路径
+        data/workflows/<id>.json 直接拼 id)。
+        """
+        _validate_workflow_id(workflow.workflow_id)
         self._workflows[workflow.workflow_id] = workflow
         logger.debug("工作流已登记", workflow_id=workflow.workflow_id)
 
