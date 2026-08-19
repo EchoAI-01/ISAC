@@ -40,6 +40,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def is_shared_namespace(namespace: str) -> bool:
+    """判定是否为 shared 记忆命名空间 (2026-08-19 ACL 口径统一)。
+
+    兼容两种形态: 裸 ``"shared"`` 与租户前缀 ``"<org>:<tenant>:shared"``
+    (``TenantIsolationGuard.namespace_for`` 启用租户后加前缀)。此前 pipeline 检索
+    仅用 ``== "shared"`` 字面量判断, 租户模式下失配 → 强制 ACL 被绕过, 可无锚点
+    全量检索该租户 shared 空间内所有用户记忆。**所有 shared 判定必须走本函数**,
+    不得再自拼字面量比较 (同构面核对清单)。
+    """
+    return namespace == "shared" or namespace.endswith(":shared")
+
+
 class MemoryRetrievalPipeline:
     """记忆检索流水线。每个 AgentInstance 持有一个 (绑定记忆命名空间)。"""
 
@@ -92,7 +104,7 @@ class MemoryRetrievalPipeline:
         clean_query = str(query or "").strip()
         if not clean_query:
             return []
-        if self.namespace == "shared" and not user_id and not group_id:
+        if is_shared_namespace(self.namespace) and not user_id and not group_id:
             logger.warning(
                 "shared namespace 检索被 ACL 拒绝: 缺少 user_id/group_id",
                 namespace=self.namespace,
