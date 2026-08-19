@@ -1,0 +1,42 @@
+// ISAC 默认模型价目表 (R1-④, PricingCatalog.load 读取)。
+//
+// 2026-08-19 入仓: 此前该文件从未提交 (.gitignore data/* 排除), fresh 部署时
+// PricingCatalog 恒为空目录, ModelUsageEvent.estimated_cost 一律 None, 成本计量
+// 开箱即失效。现提供随包默认价目表, 让成本估算开箱可用。
+//
+// 查表键 = (provider, model, modality)。provider 当前为 Provider 类名
+// (ProviderManager._call_and_record 记录 type(provider).__name__), 生产 LLM 主链路
+// 为 OpenAICompatProvider; modality 文本为 "text"。单价为"每 unit 字符串", text
+// 的 unit_name="token" (即每 token 价)。金额为该模型官方计价币种, 默认 USD。
+//
+// 下方为常见模型的参考单价 (约值, 供成本趋势参考, 非实时报价); 请按实际签约价
+// 增改。新增模型照抄一条即可; 未登记的 (provider, model, modality) 估算仍为 None
+// (不伪造成本)。多模态 (image/audio/video/embedding/rerank) 的 unit_name 与计价
+// 公式见 estimate_cost, 按需补 "modality" 与对应单价。
+{
+  "version": "2026-08-19",
+  "snapshots": [
+    // ── 文本 LLM (OpenAI 兼容主链路) ────────────────────────
+    { "provider": "OpenAICompatProvider", "model": "gpt-4o-mini", "modality": "text",
+      "input_price_per_unit": "0.00000015", "output_price_per_unit": "0.0000006",
+      "unit_name": "token", "currency": "USD" },
+    { "provider": "OpenAICompatProvider", "model": "gpt-4o", "modality": "text",
+      "input_price_per_unit": "0.0000025", "output_price_per_unit": "0.00001",
+      "unit_name": "token", "currency": "USD" },
+    { "provider": "OpenAICompatProvider", "model": "deepseek-chat", "modality": "text",
+      "input_price_per_unit": "0.00000027", "output_price_per_unit": "0.0000011",
+      "unit_name": "token", "currency": "USD" },
+    { "provider": "OpenAICompatProvider", "model": "deepseek-reasoner", "modality": "text",
+      "input_price_per_unit": "0.00000055", "output_price_per_unit": "0.00000219",
+      "unit_name": "token", "currency": "USD" },
+    // 开发态兜底 Provider (无真实成本, 记 0 以便用量面板有行而非 None)。
+    { "provider": "StubProvider", "model": "stub", "modality": "text",
+      "input_price_per_unit": "0", "output_price_per_unit": "0",
+      "unit_name": "token", "currency": "USD" },
+
+    // ── Embedding / Rerank (示例, 按所用端点补) ──────────────
+    { "provider": "OpenAICompatEmbeddingProvider", "model": "text-embedding-3-small", "modality": "embedding",
+      "input_price_per_unit": "0.00000002", "output_price_per_unit": "0",
+      "unit_name": "token", "currency": "USD" }
+  ]
+}
