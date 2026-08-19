@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from isac.core.types import MemoryHit
 from isac.utils.logger import get_logger
@@ -50,6 +50,32 @@ def is_shared_namespace(namespace: str) -> bool:
     不得再自拼字面量比较 (同构面核对清单)。
     """
     return namespace == "shared" or namespace.endswith(":shared")
+
+
+def _collect_recall_sources(
+    fts_rows: list[dict],
+    sparse_rows: list[tuple[str, float]],
+    dense_rows: list[tuple[str, float]] | None,
+    graph_rows: list[tuple[str, float]] | None,
+) -> dict[str, set[str]]:
+    """阶段3-3 召回可解释性: 汇总每条记忆被哪些检索路命中。
+
+    返回 {memory_id: {路径名}}; 路径名 ∈ fts (全文) / bm25 (稀疏) / vector (稠密) /
+    graph (图谱)。抽出独立函数既供 _merge_results 写入 metadata, 也避免 search 复杂度
+    超限 (C901)。
+    """
+    sources: dict[str, set[str]] = {}
+    for row in fts_rows:
+        mid = str(row.get("id", ""))
+        if mid:
+            sources.setdefault(mid, set()).add("fts")
+    for mid, _s in sparse_rows:
+        sources.setdefault(mid, set()).add("bm25")
+    for mid, _d in dense_rows or []:
+        sources.setdefault(mid, set()).add("vector")
+    for mid, _w in graph_rows or []:
+        sources.setdefault(mid, set()).add("graph")
+    return sources
 
 
 class MemoryRetrievalPipeline:
@@ -149,7 +175,11 @@ class MemoryRetrievalPipeline:
                 group_id=group_id,
                 filters=filters,
             )
-            hits = self._merge_results([*fts_rows, *missing_rows], sparse_rows, dense_rows, graph_rows)
+            # 阶段3-3 召回可解释性: 汇总每条记忆被哪些检索路命中 (fts/bm25/vector/graph)。
+            sources = _collect_recall_sources(fts_rows, sparse_rows, dense_rows, graph_rows)
+            hits = self._merge_results(
+                [*fts_rows, *missing_rows], sparse_rows, dense_rows, graph_rows, sources
+            )
             if self.reranker is not None and self.reranker.is_available():
                 hits = await self.reranker.rerank(clean_query, hits)
             return hits[: max(1, int(top_k))]
@@ -335,6 +365,7 @@ class MemoryRetrievalPipeline:
         sparse_rows: list[tuple[str, float]],
         dense_rows: list[tuple[str, float]] | None = None,
         graph_rows: list[tuple[str, float]] | None = None,
+        sources: dict[str, set[str]] | None = None,
     ) -> list[MemoryHit]:
         """RRF 融合 FTS / BM25 / 稠密 / 图谱四路召回 (CR3-H3 加入 dense_rows, S3 加入 graph_rows)。
 
@@ -362,6 +393,17 @@ class MemoryRetrievalPipeline:
             if memory_id not in rows_by_id:
                 continue
             row = rows_by_id[memory_id]
+            # 阶段3-3 召回可解释性 (Y1): 记录命中本条记忆的检索路径 (fts/bm25/vector/graph),
+            # 供上层回答"为什么召回这条记忆"。sources 由 search() 汇总四路候选传入。
+            metadata: dict[str, Any] = {
+                "summary": row.get("summary", ""),
+                "topics": row.get("topics", []),
+                "importance": row.get("importance", 0.5),
+            }
+            if sources:
+                hit_sources = sources.get(memory_id)
+                if hit_sources:
+                    metadata["recall_sources"] = sorted(hit_sources)
             hits.append(
                 MemoryHit(
                     id=memory_id,
@@ -369,11 +411,7 @@ class MemoryRetrievalPipeline:
                     source=str(row.get("session_id", "")),
                     hit_type="episode",
                     score=score,
-                    metadata={
-                        "summary": row.get("summary", ""),
-                        "topics": row.get("topics", []),
-                        "importance": row.get("importance", 0.5),
-                    },
+                    metadata=metadata,
                 )
             )
         return hits
