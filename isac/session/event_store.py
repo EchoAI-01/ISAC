@@ -125,6 +125,41 @@ class SessionEventStore:
         await self._db.commit()
         self._pending_commits = 0
 
+    async def count_events(self, session_key: str) -> int:
+        """统计某分区事件数 (压缩触发阈值判定用, 轻量 COUNT)。未 start 返回 0。"""
+        if self._db is None:
+            return 0
+        cursor = await self._db.execute(
+            "SELECT COUNT(*) FROM session_events WHERE session_key = ?", (session_key,)
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    async def delete_events(self, session_key: str, seqs: list[int]) -> int:
+        """保留 GC: 物理删除某分区指定 seq 的事件, 返回删除条数。
+
+        阶段3-2 (M2) 压缩写侧专用 —— 仅由 SessionCompressor 删除已被 turn.compressed
+        摘要替代的**内容**事件 (message.user/turn.completed/turn.compressed), 遏制事件
+        表无界增长。**不得**用于删除 tool.*/turn.aborted/session.migrated (DenyGuard
+        拒绝账本与 torn-tail 修复依赖), 也不得用作任意涂改历史的后门。分块执行规避
+        SQLite 绑定变量上限。未 start/空 seqs 返回 0。
+        """
+        if self._db is None or not seqs:
+            return 0
+        deleted = 0
+        for i in range(0, len(seqs), 500):
+            chunk = [int(s) for s in seqs[i : i + 500]]
+            placeholders = ",".join("?" * len(chunk))
+            cursor = await self._db.execute(
+                f"DELETE FROM session_events WHERE session_key = ? AND seq IN ({placeholders})",
+                [session_key, *chunk],
+            )
+            deleted += cursor.rowcount if cursor.rowcount is not None else 0
+            await cursor.close()
+        await self._db.commit()
+        return deleted
+
     async def fetch(
         self, session_key: str, after_seq: int = 0, limit: int = 1000
     ) -> list[SessionEvent]:

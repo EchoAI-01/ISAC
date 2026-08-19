@@ -80,6 +80,11 @@ class AgentManager:
         # Fix-26: 值从"仅强引用"扩为 task → agent_id, 供 destroy(keep_memory=False)
         # 只等待该 agent 自己的在途任务, 不必等待其它 Agent 无关的写入。
         self._memory_tasks: dict[asyncio.Task[None], str] = {}
+        # 阶段3-2 (M2): U1 会话压缩后台任务跟踪 —— _compression_tasks 强引用集合
+        # (同 _memory_tasks, 防 GC 取消); _compressing_sessions 记录在途压缩的
+        # session_key, 避免同一会话并发重复压缩。
+        self._compression_tasks: set[asyncio.Task[None]] = set()
+        self._compressing_sessions: set[str] = set()
 
     # ── 生命周期 (控制面暴露) ──────────────────────────────
 
@@ -511,6 +516,9 @@ class AgentManager:
                 instance, message, session, user_profile, result.content, user_content,
                 turn_seq=turn_seq,
             )
+            # 阶段3-2 (M2): U1 会话压缩闭环 —— 事件数超阈值时后台触发 compress_session
+            # (默认关闭; session.compression.enabled=true 才生效, 不阻塞回复)。
+            self._maybe_schedule_compression(instance, message)
         return result.content or None
 
     async def _debounce_should_yield(
@@ -1248,6 +1256,47 @@ class AgentManager:
         )
         self._memory_tasks[task] = instance.agent_id
         task.add_done_callback(lambda t: self._memory_tasks.pop(t, None))
+
+    def _maybe_schedule_compression(self, instance: AgentInstance, message: ISACMessage) -> None:
+        """阶段3-2 (M2): U1 会话压缩闭环触发 (默认关闭, 不阻塞回复)。
+
+        session.compression.enabled=true 且本会话事件数 ≥ trigger_events 时, 派生后台
+        任务 compress_session (旧前缀 LLM 摘要 → turn.compressed replace 事件 + 保留
+        GC)。未启用/无压缩器/无事件 store/同会话已在途压缩 → 直接跳过 (零行为变化)。
+        """
+        compressor = instance.services.session_compressor
+        if compressor is None:
+            return
+        trigger_events = int(getattr(compressor, "trigger_events", 0) or 0)
+        if trigger_events <= 0:
+            return
+        session_key = self._session_key_for(instance, message)
+        if not session_key or session_key in self._compressing_sessions:
+            return
+        store = self._services.session_event_store
+        if store is None:
+            return
+        task = asyncio.create_task(
+            self._run_session_compression(compressor, store, session_key, trigger_events),
+            name=f"session-compress-{session_key}",
+        )
+        self._compression_tasks.add(task)
+        task.add_done_callback(self._compression_tasks.discard)
+
+    async def _run_session_compression(
+        self, compressor: Any, store: Any, session_key: str, trigger_events: int
+    ) -> None:
+        """后台执行单会话压缩: 先轻量计数判阈值, 再 compress_session (失败隔离)。"""
+        self._compressing_sessions.add(session_key)
+        try:
+            count = await store.count_events(session_key)
+            if count < trigger_events:
+                return  # 未达阈值, 不压缩
+            await compressor.compress_session(session_key)
+        except Exception as exc:  # noqa: BLE001 压缩失败不影响主链路
+            logger.warning("会话压缩后台任务异常", session_key=session_key, error=str(exc))
+        finally:
+            self._compressing_sessions.discard(session_key)
 
     async def _project_episode_content(
         self, instance: AgentInstance, message: ISACMessage, turn_seq: int | None
