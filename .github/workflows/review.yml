@@ -1,10 +1,10 @@
-name: opencode-review
+name: Review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 concurrency:
-  group: opencode-review-${{ github.event.pull_request.number }}
+  group: review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 permissions:
   contents: read

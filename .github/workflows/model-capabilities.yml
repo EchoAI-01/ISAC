@@ -1,12 +1,12 @@
 # U7 模型能力快照每周刷新 (models.dev → data/model_capabilities.json)。
 # 生成器: scripts/gen_model_capabilities.py (仅标准库); 有差异时提交回 dev。
 # 新鲜度 drift 报警由 tests/unit/test_u7_model_capabilities.py 承担 (快照过期即失败)。
-name: Model Capabilities Refresh
+name: 模型更新
 
 on:
   schedule:
     # 每周一 05:17 UTC (避开整点拥塞)
-    - cron: "17 5 * * 1"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 permissions:
