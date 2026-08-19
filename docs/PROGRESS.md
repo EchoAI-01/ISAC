@@ -2,6 +2,11 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-19 —— 阶段3-3 记忆进阶 + 成本闭环 完成 (全量 2164 通过)**。
+> **①成本闭环 (H4)**: 用量 provider 键三口径统一为**实例类名** —— 此前 LLM 记 type(provider).__name__、媒体记 descriptor.provider_id、embed/rerank 记 config["provider"] (默认无该键恒空), 三口径无法命中同一份价目表 → 开箱 estimated_cost 恒 None。现 embedder/reranker/media 统一记 provider 实例类名 (对齐 pricing.jsonc 键与 LLM 口径); pricing.jsonc 已入仓 (阶段1-7) 键即类名, LLM/embed 成本查表可命中。新增 test_cost_loop_h4 6 例。
+> **②记忆进阶: 召回可解释性 (Y1 基础)**: 四路召回 (FTS/BM25/向量/图谱) RRF 融合后, 把每条记忆的命中路径写入 MemoryHit.metadata["recall_sources"] (排序去重), 回答"这条记忆为何被召回"; 新增 _collect_recall_sources (抽独立函数降 search C901), MemoryHit schema 不动 (走 metadata)。新增 test_recall_explainability 6 例。
+> **全量 2164 单测通过**, ruff/mypy/红线全绿。
+>
 > ⚠️ **最近更新: 2026-08-19 —— 阶段3-2 压缩闭环 + 幂等重试 全部完成 (全量 2152 通过)**。
 > **①入站幂等去重 (M4)**: 新增 `isac/gateway/inbound_dedup.py` InboundDeduplicator (LRU+TTL 双限, 同 qq_official Fix-96 同构), dispatch 入口统一接线一次覆盖全渠道 (此前仅 qq_official 有适配器级去重, OneBot WS 重连/webhook 重试会重复落事件+重复回复); 重复消息记 isac_messages_deduplicated_total 指标后丢弃。顺带抽 `_emit_incoming_signal` 降 dispatch 复杂度。
 > **②U1 会话压缩写侧闭环 (M2)**: 新增 `isac/session/compressor.py` SessionCompressor —— 保留活跃窗口, 旧前缀内容事件 LLM 归纳为摘要 (增量卷起), validate_compression 拒负压缩, 追加 turn.compressed replace 事件 (summary+source_seqs); 保留 GC (event_store.delete_events/count_events) 物理删被替代**内容**事件遏制无界增长, 但保留 tool.*/aborted/migrated (DenyGuard/torn-tail 安全边界); 摘要注入防护 (对齐 Fix-105)。生产接线默认关 (session.compression.enabled), assembly 经 dict 字面量注入 + manager 走类型化属性 (不新增 services 字符串键, U9 红线保持 35)。此前 EVENT_TURN_COMPRESSED 零写入点、validate_compression 零调用方、事件表无限增长。
