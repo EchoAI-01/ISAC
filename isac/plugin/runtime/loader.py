@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import inspect
 import json
@@ -30,6 +31,20 @@ except ImportError:  # pragma: no cover
     _loads = json.loads
 
 logger = get_logger(__name__)
+
+
+def _resolve_entry_path(plugin_path: Path, entry: str) -> Path:
+    """2026-08-19 (M8): resolve entry 并断言在插件目录子树内 (防路径穿越)。
+
+    entry 含 ../ 或绝对路径可越出插件目录执行任意 .py (hosted=宿主进程内)。
+    resolve 后必须仍在插件目录内, 否则 raise ValueError。同步实现 —— 由调用方经
+    asyncio.to_thread 执行, 避免 event loop 内 blocking Path 操作 (ruff ASYNC240)。
+    """
+    base = plugin_path.resolve()
+    resolved = (plugin_path / entry).resolve()
+    if not resolved.is_relative_to(base):
+        raise ValueError(f"插件 entry 越出插件目录, 拒绝加载: {entry!r}")
+    return resolved
 
 
 class PluginFormat(Enum):
@@ -99,7 +114,8 @@ class PluginLoader:
         """ISAC 原生: 解析 manifest.jsonc, 按 entry 字段加载 plugin.py 找 ISACPlugin 子类。"""
         manifest = _loads((plugin_path / "manifest.jsonc").read_text(encoding="utf-8"))
         entry = manifest.get("entry", "plugin.py")
-        entry_path = plugin_path / entry
+        # M8: resolve + 越界校验 (同步, 经 to_thread 避免 event loop 内 blocking IO)。
+        entry_path = await asyncio.to_thread(_resolve_entry_path, plugin_path, entry)
         if not entry_path.exists():
             raise FileNotFoundError(f"插件入口不存在: {entry_path}")
         instance = self._find_subclass_in_file(entry_path, ISACPlugin)

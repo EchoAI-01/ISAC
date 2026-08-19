@@ -4,7 +4,7 @@ O2 实现: 用 multiprocessing.Process spawn 子进程, socketpair 上长度前�
 字节帧 IPC (Fix-89: 此前用 multiprocessing.Pipe —— recv() 是 pickle 反序列化,
 承载不可信插件代码的隔离子进程可构造恶意 pickle 载荷在宿主 recv 时执行任意代码,
 沙箱逃逸; 现传输层只读字节 + json.loads, 解码路径零代码执行); spawn 时设资源
-限额 (resource.setrlimit CPU/RSS/NOFILE, POSIX only); call 编码 IPCEnvelope →
+限额 (resource.setrlimit CPU/NOFILE/AS, POSIX only); call 编码 IPCEnvelope →
 JSON 帧 → 发送 → 等待 result/error → 解码; 子进程崩溃自动重启 (最多
 max_restart_attempts 次, 默认 3)。默认不接管现有 in-process loader (loader.py
 不变), enabled=False 时主链路零行为变化。
@@ -102,17 +102,23 @@ class _JsonFrameTransport:
 
 # 默认资源限额 (POSIX; 可经 PluginIsolationHost(rlimits=...) 覆盖)
 _DEFAULT_RLIMITS: dict[str, tuple[int, int]] = {
-    "cpu": (1, 1),
+    # 2026-08-19 (M11): cpu 默认 (1,1)=累计 1 秒 CPU 即 SIGXCPU, 任何做实事的隔离
+    # 插件都会被杀 (sample 配置建议 60,60 但代码默认未改)。对齐 sample 提到 60,60。
+    "cpu": (60, 60),
     "nofile": (64, 64),
     "as": (256 * 1024 * 1024, 256 * 1024 * 1024),
 }
 
 
 def _apply_rlimits(rlimits: dict[str, tuple[int, int]] | None = None) -> None:
-    """子进程资源限额 (POSIX; Windows 跳过)。
+    """子进程资源限额 (POSIX; Windows 跳过)。限额的是 CPU/NOFILE/AS (非 RSS)。
 
     N5b 批次C C3: rlimits 可配 (此前 RLIMIT_CPU (1,1) 硬编码, 长任务插件直接
-    SIGXCPU 被杀且不可调)。默认仍 (1,1)/64/256MB 向后兼容。
+    SIGXCPU 被杀且不可调)。
+
+    M11: 设置失败此前 ``except: pass`` 静默 —— 限额没生效时隔离"看起来生效",
+    是最危险的状态; 现失败记 warning (不 raise, 避免平台差异阻断插件加载, 但
+    不再无声)。
     """
     if resource is None:
         return
@@ -124,8 +130,10 @@ def _apply_rlimits(rlimits: dict[str, tuple[int, int]] | None = None) -> None:
             resource.setrlimit(resource.RLIMIT_NOFILE, cfg.get("nofile", _DEFAULT_RLIMITS["nofile"]))
         if hasattr(resource, "RLIMIT_AS"):
             resource.setrlimit(resource.RLIMIT_AS, cfg.get("as", _DEFAULT_RLIMITS["as"]))
-    except (ValueError, OSError, PermissionError):
-        pass  # 权限不足或平台不支持时跳过
+    except (ValueError, OSError, PermissionError) as exc:
+        # M11: 权限不足/平台不支持时不 raise (避免阻断), 但必须留痕 —— 静默失效
+        # 会让隔离看起来生效而实际未限额。
+        logger.warning("子进程 rlimits 设置失败 (隔离限额未生效)", error=str(exc))
 
 
 def _worker_load(state: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:

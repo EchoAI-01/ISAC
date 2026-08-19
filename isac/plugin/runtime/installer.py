@@ -26,6 +26,7 @@ from typing import Any
 
 from isac.utils.logger import get_logger
 from isac.utils.safe_install import (
+    PLUGIN_ENTRY_FILES,
     is_safe_url,
     resolve_archive_root_dir,
     safe_download_bytes,
@@ -62,6 +63,36 @@ def _validate_plugin_name(name: str, plugins_dir: Path) -> Path:
     if not target.is_relative_to(plugins_dir.resolve()):
         raise ValueError(f"插件目录越界 (不在 plugins_dir 子树内): {name}")
     return target
+
+
+def _validate_git_checkout(root: Path, max_bytes: int) -> None:
+    """2026-08-19 (M7): git 安装路径的对齐防护。
+
+    zip 路径有 validate_plugin_archive (入口特征) + safe_extractall (体积上限);
+    git 路径此前两者皆无。clone 后统一补:
+    - 入口特征: 须含 PLUGIN_ENTRY_FILES 之一 (防安装任意非插件仓库)。
+    - symlink: git checkout 会实体化仓库内 symlink (zip 路径不会) → 发现即拒绝。
+    - 总体积: clone 无大小上限 (可磁盘打满) → 累计超 max_bytes 即拒绝 (半成品由
+      调用方 finally 清理)。
+    """
+    found_entry = False
+    total = 0
+    for p in root.rglob("*"):
+        if p.is_symlink():
+            raise ValueError(f"git 插件仓库含 symlink, 拒绝安装: {p}")
+        if not p.is_file():
+            continue
+        total += p.stat().st_size
+        if total > max_bytes:
+            raise ValueError(
+                f"git 插件仓库 checkout 后超过体积上限 {max_bytes} 字节 (防大仓库/磁盘打满)"
+            )
+        if p.name in PLUGIN_ENTRY_FILES:
+            found_entry = True
+    if not found_entry:
+        raise ValueError(
+            f"git 仓库不是合法插件: 未找到入口特征 {PLUGIN_ENTRY_FILES} 之一"
+        )
 
 
 
@@ -253,6 +284,10 @@ class PluginInstaller:
             except subprocess.CalledProcessError as exc:
                 stderr = exc.stderr.decode(errors="replace") if exc.stderr else str(exc)
                 raise RuntimeError(f"git clone 失败: {stderr}") from exc
+
+            # 2026-08-19 (M7): git 路径对齐 zip 的防护 (入口特征 + symlink 拒绝 +
+            # 体积上限); 校验失败的半成品由下方 finally 清理 tmp。
+            await asyncio.to_thread(_validate_git_checkout, tmp / name, MAX_EXTRACTED_BYTES)
 
             self._plugins_dir.mkdir(parents=True, exist_ok=True)
             if target.exists():

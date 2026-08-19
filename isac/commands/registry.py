@@ -28,6 +28,16 @@ class CommandRegistry:
 
     def register(self, command: Command, *, source: str | None = None) -> None:
         effective_source = source or self._current_source or "builtin"
+        # 2026-08-19 (M9): 静默覆盖可让同名插件命令顶替内置命令 (mute/focus/agents...),
+        # 与工具侧 _NamespacedTool 修复前同构。暂不引入命名空间 (行为变更大), 先在
+        # 覆盖时留痕告警, 让"命令被顶替"可观测。
+        if command.name in self._commands:
+            logger.warning(
+                "命令名冲突, 新注册将覆盖既有命令",
+                command=command.name,
+                previous_source=self._source.get(command.name, "builtin"),
+                new_source=effective_source,
+            )
         self._commands[command.name] = command
         self._source[command.name] = effective_source
 
