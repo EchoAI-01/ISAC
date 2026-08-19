@@ -135,3 +135,25 @@ class TestEventBusSourceTracking:
         eb.on_async(EventType.ON_MESSAGE, lambda p: None)
         eb.set_current_source(None)
         assert eb.deregister_by_source("pluginA") == 1
+
+
+def test_context_source_registries_picks_up_private_registry_fields() -> None:
+    """2026-08-19 来源追踪崩坏回归: _context_source_registries 必须取到 PluginContext
+    带下划线的 _tools/_commands/_prompt_builder (此前读无下划线的 tools/commands/
+    prompt_builder 一律 None → 启动批量 on_load 期间这三类注册表从未 set_current_source,
+    插件工具 source 退化 builtin)。"""
+    from isac.agent.tools.registry import ToolRegistry
+    from isac.plugin.native.plugin import PluginContext
+    from isac.plugin.runtime.manager import _context_source_registries
+
+    ctx = PluginContext(
+        agent_hooks=AgentHooks(),
+        event_bus=EventBus(),
+        _tools=ToolRegistry(),
+        _commands=CommandRegistry(),
+        _prompt_builder=SystemPromptBuilder(),
+    )
+    registries = _context_source_registries(ctx)
+    # 5 个支持来源追踪的注册表都应被收集 (tools/commands/prompt_builder/agent_hooks/event_bus)
+    assert len(registries) == 5
+    assert all(hasattr(r, "set_current_source") for r in registries)

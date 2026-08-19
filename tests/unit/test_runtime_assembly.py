@@ -188,6 +188,84 @@ async def test_assemble_agent_merges_shared_plugin_tools() -> None:
     assert "plugin_fake_tool" in tool_names
 
 
+def test_plugin_enabled_for_agent_semantics() -> None:
+    """2026-08-19 (H2): plugins_allow/deny 判定语义 —— deny 优先; allow=["*"] 放行;
+    显式白名单仅放列内者; **allow=[] 一律拒绝** (受限默认配置用它表达"禁用所有外部
+    插件", 不能形同虚设地放行)。"""
+    from isac.runtime.assembly import _plugin_enabled_for_agent
+
+    assert _plugin_enabled_for_agent(AgentConfig(agent_id="a", plugins_allow=["*"]), "p") is True
+    assert _plugin_enabled_for_agent(AgentConfig(agent_id="a", plugins_allow=["*"], plugins_deny=["p"]), "p") is False
+    assert _plugin_enabled_for_agent(AgentConfig(agent_id="a", plugins_allow=["p"]), "p") is True
+    assert _plugin_enabled_for_agent(AgentConfig(agent_id="a", plugins_allow=["other"]), "p") is False
+    # 空 allow = 全禁 (受限 Agent 的关键防线)
+    assert _plugin_enabled_for_agent(AgentConfig(agent_id="a", plugins_allow=[]), "p") is False
+
+
+@pytest.mark.asyncio
+async def test_assemble_agent_filters_plugin_tools_by_enable_matrix() -> None:
+    """2026-08-19 (H2) 回归: 共享插件工具按 AgentConfig.plugins_allow/deny 过滤。
+
+    此前 _merge_shared_plugin_tools 把共享表全部插件工具合并进每个 Agent, 声明
+    plugins_allow=[] 的受限 Agent 也拿到全部插件工具。现仅合并该 Agent 启用的插件。
+    """
+    from isac.agent.tools.base import Tool, ToolContext, ToolResult
+    from isac.agent.tools.registry import ToolRegistry
+
+    class _FakePluginTool(Tool):
+        @property
+        def name(self) -> str:
+            return "fake_tool"
+
+        @property
+        def description(self) -> str:
+            return "插件工具"
+
+        @property
+        def parameters(self) -> dict:
+            return {"type": "object"}
+
+        async def execute(self, context: ToolContext) -> ToolResult:
+            return ToolResult(content="ok")
+
+    def _shared() -> ToolRegistry:
+        st = ToolRegistry()
+        st.register(_FakePluginTool(), source="myplugin")  # 插件来源 (非 builtin)
+        return st
+
+    base_services = {
+        "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+        "global_config": {},
+    }
+
+    # 受限 Agent: plugins_allow=[] → 插件工具不得合并
+    pm = ProviderManager({})
+    pm.register(StubProvider())
+    restricted = await assemble_agent(
+        AgentConfig(agent_id="restricted", plugins_allow=[]),
+        {**base_services, "provider_manager": pm, "plugin_tools": _shared()},
+    )
+    assert not any("fake_tool" in d["name"] for d in restricted.tools.definitions())
+
+    # 显式 deny → 不得合并
+    pm2 = ProviderManager({})
+    pm2.register(StubProvider())
+    denied = await assemble_agent(
+        AgentConfig(agent_id="denied", plugins_deny=["myplugin"]),
+        {**base_services, "provider_manager": pm2, "plugin_tools": _shared()},
+    )
+    assert not any("fake_tool" in d["name"] for d in denied.tools.definitions())
+
+    # 显式 allow 该插件 → 合并 (带命名空间前缀)
+    pm3 = ProviderManager({})
+    pm3.register(StubProvider())
+    allowed = await assemble_agent(
+        AgentConfig(agent_id="allowed", plugins_allow=["myplugin"]),
+        {**base_services, "provider_manager": pm3, "plugin_tools": _shared()},
+    )
+    assert any("fake_tool" in d["name"] for d in allowed.tools.definitions())
+
+
 @pytest.mark.asyncio
 async def test_assemble_agent_wires_mcp_clients(monkeypatch) -> None:
     """R3: AgentConfig.mcp_servers + services["mcp_servers"] → assemble 构造 MCPClient

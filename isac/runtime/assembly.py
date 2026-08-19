@@ -285,8 +285,26 @@ def _register_media_tools(config: AgentConfig, tools: ToolRegistry) -> None:
         tools.register(UnderstandVideoTool())
 
 
+def _plugin_enabled_for_agent(config: AgentConfig, plugin_name: str) -> bool:
+    """按 AgentConfig.plugins_allow/plugins_deny 判定插件对该 Agent 是否启用。
+
+    2026-08-19 (H2 启用矩阵接线): 语义与 EnableMatrix.is_plugin_enabled 的 Agent 层
+    对齐, 但修正其"allow 为空 → 放行"的缺陷 —— 受限默认配置用 ``plugins_allow=[]``
+    表达"禁用所有外部插件", 空 allow 必须等于"全禁"而非"全放" (否则形同虚设)。
+    规则: deny 优先; allow=["*"] 放行未 deny 者; allow 显式白名单仅放列内者;
+    allow=[] 一律拒绝。builtin 来源不经此判定 (内置工具恒可用)。
+    """
+    if plugin_name in config.plugins_deny:
+        return False
+    allow = config.plugins_allow
+    if "*" in allow:
+        return True
+    return plugin_name in allow
+
+
 def _merge_shared_plugin_tools(
-    services: ServiceContainer, tools: ToolRegistry, prompt_builder: SystemPromptBuilder
+    services: ServiceContainer, tools: ToolRegistry, prompt_builder: SystemPromptBuilder,
+    config: AgentConfig,
 ) -> None:
     """R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry。
 
@@ -295,6 +313,11 @@ def _merge_shared_plugin_tools(
     native 插件经 on_load 主动 register, AstrBot/MaiBot 兼容层经 _adapt_compat_plugins
     调 adapter.adapt 注册到共享表 (_fire_plugin_on_load 收集)。默认无插件时空操作。
     shared_commands 合并由调用方在 commands 构造后单独处理 (commands 此处尚未构造)。
+
+    2026-08-19 (H2): 合并前按 ``config.plugins_allow/plugins_deny`` 过滤 —— 此前把共享
+    表**全部**插件工具合并进**每个** Agent, 从不查启用矩阵, 导致声明 plugins_allow=[]
+    的受限 Agent 也拿到全部插件工具。现仅合并该 Agent 启用的插件 (source 即插件名)
+    的工具; builtin 来源恒合并。
     """
     shared_tools = services.plugin_tools
     if shared_tools is not None:
@@ -302,6 +325,8 @@ def _merge_shared_plugin_tools(
             # T6: 透传共享表来源, 让 per-Agent registry 也带 source 追踪,
             # 否则热重载 deregister_by_source 在运行中 Agent 不生效。
             _src = shared_tools._source.get(_name, "builtin")  # noqa: SLF001
+            if _src != "builtin" and not _plugin_enabled_for_agent(config, _src):
+                continue
             tools.register(_tool, source=_src)
     shared_prompt = services.plugin_prompt_builder
     if shared_prompt is not None:
@@ -363,18 +388,24 @@ async def _wire_mcp_clients(
 
 
 def _merge_shared_plugin_commands(
-    services: ServiceContainer, commands: CommandRegistry
+    services: ServiceContainer, commands: CommandRegistry, config: AgentConfig
 ) -> None:
     """R3: 合并进程级共享插件 commands 进 per-Agent CommandRegistry。
 
     同 plugin_agent_hooks 合并模式; 由 assemble_agent 在 commands 构造后调用
     (commands 在 tools 之后定义, 故不能并入 _merge_shared_plugin_tools)。
     默认无插件时空操作。
+
+    2026-08-19 (H2): 与 _merge_shared_plugin_tools 同款, 按 config.plugins_allow/deny
+    过滤, 仅合并该 Agent 启用的插件 (source 即插件名) 的命令; builtin 恒合并。
     """
     shared_commands = services.plugin_commands
     if shared_commands is not None:
-        for _cmd in shared_commands._commands.values():  # noqa: SLF001
-            commands.register(_cmd)
+        for _name, _cmd in shared_commands._commands.items():  # noqa: SLF001
+            _src = shared_commands._source.get(_name, "builtin")  # noqa: SLF001
+            if _src != "builtin" and not _plugin_enabled_for_agent(config, _src):
+                continue
+            commands.register(_cmd, source=_src)
 
 
 def _register_identity_prompts(
@@ -595,7 +626,7 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # 合并模式; shared_commands 合并见下方 commands 定义后) + MCPClient 按
     # AgentConfig.mcp_servers 构造+connect+list_tools 注册 MCP 工具进 tools。client
     # 存 per-Agent 服务的 mcp_clients 键供 stop/destroy disconnect。默认空, 零行为变化。
-    _merge_shared_plugin_tools(services, tools, prompt_builder)
+    _merge_shared_plugin_tools(services, tools, prompt_builder, config)
     mcp_clients = await _wire_mcp_clients(config, services, tools)
 
     prompt_builder.register(ToolsAvailableInjector(tools))
@@ -614,7 +645,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     commands.register(UnmuteCommand())
     # R3: 合并进程级共享插件命令 (plugin_commands 共享键) 进 per-Agent
     # CommandRegistry, 同 plugin_agent_hooks 合并模式。默认空。
-    _merge_shared_plugin_commands(services, commands)
+    # 2026-08-19 (H2): 传入 config 按 plugins_allow/deny 过滤。
+    _merge_shared_plugin_commands(services, commands, config)
 
     # build_services 恒注册 provider_manager/memory_factory (装配层不变量, cast 收敛)。
     provider_manager = cast(Any, services.provider_manager)
