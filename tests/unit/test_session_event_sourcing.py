@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,26 @@ async def test_append_assigns_monotonic_seq(tmp_path: Path) -> None:
         s2 = await store.append(_ev(EVENT_TURN_COMPLETED, "你好, 有什么可以帮你"))
         s3 = await store.append(_ev(EVENT_USER_MESSAGE, "天气"))
         assert (s1, s2, s3) == (1, 2, 3)
+    finally:
+        await store.stop()
+
+
+@pytest.mark.asyncio
+async def test_append_rejects_overwrite_existing_seq(tmp_path: Path) -> None:
+    """append-only 后门封堵回归: 显式 seq 撞既有 (session_key, seq) 必须报错, 不得静默覆盖。
+
+    2026-08-19: 原 INSERT OR REPLACE 允许对既有事件改写, 违背"事件只追加不涂改"。
+    封堵后同 seq 追加触发主键冲突 IntegrityError; 原事件内容保持不变。
+    """
+    store = await _started_store(tmp_path)
+    try:
+        await store.append(_ev(EVENT_USER_MESSAGE, "原始内容", seq=1))
+        with pytest.raises(sqlite3.IntegrityError):
+            await store.append(_ev(EVENT_USER_MESSAGE, "企图覆盖", seq=1))
+        await store.flush()
+        events = await store.fetch(KEY)
+        assert len(events) == 1
+        assert events[0].payload["content"] == "原始内容"
     finally:
         await store.stop()
 

@@ -104,8 +104,12 @@ class SessionEventStore:
             await cursor.close()
             event.seq = int(row[0]) if row and row[0] is not None else 0
         else:
+            # 2026-08-19 append-only 后门封堵: 显式 seq 原走 INSERT OR REPLACE, 可对既有
+            # (session_key, seq) 事件静默覆盖 —— 违背"事件只追加不涂改"内核不变式。
+            # 改纯 INSERT: 新 seq 正常写入 (测试/迁移构造确定性序列仍可用), 已存在的
+            # seq 触发主键冲突 IntegrityError 显式失败, 不再允许改写历史。
             await self._db.execute(
-                "INSERT OR REPLACE INTO session_events (session_key, seq, event_type, timestamp, payload) "
+                "INSERT INTO session_events (session_key, seq, event_type, timestamp, payload) "
                 "VALUES (?, ?, ?, ?, ?)",
                 (event.session_key, event.seq, event.event_type, event.timestamp, payload_json),
             )
