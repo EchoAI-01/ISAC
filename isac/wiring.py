@@ -315,8 +315,6 @@ def _build_tool_permission_pipeline(global_config: dict[str, Any]) -> tuple[Any,
     return ApprovalGate(timeout_seconds=timeout_seconds), DenyGuard()
 
 
-
-
 def build_services(global_config: dict[str, Any]) -> ServiceContainer:
     """构建共享服务字典 (供 AgentManager 组装 AgentInstance)。
 
@@ -345,7 +343,7 @@ def build_services(global_config: dict[str, Any]) -> ServiceContainer:
     # CR3-L2 (O1/P5): 租户隔离接线。默认 tenancy.enabled=false → guard passthrough
     # + 默认租户, 单租户部署零行为变化; enabled=true 时记忆命名空间加租户前缀,
     # MetadataStore 读写带租户谓词/打标 (跨租户共享同一 DB 文件时互不可见)。
-    from isac.runtime.tenancy.isolation import TenantIsolationGuard
+    from isac.runtime.tenancy.isolation import TenantIsolationGuard, warn_if_default_tenant_fail_open
     from isac.runtime.tenancy.models import DEFAULT_ORG, DEFAULT_TENANT, TenantContext
 
     tenancy_config = global_config.get("tenancy", {}) or {}
@@ -354,6 +352,7 @@ def build_services(global_config: dict[str, Any]) -> ServiceContainer:
         organization_id=str(tenancy_config.get("organization_id") or DEFAULT_ORG),
         tenant_id=str(tenancy_config.get("tenant_id") or DEFAULT_TENANT),
     )
+    warn_if_default_tenant_fail_open(tenant_guard, tenant_context)
     # R6-①: TenantManager (租户 CRUD + 成员, SQLite)。抽 helper 降 build_services 复杂度。
     # tenancy.enabled 时构造并传入控制面 routes_tenants; 默认关闭 → None → 路由不挂载。
     tenant_manager = _build_tenant_manager(tenancy_config)

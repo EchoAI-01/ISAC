@@ -16,6 +16,7 @@ from isac.core.constants import DEFAULT_AGENT_ID, INTERAGENT_PLATFORM
 from isac.core.exceptions import AgentNotFoundError
 from isac.gateway.lock import conversation_lock_key
 from isac.gating.types import GateKind
+from isac.memory.pipeline import is_shared_namespace
 from isac.runtime.assembly import assemble_agent
 from isac.runtime.config import AgentConfig
 from isac.runtime.conversation import (
@@ -243,7 +244,7 @@ class AgentManager:
         metadata = getattr(pipeline, "metadata", None)
         if metadata is None or not namespace:
             return  # NoOpMemoryPipeline / memory 未启用: 无可清理数据
-        if namespace == "shared" or namespace.endswith(":shared"):
+        if is_shared_namespace(namespace):
             logger.warning("shared 记忆命名空间被多 Agent 共享, 拒绝清理", namespace=namespace)
             return
         try:
