@@ -86,6 +86,8 @@ def build_router(
     # (Fix-12: 未配置 tokens[] 时 scope_dependency=None, 仅基线认证)。
     read_deps = [Depends(scope_dependency("config:read"))] if scope_dependency else []
     write_deps = [Depends(scope_dependency("config:write"))] if scope_dependency else []
+    # #29 审计 actor 归因: handler 经此依赖拿真实调用方身份写入审计。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
     resolved_override = Path(override_path)
     # 全局配置单对象, 一把锁串行 PATCH/reload 即可 (J3-2 per-agent 锁的同构简化):
     # 包住"读 override → 校验 If-Match → 校验候选 → 持久化 → 热应用"整段,
@@ -116,6 +118,7 @@ def build_router(
         payload: dict,
         if_match: str | None = None,
         if_match_header: str | None = Header(default=None, alias="If-Match"),
+        caller: str = caller_dep,
     ) -> dict:
         """N1e: 全局配置部分更新 (深合并) → 校验 → 持久化 override → 热重载。
 
@@ -127,11 +130,11 @@ def build_router(
         return await _do_patch_global_config(
             agent_manager, global_config, Path(config_path), resolved_override,
             payload, if_match_header if if_match_header is not None else if_match,
-            audit_log, config_lock,
+            audit_log, config_lock, actor=caller,
         )
 
     @router.post("/config/global/reload", dependencies=write_deps)
-    async def reload_global_config() -> dict:
+    async def reload_global_config(caller: str = caller_dep) -> dict:
         """N1e: 从磁盘重读 config.jsonc + override 并热应用 (不写盘)。
 
         供手工编辑 config.jsonc 后免重启生效 (等价于"重启加载"但只重建可热更部分)。
@@ -149,7 +152,7 @@ def build_router(
             candidate = await _resolve_candidate_secrets(candidate)
             applied = await _hot_apply_global_config(agent_manager, global_config, candidate)
             await _audit_global(audit_log, "POST", "/api/v1/config/global/reload",
-                                "reload_global_config", applied)
+                                "reload_global_config", applied, actor=caller)
             return applied
 
     return router
@@ -298,6 +301,7 @@ async def _do_patch_global_config(
     if_match: str | None,
     audit_log: Any,
     config_lock: asyncio.Lock,
+    actor: str = "authenticated",
 ) -> dict[str, Any]:
     """PATCH /config/global 实现 (抽出降 build_router 圈复杂度, 同 _do_patch_agent)。"""
     from fastapi import HTTPException
@@ -350,14 +354,15 @@ async def _do_patch_global_config(
         applied = await _hot_apply_global_config(agent_manager, global_config, candidate)
         # 审计只记变更的顶层节名, 绝不记值 (值可能含凭据)。
         await _audit_global(audit_log, "PATCH", "/api/v1/config/global",
-                            "patch_global_config", applied)
+                            "patch_global_config", applied, actor=actor)
         return {**applied, "revision": new_revision}
 
 
 async def _audit_global(
-    audit_log: Any, method: str, path: str, action: str, applied: dict[str, Any]
+    audit_log: Any, method: str, path: str, action: str, applied: dict[str, Any],
+    actor: str = "authenticated",
 ) -> None:
-    """全局配置写操作审计 (audit_log 为 None 跳过; detail 只含节名不含值)。"""
+    """全局配置写操作审计 (audit_log 为 None 跳过; detail 只含节名不含值)。actor 归因 (#29)。"""
     if audit_log is None:
         return
     detail = (
@@ -365,6 +370,6 @@ async def _audit_global(
         f"restart_required={','.join(applied.get('restart_required', [])) or '-'}"
     )
     await audit_log.record(
-        actor="authenticated", method=method, path=path, action=action,
+        actor=actor, method=method, path=path, action=action,
         target="global_config", detail=detail, status_code=200,
     )
