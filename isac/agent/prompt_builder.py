@@ -114,8 +114,13 @@ class SystemPromptBuilder:
         """频率控制: 最小间隔 + 最小新消息数 (按 session 隔离)。"""
         session_id = context.session.session_id
         if injector.max_frequency_seconds > 0:
-            last = self._last_trigger_at.get(session_id, {}).get(injector.key, 0.0)
-            if time.monotonic() - last < injector.max_frequency_seconds:
+            # 2026-08-19 修 Linux CI flake: 用 None 表示"从未触发", 不能用 0.0 作哨兵 ——
+            # time.monotonic() 参考点任意 (约系统开机时长), 新启动机器上 monotonic() 可能
+            # < max_frequency_seconds, 导致 `monotonic() - 0.0 < max` 恒真、时间门把首次
+            # 应触发的注入误拦 (本机 macOS 开机久 monotonic 大故不复现)。从未触发时
+            # 时间门不拦截, 仅消息数门生效; 触发过一次后才开始计最小间隔。
+            last = self._last_trigger_at.get(session_id, {}).get(injector.key)
+            if last is not None and time.monotonic() - last < injector.max_frequency_seconds:
                 return False
         if injector.max_new_messages > 0:
             if self._messages_since_trigger.get(session_id, {}).get(injector.key, 0) < injector.max_new_messages:
