@@ -2,6 +2,12 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-19 —— 阶段3-1 富媒体第一波: Telegram 入站媒体解析 + 429/Retry-After + CGNAT 封堵 (全量 2126 通过)**。
+> **入站媒体 (Telegram, 此前仅 OneBot 可用)**: `_extract_media` 解析 photo/voice/video/animation/audio/document 的 file_id (photo 取分辨率最高、animation 归 image、kind 对齐下载管线); `_resolve_file_url` 经 getFile 换下载 URL; `_attach_media_segments` 追加 media segment 供既有入站下载管线落盘 (单媒体失败隔离)。配套安全: incoming_media 日志 URL 脱敏 (/bot<token>/ 与 token 查询参数掩码), 避免 Telegram 文件 URL 内嵌 bot token 泄露到日志。
+> **429/Retry-After (M7)**: 新增 `isac/utils/retry.py` parse_retry_after (整数秒解析 + 封顶 60s); RateLimitError 携带 retry_after; openai_compat 429 读 Retry-After 头; ProviderManager._retry_backoff 尊重 retry_after (取与指数退避较大者), 避免配额未恢复就盲目重发再次 429。
+> **CGNAT SSRF 封堵 (M6)**: safe_install._is_ip_unsafe 补 RFC6598 CGNAT 段 (100.64.0.0/10), 对齐 ssrf.py 口径。
+> 新增 42 例 (Telegram 媒体 21 + M7/M6 21); **全量 2126 单测通过**, ruff/mypy 全绿, wiring.py 498 行未破红线。**Feishu 入站 image / 出站媒体 / Discord 附件**留第二波 (需 Feishu resources API 鉴权与出站 multipart)。
+>
 > ⚠️ **最近更新: 2026-08-19 —— 全景 Review 后加固轮: 阶段1 止血 (7 项) + 阶段2 (SubAgent/U4/Medium 批清/记忆 importance) 全部完成, 全量 2093 通过**。
 > 依据 2026-08-19 五路并行全量代码审查 (报告归档 `.tmpfiles/agent-review-2026-08-19/`), 按"先止血、再缺陷批清、后功能接线"推进, 全部提交已推 dev:
 > **阶段1 止血 (7 项 Critical/Major)**: ①CI 修复至全绿; ②群聊锁粒度 (锁键与会话键同粒度, 三处入口统一权威派生); ③append-only 后门封堵 (显式 seq 改纯 INSERT, 撞既有 seq 主键冲突报错); ④shared ACL 口径统一 + 租户 fail-open 止血; ⑤审批读端点补 tools:read scope + SSE 未登记事件 fail-closed; ⑥插件来源追踪 + per-Agent 启用矩阵接线; ⑦发货面 pricing.jsonc 入仓随包 + sample 端口统一 8765。
