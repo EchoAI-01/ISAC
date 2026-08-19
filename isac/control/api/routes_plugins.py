@@ -37,6 +37,8 @@ def build_router(
         dependencies=[Depends(auth_dependency)] if auth_dependency else [],
     )
     write_deps = [Depends(scope_dependency("plugin:write"))] if scope_dependency else []
+    # #29 审计 actor 归因: handler 经此依赖拿真实调用方身份写入审计。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
 
     @router.get("")
     async def get_matrix(agent_id: str) -> dict:
@@ -49,7 +51,7 @@ def build_router(
         }
 
     @router.put("", dependencies=write_deps)
-    async def put_matrix(agent_id: str, body: dict) -> dict:
+    async def put_matrix(agent_id: str, body: dict, caller: str = caller_dep) -> dict:
         # Fix-59: get + 404 判断挪进配置锁内 —— 此前锁外取 instance, 而
         # reload_config 会整体替换 _agents[agent_id] 的实例对象: 锁外取到旧
         # 实例 → 并发 PATCH 先完成 (live 换新实例, revision+1) → 本端点进锁改
@@ -65,7 +67,7 @@ def build_router(
             save_agent_config(Path(agents_dir) / agent_id / "config.jsonc", instance.config)
         if audit_log is not None:
             await audit_log.record(
-                actor="authenticated",
+                actor=caller,
                 method="PUT",
                 path=f"/api/v1/agents/{agent_id}/plugins",
                 action="update_plugin_matrix",
@@ -128,12 +130,13 @@ def build_loaded_plugins_router(
 
 
 async def _audit_record(
-    audit_log: AuditLog | None, action: str, target: str, detail: str, status_code: int
+    audit_log: AuditLog | None, action: str, target: str, detail: str, status_code: int,
+    actor: str = "authenticated",
 ) -> None:
-    """记录插件操作审计日志 (审计为 None 时 no-op)。"""
+    """记录插件操作审计日志 (审计为 None 时 no-op)。actor 归因 (#29)。"""
     if audit_log is not None:
         await audit_log.record(
-            actor="authenticated",
+            actor=actor,
             method="POST",
             path=f"/api/v1/plugins/{target}",
             action=action,
@@ -175,6 +178,7 @@ async def _activate_and_sync(
 async def _handle_install(
     plugin_manager: Any, agent_manager: Any, installer: Any, services: dict[str, Any],
     source: dict[str, Any], *, event_bus: Any, bus: Any, router: Any, audit_log: AuditLog | None,
+    actor: str = "authenticated",
 ) -> dict[str, Any]:
     from fastapi import HTTPException
 
@@ -182,7 +186,7 @@ async def _handle_install(
     try:
         status = await plugin_manager.install(source, installer)
     except Exception as exc:  # noqa: BLE001
-        await _audit_record(audit_log, "install_plugin", name, f"failed: {exc}", 400)
+        await _audit_record(audit_log, "install_plugin", name, f"failed: {exc}", 400, actor=actor)
         raise HTTPException(
             status_code=400, detail={"code": "INSTALL_FAILED", "message": _client_error_message(exc)}
         ) from exc
@@ -191,7 +195,7 @@ async def _handle_install(
         sync_result = await _activate_and_sync(
             plugin_manager, agent_manager, services, name, event_bus=event_bus, bus=bus, router=router
         )
-    await _audit_record(audit_log, "install_plugin", name, f"status={status}", 200)
+    await _audit_record(audit_log, "install_plugin", name, f"status={status}", 200, actor=actor)
     return {"status": status, "sync": sync_result}
 
 
@@ -212,6 +216,7 @@ def _deregister_shared_by_source(services: dict[str, Any], name: str, event_bus:
 async def _handle_reload(
     plugin_manager: Any, agent_manager: Any, services: dict[str, Any], name: str,
     *, event_bus: Any, bus: Any, router: Any, audit_log: AuditLog | None,
+    actor: str = "authenticated",
 ) -> dict[str, Any]:
     from fastapi import HTTPException
 
@@ -222,7 +227,7 @@ async def _handle_reload(
     try:
         status = await plugin_manager.reload(name)
     except Exception as exc:  # noqa: BLE001
-        await _audit_record(audit_log, "reload_plugin", name, f"failed: {exc}", 500)
+        await _audit_record(audit_log, "reload_plugin", name, f"failed: {exc}", 500, actor=actor)
         raise HTTPException(
             status_code=500, detail={"code": "RELOAD_FAILED", "message": _client_error_message(exc)}
         ) from exc
@@ -234,32 +239,34 @@ async def _handle_reload(
     sync_result = await _activate_and_sync(
         plugin_manager, agent_manager, services, name, event_bus=event_bus, bus=bus, router=router
     )
-    await _audit_record(audit_log, "reload_plugin", name, f"status={status}", 200)
+    await _audit_record(audit_log, "reload_plugin", name, f"status={status}", 200, actor=actor)
     return {"status": status, "sync": sync_result}
 
 
 async def _handle_uninstall(
     plugin_manager: Any, agent_manager: Any, services: dict[str, Any], name: str,
     *, event_bus: Any = None, bus: Any = None, router: Any = None, audit_log: AuditLog | None,
+    actor: str = "authenticated",
 ) -> dict[str, Any]:
     # C2: 从共享表 + 运行中 Agent 移除该插件全部来源条目 (工具/命令/注入器/钩子/事件订阅)
     _deregister_shared_by_source(services, name, event_bus)
     status = await plugin_manager.uninstall(name)
     sync_result = await sync_plugin_tools_to_agents(agent_manager, services, name)
-    await _audit_record(audit_log, "uninstall_plugin", name, f"status={status}", 200)
+    await _audit_record(audit_log, "uninstall_plugin", name, f"status={status}", 200, actor=actor)
     return {"status": status, "sync": sync_result}
 
 
 async def _handle_retry(
     plugin_manager: Any, agent_manager: Any, services: dict[str, Any], name: str,
     *, event_bus: Any, bus: Any, router: Any, audit_log: AuditLog | None,
+    actor: str = "authenticated",
 ) -> dict[str, Any]:
     from fastapi import HTTPException
 
     try:
         status = await plugin_manager.retry(name)
     except Exception as exc:  # noqa: BLE001
-        await _audit_record(audit_log, "retry_plugin", name, f"failed: {exc}", 500)
+        await _audit_record(audit_log, "retry_plugin", name, f"failed: {exc}", 500, actor=actor)
         raise HTTPException(
             status_code=500, detail={"code": "RETRY_FAILED", "message": _client_error_message(exc)}
         ) from exc
@@ -268,7 +275,7 @@ async def _handle_retry(
         sync_result = await _activate_and_sync(
             plugin_manager, agent_manager, services, name, event_bus=event_bus, bus=bus, router=router
         )
-    await _audit_record(audit_log, "retry_plugin", name, f"status={status}", 200)
+    await _audit_record(audit_log, "retry_plugin", name, f"status={status}", 200, actor=actor)
     return {"status": status, "sync": sync_result}
 
 
@@ -317,21 +324,26 @@ def build_plugin_marketplace_router(
 
     kw = {"event_bus": event_bus, "bus": bus, "router": router, "audit_log": audit_log}
 
+    # #29 审计 actor 归因: handler 经此依赖拿真实调用方身份写入审计。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
+
     @api.post("/install", dependencies=write_deps)
-    async def install_plugin(body: dict) -> dict:
+    async def install_plugin(body: dict, caller: str = caller_dep) -> dict:
         source = body.get("source", body) if isinstance(body, dict) else {}
-        return await _handle_install(plugin_manager, agent_manager, installer, services, source, **kw)
+        return await _handle_install(
+            plugin_manager, agent_manager, installer, services, source, actor=caller, **kw
+        )
 
     @api.post("/{name}/reload", dependencies=write_deps)
-    async def reload_plugin(name: str) -> dict:
-        return await _handle_reload(plugin_manager, agent_manager, services, name, **kw)
+    async def reload_plugin(name: str, caller: str = caller_dep) -> dict:
+        return await _handle_reload(plugin_manager, agent_manager, services, name, actor=caller, **kw)
 
     @api.delete("/{name}", dependencies=write_deps)
-    async def uninstall_plugin(name: str) -> dict:
-        return await _handle_uninstall(plugin_manager, agent_manager, services, name, **kw)
+    async def uninstall_plugin(name: str, caller: str = caller_dep) -> dict:
+        return await _handle_uninstall(plugin_manager, agent_manager, services, name, actor=caller, **kw)
 
     @api.post("/{name}/retry", dependencies=write_deps)
-    async def retry_plugin(name: str) -> dict:
-        return await _handle_retry(plugin_manager, agent_manager, services, name, **kw)
+    async def retry_plugin(name: str, caller: str = caller_dep) -> dict:
+        return await _handle_retry(plugin_manager, agent_manager, services, name, actor=caller, **kw)
 
     return api

@@ -88,6 +88,9 @@ def build_router(
 
     deps = [Depends(auth_dependency)] if auth_dependency else []
     router = APIRouter(prefix="/agents", tags=["agents"], dependencies=deps)
+    # #29 审计 actor 归因: handler 经此依赖拿到真实调用方身份写入审计。
+    # auth_dependency 为 None (无任何认证) 时回落 anonymous。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
     # Fix-12: scope_dependency 为 None (未配置 control.tokens[]) 时 read_deps/
     # write_deps 都是空列表, 只受上面的 auth_dependency 约束, 行为不变。
     read_deps = [Depends(scope_dependency("agent:read"))] if scope_dependency else []
@@ -98,13 +101,14 @@ def build_router(
     agents_dir_path = Path(agents_dir)
 
     @router.post("", dependencies=write_deps)
-    async def create_agent(config: dict) -> dict:
+    async def create_agent(config: dict, caller: str = caller_dep) -> dict:
         instance = await _do_create_agent(agent_manager, config)
         # Path / 操作符自然处理分隔符; agent_id 已由 AgentConfig 校验只含 [A-Za-z0-9_-]
         config_path = agents_dir_path / instance.agent_id / "config.jsonc"
         save_agent_config(config_path, instance.config)
         await _audit(
-            audit_log, "POST", "/api/v1/agents", "create_agent", instance.agent_id
+            audit_log, "POST", "/api/v1/agents", "create_agent", instance.agent_id,
+            actor=caller,
         )
         return {"agent_id": instance.agent_id, "status": instance.status}
 
@@ -125,25 +129,31 @@ def build_router(
         return await _get_agent_config(agent_manager, agent_id)
 
     @router.post("/{agent_id}/start", dependencies=write_deps)
-    async def start_agent(agent_id: str) -> dict:
+    async def start_agent(agent_id: str, caller: str = caller_dep) -> dict:
         await _require_agent(agent_manager, agent_id, "start")
-        await _audit(audit_log, "POST", f"/api/v1/agents/{agent_id}/start", "start_agent", agent_id)
+        await _audit(
+            audit_log, "POST", f"/api/v1/agents/{agent_id}/start", "start_agent",
+            agent_id, actor=caller,
+        )
         return {"agent_id": agent_id, "status": "running"}
 
     @router.post("/{agent_id}/stop", dependencies=write_deps)
-    async def stop_agent(agent_id: str) -> dict:
+    async def stop_agent(agent_id: str, caller: str = caller_dep) -> dict:
         await _require_agent(agent_manager, agent_id, "stop")
-        await _audit(audit_log, "POST", f"/api/v1/agents/{agent_id}/stop", "stop_agent", agent_id)
+        await _audit(
+            audit_log, "POST", f"/api/v1/agents/{agent_id}/stop", "stop_agent",
+            agent_id, actor=caller,
+        )
         return {"agent_id": agent_id, "status": "stopped"}
 
     @router.delete("/{agent_id}", dependencies=write_deps)
-    async def destroy_agent(agent_id: str, keep_memory: bool = True) -> dict:
+    async def destroy_agent(agent_id: str, keep_memory: bool = True, caller: str = caller_dep) -> dict:
         # N5b 批次G: DELETE 不存在 agent 经 _require_agent 统一转 404 (此前 destroy
         # 内部 _require 抛 AgentNotFoundError 未捕获 → 500 泄露内部异常)。
         await _require_agent(agent_manager, agent_id, "destroy", keep_memory=keep_memory)
         await _audit(
             audit_log, "DELETE", f"/api/v1/agents/{agent_id}", "destroy_agent",
-            agent_id, detail=f"keep_memory={keep_memory}",
+            agent_id, detail=f"keep_memory={keep_memory}", actor=caller,
         )
         return {"agent_id": agent_id, "status": "destroyed"}
 
@@ -153,6 +163,7 @@ def build_router(
         payload: dict,
         if_match: str | None = None,
         if_match_header: str | None = Header(default=None, alias="If-Match"),
+        caller: str = caller_dep,
     ) -> dict:
         """J3-2: 部分更新 AgentConfig; 支持 If-Match revision 乐观锁。
 
@@ -163,6 +174,7 @@ def build_router(
         effective_if_match = if_match_header if if_match_header is not None else if_match
         return await _do_patch_agent(
             agent_manager, agent_id, payload, effective_if_match, audit_log, agents_dir_path,
+            actor=caller,
         )
 
     return router
@@ -175,6 +187,7 @@ async def _do_patch_agent(
     if_match: str | None,
     audit_log: AuditLog | None,
     agents_dir_path: Path,
+    actor: str = "authenticated",
 ) -> dict:
     """J3-2: PATCH /agents/{id} 实现细节 (抽出来降 build_router 圈复杂度)。
 
@@ -241,7 +254,7 @@ async def _do_patch_agent(
         await agent_manager.reload_config(agent_id, new_config)
         await _audit(
             audit_log, "PATCH", f"/api/v1/agents/{agent_id}", "patch_agent",
-            agent_id, detail=f"revision={new_config.revision}",
+            agent_id, detail=f"revision={new_config.revision}", actor=actor,
         )
         return {
             "agent_id": agent_id,
@@ -337,12 +350,18 @@ async def _audit(
     action: str,
     target: str,
     detail: str = "",
+    actor: str = "authenticated",
 ) -> None:
-    """记录审计日志 (如果 audit_log 为 None 则跳过)。"""
+    """记录审计日志 (如果 audit_log 为 None 则跳过)。
+
+    actor 归因 (#29): 由 handler 经 Depends(auth_dependency) 注入的真实调用方
+    身份 (api_token/session/token:<name>/token:<指纹>/anonymous); 未传时兜底
+    "authenticated" (向后兼容)。
+    """
     if audit_log is None:
         return
     await audit_log.record(
-        actor="authenticated",
+        actor=actor,
         method=method,
         path=path,
         action=action,

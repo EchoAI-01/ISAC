@@ -30,15 +30,21 @@ def _summarize(tenant: Any) -> dict:
     }
 
 
-async def _audit_tenant(audit_log: AuditLog | None, action: str, target: str, detail: str) -> None:
+async def _audit_tenant(
+    audit_log: AuditLog | None, action: str, target: str, detail: str,
+    actor: str = "authenticated",
+) -> None:
     if audit_log is not None:
         await audit_log.record(
-            actor="authenticated", method="POST", path=f"/api/v1/tenants/{target}",
+            actor=actor, method="POST", path=f"/api/v1/tenants/{target}",
             action=action, target=target, detail=detail, status_code=200,
         )
 
 
-async def _do_create(tenant_manager: Any, audit_log: AuditLog | None, body: dict, _http_exc: Any) -> dict:
+async def _do_create(
+    tenant_manager: Any, audit_log: AuditLog | None, body: dict, _http_exc: Any,
+    actor: str = "authenticated",
+) -> dict:
     try:
         tenant = await tenant_manager.create(
             tenant_id=body.get("tenant_id") or None,
@@ -47,12 +53,13 @@ async def _do_create(tenant_manager: Any, audit_log: AuditLog | None, body: dict
         )
     except ValueError as exc:
         raise _http_exc(status_code=409, detail={"code": "TENANT_EXISTS", "message": str(exc)}) from exc
-    await _audit_tenant(audit_log, "create_tenant", tenant.tenant_id, f"org={tenant.organization_id}")
+    await _audit_tenant(audit_log, "create_tenant", tenant.tenant_id, f"org={tenant.organization_id}", actor=actor)
     return _summarize(tenant)
 
 
 async def _do_add_member(
     tenant_manager: Any, audit_log: AuditLog | None, tenant_id: str, body: dict, _http_exc: Any,
+    actor: str = "authenticated",
 ) -> dict:
     member_id = str(body.get("member_id", "") or "")
     member_type = str(body.get("member_type", "user") or "user")
@@ -62,18 +69,19 @@ async def _do_add_member(
         await tenant_manager.add_member(tenant_id, member_id, member_type=member_type)
     except ValueError as exc:
         raise _http_exc(status_code=404, detail={"code": "TENANT_NOT_FOUND", "message": str(exc)}) from exc
-    await _audit_tenant(audit_log, "add_tenant_member", tenant_id, f"member={member_id}")
+    await _audit_tenant(audit_log, "add_tenant_member", tenant_id, f"member={member_id}", actor=actor)
     return {"status": "added", "tenant_id": tenant_id, "member_id": member_id}
 
 
 async def _do_remove_member(
     tenant_manager: Any, audit_log: AuditLog | None, tenant_id: str, member_id: str, member_type: str,
     _http_exc: Any,
+    actor: str = "authenticated",
 ) -> dict:
     removed = await tenant_manager.remove_member(tenant_id, member_id, member_type=member_type)
     if not removed:
         raise _http_exc(status_code=404, detail={"code": "MEMBER_NOT_FOUND", "message": member_id})
-    await _audit_tenant(audit_log, "remove_tenant_member", tenant_id, f"member={member_id}")
+    await _audit_tenant(audit_log, "remove_tenant_member", tenant_id, f"member={member_id}", actor=actor)
     return {"status": "removed", "tenant_id": tenant_id, "member_id": member_id}
 
 
@@ -94,6 +102,8 @@ def build_router(
     read_deps = [Depends(scope_dependency("tenant:read"))] if scope_dependency else []
     write_deps = [Depends(scope_dependency("tenant:write"))] if scope_dependency else []
     _http_exc = HTTPException
+    # #29 审计 actor 归因: handler 经此依赖拿真实调用方身份写入审计。
+    caller_dep = Depends(auth_dependency) if auth_dependency else Depends(lambda: "anonymous")
 
     @router.get("/tenants", dependencies=read_deps)
     async def list_tenants(organization: str | None = None) -> list[dict]:
@@ -101,8 +111,8 @@ def build_router(
         return [_summarize(t) for t in tenants]
 
     @router.post("/tenants", dependencies=write_deps)
-    async def create_tenant(body: dict) -> dict:
-        return await _do_create(tenant_manager, audit_log, body, _http_exc)
+    async def create_tenant(body: dict, caller: str = caller_dep) -> dict:
+        return await _do_create(tenant_manager, audit_log, body, _http_exc, actor=caller)
 
     @router.get("/tenants/{tenant_id}", dependencies=read_deps)
     async def get_tenant(tenant_id: str) -> dict:
@@ -112,21 +122,23 @@ def build_router(
         return _summarize(tenant)
 
     @router.delete("/tenants/{tenant_id}", dependencies=write_deps)
-    async def delete_tenant(tenant_id: str) -> dict:
+    async def delete_tenant(tenant_id: str, caller: str = caller_dep) -> dict:
         deleted = await tenant_manager.delete(tenant_id)
         if not deleted:
             raise _http_exc(status_code=404, detail={"code": "TENANT_NOT_FOUND", "message": tenant_id})
-        await _audit_tenant(audit_log, "delete_tenant", tenant_id, "deleted")
+        await _audit_tenant(audit_log, "delete_tenant", tenant_id, "deleted", actor=caller)
         return {"status": "deleted", "tenant_id": tenant_id}
 
     @router.post("/tenants/{tenant_id}/members", dependencies=write_deps)
-    async def add_member(tenant_id: str, body: dict) -> dict:
-        return await _do_add_member(tenant_manager, audit_log, tenant_id, body, _http_exc)
+    async def add_member(tenant_id: str, body: dict, caller: str = caller_dep) -> dict:
+        return await _do_add_member(tenant_manager, audit_log, tenant_id, body, _http_exc, actor=caller)
 
     @router.delete("/tenants/{tenant_id}/members/{member_id}", dependencies=write_deps)
-    async def remove_member(tenant_id: str, member_id: str, member_type: str = "user") -> dict:
+    async def remove_member(
+        tenant_id: str, member_id: str, member_type: str = "user", caller: str = caller_dep,
+    ) -> dict:
         return await _do_remove_member(
-            tenant_manager, audit_log, tenant_id, member_id, member_type, _http_exc,
+            tenant_manager, audit_log, tenant_id, member_id, member_type, _http_exc, actor=caller,
         )
 
     return router
