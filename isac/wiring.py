@@ -355,7 +355,7 @@ def build_services(global_config: dict[str, Any]) -> ServiceContainer:
     warn_if_default_tenant_fail_open(tenant_guard, tenant_context)
     # R6-①: TenantManager (租户 CRUD + 成员, SQLite)。抽 helper 降 build_services 复杂度。
     # tenancy.enabled 时构造并传入控制面 routes_tenants; 默认关闭 → None → 路由不挂载。
-    tenant_manager = _build_tenant_manager(tenancy_config)
+    tenant_manager = _build_tenant_manager(tenancy_config, memory_config)
 
     if memory_config.get("enabled"):
         metadata_store, graph_store, embedder, reranker = _build_memory_stack(

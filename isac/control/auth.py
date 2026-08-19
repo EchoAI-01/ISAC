@@ -219,11 +219,14 @@ class TokenScope:
 
     name: 可选人类可读标识 (tokens[].name), 供审计归因显示; 缺省时审计落
     不可逆指纹 (token:<tok-xxx>), 绝不落裸 Token。
+    tenant_id: 可选租户绑定 (#25/U4, tokens[].tenant_id) —— 绑定后该 token 在
+    租户端点只能操作自己的租户 (路由层强制); 缺省空串 = 管理 token, 不限租户。
     """
 
     token: str
     scopes: frozenset[str]
     name: str = ""
+    tenant_id: str = ""
 
 
 def actor_for_token(matched: TokenScope | None) -> str:
@@ -241,11 +244,11 @@ def actor_for_token(matched: TokenScope | None) -> str:
 
 
 def parse_token_scopes(config: dict[str, Any]) -> list[TokenScope] | None:
-    """从控制面配置解析 ``tokens: [{token, scopes, name?}, ...]``。
+    """从控制面配置解析 ``tokens: [{token, scopes, name?, tenant_id?}, ...]``。
 
     未配置 (或配置为空/全部缺 token 字段) 时返回 None, 表示继续使用现有单一
     ``api_token`` 扁平认证, 不引入 scope 校验 (向后兼容默认行为不变)。
-    name 可选 (审计归因用); 缺省空串。
+    name/tenant_id 可选 (审计归因 / 租户绑定, #25); 缺省空串。
     """
     raw_tokens = config.get("tokens")
     if not raw_tokens:
@@ -257,8 +260,27 @@ def parse_token_scopes(config: dict[str, Any]) -> list[TokenScope] | None:
             continue
         scopes = frozenset(str(s) for s in (entry.get("scopes") or []))
         name = str((entry or {}).get("name") or "")
-        parsed.append(TokenScope(token=token, scopes=scopes, name=name))
+        tenant_id = str((entry or {}).get("tenant_id") or "")
+        parsed.append(TokenScope(token=token, scopes=scopes, name=name, tenant_id=tenant_id))
     return parsed or None
+
+
+def resolve_caller_tenant(
+    tokens: list[TokenScope] | None,
+    authorization: str | None,
+    session_cookie: str | None = None,
+    session_secret: bytes | None = None,
+) -> str:
+    """#25 (U4): 解析调用方 token 绑定的租户; 未绑定/未配置 tokens[] 返回 "" (= 不限)。
+
+    与 scope 解析同口径 (Authorization 头优先, 回退会话 Cookie)。routes_tenants
+    据此强制: 返回非空时调用方只能操作自己的租户; 空 = 管理身份不限租户。
+    """
+    if not tokens:
+        return ""
+    token = _resolve_token(authorization, session_cookie, session_secret)
+    matched = _find_matching_token(tokens, token)
+    return matched.tenant_id if matched is not None else ""
 
 
 def _find_matching_token(tokens: list[TokenScope], token: str | None) -> TokenScope | None:

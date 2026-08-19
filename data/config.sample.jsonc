@@ -280,6 +280,18 @@
     "port": 8765,
     "agents_dir": "data/agents",
     "api_token": "",
+    // Fix-12 多 Token Scope 模型 (CONTROL_PLANE_SPEC.md §6.1, 可选)。配置 tokens[]
+    // 后 api_token 扁平认证即被取代, 每条 {token, scopes, name?, tenant_id?}:
+    //   scopes   —— 授权范围清单 ("*" = 全权限), 如 ["agents:read", "config:write"];
+    //   name     —— 审计归因显示名 (缺省落不可逆 token 指纹, 绝不落裸 token);
+    //   tenant_id —— #25 租户绑定: 非空时该 token 在 /tenants 端点只能操作自己的
+    //                租户 (跨租户 403 TENANT_FORBIDDEN); 缺省 = 管理身份不限租户。
+    // 未配置 tokens[] 时行为与上方单一 api_token 完全一致。
+    // "tokens": [
+    //   {"token": "ops-xxx", "name": "ops", "scopes": ["*"]},
+    //   {"token": "t1-xxx", "name": "t1-bot", "tenant_id": "t1",
+    //    "scopes": ["agents:read", "tenant:read", "tenant:write"]}
+    // ],
     // T3-backend: 首登强制设密码 (对标 AstrBot password_change_required)。开箱控制面
     // 仅绑 127.0.0.1; setup_enabled=true 时 admin 端点首登态返回 428 SETUP_REQUIRED,
     // POST /api/v1/setup {password} 设密码后才可用 (密码经 PBKDF2 哈希, 不落明文)。

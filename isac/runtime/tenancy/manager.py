@@ -9,6 +9,7 @@ best-effort 写穿 + 重启恢复。不传 db_path 时纯内存 (测试零行为
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -50,11 +51,21 @@ class Tenant:
 
 
 class TenantManager:
-    """租户管理器 (内存缓存 + 可选 SQLite 写穿持久化)。"""
+    """租户管理器 (内存缓存 + 可选 SQLite 写穿持久化)。
 
-    def __init__(self, db_path: str | None = None) -> None:
+    on_delete (#25/U4): 删除成功后的级联清理回调 (async (tenant_id) -> None)。
+    控制面只管 tenants/tenant_members 两张表; 数据面行 (记忆库 episodes 等)
+    打的是 tenant_id 标, 由接线层注入级联回调清理 (见 make_metadata_cascade)。
+    """
+
+    def __init__(
+        self,
+        db_path: str | None = None,
+        on_delete: Callable[[str], Awaitable[None]] | None = None,
+    ) -> None:
         self._tenants: dict[str, Tenant] = {}
         self._db_path = db_path
+        self._on_delete = on_delete
         self._schema_ready = False
         self._lock = asyncio.Lock()
 
@@ -94,7 +105,7 @@ class TenantManager:
         return tenants
 
     async def delete(self, tenant_id: str) -> bool:
-        """删除租户 + 其成员。不存在返回 False。"""
+        """删除租户 + 其成员 + 数据面级联清理 (#25)。不存在返回 False。"""
         async with self._lock:
             existed = self._tenants.pop(tenant_id, None) is not None
             if self._db_path is not None:
@@ -104,8 +115,22 @@ class TenantManager:
                 if existed:
                     await self._delete_from_db(tenant_id)
             if existed:
+                await self._run_delete_cascade(tenant_id)
                 logger.info("租户已删除", tenant_id=tenant_id)
             return existed
+
+    async def _run_delete_cascade(self, tenant_id: str) -> None:
+        """#25: 删除成功后的数据面级联清理 (best-effort)。
+
+        回调失败只记日志, 不推翻删除结果 —— 租户资源本身已删; 残留数据面行
+        由隔离守卫挡住读写, 不构成越权, 属可运维清理的脏数据。
+        """
+        if self._on_delete is None:
+            return
+        try:
+            await self._on_delete(tenant_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("租户删除级联清理失败", tenant_id=tenant_id, error=str(exc))
 
     async def add_member(self, tenant_id: str, member_id: str, *, member_type: str = "user") -> None:
         """添加成员到租户。租户不存在抛 ValueError。"""
@@ -298,13 +323,54 @@ class TenantManager:
             logger.warning("TenantManager 删除失败", error=str(exc))
 
 
+def make_metadata_cascade(metadata_db_path: str) -> Callable[[str], Awaitable[None]]:
+    """#25 (U4): 租户删除的数据面级联回调 —— 清掉 metadata.db 里该租户的打标行。
+
+    数据面各表 (episodes/person_profiles/jargon_entries/memory_revisions/
+    memory_audit) 都带 tenant_id 列 (U4 租户机制强制), 这里扫描 sqlite_master
+    自适应找出所有含 tenant_id 列的表逐一清理 (schema 演进不用改本函数)。
+    db 文件不存在时 no-op (memory 未启用或从未写入)。异常向上抛, 由
+    TenantManager._run_delete_cascade 记日志兜底。
+    """
+
+    async def _cascade(tenant_id: str) -> None:
+        # ruff ASYNC240: async 内不直接调 pathlib blocking 方法, 经 to_thread 探测。
+        if not await asyncio.to_thread(Path(metadata_db_path).exists):
+            return
+        import aiosqlite
+
+        async with aiosqlite.connect(metadata_db_path) as db:
+            cur = await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            tables = [str(row[0]) for row in await cur.fetchall()]
+            for table in tables:
+                info_cur = await db.execute(f"PRAGMA table_info({table})")
+                columns = {str(row[1]) for row in await info_cur.fetchall()}
+                if "tenant_id" not in columns:
+                    continue
+                await db.execute(f"DELETE FROM {table} WHERE tenant_id = ?", (tenant_id,))
+            await db.commit()
+
+    return _cascade
+
+
 # U2: 从 main.py 归位的构造器 (tenancy.enabled 时构造, 否则 None 零行为变化)
 _DATA_DIR = Path("data")
 
-def _build_tenant_manager(tenancy_config: dict[str, Any]) -> Any:
-    """R6-①: tenancy.enabled 时构造 TenantManager (SQLite); 否则 None (路由不挂载, 零行为变化)。"""
+def _build_tenant_manager(
+    tenancy_config: dict[str, Any], memory_config: dict[str, Any] | None = None,
+) -> Any:
+    """R6-①: tenancy.enabled 时构造 TenantManager (SQLite); 否则 None (路由不挂载, 零行为变化)。
+
+    #25: memory.enabled 时注入数据面级联回调 —— 删租户同步清掉 metadata.db 里
+    该租户的记忆打标行 (此前只删 tenants/tenant_members 两表, 数据面行永久残留)。
+    """
     if not bool(tenancy_config.get("enabled")):
         return None
     from isac.runtime.tenancy.manager import TenantManager
 
-    return TenantManager(db_path=str(_DATA_DIR / "gateway" / "tenants.db"))
+    on_delete = None
+    if bool((memory_config or {}).get("enabled")):
+        on_delete = make_metadata_cascade(str(_DATA_DIR / "memory" / "metadata.db"))
+    return TenantManager(
+        db_path=str(_DATA_DIR / "gateway" / "tenants.db"), on_delete=on_delete,
+    )
