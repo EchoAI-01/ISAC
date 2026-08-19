@@ -491,3 +491,17 @@ async def test_unreachable_cycle_does_not_starve_reachable_join(engine: Workflow
     statuses = {s.stage_id: s.status for s in engine.get("w1").stages}
     assert statuses["B"] is StageStatus.PENDING  # 不可达, 保持 PENDING (有 warning 日志)
     assert statuses["E"] is StageStatus.PENDING
+
+
+# ── 2026-08-19 Medium 批清回归 (M13) ──────────────────────────
+
+
+def test_m13_register_rejects_path_traversal_workflow_id(tmp_path: Path) -> None:
+    """M13: workflow_id 含路径穿越/分隔符时 register 拒绝 (持久化路径直接拼 id)。"""
+    eng = WorkflowEngine(base_dir=str(tmp_path))
+    for bad_id in ["../evil", "a/b", "x/../y", "..", "a b", ""]:
+        with pytest.raises(ValueError):
+            eng.register(_make_workflow(workflow_id=bad_id))
+    # 合法标识符 (字母数字 _ - .) 仍可正常登记
+    eng.register(_make_workflow(workflow_id="good.id-1_x"))
+    assert eng.get("good.id-1_x") is not None
