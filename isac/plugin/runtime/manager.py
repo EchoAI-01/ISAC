@@ -39,7 +39,13 @@ def _context_source_registries(context: Any) -> list[Any]:
     让插件注册的工具/命令/注入器/钩子/事件订阅都标 source=name, 卸载时精确 deregister。
     """
     registries: list[Any] = []
-    for attr in ("tools", "commands", "prompt_builder", "agent_hooks", "event_bus"):
+    # 2026-08-19 修复来源追踪崩坏: PluginContext 的 tools/commands/prompt_builder
+    # 实为带下划线的内部字段 (_tools/_commands/_prompt_builder), 此前读无下划线的
+    # "tools"/"commands"/"prompt_builder" 一律 getattr 到 None → 启动批量 on_load 期间
+    # 这三类注册表从未 set_current_source, 插件工具 source 退化 "builtin": 无命名空间
+    # 前缀可静默覆盖内置工具、卸载/热重载 deregister_by_source 清不掉 (同构回归历史
+    # "同名覆盖"问题)。agent_hooks/event_bus 本就是公开字段, 保持不变。
+    for attr in ("_tools", "_commands", "_prompt_builder", "agent_hooks", "event_bus"):
         obj = getattr(context, attr, None)
         if obj is not None and hasattr(obj, "set_current_source"):
             registries.append(obj)
