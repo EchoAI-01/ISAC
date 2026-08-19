@@ -18,7 +18,7 @@ from isac.core.events import EventType
 from isac.gateway.event_bus import EventBus
 from isac.gateway.identity.resolver import IdentityResolver
 from isac.gateway.incoming_media import download_inbound_media
-from isac.gateway.lock import SessionLockManager
+from isac.gateway.lock import SessionLockManager, conversation_lock_key
 from isac.gateway.models import UserProfile
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
@@ -320,7 +320,11 @@ def make_message_dispatcher(
             logger.warning("锁外拟人化信号处理失败, 不影响主处理", exc_info=True)
         finally:
             message.session_id = platform_session_id
-        lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
+        # 2026-08-19 Critical 修复: 锁键必须与会话键同粒度 (群聊按 group 聚合, 忽略
+        # user_id)。此前锁键含 user_id, 同群不同成员拿不同锁却并发跑同一会话: 事件流
+        # 交织、THINKING 互踩、互相打断。统一走 conversation_lock_key 权威派生
+        # (与 _run_forced_turn / 跨 Agent 投递同一键空间)。
+        lock_key = conversation_lock_key(message.platform, message.user_id, message.group_id)
         lock = await session_lock.acquire(lock_key)
         # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
         # SessionLockManager 的 K7 锁回收 (否则 _locks/_waiters 无界增长)。
