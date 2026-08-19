@@ -178,6 +178,20 @@
       "enabled": true,
       "window_turns": 10,
       "budget_tokens": null
+    },
+
+    // 阶段3-2 (M2): U1 会话压缩闭环 (默认关闭)。enabled=true 后, 回合完成时若某会话
+    // 事件数 ≥ trigger_events, 后台用 LLM 把活跃窗口之外的旧对话前缀归纳为摘要,
+    // 追加 turn.compressed replace 事件并保留 GC 被替代的内容事件 (遏制事件表无界
+    // 增长)。tool.*/打断补偿/迁移标记事件不参与压缩与 GC (DenyGuard/torn-tail 依赖)。
+    //   - trigger_events: 触发压缩的事件数阈值
+    //   - keep_recent_messages: 保留最近 N 条内容消息不压缩 (须 ≥ 滑窗, 默认 20)
+    //   - min_compress_messages: 前缀至少 N 条内容消息才值得压缩 (默认 6)
+    "compression": {
+      "enabled": false,
+      "trigger_events": 60,
+      "keep_recent_messages": 20,
+      "min_compress_messages": 6
     }
   },
 

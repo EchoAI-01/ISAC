@@ -82,6 +82,7 @@ from isac.runtime.conversation import (
 from isac.runtime.instance import AgentInstance
 from isac.runtime.progress import build_progress_reporter
 from isac.runtime.services import ServiceContainer
+from isac.session.compressor import SessionCompressor
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -174,6 +175,32 @@ def _build_memory_consolidator(
         ),
         sparse_resolver=sparse_resolver,
         vector_resolver=vector_resolver,
+    )
+
+
+def _build_session_compressor(
+    config: AgentConfig, global_config: dict, llm: Any, services: Any
+) -> SessionCompressor | None:
+    """按 session.compression 配置构造 U1 会话压缩器; 默认关闭 (enabled!=true → None)。
+
+    阶段3-2 (M2): 压缩写侧闭环 —— 事件数超阈时由 AgentManager 后台触发
+    compress_session (旧前缀 LLM 摘要 → turn.compressed replace 事件 + 保留 GC)。
+    依赖全局 session_event_store (U1 事件表) 与本 Agent 的 llm; 任一缺失 → None。
+    阈值/窗口参数可配, 缺省保守 (trigger_events=60, keep_recent=20, min_compress=6)。
+    trigger_events 随压缩器对象携带 (避免在 services 袋另存字符串键, U9 红线)。
+    """
+    compression_cfg = (global_config.get("session", {}) or {}).get("compression", {}) or {}
+    if not bool(compression_cfg.get("enabled", False)):
+        return None
+    event_store = getattr(services, "session_event_store", None)
+    if event_store is None or llm is None:
+        return None
+    return SessionCompressor(
+        event_store,
+        llm=llm,
+        keep_recent_messages=int(compression_cfg.get("keep_recent_messages", 20) or 20),
+        min_compress_messages=int(compression_cfg.get("min_compress_messages", 6) or 6),
+        trigger_events=max(0, int(compression_cfg.get("trigger_events", 60) or 60)),
     )
 
 
@@ -656,7 +683,12 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     prompt_builder.register(JargonInjector(memory))
     prompt_builder.register(HeuristicMemoryInjector(memory))
     prompt_builder.register(MidTermMemoryInjector(memory))
-    agent_services = ServiceContainer({**services, "memory": memory})
+    # 阶段3-2 (M2): U1 会话压缩器 (默认关闭 → None)。与 memory 同经 dict 字面量注入
+    # per-Agent 容器, manager 侧走 ServiceContainer 类型化属性 (不新增字符串键, U9 红线)。
+    session_compressor = _build_session_compressor(config, global_config, llm, services)
+    agent_services = ServiceContainer(
+        {**services, "memory": memory, "session_compressor": session_compressor}
+    )
     # R3: MCPClient 引用 (上方构造) 存入 services, 供 AgentManager.stop/destroy
     # 与 _shutdown_message_pipeline 调 disconnect (避免子进程/HTTP 连接泄漏)。
     agent_services["mcp_clients"] = mcp_clients

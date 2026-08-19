@@ -116,6 +116,7 @@
     },
     "session": {
       "children": [
+        "compression",
         "history"
       ]
     },

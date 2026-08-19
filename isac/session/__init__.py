@@ -10,6 +10,7 @@
 - ``history``: SessionHistoryDeriver (全量折叠 / 滑动窗口 / 压缩后三种派生策略)。
 """
 
+from isac.session.compressor import CompressionResult, SessionCompressor
 from isac.session.event_store import SessionEventStore
 from isac.session.history import SessionHistoryDeriver
 from isac.session.models import (
@@ -28,6 +29,8 @@ __all__ = [
     "SessionEvent",
     "SessionEventStore",
     "SessionHistoryDeriver",
+    "SessionCompressor",
+    "CompressionResult",
     "KNOWN_EVENT_TYPES",
     "IGNORABLE_EVENT_TYPES",
     "EVENT_USER_MESSAGE",

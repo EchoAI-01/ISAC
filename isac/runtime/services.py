@@ -217,6 +217,10 @@ class ServiceContainer(dict):
         return self.get("memory_consolidator")
 
     @property
+    def session_compressor(self) -> Any:
+        return self.get("session_compressor")
+
+    @property
     def mesh_action_broker(self) -> Any:
         return self.get("mesh_action_broker")
 
