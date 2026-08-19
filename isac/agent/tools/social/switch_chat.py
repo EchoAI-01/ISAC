@@ -1,6 +1,6 @@
 """switch_chat 工具: 主动切换话题 (ARCHITECTURE.md 3.5)。
 
-更新会话话题状态 (写入 services["session_topic"]) 并返回过渡语供 LLM 接续。
+更新会话话题状态 (写入服务袋 `session_topic` 键) 并返回过渡语供 LLM 接续。
 若未注入 session_topic 服务, 返回友好错误。
 """
 
@@ -32,7 +32,7 @@ class SwitchChatTool(Tool):
         if not topic:
             return ToolResult(content="switch_chat 缺少 topic。", is_error=True)
 
-        session_topic = context.services.get("session_topic")
+        session_topic = context.services.session_topic
         session_id = getattr(context.agent_context.session, "session_id", "")
         if session_topic is None:
             return ToolResult(content="当前未启用会话话题管理能力，无法切换话题。", is_error=True)

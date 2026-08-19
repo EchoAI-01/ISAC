@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from isac.core.types import ToolResult
+from isac.runtime.services import ServiceContainer
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -24,11 +25,17 @@ class ToolContext:
 
     services 用于注入共享服务 (如 "memory": MemoryRetrievalPipeline,
     "bus": InterAgentBus)，由 runtime 组装时注入，避免工具 import 业务模块。
+    Z1-C: 归一化为 ServiceContainer, 工具经宽容属性读取 (缺键 None, 与原 get 同义)。
     """
 
     args: dict[str, Any]  # LLM 传入的工具参数
     agent_context: AgentContext
-    services: dict[str, Any] = field(default_factory=dict)
+    services: ServiceContainer = field(default_factory=ServiceContainer)
+
+    def __post_init__(self) -> None:
+        # Z1-C: 裸 dict → ServiceContainer (测试/兼容层可能传裸 dict)。
+        if type(self.services) is dict:
+            self.services = ServiceContainer(self.services)
 
 
 class Tool(ABC):

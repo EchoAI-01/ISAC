@@ -358,8 +358,8 @@ class SubAgentSupervisor:
             return
         # getattr 防御: requester 理论上总是真实 AgentContext (由 loop/tool 层构造),
         # 但保留兜底避免调用方传入不完整占位对象时直接抛 AttributeError 崩掉主链路。
-        services = getattr(requester, "services", None) or {}
-        requester_agent_id = str(services.get("agent_id", "") or "")
+        services = getattr(requester, "services", None)
+        requester_agent_id = str(getattr(services, "agent_id", "") or "")
         if requester_agent_id and requester_agent_id != run.parent_agent_id:
             raise PermissionError(f"无权访问其它 Agent 创建的子任务: {task_id}")
 

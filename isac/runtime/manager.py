@@ -271,8 +271,8 @@ class AgentManager:
         GraphStore.delete_by_namespace() 两个稳定契约方法, 这里只是两次直调。
         失败只记 warning, 不影响 metadata 已成功的清理。
         """
-        services = getattr(instance, "services", None) or {}
-        vector_resolver = services.get("vector_resolver")
+        services = getattr(instance, "services", None) or ServiceContainer()
+        vector_resolver = services.vector_resolver
         if callable(vector_resolver):
             vector = vector_resolver(namespace)
             if vector is not None:
@@ -280,7 +280,7 @@ class AgentManager:
                     await vector.purge()
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("vector 文件清理失败, 已忽略", namespace=namespace, error=str(exc))
-        graph_store = services.get("graph_store")
+        graph_store = services.graph_store
         if graph_store is not None:
             try:
                 await graph_store.delete_by_namespace(namespace)
@@ -578,7 +578,7 @@ class AgentManager:
         from isac.core.types import AgentContext
 
         reporter = self._get_or_create_progress_reporter(instance, session.session_id, progress_sender)
-        progress_services: dict[str, Any] = {"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id}
+        progress_services = ServiceContainer({"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id})
         if reporter is not None:
             progress_services["progress_slow_tool_threshold_seconds"] = reporter.policy.slow_tool_threshold_seconds
             progress_services["progress_report_before_slow_tool"] = reporter.policy.report_before_slow_tool
@@ -667,13 +667,13 @@ class AgentManager:
             session=session,
             user_profile=user_profile,
             current_message=message,
-            services={
+            services=ServiceContainer({
                 "gating": instance.gating,
                 "agent_manager": self,
                 "session_mgr": self._services.session_mgr,
                 "bus": instance.services.bus or self._services.bus,
                 "agent_id": instance.agent_id,
-            },
+            }),
         )
         return await instance.commands.try_execute(message, agent_context_for_cmd)
 
@@ -1164,7 +1164,7 @@ class AgentManager:
             session_id=session.session_id,
             content=content,
         )
-        turn_services: dict[str, Any] = {"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id}
+        turn_services = ServiceContainer({"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id})
         if runtime is not None:
             turn_services["conversation_runtime"] = runtime
         agent_context = AgentContext(

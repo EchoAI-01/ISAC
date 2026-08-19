@@ -13,16 +13,19 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from isac.channel.registry import ChannelRegistry
-from isac.gateway.lock import SessionLockManager
-from isac.gateway.session import SessionManager
-from isac.observability import MetricsCollector
-from isac.provider.catalog import ModelCatalog
-from isac.provider.manager import ProviderManager
-from isac.provider.router import ModelRouter
-from isac.runtime.write_gate import SessionWriteGate
+if TYPE_CHECKING:
+    # 仅供属性返回类型注解 (from __future__ import annotations 下为字符串),
+    # 移入 TYPE_CHECKING 断开运行时依赖, 使 core/types 等底层模块可安全导入本类。
+    from isac.channel.registry import ChannelRegistry
+    from isac.gateway.lock import SessionLockManager
+    from isac.gateway.session import SessionManager
+    from isac.observability import MetricsCollector
+    from isac.provider.catalog import ModelCatalog
+    from isac.provider.manager import ProviderManager
+    from isac.provider.router import ModelRouter
+    from isac.runtime.write_gate import SessionWriteGate
 
 
 class ServiceContainer(dict):
@@ -240,3 +243,74 @@ class ServiceContainer(dict):
     @property
     def plugin_prompt_builder(self) -> Any:
         return self.get("plugin_prompt_builder")
+
+    # ── per-turn / 工具面键 (manager 构造 AgentContext.services,
+    #     loop 经 ToolContext.services 透传给工具) ─────────────
+
+    @property
+    def conversation_runtime(self) -> Any:
+        return self.get("conversation_runtime")
+
+    @property
+    def progress_slow_tool_threshold_seconds(self) -> Any:
+        return self.get("progress_slow_tool_threshold_seconds")
+
+    @property
+    def progress_report_before_slow_tool(self) -> Any:
+        return self.get("progress_report_before_slow_tool")
+
+    @property
+    def task_id(self) -> Any:
+        return self.get("task_id")
+
+    @property
+    def task_depth(self) -> Any:
+        return self.get("task_depth")
+
+    @property
+    def task_max_depth(self) -> Any:
+        return self.get("task_max_depth")
+
+    @property
+    def task_runner(self) -> Any:
+        return self.get("task_runner")
+
+    @property
+    def tool_call_id(self) -> Any:
+        return self.get("tool_call_id")
+
+    @property
+    def channel_history(self) -> Any:
+        return self.get("channel_history")
+
+    @property
+    def channel_send(self) -> Any:
+        return self.get("channel_send")
+
+    @property
+    def channel_forward(self) -> Any:
+        return self.get("channel_forward")
+
+    @property
+    def image_gen(self) -> Any:
+        return self.get("image_gen")
+
+    @property
+    def session_topic(self) -> Any:
+        return self.get("session_topic")
+
+    @property
+    def mesh_link_policy(self) -> Any:
+        return self.get("mesh_link_policy")
+
+    @property
+    def web_search(self) -> Any:
+        return self.get("web_search")
+
+    @property
+    def gating(self) -> Any:
+        return self.get("gating")
+
+    @property
+    def agent_manager(self) -> Any:
+        return self.get("agent_manager")

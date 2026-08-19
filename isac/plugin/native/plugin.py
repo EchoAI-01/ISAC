@@ -81,7 +81,7 @@ class PluginContext:
         """预留: 向 Admin API 注册管理端点 (控制面扩展)。
 
         待 G1 Admin API 完成后, 此方法会把 (path, handler) 注册到 FastAPI app。
-        当前记录到 services["admin_routes"] 待控制面启动时消费。
+        当前记录到 `admin_routes` 服务键待控制面启动时消费。
         """
         routes = self.services.setdefault("admin_routes", [])
         routes.append((path, handler))

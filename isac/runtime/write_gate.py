@@ -57,7 +57,7 @@ class WriteReservation:
 
 @dataclass
 class SessionWriteGate:
-    """会话写入仲裁门 (预约表)。进程内单例, 经 services["session_write_gate"] 共享。"""
+    """会话写入仲裁门 (预约表)。进程内单例, 经 `session_write_gate` 服务键共享。"""
 
     default_hold_seconds: float = DEFAULT_HOLD_SECONDS
     # session_key -> 活跃租约 (单写者语义: 至多一份)
