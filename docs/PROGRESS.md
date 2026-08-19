@@ -2,6 +2,18 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-08-19 —— #25 U4 完整租户鉴权做实 (token↔tenant 绑定强制 + 删除级联, 全量 2321 通过)**。
+> 此前租户控制面只有 scope 门禁, 任何持 tenant:* scope 的 token 可操作**任意**租户; 删租户也只删 tenants/tenant_members 两张控制面表, 数据面打标行永久残留。本批做实两环:
+> **①token↔tenant 绑定强制**: TokenScope 增 `tenant_id` (tokens[].tenant_id 配置); `resolve_caller_tenant` 与认证同口径解析绑定 (Bearer 优先, 回退会话 Cookie); routes_tenants 全端点强制 —— 绑定 token 跨租户 get/delete/成员管理一律 403 TENANT_FORBIDDEN, create 恒 403, list 只可见自己租户; 未绑定 = 管理身份不限租户 (未配置 tokens[] 行为与之前完全一致, 向后兼容)。server.py `_mount_tenant_router` 透传 tokens/session_secret。
+> **②删除级联**: TenantManager 增 `on_delete` 回调 (best-effort, 失败只记日志不推翻删除结果); 新增 `make_metadata_cascade` —— 扫 sqlite_master 自适应清 metadata.db 里所有含 tenant_id 列表中该租户的打标行 (schema 演进免改), wiring 经 `_build_tenant_manager(tenancy_config, memory_config)` 按 memory.enabled 门控注入 (wiring.py 保持单行 498 未破红线)。
+> config.sample.jsonc 补 tokens[] 配置文档 (scopes/name/tenant_id); 新增 test_tenant_token_binding_u4 12 例 (绑定解析口径/路由强制端到端/级联触发与失败兜底/真实 metadata.db 按租户清理)。**全量 2321 单测通过**, ruff/mypy/红线全绿。成员深度消费 (IM 身份→成员校验) 与请求级数据面全链传播留作设计文档后续项。
+>
+> ⚠️ **最近更新: 2026-08-19 —— Review 后加固第二轮: #29 审计 actor 归因 + #26 策略合并语义 + #27 MCP M4+M5 + #28 AstrBot M12 (全量 2200 通过)**。
+> **#29 审计 actor 归因**: TokenScope 增 name (审计显示 token:\<name\>, 无 name 落不可逆指纹, 绝不落裸 token); make_auth_dependency 返回凭据来源 (api_token/session/setup_password/anonymous); 8 个控制面路由 (agents/approvals/config/plugins/providers/routing/tenants/webhooks) 审计从硬编码 "authenticated" 改经 caller 依赖注入真实身份。新增 12 例。
+> **#26 策略合并语义 (tools M3)**: 修 tool_policy 四级合并被 DEFAULT_POLICY 遮蔽 —— 全局运维 tools_policy 对未显式配置的 Agent 永不生效。语义改为 "" 哨兵 (无覆盖), 仅非空值参与覆盖; ToolPermission 增 agent_policy 纯 Agent 层。enable_matrix 测试重写适配置空=无覆盖语义。新增 registry 合并序 62 行断言。
+> **#27 MCP 运行时健壮性 + Channel 门控 (tools M4+M5)**: MCPClient 增 is_alive (stdio returncode 检测) + ensure_connected (崩溃自动重连一次, 失败明确报错不再恒超时); mcp:* 工具按 platform Channel 门控 (effective_policy + mcp_channel_enabled 抽出)。新增 13 例。
+> **#28 AstrBot import 重定向接线 (tools M12)**: 此前 install_sandbox 全仓零调用, 真实 AstrBot 插件 (plugin.py 内 from astrbot.api.star import Star) 必然 ImportError; loader._load_astrbot 接线 install_sandbox (幂等) + AstrBotNamespaceLoader 补父包空命名空间, 未映射 astrbot.* 子模块明确 fail-fast。新增 6 例 (真实插件加载/多映射/幂等/父包/未映射拒绝)。
+>
 > ⚠️ **最近更新: 2026-08-19 —— 阶段3-3 记忆进阶 + 成本闭环 完成 (全量 2164 通过)**。
 > **①成本闭环 (H4)**: 用量 provider 键三口径统一为**实例类名** —— 此前 LLM 记 type(provider).__name__、媒体记 descriptor.provider_id、embed/rerank 记 config["provider"] (默认无该键恒空), 三口径无法命中同一份价目表 → 开箱 estimated_cost 恒 None。现 embedder/reranker/media 统一记 provider 实例类名 (对齐 pricing.jsonc 键与 LLM 口径); pricing.jsonc 已入仓 (阶段1-7) 键即类名, LLM/embed 成本查表可命中。新增 test_cost_loop_h4 6 例。
 > **②记忆进阶: 召回可解释性 (Y1 基础)**: 四路召回 (FTS/BM25/向量/图谱) RRF 融合后, 把每条记忆的命中路径写入 MemoryHit.metadata["recall_sources"] (排序去重), 回答"这条记忆为何被召回"; 新增 _collect_recall_sources (抽独立函数降 search C901), MemoryHit schema 不动 (走 metadata)。新增 test_recall_explainability 6 例。
