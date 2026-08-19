@@ -616,3 +616,33 @@ def test_routes_approvals_list_and_decide() -> None:
     resp = client.post("/api/v1/approvals/testid2/decide", json={"decision": "maybe"}, headers=h)
     assert resp.status_code == 400
     loop.close()
+
+
+def test_routes_approvals_read_requires_tools_read_scope() -> None:
+    """2026-08-19 scope 门禁回归: tokens[] 模式下审批读端点按 tools:read 收窄。
+
+    此前 GET /approvals 与 /approvals/history 只有路由级认证、无 scope —— 任何窄
+    权限 token (如仅 usage:read) 都能读全部待审上下文与决策历史。现窄 scope 读被
+    403 拒绝, 持 tools:read / "*" 的 token 可读。
+    """
+    from fastapi.testclient import TestClient
+
+    from isac.control.api.server import create_control_app
+    from isac.observability import get_default_metrics
+
+    gate = ApprovalGate(timeout_seconds=30.0)
+    app = create_control_app(
+        type("A", (), {"list": lambda self: [], "get": lambda self, x: None})(),
+        type("R", (), {})(), type("B", (), {})(), type("P", (), {})(),
+        {"tokens": [
+            {"token": "narrow", "scopes": ["usage:read"]},
+            {"token": "reader", "scopes": ["tools:read"]},
+        ]},
+        metrics=get_default_metrics(),
+        services={"approval_gate": gate, "session_event_store": None},
+    )
+    client = TestClient(app)
+
+    for path in ("/api/v1/approvals", "/api/v1/approvals/history"):
+        assert client.get(path, headers={"Authorization": "Bearer narrow"}).status_code == 403
+        assert client.get(path, headers={"Authorization": "Bearer reader"}).status_code == 200
