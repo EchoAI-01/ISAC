@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-20T06:29:53+00:00",
+ "generated_at": "2026-08-20T12:29:05+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 6839,
+ "model_count": 6840,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -26459,22 +26459,6 @@
     "input": 0.2,
     "output": 1.15,
     "cache_read": 0.04
-   }
-  },
-  "edenai/deepinfra/tencent/hy3": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
    }
   },
   "edenai/deepinfra/thinkingmachines/inkling": {
@@ -66269,6 +66253,40 @@
     "cache_read": 0.55
    }
   },
+  "nano-gpt/ornith-ai/ornith-1.5-35b-a3b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.4,
+    "cache_read": 0.01
+   }
+  },
+  "nano-gpt/ornith-ai/ornith-1.5-35b-a3b:thinking": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.4,
+    "cache_read": 0.01
+   }
+  },
   "nano-gpt/pamanseau/openreasoning-nemotron-32b": {
    "context_window": 32768,
    "supports_tools": false,
@@ -76755,10 +76773,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 30,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 2.5,
+    "output": 15,
+    "cache_read": 0.25,
+    "cache_write": 3.125
    }
   },
   "ofox/openai/gpt-5.6-terra": {
@@ -81682,9 +81700,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.44,
-    "output": 2.88,
-    "cache_read": 0.1215
+    "input": 1.6,
+    "output": 3.2,
+    "cache_read": 0.135
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
