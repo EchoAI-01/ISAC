@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-22T06:23:36+00:00",
+ "generated_at": "2026-08-22T12:20:46+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7245,
  "override_count": 0,
@@ -45393,8 +45393,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
+    "input": 0.44,
+    "output": 1.32,
     "cache_read": 0.028
    }
   },
@@ -49349,10 +49349,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.575,
-    "output": 3.45,
-    "cache_read": 0.115,
-    "cache_write": 0.71875
+    "input": 0.5,
+    "output": 3,
+    "cache_read": 0.1,
+    "cache_write": 0.625
    }
   },
   "kilo/qwen/qwen3.8-max": {
@@ -88413,9 +88413,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07406,
-    "output": 0.14812,
-    "cache_read": 0.014812
+    "input": 0.06566,
+    "output": 0.13132,
+    "cache_read": 0.013132
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -88462,9 +88462,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.481458,
-    "output": 0.962916,
-    "cache_read": 0.040122
+    "input": 0.413772,
+    "output": 0.827544,
+    "cache_read": 0.034481
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
