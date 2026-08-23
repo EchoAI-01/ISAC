@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-23T06:25:11+00:00",
+ "generated_at": "2026-08-23T12:20:51+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7247,
  "override_count": 0,
@@ -50349,8 +50349,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.055,
-    "output": 0.14,
+    "input": 0.04,
+    "output": 0.13,
     "cache_read": 0.01
    }
   },
@@ -88473,9 +88473,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05306,
-    "output": 0.10612,
-    "cache_read": 0.010612
+    "input": 0.05026,
+    "output": 0.10052,
+    "cache_read": 0.010052
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -93933,8 +93933,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.055,
-    "output": 0.14,
+    "input": 0.04,
+    "output": 0.13,
     "cache_read": 0.01
    }
   },
