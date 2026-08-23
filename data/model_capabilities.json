@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-23T12:20:51+00:00",
+ "generated_at": "2026-08-23T18:16:13+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7247,
+ "model_count": 7289,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -5193,6 +5193,22 @@
     "cache_read": 0.183112
    }
   },
+  "aki-io/deepseek-v4-flash-0731-284b": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.5,
+    "cache_read": 0.1
+   }
+  },
   "aki-io/gemma4-26b": {
    "context_window": 256000,
    "supports_tools": true,
@@ -5235,22 +5251,8 @@
    ],
    "x_cost": {
     "input": 0.86,
-    "output": 3
-   }
-  },
-  "aki-io/minimax-m2.5-230b": {
-   "context_window": 196608,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.25,
-    "output": 1.2
+    "output": 3,
+    "cache_read": 0.18
    }
   },
   "aki-io/mistral4-119b": {
@@ -5281,6 +5283,22 @@
    "x_cost": {
     "input": 0.15,
     "output": 0.5
+   }
+  },
+  "aki-io/qwen3.8-27b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 2.2,
+    "cache_read": 0.1
    }
   },
   "alibaba-cn/deepseek-r1": {
@@ -28439,8 +28457,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.352,
-    "output": 1.056
+    "input": 0.176,
+    "output": 0.528
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -28454,8 +28472,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.1616,
-    "output": 3.4848
+    "input": 0.627,
+    "output": 1.881
    }
   },
   "edenai/qwen/qwen-max": {
@@ -46537,7 +46555,7 @@
    }
   },
   "kilo/minimax/minimax-m2.7": {
-   "context_window": 204800,
+   "context_window": 196608,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50339,7 +50357,7 @@
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50350,8 +50368,8 @@
    ],
    "x_cost": {
     "input": 0.04,
-    "output": 0.13,
-    "cache_read": 0.01
+    "output": 0.08,
+    "cache_read": 0.008
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -66622,22 +66640,6 @@
     "cache_read": 0.02975
    }
   },
-  "nano-gpt/amazon/nova-micro-v1": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.0357,
-    "output": 0.1394,
-    "cache_read": 0.01785
-   }
-  },
   "nano-gpt/amazon/nova-pro-v1": {
    "context_window": 300000,
    "supports_tools": false,
@@ -69353,6 +69355,23 @@
     "input": 0.306,
     "output": 0.306,
     "cache_read": 0.153
+   }
+  },
+  "nano-gpt/gemma-4-31b-meromero-v2": {
+   "context_window": 65536,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
    }
   },
   "nano-gpt/gemma-4-31b-queen": {
@@ -72904,6 +72923,23 @@
     "input": 0.1,
     "output": 0.4,
     "cache_read": 0.01
+   }
+  },
+  "nano-gpt/ornith-ai/ornith-1.5-9b": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.1,
+    "cache_read": 0.025
    }
   },
   "nano-gpt/pamanseau/openreasoning-nemotron-32b": {
@@ -88473,9 +88509,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05026,
-    "output": 0.10052,
-    "cache_read": 0.010052
+    "input": 0.04886,
+    "output": 0.09772,
+    "cache_read": 0.009772
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -89732,9 +89768,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.06
+    "input": 0.24,
+    "output": 0.96,
+    "cache_read": 0.048
    }
   },
   "openrouter/minimax/minimax-m3": {
@@ -93277,9 +93313,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
+    "input": 0.95,
     "output": 4.05,
-    "cache_read": 0.17
+    "cache_read": 0.16
    }
   },
   "openrouter/thinkingmachines/inkling-small": {
@@ -93934,8 +93970,8 @@
    ],
    "x_cost": {
     "input": 0.04,
-    "output": 0.13,
-    "cache_read": 0.01
+    "output": 0.08,
+    "cache_read": 0.008
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -94109,6 +94145,899 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 0.26
+   }
+  },
+  "opper/anthropic/claude-fable-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5
+   }
+  },
+  "opper/anthropic/claude-haiku-4-5": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 5,
+    "cache_read": 0.1,
+    "cache_write": 1.25
+   }
+  },
+  "opper/anthropic/claude-opus-4-5": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "opper/anthropic/claude-opus-4-6": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "opper/anthropic/claude-opus-4-7": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "opper/anthropic/claude-opus-4-8": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "opper/anthropic/claude-opus-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "opper/anthropic/claude-sonnet-4-5": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3,
+    "cache_write": 3.75
+   }
+  },
+  "opper/anthropic/claude-sonnet-4-6": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3,
+    "cache_write": 3.75
+   }
+  },
+  "opper/anthropic/claude-sonnet-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+   }
+  },
+  "opper/gemini/gemini-3-flash-preview": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 3,
+    "cache_read": 0.05
+   }
+  },
+  "opper/gemini/gemini-3.1-pro-preview": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 12,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 18,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 18,
+     "cache_read": 0.4
+    }
+   }
+  },
+  "opper/gemini/gemini-3.5-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.5,
+    "output": 9,
+    "cache_read": 0.15
+   }
+  },
+  "opper/gemini/gemini-3.5-flash-lite": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 2.5,
+    "cache_read": 0.03
+   }
+  },
+  "opper/meta/muse-spark-1.2": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.25,
+    "output": 4.25,
+    "cache_read": 0.15
+   }
+  },
+  "opper/minimax/m3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.6,
+    "output": 2.4,
+    "cache_read": 0.12,
+    "tiers": [
+     {
+      "input": 1.2,
+      "output": 4.8,
+      "cache_read": 0.24,
+      "tier": {
+       "type": "context",
+       "size": 524288
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 1.2,
+     "output": 4.8,
+     "cache_read": 0.24
+    }
+   }
+  },
+  "opper/mistral/devstral-2512": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 2
+   }
+  },
+  "opper/mistral/mistral-large-2512": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 1.5
+   }
+  },
+  "opper/mistral/mistral-small-2603": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6
+   }
+  },
+  "opper/moonshot/kimi-k3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "opper/openai/gpt-5.3-chat-latest": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.75,
+    "output": 14,
+    "cache_read": 0.175
+   }
+  },
+  "opper/openai/gpt-5.3-codex": {
+   "context_window": 400000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.75,
+    "output": 14,
+    "cache_read": 0.175
+   }
+  },
+  "opper/openai/gpt-5.4": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.5,
+    "output": 15,
+    "cache_read": 0.25,
+    "tiers": [
+     {
+      "input": 5,
+      "output": 22.5,
+      "cache_read": 0.5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 5,
+     "output": 22.5,
+     "cache_read": 0.5
+    }
+   }
+  },
+  "opper/openai/gpt-5.4-mini": {
+   "context_window": 400000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 4.5,
+    "cache_read": 0.075
+   }
+  },
+  "opper/openai/gpt-5.4-nano": {
+   "context_window": 400000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 1.25,
+    "cache_read": 0.02
+   }
+  },
+  "opper/openai/gpt-5.4-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 30,
+    "output": 180,
+    "tiers": [
+     {
+      "input": 60,
+      "output": 270,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 60,
+     "output": 270
+    }
+   }
+  },
+  "opper/openai/gpt-5.5": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 30,
+    "cache_read": 0.5,
+    "tiers": [
+     {
+      "input": 10,
+      "output": 45,
+      "cache_read": 1,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 10,
+     "output": 45,
+     "cache_read": 1
+    }
+   }
+  },
+  "opper/openai/gpt-5.5-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 30,
+    "output": 180,
+    "tiers": [
+     {
+      "input": 60,
+      "output": 270,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 60,
+     "output": 270
+    }
+   }
+  },
+  "opper/openai/gpt-5.6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 1.2,
+    "cache_read": 0.02,
+    "cache_write": 0.25,
+    "tiers": [
+     {
+      "input": 0.4,
+      "output": 1.8,
+      "cache_read": 0.04,
+      "cache_write": 0.5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.4,
+     "output": 1.8,
+     "cache_read": 0.04,
+     "cache_write": 0.5
+    }
+   }
+  },
+  "opper/openai/gpt-5.6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 30,
+    "cache_read": 0.5,
+    "cache_write": 6.25,
+    "tiers": [
+     {
+      "input": 10,
+      "output": 45,
+      "cache_read": 1,
+      "cache_write": 12.5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 10,
+     "output": 45,
+     "cache_read": 1,
+     "cache_write": 12.5
+    }
+   }
+  },
+  "opper/openai/gpt-5.6-terra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 12,
+    "cache_read": 0.2,
+    "cache_write": 2.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 18,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 18,
+     "cache_read": 0.4,
+     "cache_write": 5
+    }
+   }
+  },
+  "opper/perplexity/sonar": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 1
+   }
+  },
+  "opper/perplexity/sonar-pro": {
+   "context_window": 200000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15
+   }
+  },
+  "opper/perplexity/sonar-reasoning-pro": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 8
+   }
+  },
+  "opper/vertexai/gemini-3.7-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075
+   }
+  },
+  "opper/vertexai/gemini-3.7-flash-eu": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075
+   }
+  },
+  "opper/xai/grok-4.3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.25,
+    "output": 2.5,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 5,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 5,
+     "cache_read": 0.4
+    }
+   }
+  },
+  "opper/xai/grok-4.5": {
+   "context_window": 500000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.3,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 0.6,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 0.6
+    }
+   }
+  },
+  "opper/xai/grok-4.6": {
+   "context_window": 500000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 1,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 1
+    }
+   }
+  },
+  "opper/xai/grok-build-0.1": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 2,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2,
+      "output": 4,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2,
+     "output": 4,
+     "cache_read": 0.4
+    }
    }
   },
   "orcarouter/anthropic/claude-haiku-4.5": {
@@ -103479,14 +104408,16 @@
     "text"
    ],
    "x_cost": {
-    "input": 4.5,
-    "output": 27,
-    "cache_read": 0.45,
+    "input": 3.6,
+    "output": 18,
+    "cache_read": 0.36,
+    "cache_write": 4.5,
     "tiers": [
      {
-      "input": 9,
-      "output": 40.5,
-      "cache_read": 0.9,
+      "input": 7.2,
+      "output": 27,
+      "cache_read": 0.72,
+      "cache_write": 9,
       "tier": {
        "type": "context",
        "size": 272000
@@ -103494,9 +104425,10 @@
      }
     ],
     "context_over_200k": {
-     "input": 9,
-     "output": 40.5,
-     "cache_read": 0.9
+     "input": 7.2,
+     "output": 27,
+     "cache_read": 0.72,
+     "cache_write": 9
     }
    }
   },
