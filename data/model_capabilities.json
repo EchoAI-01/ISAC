@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-23T00:45:30+00:00",
+ "generated_at": "2026-08-23T06:25:11+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7247,
  "override_count": 0,
@@ -26209,7 +26209,7 @@
   },
   "edenai/deepinfra/deepseek-ai/deepseek-v4-pro-0813": {
    "context_window": 1048576,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "text"
@@ -28439,8 +28439,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.176,
-    "output": 0.528
+    "input": 0.352,
+    "output": 1.056
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -28454,8 +28454,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.627,
-    "output": 1.881
+    "input": 1.1616,
+    "output": 3.4848
    }
   },
   "edenai/qwen/qwen-max": {
@@ -45838,8 +45838,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.25
+    "input": 0.042,
+    "output": 0.22
    }
   },
   "kilo/google/gemma-4-31b-it": {
@@ -50349,9 +50349,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0639,
-    "output": 0.1278,
-    "cache_read": 0.01278
+    "input": 0.055,
+    "output": 0.14,
+    "cache_read": 0.01
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -69847,8 +69847,8 @@
    }
   },
   "nano-gpt/google/gemini-flash-latest": {
-   "context_window": 1048756,
-   "supports_tools": false,
+   "context_window": 1048576,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "image",
@@ -69858,10 +69858,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.75,
-    "output": 3.75,
-    "cache_read": 0.075,
-    "cache_write": 0.041667
+    "input": 0.375,
+    "output": 1.875,
+    "cache_read": 0.0375,
+    "cache_write": 0.020833
    }
   },
   "nano-gpt/google/gemini-flash-lite-latest": {
@@ -88473,9 +88473,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05586,
-    "output": 0.11172,
-    "cache_read": 0.011172
+    "input": 0.05306,
+    "output": 0.10612,
+    "cache_read": 0.010612
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -88522,9 +88522,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.413772,
-    "output": 0.827544,
-    "cache_read": 0.034481
+    "input": 0.396894,
+    "output": 0.793788,
+    "cache_read": 0.033075
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -93933,9 +93933,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0639,
-    "output": 0.1278,
-    "cache_read": 0.01278
+    "input": 0.055,
+    "output": 0.14,
+    "cache_read": 0.01
    }
   },
   "openrouter/~google/gemini-flash-latest": {
