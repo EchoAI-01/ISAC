@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-24T06:38:01+00:00",
+ "generated_at": "2026-08-24T12:29:21+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7292,
+ "model_count": 7287,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -41862,7 +41862,7 @@
    "x_cost": {
     "input": 0.67,
     "output": 3.4,
-    "cache_read": 0.17,
+    "cache_read": 0.19,
     "cache_write": 0
    }
   },
@@ -46009,38 +46009,6 @@
     "cache_read": 0.025
    }
   },
-  "kilo/inclusionai/ling-2.6-1t": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 2.5,
-    "cache_read": 0.06
-   }
-  },
-  "kilo/inclusionai/ling-2.6-flash": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.3,
-    "cache_read": 0.02
-   }
-  },
   "kilo/inclusionai/ling-3.0-flash": {
    "context_window": 262144,
    "supports_tools": true,
@@ -46055,22 +46023,6 @@
     "input": 0.06,
     "output": 0.18,
     "cache_read": 0.012
-   }
-  },
-  "kilo/inclusionai/ring-2.6-1t": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 2.5,
-    "cache_read": 0.06
    }
   },
   "kilo/kilo-auto/balanced": {
@@ -49320,10 +49272,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5,
-    "output": 3,
-    "cache_read": 0.1,
-    "cache_write": 0.625
+    "input": 0.425,
+    "output": 2.55,
+    "cache_read": 0.085,
+    "cache_write": 0.53125
    }
   },
   "kilo/qwen/qwen3.8-max": {
@@ -50405,9 +50357,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.035,
-    "output": 0.13,
-    "cache_read": 0.01
+    "input": 0.04,
+    "output": 0.08,
+    "cache_read": 0.008
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -51020,10 +50972,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 6,
-    "output": 60,
-    "cache_read": 1.2,
-    "cache_write": 7.5
+    "input": 1,
+    "output": 5,
+    "cache_read": 0.2,
+    "cache_write": 1.25
    }
   },
   "llmgateway-providers/alibaba/qwen3-max": {
@@ -51038,10 +50990,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.6,
-    "cache_write": 3.75
+    "input": 1.2,
+    "output": 6,
+    "cache_read": 0.24,
+    "cache_write": 1.5
    }
   },
   "llmgateway-providers/alibaba/qwen3-vl-flash": {
@@ -51091,8 +51043,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.248,
-    "output": 1.485
+    "input": 0.375,
+    "output": 2.25
    }
   },
   "llmgateway-providers/alibaba/qwen3.6-flash": {
@@ -51130,7 +51082,7 @@
    }
   },
   "llmgateway-providers/alibaba/qwen3.6-plus": {
-   "context_window": 262144,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51144,6 +51096,7 @@
     "input": 0.5,
     "output": 3,
     "cache_read": 0.05,
+    "cache_write": 0.625,
     "tiers": [
      {
       "input": 2,
@@ -60145,10 +60098,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 6,
-    "output": 60,
-    "cache_read": 1.2,
-    "cache_write": 7.5
+    "input": 1,
+    "output": 5,
+    "cache_read": 0.2,
+    "cache_write": 1.25
    }
   },
   "llmgateway/qwen3-max": {
@@ -60350,7 +60303,7 @@
    }
   },
   "llmgateway/qwen3.6-plus": {
-   "context_window": 262144,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -68433,9 +68386,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -85472,6 +85425,22 @@
     "cache_read": 0.3
    }
   },
+  "opencode-go/longcat-2.0": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
+   }
+  },
   "opencode-go/mimo-v2-omni": {
    "context_window": 262144,
    "supports_tools": true,
@@ -89321,38 +89290,6 @@
     "cache_read": 0.025
    }
   },
-  "openrouter/inclusionai/ling-2.6-1t": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.075,
-    "output": 0.625,
-    "cache_read": 0.015
-   }
-  },
-  "openrouter/inclusionai/ling-2.6-flash": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.01,
-    "output": 0.03,
-    "cache_read": 0.002
-   }
-  },
   "openrouter/inclusionai/ling-3.0-flash": {
    "context_window": 262144,
    "supports_tools": true,
@@ -89367,22 +89304,6 @@
     "input": 0.021,
     "output": 0.063,
     "cache_read": 0.0042
-   }
-  },
-  "openrouter/inclusionai/ring-2.6-1t": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.075,
-    "output": 0.625,
-    "cache_read": 0.015
    }
   },
   "openrouter/kwaipilot/kat-coder-air-v2.5": {
@@ -90236,7 +90157,7 @@
    "x_cost": {
     "input": 0.67,
     "output": 3.4,
-    "cache_read": 0.17
+    "cache_read": 0.19
    }
   },
   "openrouter/moonshotai/kimi-k3": {
@@ -94007,9 +93928,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.035,
-    "output": 0.13,
-    "cache_read": 0.01
+    "input": 0.04,
+    "output": 0.08,
+    "cache_read": 0.008
    }
   },
   "openrouter/~google/gemini-flash-latest": {
