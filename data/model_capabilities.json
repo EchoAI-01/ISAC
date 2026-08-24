@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-24T12:29:21+00:00",
+ "generated_at": "2026-08-24T18:27:04+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7287,
+ "model_count": 7285,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -15662,9 +15662,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
-    "cache_read": 0.013999999999999999
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.04399999999999999
    }
   },
   "chutes/google/gemma-4-31b-turbo-tee": {
@@ -25595,36 +25595,6 @@
     "output": 3
    }
   },
-  "edenai/amazon/nvidia.nemotron-nano-9b-v2": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.06,
-    "output": 0.23
-   }
-  },
-  "edenai/amazon/nvidia.nemotron-nano-9b-v2@us": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.06,
-    "output": 0.23
-   }
-  },
   "edenai/amazon/zai.glm-4.7-flash": {
    "context_window": 200000,
    "supports_tools": true,
@@ -27224,8 +27194,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.760435,
-    "output": 0.760435
+    "input": 0.75816,
+    "output": 0.75816
    }
   },
   "edenai/ionos/openai/gpt-oss-120b": {
@@ -27239,8 +27209,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.175485,
-    "output": 0.760435
+    "input": 0.17496,
+    "output": 0.75816
    }
   },
   "edenai/minimax/minimax-m2": {
@@ -28495,8 +28465,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.352,
-    "output": 1.056
+    "input": 0.176,
+    "output": 0.528
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -28510,8 +28480,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.1616,
-    "output": 3.4848
+    "input": 0.627,
+    "output": 1.881
    }
   },
   "edenai/qwen/qwen-max": {
@@ -28816,8 +28786,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.46796,
-    "output": 0.93592
+    "input": 0.46656,
+    "output": 0.93312
    }
   },
   "edenai/scaleway/gpt-oss-120b": {
@@ -28831,8 +28801,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.175485,
-    "output": 0.70194
+    "input": 0.17496,
+    "output": 0.69984
    }
   },
   "edenai/scaleway/llama-3.3-70b-instruct": {
@@ -28846,8 +28816,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.05291,
-    "output": 1.05291
+    "input": 1.04976,
+    "output": 1.04976
    }
   },
   "edenai/tensorx/deepseek/deepseek-v4-flash-0731": {
@@ -39771,9 +39741,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.91,
-    "output": 2.934,
-    "cache_write": 0.455
+    "input": 0.86,
+    "output": 2.784,
+    "cache_write": 0.43
    }
   },
   "hyper/glm-5.1": {
@@ -39787,9 +39757,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.36,
-    "output": 4.4,
-    "cache_write": 0.68
+    "input": 1.332,
+    "output": 4.312,
+    "cache_write": 0.666
    }
   },
   "hyper/glm-5.2": {
@@ -39820,9 +39790,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.188,
-    "output": 0.7,
-    "cache_write": 0.094
+    "input": 0.178,
+    "output": 0.68,
+    "cache_write": 0.089
    }
   },
   "hyper/kimi-k2.5": {
@@ -39903,9 +39873,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.638,
-    "output": 0.768,
-    "cache_write": 0.319
+    "input": 0.598,
+    "output": 0.738,
+    "cache_write": 0.299
    }
   },
   "hyper/llama-4-maverick-17b-128e-instruct-fp8": {
@@ -39935,9 +39905,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.408,
-    "output": 1.512,
-    "cache_write": 0.204
+    "input": 0.41,
+    "output": 1.52,
+    "cache_write": 0.205
    }
   },
   "hyper/minimax-m3": {
@@ -41842,7 +41812,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
+    "input": 0.57,
     "output": 3.41,
     "cache_read": 0.2,
     "cache_write": 0
@@ -46594,6 +46564,23 @@
     "cache_read": 0.03
    }
   },
+  "kilo/mistralai/devstral-2512": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.44,
+    "output": 2.2,
+    "cache_read": 0.044
+   }
+  },
   "kilo/mistralai/ministral-14b-2512": {
    "context_window": 262144,
    "supports_tools": true,
@@ -46772,8 +46759,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.019,
-    "output": 0.03
+    "input": 0.165,
+    "output": 0.165,
+    "cache_read": 0.0165
    }
   },
   "kilo/mistralai/mistral-saba": {
@@ -46853,8 +46841,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.2
+    "input": 0.11,
+    "output": 0.33,
+    "cache_read": 0.011
    }
   },
   "kilo/mistralai/mixtral-8x22b-instruct": {
@@ -49668,9 +49657,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -63805,10 +63794,11 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-122b-a10b": {
-   "context_window": 131072,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -88516,9 +88506,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0574,
-    "output": 0.1148,
-    "cache_read": 0.01148
+    "input": 0.056,
+    "output": 0.112,
+    "cache_read": 0.0112
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -88532,9 +88522,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
-    "cache_read": 0.028
+    "input": 0.0658,
+    "output": 0.1316,
+    "cache_read": 0.01316
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -88565,9 +88555,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.526176,
-    "output": 1.052352,
-    "cache_read": 0.043848
+    "input": 0.522,
+    "output": 1.044,
+    "cache_read": 0.0435
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -89727,9 +89717,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.24,
-    "output": 0.96,
-    "cache_read": 0.048
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
    }
   },
   "openrouter/minimax/minimax-m3": {
@@ -89764,6 +89754,23 @@
     "input": 0.3,
     "output": 0.9,
     "cache_read": 0.03
+   }
+  },
+  "openrouter/mistralai/devstral-2512": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.44,
+    "output": 2.2,
+    "cache_read": 0.044
    }
   },
   "openrouter/mistralai/ministral-14b-2512": {
@@ -90121,9 +90128,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.45,
-    "output": 2.25,
-    "cache_read": 0.07
+    "input": 0.6,
+    "output": 3,
+    "cache_read": 0.1
    }
   },
   "openrouter/moonshotai/kimi-k2.6": {
@@ -90317,21 +90324,6 @@
     "cache_read": 0.03
    }
   },
-  "openrouter/nvidia/nemotron-3-nano-30b-a3b:free": {
-   "context_window": 256000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
   "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
    "context_window": 256000,
    "supports_tools": true,
@@ -90443,37 +90435,6 @@
   },
   "openrouter/nvidia/nemotron-3.5-lightning:free": {
    "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
-  "openrouter/nvidia/nemotron-nano-12b-v2-vl:free": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
-  "openrouter/nvidia/nemotron-nano-9b-v2:free": {
-   "context_window": 128000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -92041,7 +92002,7 @@
    }
   },
   "openrouter/qwen/qwen3-235b-a22b-thinking-2507": {
-   "context_window": 262144,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -115229,6 +115190,18 @@
    ]
   },
   "vercel/bytedance/seedance-2.0-fast": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
+  "vercel/bytedance/seedance-2.0-mini": {
    "context_window": 0,
    "supports_tools": false,
    "supports_vision": null,
