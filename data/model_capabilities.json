@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-23T18:16:13+00:00",
+ "generated_at": "2026-08-24T00:43:48+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7289,
  "override_count": 0,
@@ -15774,9 +15774,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.4,
-    "output": 3,
-    "cache_read": 0.039999999999999994
+    "input": 0.35,
+    "output": 2.75,
+    "cache_read": 0.03499999999999999
    }
   },
   "chutes/unsloth/mistral-nemo-instruct-2407-tee": {
@@ -49678,9 +49678,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -49764,7 +49764,7 @@
    }
   },
   "kilo/thedrummer/unslopnemo-12b": {
-   "context_window": 1024000,
+   "context_window": 32768,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -61953,8 +61953,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
+    "input": 0.035,
+    "output": 0.07,
     "cache_read": 0.007
    }
   },
@@ -88509,9 +88509,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04886,
-    "output": 0.09772,
-    "cache_read": 0.009772
+    "input": 0.05866,
+    "output": 0.11732,
+    "cache_read": 0.011732
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -88525,9 +88525,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.18,
-    "cache_read": 0.016
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.028
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -88558,9 +88558,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.396894,
-    "output": 0.793788,
-    "cache_read": 0.033075
+    "input": 0.519216,
+    "output": 1.038432,
+    "cache_read": 0.043268
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -92573,8 +92573,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.39,
-    "output": 2.34
+    "input": 0.5,
+    "output": 3.6,
+    "cache_read": 0.3
    }
   },
   "openrouter/qwen/qwen3.5-9b": {
@@ -92684,9 +92685,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 3.6,
-    "cache_read": 0.12
+    "input": 0.32,
+    "output": 3.2
    }
   },
   "openrouter/qwen/qwen3.6-35b-a3b": {
@@ -93313,9 +93313,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.95,
+    "input": 1,
     "output": 4.05,
-    "cache_read": 0.16
+    "cache_read": 0.17
    }
   },
   "openrouter/thinkingmachines/inkling-small": {
