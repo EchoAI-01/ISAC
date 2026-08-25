@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-24T18:27:04+00:00",
+ "generated_at": "2026-08-25T00:44:03+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7285,
+ "model_count": 7291,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -25018,14 +25018,14 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 1.2,
-    "cache_read": 0.02,
+    "input": 0.1,
+    "output": 0.6,
+    "cache_read": 0.01,
     "tiers": [
      {
-      "input": 0.4,
-      "output": 1.8,
-      "cache_read": 0.04,
+      "input": 0.2,
+      "output": 0.9,
+      "cache_read": 0.02,
       "tier": {
        "type": "context",
        "size": 272000
@@ -25033,9 +25033,9 @@
      }
     ],
     "context_over_200k": {
-     "input": 0.4,
-     "output": 1.8,
-     "cache_read": 0.04
+     "input": 0.2,
+     "output": 0.9,
+     "cache_read": 0.02
     }
    }
   },
@@ -25051,14 +25051,14 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 30,
-    "cache_read": 0.5,
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
     "tiers": [
      {
-      "input": 10,
-      "output": 45,
-      "cache_read": 1,
+      "input": 4,
+      "output": 15,
+      "cache_read": 0.4,
       "tier": {
        "type": "context",
        "size": 272000
@@ -25066,9 +25066,9 @@
      }
     ],
     "context_over_200k": {
-     "input": 10,
-     "output": 45,
-     "cache_read": 1
+     "input": 4,
+     "output": 15,
+     "cache_read": 0.4
     }
    }
   },
@@ -25084,14 +25084,14 @@
     "text"
    ],
    "x_cost": {
-    "input": 2,
-    "output": 12,
-    "cache_read": 0.2,
+    "input": 1,
+    "output": 6,
+    "cache_read": 0.1,
     "tiers": [
      {
-      "input": 4,
-      "output": 18,
-      "cache_read": 0.4,
+      "input": 2,
+      "output": 9,
+      "cache_read": 0.2,
       "tier": {
        "type": "context",
        "size": 272000
@@ -25099,9 +25099,9 @@
      }
     ],
     "context_over_200k": {
-     "input": 4,
-     "output": 18,
-     "cache_read": 0.4
+     "input": 2,
+     "output": 9,
+     "cache_read": 0.2
     }
    }
   },
@@ -39677,9 +39677,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.479072,
-    "output": 1.437216,
-    "cache_read": 0.015243
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.044
    }
   },
   "hyper/deepseek-v4-pro": {
@@ -39780,7 +39780,7 @@
    }
   },
   "hyper/gpt-oss-120b": {
-   "context_window": 131072,
+   "context_window": 128072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -39829,7 +39829,7 @@
    }
   },
   "hyper/kimi-k2.7-code": {
-   "context_window": 256000,
+   "context_window": 262000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -49657,9 +49657,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -49792,7 +49792,7 @@
    }
   },
   "kilo/thinkingmachines/inkling-small:free": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -49808,7 +49808,7 @@
    }
   },
   "kilo/thinkingmachines/inkling:free": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50199,7 +50199,7 @@
    }
   },
   "kilo/z-ai/glm-5.1": {
-   "context_window": 200000,
+   "context_window": 202752,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50346,9 +50346,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04,
-    "output": 0.08,
-    "cache_read": 0.008
+    "input": 0.035,
+    "output": 0.12,
+    "cache_read": 0.01
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -51856,6 +51856,114 @@
      "output": 5,
      "cache_read": 0.4
     }
+   }
+  },
+  "llmgateway-providers/azure-anthropic/claude-fable-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5
+   }
+  },
+  "llmgateway-providers/azure-anthropic/claude-opus-4-6": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "llmgateway-providers/azure-anthropic/claude-opus-4-7": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "llmgateway-providers/azure-anthropic/claude-opus-4-8": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "llmgateway-providers/azure-anthropic/claude-opus-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "llmgateway-providers/azure-anthropic/claude-sonnet-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "llmgateway-providers/azure/gpt-3.5-turbo": {
@@ -69355,6 +69463,23 @@
     "cache_read": 0.04
    }
   },
+  "nano-gpt/gemma-4-31b-meromero-v2:thinking": {
+   "context_window": 65536,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
   "nano-gpt/gemma-4-31b-queen": {
    "context_window": 262144,
    "supports_tools": true,
@@ -69951,6 +70076,23 @@
     "cache_read": 0.04
    }
   },
+  "nano-gpt/google/gemma-4-26b-a4b-uncensored:thinking": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
   "nano-gpt/google/gemma-4-31b-it": {
    "context_window": 262144,
    "supports_tools": true,
@@ -70182,38 +70324,6 @@
     "cache_read": 0.05
    }
   },
-  "nano-gpt/inclusionai/ling-2.6-1t": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 2.5,
-    "cache_read": 0.06
-   }
-  },
-  "nano-gpt/inclusionai/ling-2.6-flash": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.3,
-    "cache_read": 0.02
-   }
-  },
   "nano-gpt/inclusionai/ling-3.0-flash": {
    "context_window": 262144,
    "supports_tools": true,
@@ -70244,22 +70354,6 @@
     "input": 0.075,
     "output": 0.22,
     "cache_read": 0.015
-   }
-  },
-  "nano-gpt/inclusionai/ring-2.6-1t": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 2.5,
-    "cache_read": 0.06
    }
   },
   "nano-gpt/inflatebot/mn-12b-mag-mell-r1": {
@@ -72538,10 +72632,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.5,
-    "output": 15,
-    "cache_read": 0.25,
-    "cache_write": 3.125
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "nano-gpt/openai/gpt-5.6-sol-pro": {
@@ -72556,10 +72650,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.5,
-    "output": 15,
-    "cache_read": 0.25,
-    "cache_write": 3.125
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "nano-gpt/openai/gpt-5.6-terra": {
@@ -72610,10 +72704,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.5,
-    "output": 15,
-    "cache_read": 0.25,
-    "cache_write": 3.125
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "nano-gpt/openai/gpt-latest": {
@@ -72628,10 +72722,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.5,
-    "output": 15,
-    "cache_read": 0.25,
-    "cache_write": 3.125
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "nano-gpt/openai/gpt-oss-120b": {
@@ -72886,7 +72980,7 @@
    "x_cost": {
     "input": 0.1,
     "output": 0.4,
-    "cache_read": 0.01
+    "cache_read": 0.05
    }
   },
   "nano-gpt/ornith-ai/ornith-1.5-35b-a3b:thinking": {
@@ -72903,10 +72997,61 @@
    "x_cost": {
     "input": 0.1,
     "output": 0.4,
-    "cache_read": 0.01
+    "cache_read": 0.05
+   }
+  },
+  "nano-gpt/ornith-ai/ornith-1.5-397b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.9,
+    "output": 3.6,
+    "cache_read": 0.045
+   }
+  },
+  "nano-gpt/ornith-ai/ornith-1.5-397b:thinking": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.9,
+    "output": 3.6,
+    "cache_read": 0.045
    }
   },
   "nano-gpt/ornith-ai/ornith-1.5-9b": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.1,
+    "cache_read": 0.025
+   }
+  },
+  "nano-gpt/ornith-ai/ornith-1.5-9b:thinking": {
    "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
@@ -73562,6 +73707,23 @@
     "cache_read": 0.075
    }
   },
+  "nano-gpt/qwen/qwen3.6-35b-a3b-uncensored:thinking": {
+   "context_window": 65536,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.075
+   }
+  },
   "nano-gpt/qwen/qwen3.6-35b-a3b:thinking": {
    "context_window": 262144,
    "supports_tools": true,
@@ -73579,8 +73741,25 @@
     "cache_read": 0.056
    }
   },
-  "nano-gpt/qwen/qwen3.8-27b-uncensored": {
-   "context_window": 131072,
+  "nano-gpt/qwen/qwen3.8-27b-obliterated": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.18,
+    "output": 0.5,
+    "cache_read": 0.075
+   }
+  },
+  "nano-gpt/qwen/qwen3.8-27b-obliterated:thinking": {
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -75030,6 +75209,23 @@
    "x_cost": {
     "input": 0.3,
     "output": 1.5,
+    "cache_read": 0.15
+   }
+  },
+  "nano-gpt/tee/qwen3.8-27b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 3,
     "cache_read": 0.15
    }
   },
@@ -93256,7 +93452,7 @@
    }
   },
   "openrouter/thinkingmachines/inkling-small:free": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -93272,7 +93468,7 @@
    }
   },
   "openrouter/thinkingmachines/inkling:free": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -93889,9 +94085,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04,
-    "output": 0.08,
-    "cache_read": 0.008
+    "input": 0.035,
+    "output": 0.12,
+    "cache_read": 0.01
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -115009,21 +115205,6 @@
     "output": 0.8999999999999999
    }
   },
-  "vercel/arcee-ai/trinity-mini": {
-   "context_window": 131072,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.045,
-    "output": 0.15
-   }
-  },
   "vercel/bfl/flux-2-flex": {
    "context_window": 0,
    "supports_tools": false,
@@ -115530,9 +115711,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.132
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.066
    }
   },
   "vercel/fish-audio/s1": {
@@ -116606,36 +116787,6 @@
     "output": 0.3
    }
   },
-  "vercel/mistral/magistral-medium": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2,
-    "output": 5
-   }
-  },
-  "vercel/mistral/magistral-small": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.5,
-    "output": 1.5
-   }
-  },
   "vercel/mistral/ministral-14b": {
    "context_window": 256000,
    "supports_tools": false,
@@ -117256,21 +117407,6 @@
     "input": 0.25,
     "output": 1,
     "cache_read": 0.125
-   }
-  },
-  "vercel/openai/gpt-4o-mini-search-preview": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.6
    }
   },
   "vercel/openai/gpt-4o-mini-transcribe": {
@@ -118083,23 +118219,6 @@
     "input": 2,
     "output": 8,
     "cache_read": 0.5
-   }
-  },
-  "vercel/openai/o3-deep-research": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 10,
-    "output": 40,
-    "cache_read": 2.5
    }
   },
   "vercel/openai/o3-fast": {
