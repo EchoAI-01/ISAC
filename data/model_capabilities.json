@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-26T06:32:33+00:00",
+ "generated_at": "2026-08-26T12:33:05+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7299,
+ "model_count": 7302,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -41475,9 +41475,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57,
+    "input": 0.56,
     "output": 3.39,
-    "cache_read": 0.2,
+    "cache_read": 0.17,
     "cache_write": 0
    }
   },
@@ -45031,9 +45031,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "kilo/deepseek/deepseek-v4-pro": {
@@ -68194,9 +68194,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -69086,6 +69086,40 @@
     "input": 0.06,
     "output": 0.3,
     "cache_read": 0.03
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-meromero": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-meromero:thinking": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
    }
   },
   "nano-gpt/gemma-4-31b-claude-4.6-opus-reasoning-distilled": {
@@ -73449,6 +73483,24 @@
     "input": 0.112,
     "output": 0.8,
     "cache_read": 0.056
+   }
+  },
+  "nano-gpt/qwen/qwen3.8-2.4t-a95b": {
+   "context_window": 991000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25,
+    "cache_write": 2.5
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-obliterated": {
@@ -88551,9 +88603,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.088606,
-    "output": 0.177212,
-    "cache_read": 0.017721
+    "input": 0.0826,
+    "output": 0.1652,
+    "cache_read": 0.01652
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -88584,9 +88636,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "openrouter/deepseek/deepseek-v4-pro": {
