@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-26T12:33:05+00:00",
+ "generated_at": "2026-08-26T19:39:33+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7302,
+ "model_count": 7338,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -9739,16 +9739,16 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 1.32,
-    "cache_read": 0.022,
-    "cache_write": 0.275,
+    "input": 0.2,
+    "output": 1.2,
+    "cache_read": 0.02,
+    "cache_write": 0.25,
     "tiers": [
      {
-      "input": 0.44,
-      "output": 1.98,
-      "cache_read": 0.044,
-      "cache_write": 0.55,
+      "input": 0.4,
+      "output": 1.8,
+      "cache_read": 0.04,
+      "cache_write": 0.5,
       "tier": {
        "type": "context",
        "size": 272000
@@ -9756,10 +9756,10 @@
      }
     ],
     "context_over_200k": {
-     "input": 0.44,
-     "output": 1.98,
-     "cache_read": 0.044,
-     "cache_write": 0.55
+     "input": 0.4,
+     "output": 1.8,
+     "cache_read": 0.04,
+     "cache_write": 0.5
     }
    }
   },
@@ -9775,16 +9775,16 @@
     "text"
    ],
    "x_cost": {
-    "input": 5.5,
-    "output": 33,
-    "cache_read": 0.55,
-    "cache_write": 6.875,
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.4,
+    "cache_write": 5,
     "tiers": [
      {
-      "input": 11,
-      "output": 49.5,
-      "cache_read": 1.1,
-      "cache_write": 13.75,
+      "input": 8,
+      "output": 30,
+      "cache_read": 0.8,
+      "cache_write": 10,
       "tier": {
        "type": "context",
        "size": 272000
@@ -9792,10 +9792,10 @@
      }
     ],
     "context_over_200k": {
-     "input": 11,
-     "output": 49.5,
-     "cache_read": 1.1,
-     "cache_write": 13.75
+     "input": 8,
+     "output": 30,
+     "cache_read": 0.8,
+     "cache_write": 10
     }
    }
   },
@@ -9811,16 +9811,16 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.2,
-    "output": 13.2,
-    "cache_read": 0.22,
-    "cache_write": 2.75,
+    "input": 2,
+    "output": 12,
+    "cache_read": 0.2,
+    "cache_write": 2.5,
     "tiers": [
      {
-      "input": 4.4,
-      "output": 19.8,
-      "cache_read": 0.44,
-      "cache_write": 5.5,
+      "input": 4,
+      "output": 18,
+      "cache_read": 0.4,
+      "cache_write": 5,
       "tier": {
        "type": "context",
        "size": 272000
@@ -9828,10 +9828,10 @@
      }
     ],
     "context_over_200k": {
-     "input": 4.4,
-     "output": 19.8,
-     "cache_read": 0.44,
-     "cache_write": 5.5
+     "input": 4,
+     "output": 18,
+     "cache_read": 0.4,
+     "cache_write": 5
     }
    }
   },
@@ -10437,16 +10437,16 @@
     "text"
    ],
    "x_cost": {
-    "input": 5.5,
-    "output": 33,
-    "cache_read": 0.55,
-    "cache_write": 6.875,
+    "input": 4.4,
+    "output": 22,
+    "cache_read": 0.44,
+    "cache_write": 5.5,
     "tiers": [
      {
-      "input": 11,
-      "output": 49.5,
-      "cache_read": 1.1,
-      "cache_write": 13.75,
+      "input": 8.8,
+      "output": 33,
+      "cache_read": 0.88,
+      "cache_write": 11,
       "tier": {
        "type": "context",
        "size": 272000
@@ -10454,10 +10454,10 @@
      }
     ],
     "context_over_200k": {
-     "input": 11,
-     "output": 49.5,
-     "cache_read": 1.1,
-     "cache_write": 13.75
+     "input": 8.8,
+     "output": 33,
+     "cache_read": 0.88,
+     "cache_write": 11
     }
    }
   },
@@ -16299,7 +16299,7 @@
    }
   },
   "cline-pass/cline-pass/minimax-m3": {
-   "context_window": 512000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -19086,8 +19086,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.671,
-    "output": 5.57
+    "input": 1.393,
+    "output": 7.13,
+    "cache_read": 0.139
    }
   },
   "cortecs/mistral-nemo-instruct-2407": {
@@ -23229,6 +23230,23 @@
     "cache_read": 0.14
    }
   },
+  "deepinfra/zai-org/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
+   }
+  },
   "deepseek/deepseek-v4-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -26233,7 +26251,7 @@
    }
   },
   "edenai/flexai/deepseek-v4-flash-0731": {
-   "context_window": 1000000,
+   "context_window": 786432,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -26743,8 +26761,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.75803,
-    "output": 0.75803
+    "input": 0.758485,
+    "output": 0.758485
    }
   },
   "edenai/ionos/openai/gpt-oss-120b": {
@@ -26758,8 +26776,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.17493,
-    "output": 0.75803
+    "input": 0.175035,
+    "output": 0.758485
    }
   },
   "edenai/minimax/minimax-m2": {
@@ -28368,8 +28386,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.46648,
-    "output": 0.93296
+    "input": 0.46676,
+    "output": 0.933521
    }
   },
   "edenai/scaleway/gpt-oss-120b": {
@@ -28383,8 +28401,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.17493,
-    "output": 0.69972
+    "input": 0.175035,
+    "output": 0.70014
    }
   },
   "edenai/scaleway/llama-3.3-70b-instruct": {
@@ -28398,8 +28416,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.04958,
-    "output": 1.04958
+    "input": 1.050211,
+    "output": 1.050211
    }
   },
   "edenai/tensorx/deepseek/deepseek-v4-flash-0731": {
@@ -29352,6 +29370,23 @@
     "cache_read": 0.26
    }
   },
+  "edenai/zai/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
+   }
+  },
   "edenai/zai/glm-5v-turbo": {
    "context_window": 202752,
    "supports_tools": true,
@@ -29635,6 +29670,23 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 1.4
+   }
+  },
+  "empiriolabs/glm-5-3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.075
    }
   },
   "empiriolabs/kimi-k2-6": {
@@ -30310,6 +30362,23 @@
     "input": 0.17,
     "output": 0.5,
     "cache_read": 0.08
+   }
+  },
+  "empiriolabs/qwen3-8-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.16,
+    "output": 0.47,
+    "cache_read": 0.16
    }
   },
   "empiriolabs/qwen3-8-max": {
@@ -39313,6 +39382,21 @@
     "output": 4.4
    }
   },
+  "huggingface/zai-org/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5
+   }
+  },
   "hyper/deepseek-v4-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -39404,9 +39488,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.91,
-    "output": 2.814,
-    "cache_write": 0.455
+    "input": 0.92,
+    "output": 2.976,
+    "cache_write": 0.46
    }
   },
   "hyper/glm-5.1": {
@@ -39420,9 +39504,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.36,
-    "output": 4.4,
-    "cache_write": 0.68
+    "input": 1.29,
+    "output": 4.22,
+    "cache_write": 0.645
    }
   },
   "hyper/glm-5.2": {
@@ -39453,9 +39537,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.188,
-    "output": 0.7,
-    "cache_write": 0.094
+    "input": 0.178,
+    "output": 0.68,
+    "cache_write": 0.089
    }
   },
   "hyper/kimi-k2.5": {
@@ -39469,9 +39553,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5444,
-    "output": 2.855,
-    "cache_write": 0.2722
+    "input": 0.544,
+    "output": 2.76,
+    "cache_write": 0.272
    }
   },
   "hyper/kimi-k2.6": {
@@ -39536,9 +39620,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.598,
-    "output": 0.738,
-    "cache_write": 0.299
+    "input": 0.638,
+    "output": 0.768,
+    "cache_write": 0.319
    }
   },
   "hyper/llama-4-maverick-17b-128e-instruct-fp8": {
@@ -39568,9 +39652,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.41,
-    "output": 1.52,
-    "cache_write": 0.205
+    "input": 0.424,
+    "output": 1.612,
+    "cache_write": 0.212
    }
   },
   "hyper/minimax-m3": {
@@ -39723,6 +39807,56 @@
     "input": 1.2,
     "output": 4.8,
     "cache_read": 0.24
+   }
+  },
+  "hyper/qwen3.8-2.4t-a95b": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25
+   }
+  },
+  "hyper/qwen3.8-27b": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 3,
+    "cache_read": 0.1
+   }
+  },
+  "hyper/qwen3.8-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.16,
+    "output": 0.47,
+    "cache_read": 0.016
    }
   },
   "hyper/qwen3.8-max": {
@@ -44027,7 +44161,7 @@
    }
   },
   "kenari/minimax-m3": {
-   "context_window": 512000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -49180,22 +49314,6 @@
     "cache_write": 3
    }
   },
-  "kilo/stealth/ox-alpha": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
   "kilo/stealth/qwen3.6-plus": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -49336,9 +49454,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -49923,6 +50041,23 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 0.26
+   }
+  },
+  "kilo/z-ai/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "kilo/z-ai/glm-5v-turbo": {
@@ -53123,9 +53258,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.175,
-    "cache_read": 0.0155
+    "input": 0.051,
+    "output": 0.104,
+    "cache_read": 0.0097
    }
   },
   "llmgateway-providers/gonka24/kimi-k2.6": {
@@ -57025,6 +57160,22 @@
     "cache_read": 0.26
    }
   },
+  "llmgateway-providers/zai/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
+   }
+  },
   "llmgateway/auto": {
    "context_window": 128000,
    "supports_tools": true,
@@ -57350,9 +57501,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.076,
-    "output": 0.153,
-    "cache_read": 0.014
+    "input": 0.051,
+    "output": 0.104,
+    "cache_read": 0.0097
    }
   },
   "llmgateway/deepseek-v4-pro": {
@@ -57973,6 +58124,23 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 0.26
+   }
+  },
+  "llmgateway/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
    }
   },
   "llmgateway/gpt-3.5-turbo": {
@@ -63613,10 +63781,11 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-122b-a10b": {
-   "context_window": 131072,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -63629,11 +63798,10 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-27b": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -63646,11 +63814,10 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-35b-a3b": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -63663,11 +63830,10 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-397b-a17b": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -64285,6 +64451,23 @@
     "cache_read": 0.13
    }
   },
+  "merge-gateway/zai/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
+   }
+  },
   "meta/muse-spark-1.1": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -64337,7 +64520,7 @@
    }
   },
   "minimax-cn-coding-plan/minimax-m2": {
-   "context_window": 196608,
+   "context_window": 204800,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -64437,7 +64620,7 @@
    }
   },
   "minimax-cn-coding-plan/minimax-m3": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -64455,7 +64638,7 @@
    }
   },
   "minimax-cn/minimax-m2": {
-   "context_window": 196608,
+   "context_window": 204800,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -64555,7 +64738,7 @@
    }
   },
   "minimax-cn/minimax-m3": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -64588,7 +64771,7 @@
    }
   },
   "minimax-coding-plan/minimax-m2": {
-   "context_window": 196608,
+   "context_window": 204800,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -64688,7 +64871,7 @@
    }
   },
   "minimax-coding-plan/minimax-m3": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -64706,7 +64889,7 @@
    }
   },
   "minimax/minimax-m2": {
-   "context_window": 196608,
+   "context_window": 204800,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -64806,7 +64989,7 @@
    }
   },
   "minimax/minimax-m3": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -65334,6 +65517,22 @@
    "x_cost": {
     "input": 0.1,
     "output": 0.3
+   }
+  },
+  "mistral/zai-glm-5-2": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.14
    }
   },
   "mixlayer/qwen/qwen3.5-122b-a10b": {
@@ -66405,6 +66604,24 @@
     "output": 1.16,
     "cache_read": 0.02,
     "cache_write": 0.24
+   }
+  },
+  "nano-gpt/alibaba/qwen3.8-flash": {
+   "context_window": 991808,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.16,
+    "output": 0.47,
+    "cache_read": 0.016,
+    "cache_write": 0.2
    }
   },
   "nano-gpt/amazon/nova-2-lite-v1": {
@@ -67645,20 +67862,19 @@
    }
   },
   "nano-gpt/claw-high": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 2.5
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "nano-gpt/claw-low": {
@@ -67666,21 +67882,20 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 1.5,
-    "cache_read": 0.025,
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26,
     "cache_write": 0.08333
    }
   },
   "nano-gpt/claw-medium": {
-   "context_window": 204800,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -67690,9 +67905,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.315,
-    "output": 1.26,
-    "cache_read": 0.1575
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "nano-gpt/cohere/command-r-plus-08-2024": {
@@ -69888,20 +70103,19 @@
    }
   },
   "nano-gpt/hermes-high": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 2.5
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "nano-gpt/hermes-low": {
@@ -69909,21 +70123,20 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 1.5,
-    "cache_read": 0.025,
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26,
     "cache_write": 0.08333
    }
   },
   "nano-gpt/hermes-medium": {
-   "context_window": 204800,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -69933,9 +70146,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.315,
-    "output": 1.26,
-    "cache_read": 0.1575
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "nano-gpt/holo3-35b-a3b": {
@@ -74419,23 +74632,6 @@
     "cache_read": 0.15
    }
   },
-  "nano-gpt/stealth/ox-alpha": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.05,
-    "output": 0.05,
-    "cache_read": 0.025
-   }
-  },
   "nano-gpt/steelskull/l3.3-cu-mai-r1-70b": {
    "context_window": 16384,
    "supports_tools": false,
@@ -75863,6 +76059,23 @@
     "input": 1.2,
     "output": 4,
     "cache_read": 0.24
+   }
+  },
+  "nano-gpt/z-ai/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "nano-gpt/z-ai/glm-5v-turbo": {
@@ -83052,7 +83265,7 @@
    }
   },
   "ofox/minimax/m2-her": {
-   "context_window": 200000,
+   "context_window": 65536,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -83067,7 +83280,7 @@
    }
   },
   "ofox/minimax/minimax-m2": {
-   "context_window": 196608,
+   "context_window": 204800,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -83186,7 +83399,7 @@
    }
   },
   "ofox/minimax/minimax-m3": {
-   "context_window": 512000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -83667,6 +83880,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -83700,6 +83914,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -85324,6 +85539,23 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 0.26
+   }
+  },
+  "opencode-go/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "opencode-go/gpt-5.6-luna": {
@@ -88603,9 +88835,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0826,
-    "output": 0.1652,
-    "cache_read": 0.01652
+    "input": 0.07952,
+    "output": 0.15904,
+    "cache_read": 0.015904
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90243,9 +90475,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 3,
-    "cache_read": 0.1
+    "input": 0.45,
+    "output": 2.25,
+    "cache_read": 0.07
    }
   },
   "openrouter/moonshotai/kimi-k2.6": {
@@ -92689,9 +92921,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 3.6,
-    "cache_read": 0.12
+    "input": 0.32,
+    "output": 3.2
    }
   },
   "openrouter/qwen/qwen3.6-35b-a3b": {
@@ -93105,22 +93336,6 @@
     "output": 0.75
    }
   },
-  "openrouter/stealth/ox-alpha": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
   "openrouter/stepfun/step-3.5-flash": {
    "context_window": 262144,
    "supports_tools": true,
@@ -93224,9 +93439,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -93873,6 +94088,23 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 0.26
+   }
+  },
+  "openrouter/z-ai/glm-5.3-flash": {
+   "context_window": 1310720,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "openrouter/z-ai/glm-5v-turbo": {
@@ -107474,7 +107706,7 @@
    }
   },
   "scnet-token-plan/minimax-m3": {
-   "context_window": 512000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -112565,10 +112797,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3,
-    "cache_write": 3.75
+    "input": 2,
+    "output": 10.000000000000002,
+    "cache_read": 0.2,
+    "cache_write": 2.5000000000000004
    }
   },
   "venice/deepseek-v3.2": {
@@ -112750,9 +112982,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.875,
-    "output": 9.375,
-    "cache_read": 0.1875
+    "input": 0.9375,
+    "output": 4.6875,
+    "cache_read": 0.09375
    }
   },
   "venice/gemini-3-7-flash": {
@@ -112767,9 +112999,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.875,
-    "output": 9.375,
-    "cache_read": 0.1875
+    "input": 0.9375,
+    "output": 4.6875,
+    "cache_read": 0.09375
    }
   },
   "venice/gemini-3-flash-preview": {
@@ -114032,23 +114264,6 @@
     "cache_read": 0.125
    }
   },
-  "venice/stealth-ox-alpha": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0
-   }
-  },
   "venice/venice-uncensored-1-2": {
    "context_window": 128000,
    "supports_tools": true,
@@ -114112,6 +114327,23 @@
     "input": 1.75,
     "output": 5.5,
     "cache_read": 0.325
+   }
+  },
+  "venice/z-ai-glm-5-3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.09375,
+    "output": 0.3125,
+    "cache_read": 0.01875
    }
   },
   "venice/z-ai-glm-5-turbo": {
@@ -114713,6 +114945,24 @@
     "input": 0.55,
     "output": 3.3,
     "cache_read": 0.11
+   }
+  },
+  "vercel/alibaba/qwen3.8-flash": {
+   "context_window": 991000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.16,
+    "output": 0.47,
+    "cache_read": 0.016,
+    "cache_write": 0.2
    }
   },
   "vercel/alibaba/qwen3.8-max": {
@@ -116048,6 +116298,32 @@
     "output": 2.5,
     "cache_read": 0.03
    }
+  },
+  "vercel/google/gemini-3.5-transcribe": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 12
+   }
+  },
+  "vercel/google/gemini-3.5-transcribe-live": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
   },
   "vercel/google/gemini-3.6-flash": {
    "context_window": 1000000,
@@ -119448,6 +119724,23 @@
     "cache_read": 0.26
    }
   },
+  "vercel/zai/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
+   }
+  },
   "vercel/zai/glm-5v-turbo": {
    "context_window": 200000,
    "supports_tools": true,
@@ -119847,6 +120140,428 @@
     "input": 3,
     "output": 15,
     "cache_read": 0.3
+   }
+  },
+  "volcengine/deepseek-v4-flash-ga-260731": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4453,
+    "output": 1.3359,
+    "cache_read": 0.01484
+   }
+  },
+  "volcengine/deepseek-v4-pro-ga-260813": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.3359,
+    "output": 4.00771,
+    "cache_read": 0.04453
+   }
+  },
+  "volcengine/doubao-seed-1-6-251015": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11875,
+    "output": 1.18747,
+    "cache_read": 0.02375,
+    "tiers": [
+     {
+      "input": 0.17812,
+      "output": 2.37494,
+      "cache_read": 0.02375,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     },
+     {
+      "input": 0.35624,
+      "output": 3.56241,
+      "cache_read": 0.02375,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-1-6-flash-250828": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.02227,
+    "output": 0.22265,
+    "cache_read": 0.00445,
+    "tiers": [
+     {
+      "input": 0.04453,
+      "output": 0.4453,
+      "cache_read": 0.00445,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     },
+     {
+      "input": 0.08906,
+      "output": 0.8906,
+      "cache_read": 0.00445,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-1-6-vision-250815": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11875,
+    "output": 1.18747,
+    "cache_read": 0.02375,
+    "tiers": [
+     {
+      "input": 0.17812,
+      "output": 2.37494,
+      "cache_read": 0.02375,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     },
+     {
+      "input": 0.35624,
+      "output": 3.56241,
+      "cache_read": 0.02375,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-1-8-251228": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11875,
+    "output": 1.18747,
+    "cache_read": 0.02375,
+    "tiers": [
+     {
+      "input": 0.17812,
+      "output": 2.37494,
+      "cache_read": 0.02375,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     },
+     {
+      "input": 0.35624,
+      "output": 3.56241,
+      "cache_read": 0.02375,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-2-0-code-preview-260215": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.47499,
+    "output": 2.37494,
+    "cache_read": 0.095,
+    "tiers": [
+     {
+      "input": 0.71248,
+      "output": 3.56241,
+      "cache_read": 0.1425,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     },
+     {
+      "input": 1.42496,
+      "output": 7.12482,
+      "cache_read": 0.28499,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-2-0-lite-260428": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08906,
+    "output": 0.53436,
+    "cache_read": 0.01781,
+    "tiers": [
+     {
+      "input": 0.13359,
+      "output": 0.80154,
+      "cache_read": 0.02672,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     },
+     {
+      "input": 0.26718,
+      "output": 1.60308,
+      "cache_read": 0.05344,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-2-0-mini-260428": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.02969,
+    "output": 0.29687,
+    "cache_read": 0.00594,
+    "tiers": [
+     {
+      "input": 0.05937,
+      "output": 0.59374,
+      "cache_read": 0.01187,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     },
+     {
+      "input": 0.11875,
+      "output": 1.18747,
+      "cache_read": 0.02375,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-2-0-pro-260215": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.47499,
+    "output": 2.37494,
+    "cache_read": 0.095,
+    "tiers": [
+     {
+      "input": 0.71248,
+      "output": 3.56241,
+      "cache_read": 0.1425,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     },
+     {
+      "input": 1.42496,
+      "output": 7.12482,
+      "cache_read": 0.28499,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-2-1-pro-260628": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.8906,
+    "output": 4.45301,
+    "cache_read": 0.17812
+   }
+  },
+  "volcengine/doubao-seed-2-1-turbo-260628": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4453,
+    "output": 2.22651,
+    "cache_read": 0.08906
+   }
+  },
+  "volcengine/doubao-seed-character-260628": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11875,
+    "output": 0.29687,
+    "cache_read": 0.02375,
+    "tiers": [
+     {
+      "input": 0.17812,
+      "output": 0.8906,
+      "cache_read": 0.02375,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
+   }
+  },
+  "volcengine/doubao-seed-evolving": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.8906,
+    "output": 4.45301,
+    "cache_read": 0.17812
+   }
+  },
+  "volcengine/glm-5-2-260617": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.18747,
+    "output": 4.15615,
+    "cache_read": 0.29687
    }
   },
   "vultr/deepseek-ai/deepseek-v4-flash": {
@@ -120284,22 +120999,6 @@
     "cache_read": 0.71
    }
   },
-  "wandb/minimaxai/minimax-m2.5": {
-   "context_window": 196608,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.3
-   }
-  },
   "wandb/minimaxai/minimax-m3": {
    "context_window": 262144,
    "supports_tools": true,
@@ -120366,22 +121065,6 @@
     "input": 3,
     "output": 15,
     "cache_read": 0.3
-   }
-  },
-  "wandb/nvidia/nvidia-nemotron-3-super-120b-a12b-fp8": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.8,
-    "cache_read": 0.2
    }
   },
   "wandb/nvidia/nvidia-nemotron-3-ultra-550b-a55b": {
@@ -120480,22 +121163,6 @@
     "cache_read": 0.1
    }
   },
-  "wandb/qwen/qwen3-coder-480b-a35b-instruct": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 1.5,
-    "cache_read": 1
-   }
-  },
   "wandb/qwen/qwen3.5-35b-a3b": {
    "context_window": 262144,
    "supports_tools": true,
@@ -120564,24 +121231,8 @@
     "cache_read": 0.15
    }
   },
-  "wandb/zai-org/glm-5.1": {
-   "context_window": 202752,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.4,
-    "output": 4.4,
-    "cache_read": 0.26
-   }
-  },
   "wandb/zai-org/glm-5.2": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -121707,6 +122358,41 @@
     "cache_write": 0
    }
   },
+  "zai-coding-plan/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  "zai-coding-plan/glm-5.3-highspeed": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
   "zai/glm-4.5": {
    "context_window": 131072,
    "supports_tools": true,
@@ -121940,6 +122626,24 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 0.26,
+    "cache_write": 0
+   }
+  },
+  "zai/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015,
     "cache_write": 0
    }
   },
@@ -122663,7 +123367,7 @@
    }
   },
   "zenmux/minimax/minimax-m3": {
-   "context_window": 512000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -124323,6 +125027,41 @@
     "cache_write": 0
    }
   },
+  "zhipuai-coding-plan/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  "zhipuai-coding-plan/glm-5.3-highspeed": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
   "zhipuai-coding-plan/glm-5v-turbo": {
    "context_window": 200000,
    "supports_tools": true,
@@ -124540,6 +125279,41 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 0.26,
+    "cache_write": 0
+   }
+  },
+  "zhipuai/glm-5.3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26,
+    "cache_write": 0
+   }
+  },
+  "zhipuai/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015,
     "cache_write": 0
    }
   },
