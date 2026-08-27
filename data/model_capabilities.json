@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-27T05:54:03+00:00",
+ "generated_at": "2026-08-27T17:08:16+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7348,
+ "model_count": 7352,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -25839,7 +25839,41 @@
     "cache_write": 0.15001
    }
   },
+  "edenai/databricks/databricks-gpt-oss-120b@eu": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15001,
+    "output": 0.59997,
+    "cache_read": 0.15001,
+    "cache_write": 0.15001
+   }
+  },
   "edenai/databricks/databricks-gpt-oss-20b": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.07,
+    "output": 0.30002,
+    "cache_read": 0.07,
+    "cache_write": 0.07
+   }
+  },
+  "edenai/databricks/databricks-gpt-oss-20b@eu": {
    "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
@@ -39624,9 +39658,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.92,
-    "output": 2.976,
-    "cache_write": 0.46
+    "input": 0.9,
+    "output": 2.804,
+    "cache_write": 0.45
    }
   },
   "hyper/glm-5.1": {
@@ -39689,9 +39723,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.544,
-    "output": 2.76,
-    "cache_write": 0.272
+    "input": 0.5444,
+    "output": 2.855,
+    "cache_write": 0.2722
    }
   },
   "hyper/kimi-k2.6": {
@@ -39756,9 +39790,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.638,
-    "output": 0.768,
-    "cache_write": 0.319
+    "input": 0.6066,
+    "output": 1.0386,
+    "cache_write": 0.3033
    }
   },
   "hyper/llama-4-maverick-17b-128e-instruct-fp8": {
@@ -39788,9 +39822,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.424,
-    "output": 1.612,
-    "cache_write": 0.212
+    "input": 0.408,
+    "output": 1.512,
+    "cache_write": 0.204
    }
   },
   "hyper/minimax-m3": {
@@ -39990,7 +40024,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.16,
+    "input": 0.15,
     "output": 0.47,
     "cache_read": 0.016
    }
@@ -41745,9 +41779,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.54,
+    "input": 0.56,
     "output": 3.39,
-    "cache_read": 0.13,
+    "cache_read": 0.17,
     "cache_write": 0
    }
   },
@@ -41763,9 +41797,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.67,
+    "input": 0.66,
     "output": 3.4,
-    "cache_read": 0.19,
+    "cache_read": 0.18,
     "cache_write": 0
    }
   },
@@ -45301,9 +45335,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "kilo/deepseek/deepseek-v4-pro": {
@@ -46477,7 +46511,9 @@
    ],
    "x_cost": {
     "input": 0,
-    "output": 0
+    "output": 0,
+    "reasoning": 0,
+    "cache_read": 0
    }
   },
   "kilo/minimax/minimax-m3": {
@@ -46510,7 +46546,9 @@
    ],
    "x_cost": {
     "input": 0,
-    "output": 0
+    "output": 0,
+    "reasoning": 0,
+    "cache_read": 0
    }
   },
   "kilo/mistralai/codestral-2508": {
@@ -49073,8 +49111,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 1,
+    "input": 0.1,
+    "output": 0.9,
     "cache_read": 0.05
    }
   },
@@ -49228,7 +49266,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.16,
+    "input": 0.15,
     "output": 0.47,
     "cache_read": 0.016,
     "cache_write": 0.2
@@ -53180,6 +53218,23 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.0028
+   }
+  },
+  "llmgateway-providers/deepseek/deepseek-v4-flash-vision-exp": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -57674,6 +57729,23 @@
     "input": 0.051,
     "output": 0.104,
     "cache_read": 0.0097
+   }
+  },
+  "llmgateway/deepseek-v4-flash-vision-exp": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.0028
    }
   },
   "llmgateway/deepseek-v4-pro": {
@@ -63984,11 +64056,10 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-35b-a3b": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -64001,11 +64072,10 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-397b-a17b": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -75002,7 +75072,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -89089,9 +89158,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "openrouter/deepseek/deepseek-v4-pro": {
@@ -90696,9 +90765,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.45,
-    "output": 2.25,
-    "cache_read": 0.07
+    "input": 0.6,
+    "output": 3,
+    "cache_read": 0.1
    }
   },
   "openrouter/moonshotai/kimi-k2.6": {
@@ -90730,9 +90799,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.67,
+    "input": 0.66,
     "output": 3.4,
-    "cache_read": 0.19
+    "cache_read": 0.18
    }
   },
   "openrouter/moonshotai/kimi-k3": {
@@ -93015,9 +93084,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.225,
-    "output": 1.8,
-    "cache_read": 0.225
+    "input": 0.25,
+    "output": 1.25,
+    "cache_read": 0.25
    }
   },
   "openrouter/qwen/qwen3.5-397b-a17b": {
@@ -93160,8 +93229,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 1,
+    "input": 0.1,
+    "output": 0.9,
     "cache_read": 0.05
    }
   },
@@ -93397,7 +93466,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.16,
+    "input": 0.15,
     "output": 0.47,
     "cache_read": 0.016,
     "cache_write": 0.2
@@ -114599,9 +114668,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.09375,
-    "output": 0.3125,
-    "cache_read": 0.01875
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
    }
   },
   "venice/z-ai-glm-5-turbo": {
