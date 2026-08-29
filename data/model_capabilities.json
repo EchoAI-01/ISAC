@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-29T01:20:35+00:00",
+ "generated_at": "2026-08-29T11:59:38+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7482,
+ "model_count": 7483,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -23600,9 +23600,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.4,
-    "output": 4.4,
-    "cache_read": 0.26
+    "input": 1.2,
+    "output": 4,
+    "cache_read": 0.24
    }
   },
   "deepinfra/zai-org/glm-5.3-flash": {
@@ -26701,8 +26701,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.03,
-    "output": 0.13
+    "input": 0.02,
+    "output": 0.1
    }
   },
   "edenai/flexai/muse-glimmer-30b": {
@@ -27500,7 +27500,7 @@
    }
   },
   "edenai/nebius/deepseek-ai/deepseek-v4-flash-0731": {
-   "context_window": 1048576,
+   "context_window": 1024000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -28805,7 +28805,7 @@
   },
   "edenai/scaleway/deepseek-v4-flash-0731": {
    "context_window": 256000,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "text"
@@ -28820,7 +28820,7 @@
   },
   "edenai/scaleway/gpt-oss-120b": {
    "context_window": 128000,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "text"
@@ -28835,7 +28835,7 @@
   },
   "edenai/scaleway/llama-3.3-70b-instruct": {
    "context_window": 128000,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "text"
@@ -28862,6 +28862,22 @@
     "input": 0.25,
     "output": 0.3,
     "cache_read": 0.0625
+   }
+  },
+  "edenai/tensorx/deepseek/deepseek-v4-pro-0813": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 4,
+    "cache_read": 0.5
    }
   },
   "edenai/tensorx/moonshotai/kimi-k2.5": {
@@ -46372,9 +46388,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
+    "input": 0.07,
     "output": 0.35,
-    "cache_read": 0.01
+    "cache_read": 0.1
    }
   },
   "kilo/google/lyria-3-clip-preview": {
@@ -50989,7 +51005,7 @@
    }
   },
   "kilo/~z-ai/glm-latest": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50999,9 +51015,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.25,
-    "output": 4.4,
-    "cache_read": 0.26
+    "input": 1.2,
+    "output": 4,
+    "cache_read": 0.24
    }
   },
   "kimi-for-coding/k3": {
@@ -71123,6 +71139,23 @@
     "cache_read": 0.04
    }
   },
+  "nano-gpt/google/gemma-4-31b-it-gemsicle": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
   "nano-gpt/google/gemma-4-31b-it-isometry": {
    "context_window": 262144,
    "supports_tools": true,
@@ -77018,22 +77051,6 @@
     "input": 3.196,
     "output": 3.196,
     "cache_read": 1.598
-   }
-  },
-  "nano-gpt/yi-lightning": {
-   "context_window": 12000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2006,
-    "output": 0.2006,
-    "cache_read": 0.1003
    }
   },
   "nano-gpt/yi-medium-200k": {
@@ -89969,9 +89986,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.26,
-    "output": 0.38,
-    "cache_read": 0.13
+    "input": 0.269,
+    "output": 0.4,
+    "cache_read": 0.1345
    }
   },
   "openrouter/deepseek/deepseek-v3.2-exp": {
@@ -90000,9 +90017,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08624,
-    "output": 0.17248,
-    "cache_read": 0.017248
+    "input": 0.08372,
+    "output": 0.16744,
+    "cache_read": 0.016744
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90049,9 +90066,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.721404,
-    "output": 1.442808,
-    "cache_read": 0.060117
+    "input": 0.630054,
+    "output": 1.260108,
+    "cache_read": 0.052505
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -95566,9 +95583,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.25,
-    "output": 4.4,
-    "cache_read": 0.26
+    "input": 1.2,
+    "output": 4,
+    "cache_read": 0.24
    }
   },
   "opper/anthropic/claude-fable-5": {
