@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-30T15:45:12+00:00",
+ "generated_at": "2026-08-30T20:19:00+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7488,
+ "model_count": 7494,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -3439,6 +3439,23 @@
     "input": 2.31,
     "output": 7.26,
     "cache_read": 0.231
+   }
+  },
+  "above/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.165,
+    "output": 0.55,
+    "cache_read": 0.0319
    }
   },
   "above/mimo-v2.5-pro": {
@@ -16034,6 +16051,37 @@
    "x_cost": {
     "input": 1.54,
     "output": 4.84
+   }
+  },
+  "berget/zai-org/glm-5.3": {
+   "context_window": 327680,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.75,
+    "output": 5.82
+   }
+  },
+  "berget/zai-org/glm-5.3-flash": {
+   "context_window": 327680,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.29,
+    "output": 0.58
    }
   },
   "blueclaw/qwen/qwen3.6-35b-a3b-fp8": {
@@ -50448,9 +50496,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -67665,7 +67713,7 @@
    }
   },
   "nano-gpt/abacusai/dracarys-72b-instruct": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -70506,9 +70554,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-it-darksoul": {
@@ -70523,9 +70571,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-it-luminous": {
@@ -70540,9 +70588,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-it-moonlight": {
@@ -70557,9 +70605,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-it-musica": {
@@ -70574,9 +70622,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-it-opusdistill": {
@@ -70591,9 +70639,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-it-shadowsiren": {
@@ -70608,9 +70656,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-meromero": {
@@ -70625,9 +70673,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-meromero:thinking": {
@@ -70642,9 +70690,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-uncensored": {
@@ -70659,9 +70707,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-26b-a4b-uncensored:thinking": {
@@ -70676,9 +70724,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/gemma-4-31b-claude-4.6-opus-reasoning-distilled": {
@@ -70761,9 +70809,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-it-fabled": {
@@ -70778,9 +70826,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-it-garnet": {
@@ -70795,9 +70843,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-it-gembrain": {
@@ -70812,9 +70860,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-it-gemsicle": {
@@ -70829,9 +70877,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-it-isometry": {
@@ -70846,9 +70894,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-it-novelist": {
@@ -70863,9 +70911,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-meromero-v2": {
@@ -70880,9 +70928,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-meromero-v2:thinking": {
@@ -70897,9 +70945,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/gemma-4-31b-queen": {
@@ -71363,9 +71411,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.12,
+    "output": 0.38,
+    "cache_read": 0.06
    }
   },
   "nano-gpt/google/gemma-4-26b-a4b-it:thinking": {
@@ -71397,9 +71445,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/google/gemma-4-31b-it:thinking": {
@@ -74142,9 +74190,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.1,
-    "cache_read": 0.025
+    "input": 0.1,
+    "output": 0.2,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/ornith-ai/ornith-1.5-9b:thinking": {
@@ -74159,9 +74207,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.1,
-    "cache_read": 0.025
+    "input": 0.1,
+    "output": 0.2,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/pamanseau/openreasoning-nemotron-32b": {
@@ -74783,7 +74831,7 @@
    ],
    "x_cost": {
     "input": 0.15,
-    "output": 0.5,
+    "output": 0.95,
     "cache_read": 0.075
    }
   },
@@ -74800,7 +74848,7 @@
    ],
    "x_cost": {
     "input": 0.15,
-    "output": 0.5,
+    "output": 0.95,
     "cache_read": 0.075
    }
   },
@@ -74851,9 +74899,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 1.4,
-    "cache_read": 0.04
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.125
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-obliterated": {
@@ -74868,9 +74916,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.18,
-    "output": 0.5,
-    "cache_read": 0.075
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.125
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-obliterated:thinking": {
@@ -74885,9 +74933,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.18,
-    "output": 0.5,
-    "cache_read": 0.075
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.125
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-uncensored": {
@@ -74902,9 +74950,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.18,
-    "output": 0.5,
-    "cache_read": 0.075
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.125
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-uncensored:thinking": {
@@ -74919,9 +74967,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.18,
-    "output": 0.5,
-    "cache_read": 0.075
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.125
    }
   },
   "nano-gpt/qwen25-vl-72b-instruct": {
@@ -77617,9 +77665,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.125,
-    "output": 0.5,
-    "cache_read": 0.0625
+    "input": 0.35,
+    "output": 1.4,
+    "cache_read": 0.175
    }
   },
   "nano-gpt/z-ai/glm-5.3:thinking": {
@@ -80011,6 +80059,22 @@
     "input": 0.9425,
     "output": 2.925,
     "cache_read": 0.09425
+   }
+  },
+  "neuralwatt/glm-5.3": {
+   "context_window": 1048560,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.45,
+    "output": 4.5,
+    "cache_read": 0.145
    }
   },
   "neuralwatt/kimi-k2.7-code": {
@@ -90047,9 +90111,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07896,
-    "output": 0.15792,
-    "cache_read": 0.015792
+    "input": 0.07868,
+    "output": 0.15736,
+    "cache_read": 0.015736
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -94670,9 +94734,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -106311,23 +106375,6 @@
     "cache_read": 0.1375
    }
   },
-  "requesty/gpt-5.3-chat": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.75,
-    "output": 14,
-    "cache_read": 0.175
-   }
-  },
   "requesty/gpt-5.3-codex": {
    "context_window": 400000,
    "supports_tools": true,
@@ -109689,6 +109736,55 @@
     "output": 5.4461,
     "cache_read": 0.17,
     "cache_write": 2.5
+   }
+  },
+  "sensenova/deepseek-v4-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0
+   }
+  },
+  "sensenova/glm-5.2": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0
+   }
+  },
+  "sensenova/sensenova-6.8-flash-lite": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0
    }
   },
   "siliconflow-cn/baidu/ernie-4.5-300b-a47b": {
