@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-30T02:36:25+00:00",
+ "generated_at": "2026-08-30T10:56:22+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7487,
+ "model_count": 7488,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -3357,6 +3357,138 @@
     "cache_read": 0.5
    }
   },
+  "above/deepseek-v4-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.242,
+    "output": 0.726,
+    "reasoning": 0.726,
+    "cache_read": 0.0077
+   }
+  },
+  "above/deepseek-v4-flash-vision-exp": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.242,
+    "output": 0.726,
+    "reasoning": 0.726,
+    "cache_read": 0.0077
+   }
+  },
+  "above/deepseek-v4-pro": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.726,
+    "output": 2.178,
+    "reasoning": 2.178,
+    "cache_read": 0.0242
+   }
+  },
+  "above/glm-5.2": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.54,
+    "output": 4.84,
+    "cache_read": 0.154
+   }
+  },
+  "above/glm-5.2-fast": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.31,
+    "output": 7.26,
+    "cache_read": 0.231
+   }
+  },
+  "above/mimo-v2.5-pro": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5077,
+    "output": 1.0154,
+    "cache_read": 0.0042
+   }
+  },
+  "above/mimo-v2.5-pro-ultraspeed": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.5231,
+    "output": 3.0462,
+    "cache_read": 0.0127
+   }
+  },
+  "above/qwen3.8-max": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.2,
+    "output": 6.6,
+    "cache_read": 0.275
+   }
+  },
   "agentrouter/claude-opus-4-8": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -3655,6 +3787,23 @@
     "output": 3.2
    }
   },
+  "aiand/qwen/qwen3.8-27b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 3,
+    "cache_read": 0.2
+   }
+  },
   "aiand/zai-org/glm-5.2": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -3668,6 +3817,22 @@
    "x_cost": {
     "input": 1,
     "output": 4
+   }
+  },
+  "aiand/zai-org/glm-5.3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 4,
+    "cache_read": 0.3
    }
   },
   "aihubmix/alicloud-deepseek-v4-flash": {
@@ -15893,6 +16058,37 @@
     "text"
    ]
   },
+  "bothub/gemma-4-31b-it:free": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "bothub/nemotron-3-ultra-550b-a55b:free": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
   "cerebras/gemma-4-31b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -26750,7 +26946,7 @@
    ],
    "x_cost": {
     "input": 0.3,
-    "output": 1.2
+    "output": 1.1
    }
   },
   "edenai/flexai/nemotron-3-super-120b-a12b": {
@@ -27298,7 +27494,8 @@
    ],
    "x_cost": {
     "input": 0.3,
-    "output": 0.9
+    "output": 0.9,
+    "cache_read": 0.03
    }
   },
   "edenai/mistral/devstral-2512": {
@@ -27412,7 +27609,8 @@
    ],
    "x_cost": {
     "input": 1.5,
-    "output": 7.5
+    "output": 7.5,
+    "cache_read": 0.15
    }
   },
   "edenai/mistral/mistral-medium-latest": {
@@ -27428,7 +27626,8 @@
    ],
    "x_cost": {
     "input": 1.5,
-    "output": 7.5
+    "output": 7.5,
+    "cache_read": 0.15
    }
   },
   "edenai/mistral/mistral-small-2603": {
@@ -27461,7 +27660,8 @@
    ],
    "x_cost": {
     "input": 0.15,
-    "output": 0.6
+    "output": 0.6,
+    "cache_read": 0.015
    }
   },
   "edenai/mistral/voxtral-small-latest": {
@@ -32156,6 +32356,23 @@
     "cache_read": 0.26
    }
   },
+  "fireworks-ai/accounts/fireworks/models/glm-5p3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.029
+   }
+  },
   "fireworks-ai/accounts/fireworks/models/gpt-oss-120b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -32618,6 +32835,22 @@
   },
   "friendli/zai-org/glm-5.2": {
    "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   }
+  },
+  "friendli/zai-org/glm-5.3": {
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50925,7 +51158,7 @@
    ],
    "x_cost": {
     "input": 0.03,
-    "output": 0.14,
+    "output": 0.16,
     "cache_read": 0.01
    }
   },
@@ -51120,6 +51353,51 @@
     "output": 0,
     "cache_read": 0,
     "cache_write": 0
+   }
+  },
+  "klokintegration/kloker": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.23,
+    "output": 1.16
+   }
+  },
+  "klokintegration/kloker-integration-architect": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.23,
+    "output": 1.16
+   }
+  },
+  "klokintegration/kloker-integration-developer": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.23,
+    "output": 1.16
    }
   },
   "kosmik/qwen/qwen3.8-27b": {
@@ -67404,7 +67682,7 @@
     "cache_read": 0.2465
    }
   },
-  "nano-gpt/abliterated-model": {
+  "nano-gpt/abliteration-ai/abliterated-model": {
    "context_window": 262144,
    "supports_tools": false,
    "supports_vision": null,
@@ -67421,9 +67699,9 @@
     "cache_read": 0.3
    }
   },
-  "nano-gpt/abliterated-model-large": {
+  "nano-gpt/abliteration-ai/abliterated-model-large": {
    "context_window": 1000000,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "text"
@@ -69425,22 +69703,6 @@
     "cache_read": 0.11
    }
   },
-  "nano-gpt/dmind/dmind-1-mini": {
-   "context_window": 32768,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.4,
-    "cache_read": 0.1
-   }
-  },
   "nano-gpt/doctor-shotgun/ms3.2-24b-magnum-diamond": {
    "context_window": 16384,
    "supports_tools": false,
@@ -70234,6 +70496,125 @@
     "cache_read": 0.03
    }
   },
+  "nano-gpt/gemma-4-26b-a4b-it-chimerax": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-it-darksoul": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-it-luminous": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-it-moonlight": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-it-musica": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-it-opusdistill": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-it-shadowsiren": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
   "nano-gpt/gemma-4-26b-a4b-meromero": {
    "context_window": 262144,
    "supports_tools": true,
@@ -70252,6 +70633,40 @@
    }
   },
   "nano-gpt/gemma-4-26b-a4b-meromero:thinking": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-uncensored": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-26b-a4b-uncensored:thinking": {
    "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
@@ -70334,6 +70749,125 @@
     "input": 0.306,
     "output": 0.306,
     "cache_read": 0.153
+   }
+  },
+  "nano-gpt/gemma-4-31b-it-darkidol": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-31b-it-fabled": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-31b-it-garnet": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-31b-it-gembrain": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-31b-it-gemsicle": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-31b-it-isometry": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/gemma-4-31b-it-novelist": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.33,
+    "cache_read": 0.04
    }
   },
   "nano-gpt/gemma-4-31b-meromero-v2": {
@@ -70421,38 +70955,6 @@
     "cache_read": 0.02
    }
   },
-  "nano-gpt/glm-4": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 14.994,
-    "output": 14.994,
-    "cache_read": 7.497
-   }
-  },
-  "nano-gpt/glm-4-air": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2006,
-    "output": 0.2006,
-    "cache_read": 0.1003
-   }
-  },
   "nano-gpt/glm-4-air-0111": {
    "context_window": 128000,
    "supports_tools": false,
@@ -70469,38 +70971,6 @@
     "cache_read": 0.0697
    }
   },
-  "nano-gpt/glm-4-airx": {
-   "context_window": 8000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.006,
-    "output": 2.006,
-    "cache_read": 1.003
-   }
-  },
-  "nano-gpt/glm-4-flash": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1003,
-    "output": 0.1003,
-    "cache_read": 0.05015
-   }
-  },
   "nano-gpt/glm-4-long": {
    "context_window": 1000000,
    "supports_tools": false,
@@ -70515,22 +70985,6 @@
     "input": 0.2006,
     "output": 0.2006,
     "cache_read": 0.1003
-   }
-  },
-  "nano-gpt/glm-4-plus": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 7.497,
-    "output": 7.497,
-    "cache_read": 3.7485
    }
   },
   "nano-gpt/glm-4-plus-0111": {
@@ -70629,22 +71083,6 @@
     "input": 0.7,
     "output": 0.7,
     "cache_read": 0.35
-   }
-  },
-  "nano-gpt/glm-zero-preview": {
-   "context_window": 8000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.802,
-    "output": 1.802,
-    "cache_read": 0.901
    }
   },
   "nano-gpt/google/gemini-3-flash-preview": {
@@ -70932,125 +71370,6 @@
     "cache_read": 0.04
    }
   },
-  "nano-gpt/google/gemma-4-26b-a4b-it-chimerax": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-26b-a4b-it-darksoul": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-26b-a4b-it-luminous": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-26b-a4b-it-moonlight": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-26b-a4b-it-musica": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-26b-a4b-it-opusdistill": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-26b-a4b-it-shadowsiren": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
   "nano-gpt/google/gemma-4-26b-a4b-it:thinking": {
    "context_window": 262144,
    "supports_tools": true,
@@ -71068,160 +71387,7 @@
     "cache_read": 0.065
    }
   },
-  "nano-gpt/google/gemma-4-26b-a4b-uncensored": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-26b-a4b-uncensored:thinking": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
   "nano-gpt/google/gemma-4-31b-it": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-31b-it-darkidol": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-31b-it-fabled": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-31b-it-garnet": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-31b-it-gembrain": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-31b-it-gemsicle": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-31b-it-isometry": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.33,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/google/gemma-4-31b-it-novelist": {
    "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
@@ -71418,22 +71584,6 @@
     "cache_read": 0.35
    }
   },
-  "nano-gpt/hunyuan-turbos-20250226": {
-   "context_window": 24000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.187,
-    "output": 0.374,
-    "cache_read": 0.0935
-   }
-  },
   "nano-gpt/ibm-granite/granite-4.1-8b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -71496,118 +71646,6 @@
     "input": 0.493,
     "output": 0.493,
     "cache_read": 0.2465
-   }
-  },
-  "nano-gpt/inflection/inflection-3-productivity": {
-   "context_window": 8000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.499,
-    "output": 9.996,
-    "cache_read": 1.2495
-   }
-  },
-  "nano-gpt/jamba-large": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.989,
-    "output": 7.99,
-    "cache_read": 0.9945
-   }
-  },
-  "nano-gpt/jamba-large-1.6": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.989,
-    "output": 7.99,
-    "cache_read": 0.9945
-   }
-  },
-  "nano-gpt/jamba-large-1.7": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.989,
-    "output": 7.99,
-    "cache_read": 0.9945
-   }
-  },
-  "nano-gpt/jamba-mini": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1989,
-    "output": 0.408,
-    "cache_read": 0.09945
-   }
-  },
-  "nano-gpt/jamba-mini-1.6": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1989,
-    "output": 0.408,
-    "cache_read": 0.09945
-   }
-  },
-  "nano-gpt/jamba-mini-1.7": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1989,
-    "output": 0.408,
-    "cache_read": 0.09945
    }
   },
   "nano-gpt/kimi-k2-instruct-fast": {
@@ -71689,22 +71727,6 @@
     "input": 0.7,
     "output": 0.7,
     "cache_read": 0.35
-   }
-  },
-  "nano-gpt/learnlm-1.5-pro-experimental": {
-   "context_window": 32767,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3.502,
-    "output": 10.506,
-    "cache_read": 1.751
    }
   },
   "nano-gpt/liquid/lfm-2.5-2.6b": {
@@ -72785,9 +72807,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.5,
-    "output": 13.5,
-    "cache_read": 0.25
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2
    }
   },
   "nano-gpt/moonshotai/kimi-latest": {
@@ -72802,9 +72824,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.5,
-    "output": 13.5,
-    "cache_read": 0.25
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2
    }
   },
   "nano-gpt/nano-gpt-help": {
@@ -74110,40 +74132,6 @@
     "cache_read": 0.05
    }
   },
-  "nano-gpt/ornith-ai/ornith-1.5-397b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.9,
-    "output": 3.6,
-    "cache_read": 0.045
-   }
-  },
-  "nano-gpt/ornith-ai/ornith-1.5-397b:thinking": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.9,
-    "output": 3.6,
-    "cache_read": 0.045
-   }
-  },
   "nano-gpt/ornith-ai/ornith-1.5-9b": {
    "context_window": 262144,
    "supports_tools": true,
@@ -75422,8 +75410,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 1.4,
+    "input": 0.15,
+    "output": 0.7,
     "cache_read": 0.04
    }
   },
@@ -75439,8 +75427,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 1.4,
+    "input": 0.15,
+    "output": 0.7,
     "cache_read": 0.04
    }
   },
@@ -75864,22 +75852,6 @@
     "input": 0.493,
     "output": 0.493,
     "cache_read": 0.2465
-   }
-  },
-  "nano-gpt/step-r1-v-mini": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.5,
-    "output": 11,
-    "cache_read": 1.25
    }
   },
   "nano-gpt/stepfun-ai/step-3.5-flash": {
@@ -77117,6 +77089,70 @@
     "cache_read": 1.2495
    }
   },
+  "nano-gpt/z-ai/glm-4.5": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.3,
+    "cache_read": 0.15
+   }
+  },
+  "nano-gpt/z-ai/glm-4.5-air": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.12,
+    "output": 0.8,
+    "cache_read": 0.06
+   }
+  },
+  "nano-gpt/z-ai/glm-4.5-air:thinking": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.12,
+    "output": 0.8,
+    "cache_read": 0.06
+   }
+  },
+  "nano-gpt/z-ai/glm-4.5:thinking": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.3,
+    "cache_read": 0.15
+   }
+  },
   "nano-gpt/z-ai/glm-4.5v": {
    "context_window": 64000,
    "supports_tools": false,
@@ -77167,6 +77203,54 @@
     "cache_read": 0.175
    }
   },
+  "nano-gpt/z-ai/glm-4.6-original": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.35,
+    "output": 1.4,
+    "cache_read": 0.175
+   }
+  },
+  "nano-gpt/z-ai/glm-4.6-turbo": {
+   "context_window": 200000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 3,
+    "cache_read": 0.5
+   }
+  },
+  "nano-gpt/z-ai/glm-4.6-turbo:thinking": {
+   "context_window": 200000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 3,
+    "cache_read": 0.5
+   }
+  },
   "nano-gpt/z-ai/glm-4.6:thinking": {
    "context_window": 200000,
    "supports_tools": true,
@@ -77183,6 +77267,233 @@
     "cache_read": 0.175
    }
   },
+  "nano-gpt/z-ai/glm-4.6v": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 0.9,
+    "cache_read": 0.15
+   }
+  },
+  "nano-gpt/z-ai/glm-4.6v-flash-original": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.4,
+    "cache_read": 0.05
+   }
+  },
+  "nano-gpt/z-ai/glm-4.6v-original": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.6,
+    "output": 0.9,
+    "cache_read": 0.3
+   }
+  },
+  "nano-gpt/z-ai/glm-4.7": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.8,
+    "cache_read": 0.1
+   }
+  },
+  "nano-gpt/z-ai/glm-4.7-flash": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.07,
+    "output": 0.4,
+    "cache_read": 0.035
+   }
+  },
+  "nano-gpt/z-ai/glm-4.7-flash-original": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.07,
+    "output": 0.4,
+    "cache_read": 0.035
+   }
+  },
+  "nano-gpt/z-ai/glm-4.7-flash-original:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.07,
+    "output": 0.4,
+    "cache_read": 0.035
+   }
+  },
+  "nano-gpt/z-ai/glm-4.7-flash:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.07,
+    "output": 0.4,
+    "cache_read": 0.035
+   }
+  },
+  "nano-gpt/z-ai/glm-4.7-original": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.6,
+    "output": 2.2,
+    "cache_read": 0.11
+   }
+  },
+  "nano-gpt/z-ai/glm-4.7-original:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.6,
+    "output": 2.2,
+    "cache_read": 0.11
+   }
+  },
+  "nano-gpt/z-ai/glm-4.7:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.8,
+    "cache_read": 0.1
+   }
+  },
+  "nano-gpt/z-ai/glm-5": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 2.55,
+    "cache_read": 0.13
+   }
+  },
+  "nano-gpt/z-ai/glm-5-original": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 3.2,
+    "cache_read": 0.2
+   }
+  },
+  "nano-gpt/z-ai/glm-5-original:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 3.2,
+    "cache_read": 0.2
+   }
+  },
   "nano-gpt/z-ai/glm-5-turbo": {
    "context_window": 202800,
    "supports_tools": true,
@@ -77197,6 +77508,86 @@
     "input": 1.2,
     "output": 4,
     "cache_read": 0.24
+   }
+  },
+  "nano-gpt/z-ai/glm-5.1": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 2.6,
+    "cache_read": 0.15
+   }
+  },
+  "nano-gpt/z-ai/glm-5.1:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 2.6,
+    "cache_read": 0.15
+   }
+  },
+  "nano-gpt/z-ai/glm-5.2": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.42,
+    "output": 1.32,
+    "cache_read": 0.078
+   }
+  },
+  "nano-gpt/z-ai/glm-5.2:thinking": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.42,
+    "output": 1.32,
+    "cache_read": 0.078
+   }
+  },
+  "nano-gpt/z-ai/glm-5.3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 3.2,
+    "cache_read": 0.2
    }
   },
   "nano-gpt/z-ai/glm-5.3-flash": {
@@ -77221,6 +77612,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -77230,6 +77622,38 @@
     "input": 0.125,
     "output": 0.5,
     "cache_read": 0.0625
+   }
+  },
+  "nano-gpt/z-ai/glm-5.3:thinking": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 3.2,
+    "cache_read": 0.2
+   }
+  },
+  "nano-gpt/z-ai/glm-5:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 2.55,
+    "cache_read": 0.13
    }
   },
   "nano-gpt/z-ai/glm-5v-turbo": {
@@ -77266,458 +77690,7 @@
     "cache_read": 0.24
    }
   },
-  "nano-gpt/zai-org/glm-4.5": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 1.3,
-    "cache_read": 0.15
-   }
-  },
-  "nano-gpt/zai-org/glm-4.5-air": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.12,
-    "output": 0.8,
-    "cache_read": 0.06
-   }
-  },
-  "nano-gpt/zai-org/glm-4.5-air:thinking": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.12,
-    "output": 0.8,
-    "cache_read": 0.06
-   }
-  },
-  "nano-gpt/zai-org/glm-4.5:thinking": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 1.3,
-    "cache_read": 0.15
-   }
-  },
-  "nano-gpt/zai-org/glm-4.6-original": {
-   "context_window": 256000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.35,
-    "output": 1.4,
-    "cache_read": 0.175
-   }
-  },
-  "nano-gpt/zai-org/glm-4.6-turbo": {
-   "context_window": 200000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 3,
-    "cache_read": 0.5
-   }
-  },
-  "nano-gpt/zai-org/glm-4.6-turbo:thinking": {
-   "context_window": 200000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 3,
-    "cache_read": 0.5
-   }
-  },
-  "nano-gpt/zai-org/glm-4.6v": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 0.9,
-    "cache_read": 0.15
-   }
-  },
-  "nano-gpt/zai-org/glm-4.6v-flash-original": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.4,
-    "cache_read": 0.05
-   }
-  },
-  "nano-gpt/zai-org/glm-4.6v-original": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.6,
-    "output": 0.9,
-    "cache_read": 0.3
-   }
-  },
-  "nano-gpt/zai-org/glm-4.7": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.8,
-    "cache_read": 0.1
-   }
-  },
-  "nano-gpt/zai-org/glm-4.7-flash": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.07,
-    "output": 0.4,
-    "cache_read": 0.035
-   }
-  },
-  "nano-gpt/zai-org/glm-4.7-flash-original": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.07,
-    "output": 0.4,
-    "cache_read": 0.035
-   }
-  },
-  "nano-gpt/zai-org/glm-4.7-flash-original:thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.07,
-    "output": 0.4,
-    "cache_read": 0.035
-   }
-  },
-  "nano-gpt/zai-org/glm-4.7-flash:thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.07,
-    "output": 0.4,
-    "cache_read": 0.035
-   }
-  },
-  "nano-gpt/zai-org/glm-4.7-original": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.6,
-    "output": 2.2,
-    "cache_read": 0.11
-   }
-  },
-  "nano-gpt/zai-org/glm-4.7-original:thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.6,
-    "output": 2.2,
-    "cache_read": 0.11
-   }
-  },
-  "nano-gpt/zai-org/glm-4.7:thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.8,
-    "cache_read": 0.1
-   }
-  },
-  "nano-gpt/zai-org/glm-5": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.5,
-    "output": 2.55,
-    "cache_read": 0.13
-   }
-  },
-  "nano-gpt/zai-org/glm-5-original": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
-   }
-  },
-  "nano-gpt/zai-org/glm-5-original:thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
-   }
-  },
-  "nano-gpt/zai-org/glm-5.1": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.75,
-    "output": 2.6,
-    "cache_read": 0.15
-   }
-  },
-  "nano-gpt/zai-org/glm-5.1:thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.75,
-    "output": 2.6,
-    "cache_read": 0.15
-   }
-  },
-  "nano-gpt/zai-org/glm-5.2": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.42,
-    "output": 1.32,
-    "cache_read": 0.078
-   }
-  },
-  "nano-gpt/zai-org/glm-5.2:thinking": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.42,
-    "output": 1.32,
-    "cache_read": 0.078
-   }
-  },
-  "nano-gpt/zai-org/glm-5.3": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
-   }
-  },
-  "nano-gpt/zai-org/glm-5.3:thinking": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
-   }
-  },
-  "nano-gpt/zai-org/glm-5:thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.5,
-    "output": 2.55,
-    "cache_read": 0.13
-   }
-  },
-  "nano-gpt/zai-org/glm-latest": {
+  "nano-gpt/z-ai/glm-latest": {
    "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
@@ -85519,6 +85492,17 @@
     "text"
    ]
   },
+  "ollama-cloud/glm-5.3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
   "ollama-cloud/glm-5.3-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -86835,9 +86819,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0175,
-    "output": 0.0725,
-    "cache_read": 0.004375
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "opencode-go/hy4-preview": {
@@ -89641,8 +89625,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.85,
+    "input": 0.25,
+    "output": 0.8,
     "cache_read": 0.06
    }
   },
@@ -90034,9 +90018,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.26,
-    "output": 0.38,
-    "cache_read": 0.13
+    "input": 0.269,
+    "output": 0.4,
+    "cache_read": 0.1345
    }
   },
   "openrouter/deepseek/deepseek-v3.2-exp": {
@@ -90065,9 +90049,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08092,
-    "output": 0.16184,
-    "cache_read": 0.016184
+    "input": 0.08008,
+    "output": 0.16016,
+    "cache_read": 0.016016
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90114,9 +90098,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.508428,
-    "output": 1.016856,
-    "cache_read": 0.042369
+    "input": 0.437436,
+    "output": 0.874872,
+    "cache_read": 0.036453
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -95458,7 +95442,7 @@
    ],
    "x_cost": {
     "input": 0.03,
-    "output": 0.14,
+    "output": 0.16,
     "cache_read": 0.01
    }
   },
@@ -98611,6 +98595,22 @@
     "input": 1.26,
     "output": 3.96,
     "cache_read": 0.234
+   }
+  },
+  "orcarouter/z-ai/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25
    }
   },
   "ovhcloud/gpt-oss-120b": {
@@ -106178,23 +106178,6 @@
     "cache_read": 0.03
    }
   },
-  "requesty/glm-5.3-flash@eu": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.5,
-    "cache_read": 0.07
-   }
-  },
   "requesty/glm-5.3@eu": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -112232,6 +112215,23 @@
     "cache_read": 1.4
    }
   },
+  "synthetic/hf:zai-org/glm-5.3-flash": {
+   "context_window": 524288,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.04
+   }
+  },
   "tencent-coding-plan/glm-5": {
    "context_window": 202752,
    "supports_tools": true,
@@ -113946,6 +113946,21 @@
     "input": 0.075,
     "output": 0.025,
     "cache_read": 0.015
+   }
+  },
+  "tokenrouter/z-ai/glm-5.3-free": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
    }
   },
   "trustedrouter/auto": {
