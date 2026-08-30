@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-29T20:12:02+00:00",
+ "generated_at": "2026-08-30T02:36:25+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7484,
+ "model_count": 7487,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -20034,6 +20034,22 @@
     "cache_read": 0.05
    }
   },
+  "crof/glm-5.3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 1.4,
+    "cache_read": 0.06
+   }
+  },
   "crof/glm-5.3-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -24372,6 +24388,22 @@
     "input": 0.7,
     "output": 2.2,
     "cache_read": 0.105
+   }
+  },
+  "digitalocean/glm-5.3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "digitalocean/glm-5.3-flash": {
@@ -46388,9 +46420,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07,
-    "output": 0.35,
-    "cache_read": 0.1
+    "input": 0.09,
+    "output": 0.34,
+    "cache_read": 0.05
    }
   },
   "kilo/google/lyria-3-clip-preview": {
@@ -50185,9 +50217,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -50728,7 +50760,7 @@
    }
   },
   "kilo/z-ai/glm-5.1": {
-   "context_window": 202752,
+   "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50893,8 +50925,8 @@
    ],
    "x_cost": {
     "input": 0.03,
-    "output": 0.1,
-    "cache_read": 0.007
+    "output": 0.14,
+    "cache_read": 0.01
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -90002,9 +90034,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.269,
-    "output": 0.4,
-    "cache_read": 0.1345
+    "input": 0.26,
+    "output": 0.38,
+    "cache_read": 0.13
    }
   },
   "openrouter/deepseek/deepseek-v3.2-exp": {
@@ -90033,9 +90065,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08232,
-    "output": 0.16464,
-    "cache_read": 0.016464
+    "input": 0.08092,
+    "output": 0.16184,
+    "cache_read": 0.016184
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90049,9 +90081,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.045,
-    "output": 0.09,
-    "cache_read": 0.009
+    "input": 0.065,
+    "output": 0.18,
+    "cache_read": 0.016
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -90082,9 +90114,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.559062,
-    "output": 1.118124,
-    "cache_read": 0.046589
+    "input": 0.508428,
+    "output": 1.016856,
+    "cache_read": 0.042369
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -93815,9 +93847,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 1.1,
-    "cache_read": 0.07
+    "input": 0.09,
+    "output": 1.1
    }
   },
   "openrouter/qwen/qwen3-next-80b-a3b-thinking": {
@@ -94657,9 +94688,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -94753,9 +94784,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.95,
+    "input": 1,
     "output": 4.05,
-    "cache_read": 0.16
+    "cache_read": 0.17
    }
   },
   "openrouter/thinkingmachines/inkling-small": {
@@ -95257,9 +95288,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.26,
-    "output": 3.96,
-    "cache_read": 0.234
+    "input": 0.966,
+    "output": 3.036,
+    "cache_read": 0.1794
    }
   },
   "openrouter/z-ai/glm-5.2": {
@@ -95427,8 +95458,8 @@
    ],
    "x_cost": {
     "input": 0.03,
-    "output": 0.1,
-    "cache_read": 0.007
+    "output": 0.14,
+    "cache_read": 0.01
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -113659,6 +113690,22 @@
   },
   "togetherai/zai-org/glm-5.2": {
    "context_window": 512000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   }
+  },
+  "togetherai/zai-org/glm-5.3": {
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
