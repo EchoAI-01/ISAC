@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-30T10:56:22+00:00",
+ "generated_at": "2026-08-30T15:45:12+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7488,
  "override_count": 0,
@@ -27510,9 +27510,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 2.2,
-    "cache_read": 0.044
+    "input": 0.4,
+    "output": 2,
+    "cache_read": 0.04
    }
   },
   "edenai/mistral/devstral-medium-latest": {
@@ -47399,9 +47399,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 2.2,
-    "cache_read": 0.044
+    "input": 0.4,
+    "output": 2,
+    "cache_read": 0.04
    }
   },
   "kilo/mistralai/ministral-14b-2512": {
@@ -47567,9 +47567,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.165,
-    "output": 0.165,
-    "cache_read": 0.0165
+    "input": 0.019,
+    "output": 0.03
    }
   },
   "kilo/mistralai/mistral-saba": {
@@ -47649,9 +47648,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.11,
-    "output": 0.33,
-    "cache_read": 0.011
+    "input": 0.075,
+    "output": 0.2
    }
   },
   "kilo/mistralai/mixtral-8x22b-instruct": {
@@ -90049,9 +90047,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08008,
-    "output": 0.16016,
-    "cache_read": 0.016016
+    "input": 0.07896,
+    "output": 0.15792,
+    "cache_read": 0.015792
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90098,9 +90096,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.437436,
-    "output": 0.874872,
-    "cache_read": 0.036453
+    "input": 0.417252,
+    "output": 0.834504,
+    "cache_read": 0.034771
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -91344,9 +91342,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 2.2,
-    "cache_read": 0.044
+    "input": 0.4,
+    "output": 2,
+    "cache_read": 0.04
    }
   },
   "openrouter/mistralai/ministral-14b-2512": {
