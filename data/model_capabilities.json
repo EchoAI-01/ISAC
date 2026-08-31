@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-30T20:19:00+00:00",
+ "generated_at": "2026-08-31T02:30:11+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7494,
+ "model_count": 7493,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -46187,13 +46187,13 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "kilo/deepseek/deepseek-v4-pro": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -47111,7 +47111,7 @@
    }
   },
   "kilo/meta-llama/llama-4-maverick": {
-   "context_window": 1048576,
+   "context_window": 128000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50496,9 +50496,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -51205,7 +51205,7 @@
    "x_cost": {
     "input": 0.03,
     "output": 0.16,
-    "cache_read": 0.01
+    "cache_read": 0.013
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -68793,23 +68793,6 @@
     "cache_read": 1.5
    }
   },
-  "nano-gpt/claude-opus-4-1-thinking:32000": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
   "nano-gpt/claude-opus-4-1-thinking:32768": {
    "context_window": 200000,
    "supports_tools": true,
@@ -68913,23 +68896,6 @@
    }
   },
   "nano-gpt/claude-opus-4-thinking:1024": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-thinking:32000": {
    "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
@@ -69664,9 +69630,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -90111,9 +90077,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07868,
-    "output": 0.15736,
-    "cache_read": 0.015736
+    "input": 0.089866,
+    "output": 0.179732,
+    "cache_read": 0.017973
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90144,9 +90110,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "openrouter/deepseek/deepseek-v4-pro": {
@@ -90160,9 +90126,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.417252,
-    "output": 0.834504,
-    "cache_read": 0.034771
+    "input": 1.6,
+    "output": 3.2,
+    "cache_read": 0.135
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -90176,9 +90142,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 1.32,
+    "output": 3.96,
+    "cache_read": 0.044
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -91085,7 +91051,7 @@
    ],
    "x_cost": {
     "input": 0.2,
-    "output": 0.8
+    "output": 0.696
    }
   },
   "openrouter/meta-llama/llama-4-scout": {
@@ -91751,9 +91717,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 3,
-    "cache_read": 0.1
+    "input": 0.45,
+    "output": 2.25,
+    "cache_read": 0.07
    }
   },
   "openrouter/moonshotai/kimi-k2.6": {
@@ -92225,7 +92191,7 @@
    "x_cost": {
     "input": 0.1,
     "output": 0.4,
-    "cache_read": 0.03
+    "cache_read": 0.025
    }
   },
   "openrouter/openai/gpt-4o": {
@@ -94734,9 +94700,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -95505,7 +95471,7 @@
    "x_cost": {
     "input": 0.03,
     "output": 0.16,
-    "cache_read": 0.01
+    "cache_read": 0.013
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -114057,7 +114023,7 @@
     "output": 0
    }
   },
-  "trustedrouter/auto": {
+  "trustedrouter/trustedrouter/auto": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -114069,7 +114035,7 @@
     "text"
    ]
   },
-  "trustedrouter/cheap": {
+  "trustedrouter/trustedrouter/cheap": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -114081,7 +114047,7 @@
     "text"
    ]
   },
-  "trustedrouter/e2e": {
+  "trustedrouter/trustedrouter/e2e": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -114093,7 +114059,7 @@
     "text"
    ]
   },
-  "trustedrouter/fast": {
+  "trustedrouter/trustedrouter/fast": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -114105,7 +114071,7 @@
     "text"
    ]
   },
-  "trustedrouter/synth": {
+  "trustedrouter/trustedrouter/synth": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -114117,7 +114083,7 @@
     "text"
    ]
   },
-  "trustedrouter/synth-code": {
+  "trustedrouter/trustedrouter/synth-code": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -114129,7 +114095,7 @@
     "text"
    ]
   },
-  "trustedrouter/zdr": {
+  "trustedrouter/trustedrouter/zdr": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -119347,6 +119313,18 @@
    }
   },
   "vercel/minimax/minimax-h3": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
+  "vercel/minimax/minimax-h3-max": {
    "context_window": 0,
    "supports_tools": false,
    "supports_vision": null,
