@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-31T02:30:11+00:00",
+ "generated_at": "2026-08-31T12:13:33+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7493,
+ "model_count": 7494,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -21527,6 +21527,23 @@
     "cache_write": 0.16
    }
   },
+  "crossmodel/tencent/hy4-preview": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.96,
+    "output": 2.88,
+    "cache_read": 0.048,
+    "cache_write": 0.96
+   }
+  },
   "crossmodel/x-ai/grok-4.3": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -30621,22 +30638,6 @@
      "output": 1.8,
      "cache_read": 0.09
     }
-   }
-  },
-  "empiriolabs/mistral-medium-3": {
-   "context_window": 130000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
    }
   },
   "empiriolabs/mistral-small-4": {
@@ -46187,13 +46188,13 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "kilo/deepseek/deepseek-v4-pro": {
-   "context_window": 1048576,
+   "context_window": 1024000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -69630,9 +69631,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -76091,6 +76092,22 @@
     "input": 1.4,
     "output": 4.6,
     "cache_read": 0.5
+   }
+  },
+  "nano-gpt/tee/glm-5.3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "nano-gpt/tee/glm-5.3-flash": {
@@ -90077,9 +90094,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.089866,
-    "output": 0.179732,
-    "cache_read": 0.017973
+    "input": 0.088606,
+    "output": 0.177212,
+    "cache_read": 0.017721
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90110,9 +90127,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "openrouter/deepseek/deepseek-v4-pro": {
@@ -90126,9 +90143,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.6,
-    "output": 3.2,
-    "cache_read": 0.135
+    "input": 1.04226,
+    "output": 2.08452,
+    "cache_read": 0.086855
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -90142,9 +90159,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.044
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.022
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
