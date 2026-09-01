@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-01T10:49:43+00:00",
+ "generated_at": "2026-09-01T15:47:32+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7478,
+ "model_count": 7474,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -40456,9 +40456,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.188,
-    "output": 0.7,
-    "cache_write": 0.094
+    "input": 0.19,
+    "output": 0.63,
+    "cache_write": 0.095
    }
   },
   "hyper/kimi-k2.5": {
@@ -40472,9 +40472,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5444,
-    "output": 2.855,
-    "cache_write": 0.2722
+    "input": 0.5504,
+    "output": 2.885,
+    "cache_write": 0.2752
    }
   },
   "hyper/kimi-k2.6": {
@@ -40571,9 +40571,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.424,
-    "output": 1.612,
-    "cache_write": 0.212
+    "input": 0.404,
+    "output": 1.496,
+    "cache_write": 0.202
    }
   },
   "hyper/minimax-m3": {
@@ -45816,24 +45816,6 @@
     "cache_write": 6.25
    }
   },
-  "kilo/anthropic/claude-opus-4.7-fast": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 30,
-    "output": 150,
-    "cache_read": 3,
-    "cache_write": 37.5
-   }
-  },
   "kilo/anthropic/claude-opus-4.8": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -45852,24 +45834,6 @@
     "cache_write": 6.25
    }
   },
-  "kilo/anthropic/claude-opus-4.8-fast": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 10,
-    "output": 50,
-    "cache_read": 1,
-    "cache_write": 12.5
-   }
-  },
   "kilo/anthropic/claude-opus-5": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -45886,24 +45850,6 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
-   }
-  },
-  "kilo/anthropic/claude-opus-5-fast": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 10,
-    "output": 50,
-    "cache_read": 1,
-    "cache_write": 12.5
    }
   },
   "kilo/anthropic/claude-sonnet-4": {
@@ -51391,9 +51337,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.16,
-    "cache_read": 0.013
+    "input": 0.04998,
+    "output": 0.09996,
+    "cache_read": 0.009996
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -71322,6 +71268,22 @@
     "cache_read": 0.05
    }
   },
+  "nano-gpt/inception/mercury-2.5-preview": {
+   "context_window": 260000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.04,
+    "output": 0.15,
+    "cache_read": 0.004
+   }
+  },
   "nano-gpt/inclusionai/ling-3.0-flash": {
    "context_window": 262144,
    "supports_tools": true,
@@ -89151,24 +89113,6 @@
     }
    }
   },
-  "openrouter/anthropic/claude-opus-4.7-fast": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 30,
-    "output": 150,
-    "cache_read": 3,
-    "cache_write": 37.5
-   }
-  },
   "openrouter/anthropic/claude-opus-4.8": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -89187,24 +89131,6 @@
     "cache_write": 6.25
    }
   },
-  "openrouter/anthropic/claude-opus-4.8-fast": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 10,
-    "output": 50,
-    "cache_read": 1,
-    "cache_write": 12.5
-   }
-  },
   "openrouter/anthropic/claude-opus-5": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -89221,24 +89147,6 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
-   }
-  },
-  "openrouter/anthropic/claude-opus-5-fast": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 10,
-    "output": 50,
-    "cache_read": 1,
-    "cache_write": 12.5
    }
   },
   "openrouter/anthropic/claude-sonnet-4": {
@@ -89802,9 +89710,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08092,
-    "output": 0.16184,
-    "cache_read": 0.016184
+    "input": 0.07784,
+    "output": 0.15568,
+    "cache_read": 0.015568
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90575,6 +90483,22 @@
     "input": 0.25,
     "output": 0.75,
     "cache_read": 0.025
+   }
+  },
+  "openrouter/inception/mercury-2.5-preview": {
+   "context_window": 260000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.04,
+    "output": 0.15,
+    "cache_read": 0.004
    }
   },
   "openrouter/inclusionai/ling-3.0-flash": {
@@ -95194,9 +95118,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.16,
-    "cache_read": 0.013
+    "input": 0.04998,
+    "output": 0.09996,
+    "cache_read": 0.009996
    }
   },
   "openrouter/~google/gemini-flash-latest": {
