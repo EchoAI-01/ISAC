@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-02T02:05:24+00:00",
+ "generated_at": "2026-09-02T10:14:12+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7496,
+ "model_count": 7500,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -19171,9 +19171,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.75,
-    "output": 4.499,
-    "cache_read": 0.438
+    "input": 1.4,
+    "output": 4.399,
+    "cache_read": 0.26
    }
   },
   "cortecs/glm-5.3-flash": {
@@ -20798,6 +20798,24 @@
     "input": 10,
     "output": 50,
     "cache_read": 1,
+    "cache_write": 12.5
+   }
+  },
+  "crossmodel/anthropic/claude-fable-5-1": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 0.25,
     "cache_write": 12.5
    }
   },
@@ -51697,6 +51715,23 @@
     "cache_read": 0.5
    }
   },
+  "kilo/~z-ai/glm-flash-latest": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
+   }
+  },
   "kilo/~z-ai/glm-latest": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -54254,6 +54289,22 @@
     "cache_read": 0.02
    }
   },
+  "llmgateway-providers/consensusprotocol/gpt-oss-20b": {
+   "context_window": 65536,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.04,
+    "output": 0.19,
+    "cache_read": 0.01
+   }
+  },
   "llmgateway-providers/deepinfra/deepseek-v3.2": {
    "context_window": 160000,
    "supports_tools": true,
@@ -55248,6 +55299,24 @@
    }
   },
   "llmgateway-providers/google-vertex/gemini-3.7-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075,
+    "cache_write": 0.08333
+   }
+  },
+  "llmgateway-providers/google-vertex/gemini-3.8-flash": {
    "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
@@ -58985,6 +59054,24 @@
     "cache_write": 0.08333
    }
   },
+  "llmgateway/gemini-3.8-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075,
+    "cache_write": 0.08333
+   }
+  },
   "llmgateway/gemini-pro-latest": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -59896,8 +59983,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.2
+    "input": 0.04,
+    "output": 0.19,
+    "cache_read": 0.01
    }
   },
   "llmgateway/grok-4": {
@@ -67837,6 +67925,24 @@
     "cache_write": 0.2
    }
   },
+  "nano-gpt/alibaba/qwen3.8-max-0902": {
+   "context_window": 991808,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.17,
+    "cache_write": 2.5
+   }
+  },
   "nano-gpt/amazon/nova-2-lite-v1": {
    "context_window": 1000000,
    "supports_tools": false,
@@ -74136,40 +74242,6 @@
     "cache_read": 0.05
    }
   },
-  "nano-gpt/ornith-ai/ornith-1.5-9b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.2,
-    "cache_read": 0.05
-   }
-  },
-  "nano-gpt/ornith-ai/ornith-1.5-9b:thinking": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.2,
-    "cache_read": 0.05
-   }
-  },
   "nano-gpt/pamanseau/openreasoning-nemotron-32b": {
    "context_window": 32768,
    "supports_tools": false,
@@ -74774,40 +74846,6 @@
     "input": 0.112,
     "output": 0.8,
     "cache_read": 0.056
-   }
-  },
-  "nano-gpt/qwen/qwen3.6-35b-a3b-uncensored": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.95,
-    "cache_read": 0.075
-   }
-  },
-  "nano-gpt/qwen/qwen3.6-35b-a3b-uncensored:thinking": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.95,
-    "cache_read": 0.075
    }
   },
   "nano-gpt/qwen/qwen3.6-35b-a3b:thinking": {
@@ -77628,7 +77666,7 @@
    }
   },
   "nano-gpt/z-ai/glm-5.3-flash-uncensored": {
-   "context_window": 262144,
+   "context_window": 524288,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -87338,6 +87376,24 @@
     "cache_write": 12.5
    }
   },
+  "opencode/claude-fable-5-1": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 0.25,
+    "cache_write": 12.5
+   }
+  },
   "opencode/claude-haiku-4-5": {
    "context_window": 200000,
    "supports_tools": true,
@@ -95616,6 +95672,23 @@
      "output": 12,
      "cache_read": 1
     }
+   }
+  },
+  "openrouter/~z-ai/glm-flash-latest": {
+   "context_window": 1310720,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "openrouter/~z-ai/glm-latest": {
@@ -106163,7 +106236,7 @@
    }
   },
   "requesty/glm-5.3-flash": {
-   "context_window": 131072,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
