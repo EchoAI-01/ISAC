@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-03T10:25:32+00:00",
+ "generated_at": "2026-09-03T15:30:45+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7495,
+ "model_count": 7509,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -27166,22 +27166,6 @@
     "cache_read": 0.044
    }
   },
-  "edenai/fireworks_ai/accounts/fireworks/models/gpt-oss-120b": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
-    "cache_read": 0.015
-   }
-  },
   "edenai/fireworks_ai/accounts/fireworks/models/muse-glimmer-30b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -46449,7 +46433,7 @@
    }
   },
   "kilo/deepseek/deepseek-chat": {
-   "context_window": 128000,
+   "context_window": 163840,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -46459,8 +46443,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2574,
-    "output": 1.0287
+    "input": 0.32,
+    "output": 0.89
    }
   },
   "kilo/deepseek/deepseek-chat-v3-0324": {
@@ -49893,7 +49877,7 @@
    }
   },
   "kilo/qwen/qwen2.5-vl-72b-instruct": {
-   "context_window": 32000,
+   "context_window": 128000,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -49904,8 +49888,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 0.75
+    "input": 0.8,
+    "output": 1,
+    "cache_read": 0.4
    }
   },
   "kilo/qwen/qwen3-14b": {
@@ -50453,9 +50438,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 0.9,
-    "cache_read": 0.05
+    "input": 0.05,
+    "output": 0.7
    }
   },
   "kilo/qwen/qwen3.6-flash": {
@@ -51818,9 +51802,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.106,
-    "output": 3.476,
-    "cache_read": 0.1817
+    "input": 1.134,
+    "output": 3.564,
+    "cache_read": 0.1863
    }
   },
   "kimi-for-coding/k3": {
@@ -54378,6 +54362,22 @@
     "input": 0.04,
     "output": 0.19,
     "cache_read": 0.01
+   }
+  },
+  "llmgateway-providers/consensusprotocol/qwen3.8-27b": {
+   "context_window": 32768,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.41,
+    "output": 2.5,
+    "cache_read": 0.08
    }
   },
   "llmgateway-providers/deepinfra/deepseek-v3.2": {
@@ -65122,11 +65122,10 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-27b": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -65829,6 +65828,23 @@
    }
   },
   "meta/muse-spark-1.2-contributor": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.2,
+    "cache_read": 0.002
+   }
+  },
+  "meta/muse-spark-1.3-contributor": {
    "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
@@ -67835,6 +67851,116 @@
     "output": 1.9
    }
   },
+  "nan/deepseek-v4-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "nan/gemma4": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "nan/glm5.2": {
+   "context_window": 500000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "nan/glm5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "nan/mimo-v2.5": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "nan/qwen3.6": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "nan/qwen3.8-flash": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
   "nano-gpt/abacusai/dracarys-72b-instruct": {
    "context_window": 32768,
    "supports_tools": false,
@@ -69724,9 +69850,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -74162,6 +74288,40 @@
     "cache_read": 0.05
    }
   },
+  "nano-gpt/ornith-ai/ornith-1.5-9b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.2,
+    "cache_read": 0.05
+   }
+  },
+  "nano-gpt/ornith-ai/ornith-1.5-9b:thinking": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.2,
+    "cache_read": 0.05
+   }
+  },
   "nano-gpt/pamanseau/openreasoning-nemotron-32b": {
    "context_window": 32768,
    "supports_tools": false,
@@ -74766,6 +74926,40 @@
     "input": 0.112,
     "output": 0.8,
     "cache_read": 0.056
+   }
+  },
+  "nano-gpt/qwen/qwen3.6-35b-a3b-uncensored": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.95,
+    "cache_read": 0.075
+   }
+  },
+  "nano-gpt/qwen/qwen3.6-35b-a3b-uncensored:thinking": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.95,
+    "cache_read": 0.075
    }
   },
   "nano-gpt/qwen/qwen3.6-35b-a3b:thinking": {
@@ -83701,6 +83895,24 @@
     "cache_write": 2.5
    }
   },
+  "ofox/bailian/qwen3.8-max-0902": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25,
+    "cache_write": 2.5
+   }
+  },
   "ofox/deepseek/deepseek-v3.2": {
    "context_window": 128000,
    "supports_tools": true,
@@ -89571,8 +89783,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2574,
-    "output": 1.0287
+    "input": 0.32,
+    "output": 0.89
    }
   },
   "openrouter/deepseek/deepseek-chat-v3-0324": {
@@ -89710,9 +89922,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.088606,
-    "output": 0.177212,
-    "cache_read": 0.017721
+    "input": 0.08708,
+    "output": 0.17416,
+    "cache_read": 0.017416
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -89743,9 +89955,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "openrouter/deepseek/deepseek-v4-pro": {
@@ -89759,9 +89971,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.04226,
-    "output": 2.08452,
-    "cache_read": 0.086855
+    "input": 1.039302,
+    "output": 2.078604,
+    "cache_read": 0.086609
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -93211,8 +93423,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 0.75
+    "input": 0.8,
+    "output": 1,
+    "cache_read": 0.4
    }
   },
   "openrouter/qwen/qwen3-14b": {
@@ -93882,9 +94095,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 0.9,
-    "cache_read": 0.05
+    "input": 0.05,
+    "output": 0.7
    }
   },
   "openrouter/qwen/qwen3.6-flash": {
@@ -95361,9 +95573,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.106,
-    "output": 3.476,
-    "cache_read": 0.1817
+    "input": 1.134,
+    "output": 3.564,
+    "cache_read": 0.1863
    }
   },
   "opper/anthropic/claude-fable-5": {
@@ -113023,6 +113235,23 @@
     "input": 1.5,
     "output": 5.25,
     "cache_read": 0.375
+   }
+  },
+  "tinfoil/glm-5-3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 1.25,
+    "cache_read": 0.1
    }
   },
   "tinfoil/gpt-oss-120b": {
