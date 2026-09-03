@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-03T02:11:13+00:00",
+ "generated_at": "2026-09-03T10:25:32+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7495,
  "override_count": 0,
@@ -47258,9 +47258,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 0.15,
-    "cache_read": 0.05
+    "input": 0.06,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "kilo/inception/mercury-2": {
@@ -49909,7 +49909,7 @@
    }
   },
   "kilo/qwen/qwen3-14b": {
-   "context_window": 131072,
+   "context_window": 40960,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51818,9 +51818,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.092,
-    "output": 3.432,
-    "cache_read": 0.1794
+    "input": 1.106,
+    "output": 3.476,
+    "cache_read": 0.1817
    }
   },
   "kimi-for-coding/k3": {
@@ -67886,7 +67886,7 @@
   },
   "nano-gpt/abliteration-ai/abliterated-model-large-v2": {
    "context_window": 1000000,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "text"
@@ -93226,8 +93226,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2275,
-    "output": 0.91
+    "input": 0.12,
+    "output": 0.24
    }
   },
   "openrouter/qwen/qwen3-235b-a22b": {
@@ -95051,7 +95051,7 @@
    "x_cost": {
     "input": 1.4,
     "output": 4.4,
-    "cache_read": 0.26
+    "cache_read": 0.14
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
@@ -95361,9 +95361,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.092,
-    "output": 3.432,
-    "cache_read": 0.1794
+    "input": 1.106,
+    "output": 3.476,
+    "cache_read": 0.1817
    }
   },
   "opper/anthropic/claude-fable-5": {
