@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-04T15:28:40+00:00",
+ "generated_at": "2026-09-04T20:03:49+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7527,
+ "model_count": 7531,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -47297,22 +47297,6 @@
     "output": 0.112
    }
   },
-  "kilo/ibm-granite/granite-4.1-8b": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.05,
-    "output": 0.1,
-    "cache_read": 0.05
-   }
-  },
   "kilo/ibm-granite/granite-4.2-8b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -47394,6 +47378,21 @@
    }
   },
   "kilo/inclusionai/ling-3.0-flash-fin:free": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "kilo/inclusionai/ling-3.0-flash-sante:free": {
    "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
@@ -49463,6 +49462,24 @@
     "cache_write": 2.5
    }
   },
+  "kilo/openai/gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5
+   }
+  },
   "kilo/openai/gpt-audio": {
    "context_window": 128000,
    "supports_tools": true,
@@ -51087,9 +51104,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -54458,8 +54475,24 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.27,
+    "input": 0.08,
+    "output": 0.16,
+    "cache_read": 0.02
+   }
+  },
+  "llmgateway-providers/consensusprotocol/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.25,
     "cache_read": 0.02
    }
   },
@@ -59674,9 +59707,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.4,
-    "cache_read": 0.024
+    "input": 0.1,
+    "output": 0.25,
+    "cache_read": 0.02
    }
   },
   "llmgateway/gpt-3.5-turbo": {
@@ -90142,9 +90175,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08806,
-    "output": 0.17612,
-    "cache_read": 0.017612
+    "input": 0.08778,
+    "output": 0.17556,
+    "cache_read": 0.017556
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90191,9 +90224,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.02225,
-    "output": 2.0445,
-    "cache_read": 0.085188
+    "input": 1.001892,
+    "output": 2.003784,
+    "cache_read": 0.083491
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -90888,22 +90921,6 @@
     "output": 0.112
    }
   },
-  "openrouter/ibm-granite/granite-4.1-8b": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.05,
-    "output": 0.1,
-    "cache_read": 0.05
-   }
-  },
   "openrouter/ibm-granite/granite-4.2-8b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -90985,6 +91002,21 @@
    }
   },
   "openrouter/inclusionai/ling-3.0-flash-fin:free": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "openrouter/inclusionai/ling-3.0-flash-sante:free": {
    "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
@@ -93105,6 +93137,78 @@
     }
    }
   },
+  "openrouter/openai/gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5,
+    "tiers": [
+     {
+      "input": 20,
+      "output": 75,
+      "cache_read": 2,
+      "cache_write": 25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 20,
+     "output": 75,
+     "cache_read": 2,
+     "cache_write": 25
+    }
+   }
+  },
+  "openrouter/openai/gpt-6-astra-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5,
+    "tiers": [
+     {
+      "input": 20,
+      "output": 75,
+      "cache_read": 2,
+      "cache_write": 25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 20,
+     "output": 75,
+     "cache_read": 2,
+     "cache_write": 25
+    }
+   }
+  },
   "openrouter/openai/gpt-audio": {
    "context_window": 128000,
    "supports_tools": true,
@@ -94201,9 +94305,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 1.25,
-    "cache_read": 0.25
+    "input": 0.08,
+    "output": 0.75
    }
   },
   "openrouter/qwen/qwen3.5-397b-a17b": {
@@ -94330,9 +94433,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 3.6,
-    "cache_read": 0.12
+    "input": 0.3,
+    "output": 2,
+    "cache_read": 0.03
    }
   },
   "openrouter/qwen/qwen3.6-35b-a3b": {
@@ -94866,9 +94969,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
