@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-03T20:18:54+00:00",
+ "generated_at": "2026-09-04T02:07:25+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7526,
+ "model_count": 7525,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -48690,7 +48690,7 @@
    }
   },
   "kilo/nvidia/nemotron-3-ultra-550b-a55b": {
-   "context_window": 202800,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -48718,6 +48718,22 @@
    "x_cost": {
     "input": 0,
     "output": 0
+   }
+  },
+  "kilo/nvidia/nemotron-3.5-content-safety": {
+   "context_window": 131072,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.2
    }
   },
   "kilo/nvidia/nemotron-3.5-content-safety:free": {
@@ -51152,9 +51168,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -51966,13 +51982,13 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07125,
-    "output": 0.2375,
-    "cache_read": 0.01425
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "kilo/~z-ai/glm-latest": {
-   "context_window": 1048576,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51982,9 +51998,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.148,
-    "output": 3.608,
-    "cache_read": 0.1886
+    "input": 1.15,
+    "output": 3.5,
+    "cache_read": 0.1
    }
   },
   "kimi-for-coding/k3": {
@@ -69050,7 +69066,7 @@
    }
   },
   "nano-gpt/baseten/kimi-k2-instruct-fp4": {
-   "context_window": 128000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -69763,7 +69779,7 @@
    }
   },
   "nano-gpt/deepseek-ai/deepseek-r1-0528": {
-   "context_window": 128000,
+   "context_window": 163840,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -70115,9 +70131,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -70201,7 +70217,7 @@
    }
   },
   "nano-gpt/doctor-shotgun/ms3.2-24b-magnum-diamond": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -70214,23 +70230,6 @@
     "input": 0.493,
     "output": 0.493,
     "cache_read": 0.2465
-   }
-  },
-  "nano-gpt/dots-studio/dots-3-note-preview": {
-   "context_window": 393216,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.2,
-    "cache_read": 0.05
    }
   },
   "nano-gpt/doubao-1.5-pro-256k": {
@@ -70477,7 +70476,7 @@
    }
   },
   "nano-gpt/eva-unit-01/eva-llama-3.33-70b-v0.0": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -70493,7 +70492,7 @@
    }
   },
   "nano-gpt/eva-unit-01/eva-llama-3.33-70b-v0.1": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -71550,22 +71549,6 @@
     "cache_read": 0.2
    }
   },
-  "nano-gpt/glm-z1-air": {
-   "context_window": 32000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.07,
-    "output": 0.07,
-    "cache_read": 0.035
-   }
-  },
   "nano-gpt/glm-z1-airx": {
    "context_window": 32000,
    "supports_tools": true,
@@ -71937,7 +71920,7 @@
    }
   },
   "nano-gpt/gryphe/mythomax-l2-13b": {
-   "context_window": 4000,
+   "context_window": 4096,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -72068,7 +72051,7 @@
    }
   },
   "nano-gpt/huihui-ai/llama-3.3-70b-instruct-abliterated": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -72213,7 +72196,7 @@
    }
   },
   "nano-gpt/latitudegames/wayfarer-large-70b-llama-3.3": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -72341,7 +72324,7 @@
    }
   },
   "nano-gpt/meganova-ai/manta-pro-1.0": {
-   "context_window": 32768,
+   "context_window": 65536,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -73081,7 +73064,7 @@
    }
   },
   "nano-gpt/mistralai/mistral-saba": {
-   "context_window": 32000,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -73195,7 +73178,7 @@
    }
   },
   "nano-gpt/moonshotai/kimi-k2-instruct-0905": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -73508,7 +73491,7 @@
    }
   },
   "nano-gpt/nothingiisreal/l3.1-70b-celeste-v0.1-bf16": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -73571,22 +73554,6 @@
     "cache_read": 0.15
    }
   },
-  "nano-gpt/nousresearch/hermes-4-70b": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2006,
-    "output": 0.3995,
-    "cache_read": 0.1003
-   }
-  },
   "nano-gpt/nousresearch/hermes-4-70b:thinking": {
    "context_window": 128000,
    "supports_tools": false,
@@ -73636,7 +73603,7 @@
    }
   },
   "nano-gpt/nvidia/nemotron-3-nano-30b-a3b": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -74588,7 +74555,7 @@
    }
   },
   "nano-gpt/pamanseau/openreasoning-nemotron-32b": {
-   "context_window": 32768,
+   "context_window": 131072,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -74621,7 +74588,7 @@
    }
   },
   "nano-gpt/perplexity-academic-researcher": {
-   "context_window": 127000,
+   "context_window": 128000,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -74882,7 +74849,7 @@
    }
   },
   "nano-gpt/qwen/qwen3-235b-a22b-instruct-2507": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -74898,7 +74865,7 @@
    }
   },
   "nano-gpt/qwen/qwen3-235b-a22b-thinking-2507": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -75043,7 +75010,7 @@
    }
   },
   "nano-gpt/qwen/qwen3-next-80b-a3b-instruct": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -75075,7 +75042,7 @@
    }
   },
   "nano-gpt/qwen/qwen3-vl-235b-a22b-instruct": {
-   "context_window": 128000,
+   "context_window": 131072,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -75348,7 +75315,7 @@
    }
   },
   "nano-gpt/qwen25-vl-72b-instruct": {
-   "context_window": 32000,
+   "context_window": 128000,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -75890,7 +75857,7 @@
    }
   },
   "nano-gpt/readyart/ms3.2-the-omega-directive-24b-unslop-v2.0": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -75988,7 +75955,7 @@
    }
   },
   "nano-gpt/sao10k/l3.1-70b-hanami-x1": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76068,7 +76035,7 @@
    }
   },
   "nano-gpt/sonar": {
-   "context_window": 127000,
+   "context_window": 127072,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76084,7 +76051,7 @@
    }
   },
   "nano-gpt/sonar-deep-research": {
-   "context_window": 60000,
+   "context_window": 128000,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76116,7 +76083,7 @@
    }
   },
   "nano-gpt/sonar-reasoning-pro": {
-   "context_window": 127000,
+   "context_window": 128000,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76148,7 +76115,7 @@
    }
   },
   "nano-gpt/soob3123/grayline-qwen3-8b": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76180,7 +76147,7 @@
    }
   },
   "nano-gpt/steelskull/l3.3-cu-mai-r1-70b": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76196,7 +76163,7 @@
    }
   },
   "nano-gpt/steelskull/l3.3-electra-r1-70b": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76228,7 +76195,7 @@
    }
   },
   "nano-gpt/steelskull/l3.3-ms-nevoria-70b": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76244,7 +76211,7 @@
    }
   },
   "nano-gpt/steelskull/l3.3-nevoria-r1-70b": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76260,7 +76227,7 @@
    }
   },
   "nano-gpt/stepfun-ai/step-3.5-flash": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76276,7 +76243,7 @@
    }
   },
   "nano-gpt/stepfun-ai/step-3.5-flash-2603": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76801,7 +76768,7 @@
    }
   },
   "nano-gpt/thedrummer/cydonia-24b-v2": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76817,7 +76784,7 @@
    }
   },
   "nano-gpt/thedrummer/cydonia-24b-v4": {
-   "context_window": 16384,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76897,7 +76864,7 @@
    }
   },
   "nano-gpt/thedrummer/skyfall-36b-v2": {
-   "context_window": 32000,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -76914,7 +76881,7 @@
    }
   },
   "nano-gpt/thedrummer/unslopnemo-12b-v4.1": {
-   "context_window": 8192,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -77079,7 +77046,7 @@
    }
   },
   "nano-gpt/unsloth/gemma-3-12b-it": {
-   "context_window": 128000,
+   "context_window": 131072,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -77130,7 +77097,7 @@
    }
   },
   "nano-gpt/upstage/solar-pro-3": {
-   "context_window": 128000,
+   "context_window": 131072,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -77527,7 +77494,7 @@
    }
   },
   "nano-gpt/z-ai/glm-4.5v": {
-   "context_window": 64000,
+   "context_window": 65536,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -77544,7 +77511,7 @@
    }
   },
   "nano-gpt/z-ai/glm-4.5v:thinking": {
-   "context_window": 64000,
+   "context_window": 65536,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -77593,7 +77560,7 @@
    }
   },
   "nano-gpt/z-ai/glm-4.6-turbo": {
-   "context_window": 200000,
+   "context_window": 204800,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -77609,7 +77576,7 @@
    }
   },
   "nano-gpt/z-ai/glm-4.6-turbo:thinking": {
-   "context_window": 200000,
+   "context_window": 204800,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -90205,9 +90172,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07938,
-    "output": 0.15876,
-    "cache_read": 0.015876
+    "input": 0.088606,
+    "output": 0.177212,
+    "cache_read": 0.017721
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90238,9 +90205,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "openrouter/deepseek/deepseek-v4-pro": {
@@ -90254,9 +90221,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.030776,
-    "output": 2.061552,
-    "cache_read": 0.085898
+    "input": 1.04226,
+    "output": 2.08452,
+    "cache_read": 0.086855
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -90270,9 +90237,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 1.1154,
+    "output": 3.3462,
+    "cache_read": 0.03718
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -92181,9 +92148,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 2.4,
-    "cache_read": 0.12
+    "input": 0.625,
+    "output": 3.125,
+    "cache_read": 0.1875
    }
   },
   "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
@@ -92199,6 +92166,22 @@
    "x_cost": {
     "input": 0,
     "output": 0
+   }
+  },
+  "openrouter/nvidia/nemotron-3.5-content-safety": {
+   "context_window": 131072,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.2
    }
   },
   "openrouter/nvidia/nemotron-3.5-content-safety:free": {
@@ -94913,9 +94896,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -95074,7 +95057,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.45,
+    "input": 0.35,
     "output": 0.65
    }
   },
@@ -95856,9 +95839,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07125,
-    "output": 0.2375,
-    "cache_read": 0.01425
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "openrouter/~z-ai/glm-latest": {
@@ -95872,9 +95855,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.148,
-    "output": 3.608,
-    "cache_read": 0.1886
+    "input": 1.15,
+    "output": 3.5,
+    "cache_read": 0.1
    }
   },
   "opper/anthropic/claude-fable-5": {
