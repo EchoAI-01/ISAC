@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-05T09:41:34+00:00",
+ "generated_at": "2026-09-05T14:16:35+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7560,
+ "model_count": 7562,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -21514,16 +21514,16 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 30,
-    "cache_read": 0.5,
-    "cache_write": 6.25,
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.4,
+    "cache_write": 5,
     "tiers": [
      {
-      "input": 10,
-      "output": 45,
-      "cache_read": 1,
-      "cache_write": 12.5,
+      "input": 8,
+      "output": 30,
+      "cache_read": 0.8,
+      "cache_write": 10,
       "tier": {
        "type": "context",
        "size": 272000
@@ -21531,10 +21531,10 @@
      }
     ],
     "context_over_200k": {
-     "input": 10,
-     "output": 45,
-     "cache_read": 1,
-     "cache_write": 12.5
+     "input": 8,
+     "output": 30,
+     "cache_read": 0.8,
+     "cache_write": 10
     }
    }
   },
@@ -21571,6 +21571,42 @@
      "output": 18,
      "cache_read": 0.4,
      "cache_write": 5
+    }
+   }
+  },
+  "crossmodel/openai/gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5,
+    "tiers": [
+     {
+      "input": 20,
+      "output": 75,
+      "cache_read": 2,
+      "cache_write": 25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 20,
+     "output": 75,
+     "cache_read": 2,
+     "cache_write": 25
     }
    }
   },
@@ -28902,6 +28938,42 @@
     }
    }
   },
+  "edenai/openai/gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5,
+    "tiers": [
+     {
+      "input": 20,
+      "output": 75,
+      "cache_read": 2,
+      "cache_write": 25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 20,
+     "output": 75,
+     "cache_read": 2,
+     "cache_write": 25
+    }
+   }
+  },
   "edenai/openai/gpt-latest": {
    "context_window": 1050000,
    "supports_tools": true,
@@ -28914,16 +28986,16 @@
     "text"
    ],
    "x_cost": {
-    "input": 4,
-    "output": 20,
-    "cache_read": 0.4,
-    "cache_write": 5,
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5,
     "tiers": [
      {
-      "input": 8,
-      "output": 30,
-      "cache_read": 0.8,
-      "cache_write": 10,
+      "input": 20,
+      "output": 75,
+      "cache_read": 2,
+      "cache_write": 25,
       "tier": {
        "type": "context",
        "size": 272000
@@ -28931,10 +29003,10 @@
      }
     ],
     "context_over_200k": {
-     "input": 8,
-     "output": 30,
-     "cache_read": 0.8,
-     "cache_write": 10
+     "input": 20,
+     "output": 75,
+     "cache_read": 2,
+     "cache_write": 25
     }
    }
   },
@@ -54648,9 +54720,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
+    "input": 0.07,
     "output": 0.16,
-    "cache_read": 0.02
+    "cache_read": 0.1
    }
   },
   "llmgateway-providers/consensusprotocol/glm-5.3-flash": {
@@ -56450,9 +56522,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.25,
-    "cache_read": 0.015
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
    }
   },
   "llmgateway-providers/novita/hy3": {
@@ -59950,9 +60022,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
+    "input": 0.1,
     "output": 0.25,
-    "cache_read": 0.015
+    "cache_read": 0.02
    }
   },
   "llmgateway/gpt-3.5-turbo": {
@@ -77035,7 +77107,7 @@
    }
   },
   "nano-gpt/thedrummer/anubis-70b-v1.1": {
-   "context_window": 131072,
+   "context_window": 32000,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -90611,9 +90683,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08526,
-    "output": 0.17052,
-    "cache_read": 0.017052
+    "input": 0.08498,
+    "output": 0.16996,
+    "cache_read": 0.016996
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90660,9 +90732,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.910716,
-    "output": 1.821432,
-    "cache_read": 0.075893
+    "input": 0.870174,
+    "output": 1.740348,
+    "cache_read": 0.072515
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
