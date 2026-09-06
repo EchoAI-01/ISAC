@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-06T09:56:39+00:00",
+ "generated_at": "2026-09-06T14:40:03+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7563,
  "override_count": 0,
@@ -77141,6 +77141,23 @@
     "cache_read": 0.155
    }
   },
+  "nano-gpt/thedrummer/artemis-v1.1": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.45,
+    "cache_read": 0.05
+   }
+  },
   "nano-gpt/thedrummer/cydonia-24b-v2": {
    "context_window": 32768,
    "supports_tools": false,
@@ -90702,9 +90719,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08106,
-    "output": 0.16212,
-    "cache_read": 0.016212
+    "input": 0.07994,
+    "output": 0.15988,
+    "cache_read": 0.015988
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90751,9 +90768,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.707832,
-    "output": 1.415664,
-    "cache_read": 0.058986
+    "input": 0.66729,
+    "output": 1.33458,
+    "cache_read": 0.055608
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -96115,21 +96132,6 @@
     "input": 0.966,
     "output": 3.036,
     "cache_read": 0.1932
-   }
-  },
-  "openrouter/z-ai/glm-5.2:free": {
-   "context_window": 256000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
    }
   },
   "openrouter/z-ai/glm-5.3": {
