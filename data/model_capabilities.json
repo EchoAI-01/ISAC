@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-05T19:44:40+00:00",
+ "generated_at": "2026-09-06T02:03:17+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7562,
  "override_count": 0,
@@ -51346,9 +51346,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -51416,7 +51416,7 @@
    }
   },
   "kilo/thedrummer/unslopnemo-12b": {
-   "context_window": 32768,
+   "context_window": 1024000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51775,7 +51775,7 @@
    }
   },
   "kilo/z-ai/glm-4.6": {
-   "context_window": 204800,
+   "context_window": 202752,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51785,9 +51785,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.55,
-    "output": 2.2,
-    "cache_read": 0.11
+    "input": 0.5,
+    "output": 2,
+    "cache_read": 0.1
    }
   },
   "kilo/z-ai/glm-4.6v": {
@@ -52166,7 +52166,7 @@
    }
   },
   "kilo/~z-ai/glm-latest": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -52176,9 +52176,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.15,
-    "output": 3.5,
-    "cache_read": 0.1
+    "input": 1.17,
+    "output": 3.96,
+    "cache_read": 0.234
    }
   },
   "kimi-for-coding/k3": {
@@ -90684,9 +90684,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08386,
-    "output": 0.16772,
-    "cache_read": 0.016772
+    "input": 0.08246,
+    "output": 0.16492,
+    "cache_read": 0.016492
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90733,9 +90733,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.819366,
-    "output": 1.638732,
-    "cache_read": 0.068281
+    "input": 0.778824,
+    "output": 1.557648,
+    "cache_read": 0.064902
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -90749,9 +90749,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.019316
+    "input": 1.12068,
+    "output": 3.36204,
+    "cache_read": 0.037356
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -95478,9 +95478,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -95981,9 +95981,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.55,
-    "output": 2.2,
-    "cache_read": 0.11
+    "input": 0.5,
+    "output": 2,
+    "cache_read": 0.1
    }
   },
   "openrouter/z-ai/glm-4.6v": {
@@ -96437,9 +96437,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.15,
-    "output": 3.5,
-    "cache_read": 0.1
+    "input": 1.17,
+    "output": 3.96,
+    "cache_read": 0.234
    }
   },
   "opper/anthropic/claude-fable-5": {
