@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-06T19:47:28+00:00",
+ "generated_at": "2026-09-07T02:00:39+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7560,
+ "model_count": 7559,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -50599,7 +50599,7 @@
    }
   },
   "kilo/qwen/qwen3-next-80b-a3b-thinking": {
-   "context_window": 131072,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51417,9 +51417,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -51846,7 +51846,7 @@
    }
   },
   "kilo/z-ai/glm-4.6": {
-   "context_window": 204800,
+   "context_window": 198000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51856,9 +51856,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.55,
-    "output": 2.2,
-    "cache_read": 0.11
+    "input": 0.43,
+    "output": 1.75,
+    "cache_read": 0.08
    }
   },
   "kilo/z-ai/glm-4.6v": {
@@ -54969,23 +54969,6 @@
     "input": 0.14,
     "output": 0.58,
     "cache_read": 0.035
-   }
-  },
-  "llmgateway-providers/deepinfra/kimi-k2.5": {
-   "context_window": 256000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.45,
-    "output": 2.25,
-    "cache_read": 0.07
    }
   },
   "llmgateway-providers/deepinfra/ling-3.0-flash": {
@@ -70360,9 +70343,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -90679,9 +90662,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07966,
-    "output": 0.15932,
-    "cache_read": 0.015932
+    "input": 0.089866,
+    "output": 0.179732,
+    "cache_read": 0.017973
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90695,9 +90678,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04998,
-    "output": 0.09996,
-    "cache_read": 0.009996
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.028
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -90712,9 +90695,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "openrouter/deepseek/deepseek-v4-pro": {
@@ -90728,9 +90711,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.63684,
-    "output": 1.27368,
-    "cache_read": 0.05307
+    "input": 1.0353,
+    "output": 2.0706,
+    "cache_read": 0.086275
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -90744,9 +90727,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.019316
+    "input": 1.12068,
+    "output": 3.36204,
+    "cache_read": 0.037356
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -95472,9 +95455,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -95975,9 +95958,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.55,
-    "output": 2.2,
-    "cache_read": 0.11
+    "input": 0.43,
+    "output": 1.75,
+    "cache_read": 0.08
    }
   },
   "openrouter/z-ai/glm-4.6v": {
@@ -96106,7 +96089,7 @@
    "x_cost": {
     "input": 1.4,
     "output": 4.4,
-    "cache_read": 0.14
+    "cache_read": 0.26
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
