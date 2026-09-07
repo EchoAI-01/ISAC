@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-07T16:53:41+00:00",
+ "generated_at": "2026-09-07T20:55:58+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7561,
+ "model_count": 7558,
  "override_count": 0,
  "models": {
   "302ai/chatgpt-4o-latest": {
@@ -33090,7 +33090,7 @@
    }
   },
   "fireworks-ai/accounts/fireworks/models/glm-5p3": {
-   "context_window": 1000000,
+   "context_window": 1048573,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -33106,7 +33106,7 @@
    }
   },
   "fireworks-ai/accounts/fireworks/models/glm-5p3-flash": {
-   "context_window": 1000000,
+   "context_window": 1048573,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -33335,6 +33335,22 @@
     "input": 2.1,
     "output": 6.6,
     "cache_read": 0.21
+   }
+  },
+  "fireworks-ai/accounts/fireworks/routers/glm-5p3-fast": {
+   "context_window": 1048572,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.1,
+    "output": 6.6,
+    "cache_read": 0.39
    }
   },
   "fireworks-ai/accounts/fireworks/routers/kimi-k3-fast": {
@@ -46828,8 +46844,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 1
+    "input": 0.29,
+    "output": 1.14,
+    "cache_read": 0.11
    }
   },
   "kilo/deepseek/deepseek-chat-v3.1": {
@@ -48231,21 +48248,6 @@
     "cache_read": 0.06
    }
   },
-  "kilo/minimax/minimax-m2.7:free": {
-   "context_window": 196608,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
   "kilo/minimax/minimax-m3": {
    "context_window": 524288,
    "supports_tools": true,
@@ -48261,22 +48263,6 @@
     "input": 0.3,
     "output": 1.2,
     "cache_read": 0.06
-   }
-  },
-  "kilo/minimax/minimax-m3:free": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
    }
   },
   "kilo/mistralai/codestral-2508": {
@@ -52155,9 +52141,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.55,
-    "output": 12.75,
-    "cache_read": 0.256
+    "input": 2.5,
+    "output": 14,
+    "cache_read": 0.29
    }
   },
   "kilo/~openai/gpt-latest": {
@@ -54811,6 +54797,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -54843,6 +54830,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -78169,9 +78157,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.35,
-    "output": 1.4,
-    "cache_read": 0.175
+    "input": 0.07,
+    "output": 0.21,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/z-ai/glm-5.3:thinking": {
@@ -90532,8 +90520,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 1
+    "input": 0.29,
+    "output": 1.14,
+    "cache_read": 0.11
    }
   },
   "openrouter/deepseek/deepseek-chat-v3.1": {
@@ -91956,21 +91945,6 @@
     "cache_read": 0.06
    }
   },
-  "openrouter/minimax/minimax-m2.7:free": {
-   "context_window": 196608,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
   "openrouter/minimax/minimax-m3": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -91986,22 +91960,6 @@
     "input": 0.3,
     "output": 1.2,
     "cache_read": 0.06
-   }
-  },
-  "openrouter/minimax/minimax-m3:free": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
    }
   },
   "openrouter/mistralai/codestral-2508": {
@@ -96274,9 +96232,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.55,
-    "output": 12.75,
-    "cache_read": 0.256
+    "input": 2.5,
+    "output": 14,
+    "cache_read": 0.29
    }
   },
   "openrouter/~openai/gpt-latest": {
