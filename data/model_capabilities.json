@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-08T02:12:20+00:00",
+ "generated_at": "2026-09-08T10:19:03+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7559,
  "override_count": 0,
@@ -29311,8 +29311,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.176,
-    "output": 0.528
+    "input": 0.352,
+    "output": 1.056
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -29326,8 +29326,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5808,
-    "output": 1.7424
+    "input": 1.122,
+    "output": 3.366
    }
   },
   "edenai/qwen/qwen-max": {
@@ -47036,7 +47036,7 @@
    "x_cost": {
     "input": 1.32,
     "output": 3.96,
-    "cache_read": 0.132
+    "cache_read": 0.044
    }
   },
   "kilo/dots-studio/dots-3-note-preview:free": {
@@ -70425,6 +70425,23 @@
     "cache_read": 0.11
    }
   },
+  "nano-gpt/deepseek/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1562,
+    "output": 0.3124,
+    "cache_read": 0.03124
+   }
+  },
   "nano-gpt/doctor-shotgun/ms3.2-24b-magnum-diamond": {
    "context_window": 32768,
    "supports_tools": false,
@@ -74896,22 +74913,6 @@
     "cache_read": 0.01
    }
   },
-  "nano-gpt/poolside/laguna-xs-2.1": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.063,
-    "output": 0.126,
-    "cache_read": 0.0315
-   }
-  },
   "nano-gpt/qvq-max": {
    "context_window": 128000,
    "supports_tools": false,
@@ -77627,38 +77628,6 @@
     "cache_write": 0
    }
   },
-  "nano-gpt/yi-large": {
-   "context_window": 32000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3.196,
-    "output": 3.196,
-    "cache_read": 1.598
-   }
-  },
-  "nano-gpt/yi-medium-200k": {
-   "context_window": 200000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.499,
-    "output": 2.499,
-    "cache_read": 1.2495
-   }
-  },
   "nano-gpt/z-ai/glm-4.5": {
    "context_window": 128000,
    "supports_tools": false,
@@ -78172,9 +78141,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07,
-    "output": 0.21,
-    "cache_read": 0.014
+    "input": 0.25,
+    "output": 1,
+    "cache_read": 0.125
    }
   },
   "nano-gpt/z-ai/glm-5.3:thinking": {
@@ -90676,9 +90645,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
-    "cache_read": 0.028
+    "input": 0.065,
+    "output": 0.18,
+    "cache_read": 0.016
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -104143,6 +104112,38 @@
     "cache_read": 0.0924
    }
   },
+  "privatemode-ai/glm-5.3": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.791,
+    "output": 8.9436,
+    "cache_read": 0.1733
+   }
+  },
+  "privatemode-ai/glm-latest": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.791,
+    "output": 8.9436,
+    "cache_read": 0.1733
+   }
+  },
   "privatemode-ai/gpt-oss-120b": {
    "context_window": 128000,
    "supports_tools": true,
@@ -106379,8 +106380,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
+    "input": 0.28,
+    "output": 0.56,
     "cache_read": 0.07
    }
   },
@@ -106395,8 +106396,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
+    "input": 0.28,
+    "output": 0.56,
     "cache_read": 0.07
    }
   },
@@ -106411,8 +106412,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
+    "input": 0.28,
+    "output": 0.56,
     "cache_read": 0.07
    }
   },
@@ -107020,7 +107021,7 @@
    ],
    "x_cost": {
     "input": 0.2,
-    "output": 0.5,
+    "output": 0.6,
     "cache_read": 0.07
    }
   },
@@ -107037,7 +107038,7 @@
    ],
    "x_cost": {
     "input": 0.2,
-    "output": 0.5,
+    "output": 0.6,
     "cache_read": 0.07
    }
   },
@@ -107836,9 +107837,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.25,
-    "output": 11.25,
-    "cache_read": 0.225
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.45
    }
   },
   "requesty/kimi-k3@eu": {
@@ -107853,9 +107854,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.25,
-    "output": 11.25,
-    "cache_read": 0.225
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.45
    }
   },
   "requesty/laguna-m.1": {
@@ -108686,8 +108687,8 @@
    ],
    "x_cost": {
     "input": 0.4,
-    "output": 3,
-    "cache_read": 0.26
+    "output": 2.6,
+    "cache_read": 0.05
    }
   },
   "requesty/thinkingcap-qwen3.6-27b@eu": {
@@ -108702,8 +108703,8 @@
    ],
    "x_cost": {
     "input": 0.4,
-    "output": 3,
-    "cache_read": 0.26
+    "output": 2.6,
+    "cache_read": 0.05
    }
   },
   "routing-run/claude-opus-4-8": {
