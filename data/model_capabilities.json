@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-09T02:15:53+00:00",
+ "generated_at": "2026-09-09T10:27:06+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7583,
+ "model_count": 7612,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -9997,6 +9997,56 @@
     "cache_write": 2.5
    }
   },
+  "amazon-bedrock/apac.amazon.nova-lite-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.063,
+    "output": 0.252,
+    "cache_read": 0.01575
+   }
+  },
+  "amazon-bedrock/apac.amazon.nova-micro-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.037,
+    "output": 0.148,
+    "cache_read": 0.00925
+   }
+  },
+  "amazon-bedrock/apac.amazon.nova-pro-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.84,
+    "output": 3.36,
+    "cache_read": 0.21
+   }
+  },
   "amazon-bedrock/au.anthropic.claude-haiku-4-5-20251001-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
@@ -10031,6 +10081,24 @@
     "output": 82.5,
     "cache_read": 1.65,
     "cache_write": 20.625
+   }
+  },
+  "amazon-bedrock/au.anthropic.claude-opus-4-7": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/au.anthropic.claude-opus-4-8": {
@@ -10123,6 +10191,23 @@
     "cache_write": 2.5
    }
   },
+  "amazon-bedrock/ca.amazon.nova-lite-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.064,
+    "output": 0.256,
+    "cache_read": 0.016
+   }
+  },
   "amazon-bedrock/deepseek.r1-v1:0": {
    "context_window": 128000,
    "supports_tools": true,
@@ -10166,6 +10251,73 @@
    "x_cost": {
     "input": 0.62,
     "output": 1.85
+   }
+  },
+  "amazon-bedrock/eu.amazon.nova-2-lite-v1:0": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.374,
+    "output": 3.157,
+    "cache_read": 0.0935
+   }
+  },
+  "amazon-bedrock/eu.amazon.nova-lite-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.069,
+    "output": 0.276,
+    "cache_read": 0.01725
+   }
+  },
+  "amazon-bedrock/eu.amazon.nova-micro-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.04,
+    "output": 0.16,
+    "cache_read": 0.01
+   }
+  },
+  "amazon-bedrock/eu.amazon.nova-pro-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.92,
+    "output": 3.68,
+    "cache_read": 0.23
    }
   },
   "amazon-bedrock/eu.anthropic.claude-fable-5": {
@@ -10346,6 +10498,39 @@
     "output": 11,
     "cache_read": 0.22,
     "cache_write": 2.75
+   }
+  },
+  "amazon-bedrock/eu.mistral.pixtral-large-2502-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6
+   }
+  },
+  "amazon-bedrock/global.amazon.nova-2-lite-v1:0": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 2.5,
+    "cache_read": 0.075
    }
   },
   "amazon-bedrock/global.anthropic.claude-fable-5": {
@@ -10751,6 +10936,23 @@
    "x_cost": {
     "input": 0.04,
     "output": 0.08
+   }
+  },
+  "amazon-bedrock/jp.amazon.nova-2-lite-v1:0": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.396,
+    "output": 3.311,
+    "cache_read": 0.099
    }
   },
   "amazon-bedrock/jp.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -11601,6 +11803,73 @@
     "output": 1.5
    }
   },
+  "amazon-bedrock/us.amazon.nova-2-lite-v1:0": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.33,
+    "output": 2.75,
+    "cache_read": 0.0825
+   }
+  },
+  "amazon-bedrock/us.amazon.nova-lite-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.06,
+    "output": 0.24,
+    "cache_read": 0.015
+   }
+  },
+  "amazon-bedrock/us.amazon.nova-micro-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.035,
+    "output": 0.14,
+    "cache_read": 0.00875
+   }
+  },
+  "amazon-bedrock/us.amazon.nova-pro-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.8,
+    "output": 3.2,
+    "cache_read": 0.2
+   }
+  },
   "amazon-bedrock/us.anthropic.claude-fable-5": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -11832,6 +12101,51 @@
     "output": 5.4
    }
   },
+  "amazon-bedrock/us.meta.llama3-1-70b-instruct-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.72,
+    "output": 0.72
+   }
+  },
+  "amazon-bedrock/us.meta.llama3-1-8b-instruct-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.22,
+    "output": 0.22
+   }
+  },
+  "amazon-bedrock/us.meta.llama3-3-70b-instruct-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.72,
+    "output": 0.72
+   }
+  },
   "amazon-bedrock/us.meta.llama4-maverick-17b-instruct-v1:0": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -11862,6 +12176,130 @@
    "x_cost": {
     "input": 0.17,
     "output": 0.66
+   }
+  },
+  "amazon-bedrock/us.mistral.pixtral-large-2502-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6
+   }
+  },
+  "amazon-bedrock/us.openai.gpt-5.6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.22,
+    "output": 1.32,
+    "cache_read": 0.022,
+    "cache_write": 0.275,
+    "tiers": [
+     {
+      "input": 0.44,
+      "output": 1.98,
+      "cache_read": 0.044,
+      "cache_write": 0.55,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.44,
+     "output": 1.98,
+     "cache_read": 0.044,
+     "cache_write": 0.55
+    }
+   }
+  },
+  "amazon-bedrock/us.openai.gpt-5.6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4.4,
+    "output": 22,
+    "cache_read": 0.44,
+    "cache_write": 5.5,
+    "tiers": [
+     {
+      "input": 8.8,
+      "output": 33,
+      "cache_read": 0.88,
+      "cache_write": 11,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 8.8,
+     "output": 33,
+     "cache_read": 0.88,
+     "cache_write": 11
+    }
+   }
+  },
+  "amazon-bedrock/us.openai.gpt-5.6-terra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.2,
+    "output": 13.2,
+    "cache_read": 0.22,
+    "cache_write": 2.75,
+    "tiers": [
+     {
+      "input": 4.4,
+      "output": 19.8,
+      "cache_read": 0.44,
+      "cache_write": 5.5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4.4,
+     "output": 19.8,
+     "cache_read": 0.44,
+     "cache_write": 5.5
+    }
    }
   },
   "amazon-bedrock/us.openai.gpt-6-astra": {
@@ -11898,6 +12336,36 @@
      "cache_read": 2.2,
      "cache_write": 27.5
     }
+   }
+  },
+  "amazon-bedrock/us.writer.palmyra-x4-v1:0": {
+   "context_window": 122880,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.5,
+    "output": 10
+   }
+  },
+  "amazon-bedrock/us.writer.palmyra-x5-v1:0": {
+   "context_window": 1040000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.6,
+    "output": 6
    }
   },
   "amazon-bedrock/us.xai.grok-4.6": {
@@ -26674,6 +27142,130 @@
     "output": 50
    }
   },
+  "edenai/amazon/amazon.nova-lite-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.06,
+    "output": 0.24
+   }
+  },
+  "edenai/amazon/amazon.nova-lite-v1:0@us": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.06,
+    "output": 0.24
+   }
+  },
+  "edenai/amazon/amazon.nova-micro-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.035,
+    "output": 0.14
+   }
+  },
+  "edenai/amazon/amazon.nova-micro-v1:0@us": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.035,
+    "output": 0.14
+   }
+  },
+  "edenai/amazon/amazon.nova-pro-v1:0": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.8,
+    "output": 3.2
+   }
+  },
+  "edenai/amazon/amazon.nova-pro-v1:0@us": {
+   "context_window": 300000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.8,
+    "output": 3.2
+   }
+  },
+  "edenai/amazon/mistral.pixtral-large-2502-v1:0": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6
+   }
+  },
+  "edenai/amazon/mistral.pixtral-large-2502-v1:0@us": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6
+   }
+  },
   "edenai/amazon/moonshot.kimi-k2-thinking": {
    "context_window": 128000,
    "supports_tools": false,
@@ -29746,8 +30338,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.176,
-    "output": 0.528
+    "input": 0.352,
+    "output": 1.056
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -29761,8 +30353,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5808,
-    "output": 1.7424
+    "input": 1.122,
+    "output": 3.366
    }
   },
   "edenai/qwen/qwen-max": {
@@ -47459,7 +48051,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro-0813": {
-   "context_window": 1048576,
+   "context_window": 1024000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -52572,9 +53164,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.55,
-    "output": 12.75,
-    "cache_read": 0.256
+    "input": 2.4,
+    "output": 12,
+    "cache_read": 0.24
    }
   },
   "kilo/~openai/gpt-latest": {
@@ -64779,6 +65371,21 @@
     "output": 0.4
    }
   },
+  "merge-gateway/meta/llama-3.1-70b-instruct": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.99,
+    "output": 0.99
+   }
+  },
   "merge-gateway/meta/llama-3.1-8b-instruct": {
    "context_window": 128000,
    "supports_tools": true,
@@ -69591,87 +70198,6 @@
     "input": 9.996,
     "output": 19.992,
     "cache_read": 4.998
-   }
-  },
-  "nano-gpt/azure-gpt-4-turbo": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 10,
-    "output": 30
-   }
-  },
-  "nano-gpt/azure-gpt-4o": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.5,
-    "output": 10,
-    "cache_read": 1.25
-   }
-  },
-  "nano-gpt/azure-gpt-4o-mini": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
-    "cache_read": 0.075
-   }
-  },
-  "nano-gpt/azure-o1": {
-   "context_window": 200000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 60,
-    "cache_read": 7.5
-   }
-  },
-  "nano-gpt/azure-o3-mini": {
-   "context_window": 200000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.1,
-    "output": 4.4,
-    "cache_read": 0.55
    }
   },
   "nano-gpt/baseten/kimi-k2-instruct-fp4": {
@@ -91077,9 +91603,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.057948
+    "input": 1.0494,
+    "output": 3.1482,
+    "cache_read": 0.03498
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -94627,8 +95153,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.09,
-    "output": 0.55
+    "input": 0.22,
+    "output": 0.88
    }
   },
   "openrouter/qwen/qwen3-235b-a22b-thinking-2507": {
