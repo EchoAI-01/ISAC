@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-08T20:30:39+00:00",
+ "generated_at": "2026-09-09T02:15:53+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7578,
+ "model_count": 7583,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -10654,6 +10654,42 @@
     }
    }
   },
+  "amazon-bedrock/global.openai.gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5,
+    "tiers": [
+     {
+      "input": 20,
+      "output": 75,
+      "cache_read": 2,
+      "cache_write": 25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 20,
+     "output": 75,
+     "cache_read": 2,
+     "cache_write": 25
+    }
+   }
+  },
   "amazon-bedrock/global.xai.grok-4.6": {
    "context_window": 500000,
    "supports_tools": true,
@@ -11333,6 +11369,42 @@
     }
    }
   },
+  "amazon-bedrock/openai.gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 11,
+    "output": 55,
+    "cache_read": 1.1,
+    "cache_write": 13.75,
+    "tiers": [
+     {
+      "input": 22,
+      "output": 82.5,
+      "cache_read": 2.2,
+      "cache_write": 27.5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 22,
+     "output": 82.5,
+     "cache_read": 2.2,
+     "cache_write": 27.5
+    }
+   }
+  },
   "amazon-bedrock/openai.gpt-oss-120b": {
    "context_window": 128000,
    "supports_tools": true,
@@ -11790,6 +11862,42 @@
    "x_cost": {
     "input": 0.17,
     "output": 0.66
+   }
+  },
+  "amazon-bedrock/us.openai.gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 11,
+    "output": 55,
+    "cache_read": 1.1,
+    "cache_write": 13.75,
+    "tiers": [
+     {
+      "input": 22,
+      "output": 82.5,
+      "cache_read": 2.2,
+      "cache_write": 27.5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 22,
+     "output": 82.5,
+     "cache_read": 2.2,
+     "cache_write": 27.5
+    }
    }
   },
   "amazon-bedrock/us.xai.grok-4.6": {
@@ -51720,9 +51828,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -52149,7 +52257,7 @@
    }
   },
   "kilo/z-ai/glm-4.6": {
-   "context_window": 204800,
+   "context_window": 198000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -52159,9 +52267,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.55,
-    "output": 2.2,
-    "cache_read": 0.11
+    "input": 0.43,
+    "output": 1.75,
+    "cache_read": 0.08
    }
   },
   "kilo/z-ai/glm-4.6v": {
@@ -52464,9 +52572,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.5,
-    "output": 14,
-    "cache_read": 0.29
+    "input": 2.55,
+    "output": 12.75,
+    "cache_read": 0.256
    }
   },
   "kilo/~openai/gpt-latest": {
@@ -70633,9 +70741,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash-vision-exp-uncensored": {
@@ -90904,9 +91012,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.084,
-    "output": 0.168,
-    "cache_read": 0.0168
+    "input": 0.088606,
+    "output": 0.177212,
+    "cache_read": 0.017721
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -90953,9 +91061,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.948126,
-    "output": 1.896252,
-    "cache_read": 0.079011
+    "input": 0.95526,
+    "output": 1.91052,
+    "cache_read": 0.079605
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -91661,9 +91769,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 0.15,
-    "cache_read": 0.05
+    "input": 0.06,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "openrouter/inception/mercury-2": {
@@ -92121,7 +92229,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.4,
+    "input": 0.55,
     "output": 2.2
    }
   },
@@ -92579,8 +92687,7 @@
    ],
    "x_cost": {
     "input": 0.6,
-    "output": 2.5,
-    "cache_read": 0.15
+    "output": 2.5
    }
   },
   "openrouter/moonshotai/kimi-k2.5": {
@@ -92805,7 +92912,7 @@
    }
   },
   "openrouter/nvidia/nemotron-3-super-120b-a12b": {
-   "context_window": 1000000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -94822,9 +94929,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 1.1,
-    "cache_read": 0.07
+    "input": 0.09,
+    "output": 1.1
    }
   },
   "openrouter/qwen/qwen3-next-80b-a3b-thinking": {
@@ -95664,9 +95770,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -96167,9 +96273,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.55,
-    "output": 2.2,
-    "cache_read": 0.11
+    "input": 0.43,
+    "output": 1.75,
+    "cache_read": 0.08
    }
   },
   "openrouter/z-ai/glm-4.6v": {
@@ -96488,9 +96594,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.5,
-    "output": 14,
-    "cache_read": 0.29
+    "input": 2.4,
+    "output": 12,
+    "cache_read": 0.24
    }
   },
   "openrouter/~openai/gpt-latest": {
@@ -117202,6 +117308,22 @@
     "cache_read": 0.03125
    }
   },
+  "venice/mercury-2-5": {
+   "context_window": 260000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.04999999999999999,
+    "output": 0.18749999999999994,
+    "cache_read": 0.004999999999999999
+   }
+  },
   "venice/minimax-m25": {
    "context_window": 198000,
    "supports_tools": true,
@@ -122507,6 +122629,38 @@
     "cache_read": 1.25
    }
   },
+  "vercel/openai/gpt-image-2.5-flare": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 30,
+    "cache_read": 1.25
+   }
+  },
+  "vercel/openai/gpt-image-2.5-sunburst": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 30,
+    "cache_read": 1.25
+   }
+  },
   "vercel/openai/gpt-oss-120b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -123873,9 +124027,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7,
-    "output": 2.2,
-    "cache_read": 0.13
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.14
    }
   },
   "vercel/zai/glm-5.3-fast": {
@@ -123909,22 +124063,6 @@
     "input": 0.15,
     "output": 0.5,
     "cache_read": 0.03
-   }
-  },
-  "vercel/zai/glm-5.3-promo-50": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.7,
-    "output": 2.2,
-    "cache_read": 0.13
    }
   },
   "vercel/zai/glm-5v-turbo": {
