@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-09T15:36:40+00:00",
+ "generated_at": "2026-09-09T20:13:03+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7614,
+ "model_count": 7613,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -23067,10 +23067,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.25,
-    "cache_read": 0.015,
-    "cache_write": 0.075
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03,
+    "cache_write": 0.15
    }
   },
   "crusoe/deepseek-ai/deepseek-v3-0324": {
@@ -38592,6 +38592,38 @@
     "cache_read": 0.3135
    }
   },
+  "greenpt/glm-5.3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.27754,
+    "output": 5.11016,
+    "cache_read": 0.319385
+   }
+  },
+  "greenpt/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.127754,
+    "output": 0.511016,
+    "cache_read": 0.0255508
+   }
+  },
   "greenpt/gpt-oss-120b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -49741,6 +49773,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -49810,21 +49843,6 @@
    "x_cost": {
     "input": 1,
     "output": 3
-   }
-  },
-  "kilo/nousresearch/hermes-4-70b": {
-   "context_window": 131072,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.13,
-    "output": 0.4
    }
   },
   "kilo/nvidia/nemotron-3-nano-30b-a3b": {
@@ -52404,9 +52422,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -52945,7 +52963,7 @@
    }
   },
   "kilo/z-ai/glm-5.2": {
-   "context_window": 1048576,
+   "context_window": 1024000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -69507,6 +69525,23 @@
     "cache_read": 0.5
    }
   },
+  "nano-gpt/agnes-3.0-flash": {
+   "context_window": 524288,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.15,
+    "cache_read": 0.005
+   }
+  },
   "nano-gpt/aion-labs/aion-2.0": {
    "context_window": 131072,
    "supports_tools": true,
@@ -71354,6 +71389,23 @@
    }
   },
   "nano-gpt/deepseek/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1562,
+    "output": 0.3124,
+    "cache_read": 0.03124
+   }
+  },
+  "nano-gpt/deepseek/deepseek-v4.1-flash:thinking": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -73318,6 +73370,23 @@
     "cache_read": 0.015
    }
   },
+  "nano-gpt/inclusionai/ling-3.0-flash-vl": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.06,
+    "output": 0.18,
+    "cache_read": 0.012
+   }
+  },
   "nano-gpt/inclusionai/ling-3.0-flash:thinking": {
    "context_window": 262144,
    "supports_tools": true,
@@ -73348,6 +73417,22 @@
     "input": 0.493,
     "output": 0.493,
     "cache_read": 0.2465
+   }
+  },
+  "nano-gpt/k2-horizon-7b": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.2,
+    "cache_read": 0.04
    }
   },
   "nano-gpt/kimi-k2-instruct-fast": {
@@ -79239,7 +79324,7 @@
    ],
    "x_cost": {
     "input": 3,
-    "output": 15.5,
+    "output": 15,
     "cache_read": 0.3,
     "cache_write": 3.75
    }
@@ -79346,23 +79431,6 @@
     }
    }
   },
-  "nearai/google/gemini-3-pro": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.25,
-    "output": 15,
-    "cache_read": 0
-   }
-  },
   "nearai/google/gemini-3.1-flash-lite": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -79397,23 +79465,6 @@
     "output": 9,
     "cache_read": 0.15,
     "input_audio": 1.5
-   }
-  },
-  "nearai/google/gemma-4-31b-it": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.13,
-    "output": 0.4,
-    "cache_read": 0.026
    }
   },
   "nearai/openai/gpt-4.1": {
@@ -79547,9 +79598,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.8,
-    "output": 15.5,
-    "cache_read": 0.18
+    "input": 1.75,
+    "output": 14,
+    "cache_read": 0.175
    }
   },
   "nearai/openai/gpt-5.4": {
@@ -79652,21 +79703,6 @@
     }
    }
   },
-  "nearai/openai/gpt-oss-120b": {
-   "context_window": 131000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.55
-   }
-  },
   "nearai/openai/o3": {
    "context_window": 200000,
    "supports_tools": true,
@@ -79729,26 +79765,11 @@
    ],
    "x_cost": {
     "input": 0.01,
-    "output": 0
-   }
-  },
-  "nearai/qwen/qwen3-30b-a3b-instruct-2507": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.55
+    "output": 0.01
    }
   },
   "nearai/qwen/qwen3-embedding-0.6b": {
-   "context_window": 40960,
+   "context_window": 32768,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -79759,7 +79780,7 @@
    ],
    "x_cost": {
     "input": 0.01,
-    "output": 0
+    "output": 0.01
    }
   },
   "nearai/qwen/qwen3-reranker-0.6b": {
@@ -79778,7 +79799,7 @@
    }
   },
   "nearai/qwen/qwen3-vl-30b-a3b-instruct": {
-   "context_window": 256000,
+   "context_window": 16384,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -79791,22 +79812,6 @@
    "x_cost": {
     "input": 0.15,
     "output": 0.55
-   }
-  },
-  "nearai/qwen/qwen3.5-122b-a10b": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.4,
-    "output": 3.2
    }
   },
   "nearai/qwen/qwen3.6-35b-a3b-fp8": {
@@ -79837,8 +79842,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.85,
-    "output": 3.3
+    "input": 1.4,
+    "output": 4.4
    }
   },
   "nebius/deepseek-ai/deepseek-v4-flash-0731": {
@@ -88071,9 +88076,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.25,
-    "cache_read": 0.015
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
    }
   },
   "opencode-go/gpt-5.6-luna": {
@@ -91573,9 +91578,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08554,
-    "output": 0.17108,
-    "cache_read": 0.017108
+    "input": 0.07,
+    "output": 0.14,
+    "cache_read": 0.014
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -93354,6 +93359,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -93423,21 +93429,6 @@
    "x_cost": {
     "input": 1,
     "output": 3
-   }
-  },
-  "openrouter/nousresearch/hermes-4-70b": {
-   "context_window": 131072,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.13,
-    "output": 0.4
    }
   },
   "openrouter/nvidia/nemotron-3-nano-30b-a3b": {
@@ -96331,9 +96322,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -96946,9 +96937,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.966,
-    "output": 3.036,
-    "cache_read": 0.1932
+    "input": 0.28,
+    "output": 0.88,
+    "cache_read": 0.052
    }
   },
   "openrouter/z-ai/glm-5.3": {
