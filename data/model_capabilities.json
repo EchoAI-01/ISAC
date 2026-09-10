@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-10T15:32:24+00:00",
+ "generated_at": "2026-09-10T20:14:58+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7615,
+ "model_count": 7647,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -3782,22 +3782,6 @@
     "input": 0.5077,
     "output": 1.0154,
     "cache_read": 0.0042
-   }
-  },
-  "above/mimo-v2.5-pro-ultraspeed": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.5231,
-    "output": 3.0462,
-    "cache_read": 0.0127
    }
   },
   "above/qwen3.8-max": {
@@ -17271,6 +17255,36 @@
     "text"
    ]
   },
+  "bothub/deepseek-v4-flash-0731": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.28
+   }
+  },
+  "bothub/deepseek-v4-pro-0813": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.61,
+    "output": 4.84
+   }
+  },
   "bothub/gemma-4-31b-it:free": {
    "context_window": 262144,
    "supports_tools": true,
@@ -17285,6 +17299,53 @@
    "x_cost": {
     "input": 0,
     "output": 0
+   }
+  },
+  "bothub/glm-5.3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.72,
+    "output": 5.41
+   }
+  },
+  "bothub/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.12,
+    "output": 0.44
+   }
+  },
+  "bothub/gpt-5.6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.06,
+    "output": 0.37
    }
   },
   "bothub/nemotron-3-ultra-550b-a55b:free": {
@@ -24332,6 +24393,23 @@
     "cache_read": 0.1
    }
   },
+  "deepinfra/deepseek-ai/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
+   }
+  },
   "deepinfra/google/gemma-4-26b-a4b-it": {
    "context_window": 262144,
    "supports_tools": true,
@@ -25180,21 +25258,40 @@
     "cache_read": 0.03
    }
   },
-  "deepseek/deepseek-v4-flash": {
+  "deepseek/deepseek-flash": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
-    "reasoning": 0.28,
-    "cache_read": 0.0028
+    "input": 0.15,
+    "output": 0.6,
+    "reasoning": 0.6,
+    "cache_read": 0.003
+   }
+  },
+  "deepseek/deepseek-v4-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6,
+    "reasoning": 0.6,
+    "cache_read": 0.003
    }
   },
   "deepseek/deepseek-v4-flash-vision-exp": {
@@ -25209,10 +25306,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
-    "reasoning": 0.28,
-    "cache_read": 0.0028
+    "input": 0.15,
+    "output": 0.6,
+    "reasoning": 0.6,
+    "cache_read": 0.003
    }
   },
   "deepseek/deepseek-v4-pro": {
@@ -34151,6 +34248,23 @@
     "cache_read": 0.044
    }
   },
+  "fireworks-ai/accounts/fireworks/models/deepseek-v4p1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
+   }
+  },
   "fireworks-ai/accounts/fireworks/models/glm-5p2": {
    "context_window": 1048575,
    "supports_tools": true,
@@ -34300,6 +34414,18 @@
     "output": 1.2,
     "cache_read": 0.06
    }
+  },
+  "fireworks-ai/accounts/fireworks/models/mistral-large-3-fp8": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
   },
   "fireworks-ai/accounts/fireworks/models/muse-glimmer-30b": {
    "context_window": 131072,
@@ -37661,6 +37787,172 @@
    "x_cost": {
     "input": 0.22,
     "output": 0.88
+   }
+  },
+  "google-vertex/xai/grok-4.1-fast-non-reasoning": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.5,
+    "cache_read": 0.05
+   }
+  },
+  "google-vertex/xai/grok-4.1-fast-reasoning": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.5,
+    "cache_read": 0.05
+   }
+  },
+  "google-vertex/xai/grok-4.20-non-reasoning": {
+   "context_window": 2000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.25,
+    "output": 2.5,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 5,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 5,
+     "cache_read": 0.4
+    }
+   }
+  },
+  "google-vertex/xai/grok-4.20-reasoning": {
+   "context_window": 2000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.25,
+    "output": 2.5,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 5,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 5,
+     "cache_read": 0.4
+    }
+   }
+  },
+  "google-vertex/xai/grok-4.3": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.25,
+    "output": 2.5,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 5,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 5,
+     "cache_read": 0.4
+    }
+   }
+  },
+  "google-vertex/xai/grok-4.6": {
+   "context_window": 524288,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 1,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 1
+    }
    }
   },
   "google-vertex/zai-org/glm-4.7-maas": {
@@ -41041,6 +41333,22 @@
     "output": 3.96
    }
   },
+  "huggingface/deepseek-ai/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2
+   }
+  },
   "huggingface/google/gemma-4-26b-a4b-it": {
    "context_window": 262144,
    "supports_tools": true,
@@ -44232,6 +44540,22 @@
     "input": 0.25,
     "output": 0.75,
     "cache_read": 0.025
+   }
+  },
+  "inception/mercury-2.5": {
+   "context_window": 260000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.04,
+    "output": 0.15,
+    "cache_read": 0.004
    }
   },
   "inception/mercury-edit-2": {
@@ -48635,7 +48959,7 @@
    }
   },
   "kilo/google/gemma-4-26b-a4b-it": {
-   "context_window": 262144,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -48829,6 +49153,22 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "kilo/inclusionai/ling-3.0-flash-vl:free": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -49344,7 +49684,7 @@
    }
   },
   "kilo/minimax/minimax-m2.5": {
-   "context_window": 204800,
+   "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -52506,9 +52846,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -54376,6 +54716,24 @@
     "cache_write": 12.5
    }
   },
+  "llmgateway-providers/aws-bedrock/claude-fable-5-1": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 0.25,
+    "cache_write": 12.5
+   }
+  },
   "llmgateway-providers/aws-bedrock/claude-haiku-4-5": {
    "context_window": 200000,
    "supports_tools": true,
@@ -55886,7 +56244,7 @@
    }
   },
   "llmgateway-providers/consensusprotocol/deepseek-v4-flash": {
-   "context_window": 524288,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -55898,6 +56256,22 @@
    "x_cost": {
     "input": 0.05,
     "output": 0.1,
+    "cache_read": 0.01
+   }
+  },
+  "llmgateway-providers/consensusprotocol/gemma-4-31b-it": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.25,
     "cache_read": 0.01
    }
   },
@@ -59662,6 +60036,38 @@
     "output": 1.2
    }
   },
+  "llmgateway-providers/vichar-ai/glm-5.3": {
+   "context_window": 1048000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   }
+  },
+  "llmgateway-providers/vichar-ai/glm-5.3-flash": {
+   "context_window": 1048000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
+   }
+  },
   "llmgateway-providers/xai/grok-4": {
    "context_window": 256000,
    "supports_tools": true,
@@ -60852,9 +61258,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.102,
-    "output": 0.297,
-    "cache_read": 0.012
+    "input": 0.1,
+    "output": 0.25,
+    "cache_read": 0.01
    }
   },
   "llmgateway/glm-4-32b-0414-128k": {
@@ -66866,11 +67272,10 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-122b-a10b": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -66883,10 +67288,11 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-27b": {
-   "context_window": 131072,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -66916,10 +67322,11 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-397b-a17b": {
-   "context_window": 131072,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -77708,9 +78115,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 0.8,
-    "cache_read": 0.1
+    "input": 0.04,
+    "output": 0.15,
+    "cache_read": 0.02
    }
   },
   "nano-gpt/tee/kimi-k2.6": {
@@ -85491,6 +85898,23 @@
     "cache_read": 0.044
    }
   },
+  "ofox/deepseek/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
+   }
+  },
   "ofox/google/gemini-2.5-flash": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -86288,6 +86712,166 @@
     "output": 50,
     "cache_read": 1,
     "cache_write": 12.5
+   }
+  },
+  "ofox/qwen/qwen3.6-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.025,
+    "cache_write": 0.31
+   }
+  },
+  "ofox/qwen/qwen3.6-max-preview": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.15,
+    "output": 12.86,
+    "cache_read": 0.2,
+    "cache_write": 1.17
+   }
+  },
+  "ofox/qwen/qwen3.6-plus": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 3,
+    "cache_read": 0.05,
+    "cache_write": 0.625
+   }
+  },
+  "ofox/qwen/qwen3.7-max": {
+   "context_window": 1064000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.5,
+    "output": 7.5,
+    "cache_read": 0.5,
+    "cache_write": 3.125
+   }
+  },
+  "ofox/qwen/qwen3.7-plus": {
+   "context_window": 1064000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 1.6,
+    "cache_read": 0.08,
+    "cache_write": 0.5
+   }
+  },
+  "ofox/qwen/qwen3.8-27b": {
+   "context_window": 1131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.45,
+    "output": 3.2,
+    "cache_read": 0.05,
+    "cache_write": 0.5625
+   }
+  },
+  "ofox/qwen/qwen3.8-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.47,
+    "cache_read": 0.016,
+    "cache_write": 0.2
+   }
+  },
+  "ofox/qwen/qwen3.8-max": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25,
+    "cache_write": 2.5
+   }
+  },
+  "ofox/qwen/qwen3.8-max-0902": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25,
+    "cache_write": 2.5
    }
   },
   "ofox/volcengine/doubao-seed-1-6": {
@@ -87935,23 +88519,6 @@
     "output": 0
    }
   },
-  "opencode-go/deepseek-flash": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
-    "cache_read": 0.003
-   }
-  },
   "opencode-go/deepseek-v4-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -87999,6 +88566,23 @@
     "input": 0.66,
     "output": 1.98,
     "cache_read": 0.022
+   }
+  },
+  "opencode-go/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.003
    }
   },
   "opencode-go/glm-5": {
@@ -91579,9 +92163,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08708,
-    "output": 0.17416,
-    "cache_read": 0.017416
+    "input": 0.08554,
+    "output": 0.17108,
+    "cache_read": 0.017108
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -91628,9 +92212,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.95526,
-    "output": 1.91052,
-    "cache_read": 0.079605
+    "input": 0.87,
+    "output": 1.74,
+    "cache_read": 0.0725
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -92227,8 +92811,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07,
-    "output": 0.34
+    "input": 0.042,
+    "output": 0.22
    }
   },
   "openrouter/google/gemma-4-26b-a4b-it:free": {
@@ -92442,6 +93026,22 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "openrouter/inclusionai/ling-3.0-flash-vl:free": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -92875,9 +93475,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.03
+    "input": 0.27,
+    "output": 1.08,
+    "cache_read": 0.027
    }
   },
   "openrouter/minimax/minimax-m2.7": {
@@ -96341,9 +96941,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -107432,6 +108032,23 @@
     "cache_read": 0.44
    }
   },
+  "requesty/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
+   }
+  },
   "requesty/devstral-latest": {
    "context_window": 256000,
    "supports_tools": true,
@@ -110570,6 +111187,18 @@
     "input_audio": 1.5
    }
   },
+  "sap-ai-core/gemini-3.5-flash-lite": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
   "sap-ai-core/gemini-embedding": {
    "context_window": 2048,
    "supports_tools": false,
@@ -111252,22 +111881,6 @@
     "output": 0
    }
   },
-  "scnet-token-plan/deepseek-v3.2": {
-   "context_window": 128000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0
-   }
-  },
   "scnet-token-plan/deepseek-v4-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -111464,22 +112077,6 @@
    }
   },
   "scnet-token-plan/kimi-k3": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0
-   }
-  },
-  "scnet-token-plan/mimo-v2.5-pro": {
    "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
@@ -120531,9 +121128,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.28,
-    "output": 0.42,
-    "cache_read": 0.028
+    "input": 0.62,
+    "output": 1.85
    }
   },
   "vercel/deepseek/deepseek-v3.2-thinking": {
@@ -120632,8 +121228,8 @@
     "cache_read": 0.066
    }
   },
-  "vercel/deepseek/deepseek-v4.1-flash-beta": {
-   "context_window": 1000000,
+  "vercel/deepseek/deepseek-v4.1-flash": {
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -120644,9 +121240,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
    }
   },
   "vercel/fish-audio/s1": {
