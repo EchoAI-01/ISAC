@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-12T09:49:57+00:00",
+ "generated_at": "2026-09-12T14:40:43+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7751,
+ "model_count": 7758,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -49204,7 +49204,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro-0813": {
-   "context_window": 1048576,
+   "context_window": 1024000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50477,7 +50477,7 @@
    }
   },
   "kilo/minimax/minimax-m2.5": {
-   "context_window": 204800,
+   "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54952,6 +54952,23 @@
     "output": 3.011
    }
   },
+  "llmgateway-providers/alibaba/kimi-k3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
   "llmgateway-providers/alibaba/qwen-coder-plus": {
    "context_window": 131072,
    "supports_tools": true,
@@ -55963,6 +55980,24 @@
     "output": 13.2,
     "cache_read": 0.22,
     "cache_write": 2.75
+   }
+  },
+  "llmgateway-providers/aws-mantle/gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5
    }
   },
   "llmgateway-providers/azure-ai-foundry/grok-4-1-fast-non-reasoning": {
@@ -60090,6 +60125,23 @@
     "cache_read": 0.028
    }
   },
+  "llmgateway-providers/runpod/kimi-k3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
   "llmgateway-providers/runware/deepseek-v4-flash": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -62412,6 +62464,22 @@
     "cache_write": 0
    }
   },
+  "llmgateway/glm-5-turbo": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.2,
+    "output": 4,
+    "cache_read": 0.24
+   }
+  },
   "llmgateway/glm-5.1": {
    "context_window": 204800,
    "supports_tools": true,
@@ -62493,6 +62561,23 @@
     "input": 0.088,
     "output": 0.25,
     "cache_read": 0.025
+   }
+  },
+  "llmgateway/glm-5v-turbo": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.2,
+    "output": 4,
+    "cache_read": 0.24
    }
   },
   "llmgateway/gpt-3.5-turbo": {
@@ -63362,6 +63447,21 @@
     }
    }
   },
+  "llmgateway/hy-mt2-plus": {
+   "context_window": 8192,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.074,
+    "output": 0.295
+   }
+  },
   "llmgateway/hy3": {
    "context_window": 262144,
    "supports_tools": true,
@@ -63373,9 +63473,25 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
+   }
+  },
+  "llmgateway/hy4-preview": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
    }
   },
   "llmgateway/kimi-k2": {
@@ -93637,9 +93753,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.06678,
-    "output": 0.13356,
-    "cache_read": 0.013356
+    "input": 0.06622,
+    "output": 0.13244,
+    "cache_read": 0.013244
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -93686,9 +93802,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.809274,
-    "output": 1.618548,
-    "cache_read": 0.06744
+    "input": 0.75864,
+    "output": 1.51728,
+    "cache_read": 0.06322
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -93702,9 +93818,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57816,
-    "output": 1.73448,
-    "cache_read": 0.018396
+    "input": 0.57948,
+    "output": 1.73844,
+    "cache_read": 0.019316
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -94996,9 +95112,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.03
+    "input": 0.27,
+    "output": 1.08,
+    "cache_read": 0.027
    }
   },
   "openrouter/minimax/minimax-m2.7": {
