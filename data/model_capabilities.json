@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-12T02:16:03+00:00",
+ "generated_at": "2026-09-12T09:49:57+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7747,
+ "model_count": 7751,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -31086,8 +31086,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.176,
-    "output": 0.528
+    "input": 0.352,
+    "output": 1.056
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -31101,8 +31101,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5808,
-    "output": 1.7424
+    "input": 1.122,
+    "output": 3.366
    }
   },
   "edenai/qwen/qwen-max": {
@@ -49942,6 +49942,36 @@
     "output": 0
    }
   },
+  "kilo/inference-net/schematron-v2-small": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.23
+   }
+  },
+  "kilo/inference-net/schematron-v2-turbo": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.03,
+    "output": 0.15
+   }
+  },
   "kilo/kilo-auto/balanced": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -53642,9 +53672,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -53727,7 +53757,7 @@
    }
   },
   "kilo/thinkingmachines/inkling": {
-   "context_window": 1048576,
+   "context_window": 524288,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54315,9 +54345,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.16,
-    "cache_read": 0.013
+    "input": 0.03,
+    "output": 0.07,
+    "cache_read": 0.003
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -54370,9 +54400,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.302729,
-    "output": 11.550195,
-    "cache_read": 0.263169
+    "input": 2.125,
+    "output": 11.9,
+    "cache_read": 0.2465
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -93607,9 +93637,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.06734,
-    "output": 0.13468,
-    "cache_read": 0.013468
+    "input": 0.06678,
+    "output": 0.13356,
+    "cache_read": 0.013356
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -93623,9 +93653,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.065,
-    "output": 0.18,
-    "cache_read": 0.016
+    "input": 0.04,
+    "output": 0.08,
+    "cache_read": 0.008
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -93656,9 +93686,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.849816,
-    "output": 1.699632,
-    "cache_read": 0.070818
+    "input": 0.809274,
+    "output": 1.618548,
+    "cache_read": 0.06744
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -94513,6 +94543,36 @@
     "output": 0
    }
   },
+  "openrouter/inference-net/schematron-v2-small": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.23
+   }
+  },
+  "openrouter/inference-net/schematron-v2-turbo": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.03,
+    "output": 0.15
+   }
+  },
   "openrouter/kwaipilot/kat-coder-pro-v2": {
    "context_window": 262144,
    "supports_tools": true,
@@ -95332,8 +95392,7 @@
    ],
    "x_cost": {
     "input": 0.6,
-    "output": 2.5,
-    "cache_read": 0.15
+    "output": 2.5
    }
   },
   "openrouter/moonshotai/kimi-k2.5": {
@@ -99101,9 +99160,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
-    "output": 0.5,
-    "cache_read": 0.03
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015
    }
   },
   "openrouter/z-ai/glm-5v-turbo": {
@@ -99206,9 +99265,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.16,
-    "cache_read": 0.013
+    "input": 0.03,
+    "output": 0.07,
+    "cache_read": 0.003
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -99277,9 +99336,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.302729,
-    "output": 11.550195,
-    "cache_read": 0.263169
+    "input": 2.125,
+    "output": 11.9,
+    "cache_read": 0.2465
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -117433,9 +117492,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.65,
-    "output": 1.45,
-    "cache_read": 0.13
+    "input": 0.3,
+    "output": 0.7,
+    "cache_read": 0.06
    }
   },
   "tinfoil/gemma4-31b": {
