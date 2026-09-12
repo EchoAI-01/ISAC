@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-12T14:40:43+00:00",
+ "generated_at": "2026-09-12T19:53:47+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7758,
  "override_count": 0,
@@ -31086,8 +31086,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.352,
-    "output": 1.056
+    "input": 0.176,
+    "output": 0.528
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -31101,8 +31101,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.122,
-    "output": 3.366
+    "input": 0.5808,
+    "output": 1.7424
    }
   },
   "edenai/qwen/qwen-max": {
@@ -49188,7 +49188,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54400,9 +54400,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.125,
-    "output": 11.9,
-    "cache_read": 0.2465
+    "input": 2.375,
+    "output": 13.3,
+    "cache_read": 0.2755
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -93753,9 +93753,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.06622,
-    "output": 0.13244,
-    "cache_read": 0.013244
+    "input": 0.06566,
+    "output": 0.13132,
+    "cache_read": 0.013132
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -93802,9 +93802,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.75864,
-    "output": 1.51728,
-    "cache_read": 0.06322
+    "input": 1.6,
+    "output": 3.2,
+    "cache_read": 0.135
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -94778,8 +94778,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.72,
-    "output": 0.72
+    "input": 0.4,
+    "output": 0.4
    }
   },
   "openrouter/meta-llama/llama-3.1-8b-instruct": {
@@ -95574,9 +95574,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.302729,
-    "output": 11.550195,
-    "cache_read": 0.263169
+    "input": 2.648138,
+    "output": 13.282724,
+    "cache_read": 0.302644
    }
   },
   "openrouter/morph/morph-v3-fast": {
@@ -98628,9 +98628,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -99276,9 +99276,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.25,
-    "cache_read": 0.015
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
    }
   },
   "openrouter/z-ai/glm-5v-turbo": {
@@ -99452,9 +99452,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.125,
-    "output": 11.9,
-    "cache_read": 0.2465
+    "input": 2.375,
+    "output": 13.3,
+    "cache_read": 0.2755
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
