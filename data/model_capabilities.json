@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-11T20:14:12+00:00",
+ "generated_at": "2026-09-12T02:16:03+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7742,
+ "model_count": 7747,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -3118,7 +3118,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -11283,7 +11282,7 @@
    }
   },
   "amazon-bedrock/meta.llama4-scout-17b-instruct-v1:0": {
-   "context_window": 3500000,
+   "context_window": 10000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -11363,6 +11362,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -11378,6 +11378,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -11393,6 +11394,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -11408,6 +11410,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -11423,6 +11426,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -11438,6 +11442,7 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -11449,10 +11454,11 @@
    }
   },
   "amazon-bedrock/mistral.voxtral-mini-3b-2507": {
-   "context_window": 128000,
+   "context_window": 32768,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -11464,7 +11470,7 @@
    }
   },
   "amazon-bedrock/mistral.voxtral-small-24b-2507": {
-   "context_window": 32000,
+   "context_window": 32768,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -11475,8 +11481,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
-    "output": 0.35
+    "input": 0.1,
+    "output": 0.3
    }
   },
   "amazon-bedrock/moonshot.kimi-k2-thinking": {
@@ -12357,7 +12363,7 @@
    }
   },
   "amazon-bedrock/us.meta.llama4-scout-17b-instruct-v1:0": {
-   "context_window": 3500000,
+   "context_window": 10000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -20106,9 +20112,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.28,
-    "cache_read": 0.03
+    "input": 0.09,
+    "output": 0.17,
+    "cache_read": 0.014
    }
   },
   "cortecs/deepseek-v4-pro": {
@@ -20458,9 +20464,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.201,
-    "output": 0.5,
-    "cache_read": 0.05
+    "input": 0.1,
+    "output": 0.35,
+    "cache_read": 0.018
    }
   },
   "cortecs/glm-5v-turbo": {
@@ -21528,9 +21534,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.334,
-    "output": 2.451,
-    "cache_read": 0.111
+    "input": 0.1,
+    "output": 0.4,
+    "cache_read": 0.04
    }
   },
   "cortecs/qwen3.8-flash-next": {
@@ -23467,7 +23473,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -26367,9 +26372,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.4,
-    "output": 4.4,
-    "cache_read": 0.26
+    "input": 0.95,
+    "output": 3.4,
+    "cache_read": 0.2
    }
   },
   "digitalocean/glm-5.3-flash": {
@@ -27784,6 +27789,70 @@
    "x_cost": {
     "input": 2,
     "output": 6
+   }
+  },
+  "edenai/amazon/mistral.voxtral-mini-3b-2507": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.04,
+    "output": 0.04
+   }
+  },
+  "edenai/amazon/mistral.voxtral-mini-3b-2507@us": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.04,
+    "output": 0.04
+   }
+  },
+  "edenai/amazon/mistral.voxtral-small-24b-2507": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.3
+   }
+  },
+  "edenai/amazon/mistral.voxtral-small-24b-2507@us": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.3
    }
   },
   "edenai/amazon/moonshot.kimi-k2-thinking": {
@@ -29611,6 +29680,21 @@
     "input": 0.075,
     "output": 0.3,
     "cache_read": 0.0375
+   }
+  },
+  "edenai/infomaniak/mistralai/ministral-3-14b-instruct-2512": {
+   "context_window": 100000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.34776,
+    "output": 0.46368
    }
   },
   "edenai/ionos/meta-llama/llama-3.3-70b-instruct": {
@@ -33936,7 +34020,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -49121,7 +49204,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro-0813": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50364,7 +50447,7 @@
    }
   },
   "kilo/minimax/minimax-m2.5": {
-   "context_window": 200000,
+   "context_window": 204800,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51085,9 +51168,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.2,
-    "cache_read": 0.04
+    "input": 0.065,
+    "output": 0.18
    }
   },
   "kilo/nvidia/nemotron-3.5-lightning:free": {
@@ -53117,7 +53199,7 @@
    }
   },
   "kilo/qwen/qwen3.8-27b": {
-   "context_window": 1000000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -53560,9 +53642,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -54288,9 +54370,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.1,
-    "output": 10.53,
-    "cache_read": 0.235
+    "input": 2.302729,
+    "output": 11.550195,
+    "cache_read": 0.263169
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -56996,7 +57078,7 @@
    }
   },
   "llmgateway-providers/consensusprotocol/deepseek-v4-flash": {
-   "context_window": 1000000,
+   "context_window": 1050000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -63481,7 +63563,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -68172,10 +68253,11 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-122b-a10b": {
-   "context_window": 131072,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -68188,10 +68270,11 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-27b": {
-   "context_window": 131072,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -93524,9 +93607,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0854,
-    "output": 0.1708,
-    "cache_read": 0.01708
+    "input": 0.06734,
+    "output": 0.13468,
+    "cache_read": 0.013468
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -93573,9 +93656,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.859908,
-    "output": 1.719816,
-    "cache_read": 0.071659
+    "input": 0.849816,
+    "output": 1.699632,
+    "cache_read": 0.070818
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -93589,9 +93672,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.019316
+    "input": 0.57816,
+    "output": 1.73448,
+    "cache_read": 0.018396
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -94519,8 +94602,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.4,
-    "output": 0.4
+    "input": 0.72,
+    "output": 0.72
    }
   },
   "openrouter/meta-llama/llama-3.1-8b-instruct": {
@@ -94853,9 +94936,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.27,
-    "output": 1.08,
-    "cache_read": 0.027
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.03
    }
   },
   "openrouter/minimax/minimax-m2.7": {
@@ -95158,7 +95241,7 @@
    }
   },
   "openrouter/mistralai/mistral-small-3.2-24b-instruct": {
-   "context_window": 131072,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -95316,9 +95399,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.1,
-    "output": 10.53,
-    "cache_read": 0.235
+    "input": 2.302729,
+    "output": 11.550195,
+    "cache_read": 0.263169
    }
   },
   "openrouter/morph/morph-v3-fast": {
@@ -97176,8 +97259,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.88
+    "input": 0.0875,
+    "output": 0.35,
+    "cache_read": 0.0175
    }
   },
   "openrouter/qwen/qwen3-235b-a22b-thinking-2507": {
@@ -98019,9 +98103,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.42,
-    "output": 3,
-    "cache_read": 0.085
+    "input": 0.214,
+    "output": 2.55,
+    "cache_read": 0.15
    }
   },
   "openrouter/qwen/qwen3.8-flash": {
@@ -98369,9 +98453,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -99193,9 +99277,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.1,
-    "output": 10.53,
-    "cache_read": 0.235
+    "input": 2.302729,
+    "output": 11.550195,
+    "cache_read": 0.263169
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -104337,7 +104421,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -115786,7 +115869,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -117351,9 +117433,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 0.7,
-    "cache_read": 0.06
+    "input": 0.65,
+    "output": 1.45,
+    "cache_read": 0.13
    }
   },
   "tinfoil/gemma4-31b": {
@@ -117441,7 +117523,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -128786,7 +128867,6 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
