@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-13T02:13:43+00:00",
+ "generated_at": "2026-09-13T10:49:56+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7758,
+ "model_count": 7784,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -3818,6 +3818,28 @@
    "supports_vision": null,
    "modalities_in": [
     "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
+  "agentrouter/deepseek-v4-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
+  "agentrouter/glm-5.3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
     "text"
    ],
    "modalities_out": [
@@ -30566,12 +30588,10 @@
    "x_cost": {
     "input": 30,
     "output": 180,
-    "cache_read": 3,
     "tiers": [
      {
       "input": 60,
       "output": 270,
-      "cache_read": 6,
       "tier": {
        "type": "context",
        "size": 272000
@@ -30580,8 +30600,7 @@
     ],
     "context_over_200k": {
      "input": 60,
-     "output": 270,
-     "cache_read": 6
+     "output": 270
     }
    }
   },
@@ -30632,12 +30651,10 @@
    "x_cost": {
     "input": 30,
     "output": 180,
-    "cache_read": 3,
     "tiers": [
      {
       "input": 60,
       "output": 270,
-      "cache_read": 6,
       "tier": {
        "type": "context",
        "size": 272000
@@ -30646,8 +30663,7 @@
     ],
     "context_over_200k": {
      "input": 60,
-     "output": 270,
-     "cache_read": 6
+     "output": 270
     }
    }
   },
@@ -30862,12 +30878,10 @@
    "x_cost": {
     "input": 30,
     "output": 180,
-    "cache_read": 3,
     "tiers": [
      {
       "input": 60,
       "output": 270,
-      "cache_read": 6,
       "tier": {
        "type": "context",
        "size": 272000
@@ -30876,8 +30890,7 @@
     ],
     "context_over_200k": {
      "input": 60,
-     "output": 270,
-     "cache_read": 6
+     "output": 270
     }
    }
   },
@@ -31086,8 +31099,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.176,
-    "output": 0.528
+    "input": 0.352,
+    "output": 1.056
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -31101,8 +31114,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5808,
-    "output": 1.7424
+    "input": 1.122,
+    "output": 3.366
    }
   },
   "edenai/qwen/qwen-max": {
@@ -31604,6 +31617,23 @@
     "input": 1.32,
     "output": 3.96,
     "cache_read": 0.13
+   }
+  },
+  "edenai/together_ai/deepseek-ai/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
    }
   },
   "edenai/together_ai/meta-models/muse-glimmer-30b": {
@@ -52634,7 +52664,7 @@
    }
   },
   "kilo/qwen/qwen3-30b-a3b-instruct-2507": {
-   "context_window": 262144,
+   "context_window": 128000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54345,9 +54375,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.03,
-    "output": 0.07,
-    "cache_read": 0.003
+    "input": 0.0352,
+    "output": 0.1056,
+    "cache_read": 0.00112
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -54400,9 +54430,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.375,
-    "output": 13.3,
-    "cache_read": 0.2755
+    "input": 2.1,
+    "output": 10.95
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -54529,7 +54558,7 @@
    }
   },
   "kilo/~z-ai/glm-latest": {
-   "context_window": 1048576,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54539,9 +54568,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.8727,
-    "output": 3.36,
-    "cache_read": 0.1639
+    "input": 0.936,
+    "output": 3.168,
+    "cache_read": 0.1872
    }
   },
   "kimi-for-coding/k3": {
@@ -57273,6 +57302,23 @@
     "cache_read": 0.1
    }
   },
+  "llmgateway-providers/deepinfra/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.6,
+    "cache_read": 0.006
+   }
+  },
   "llmgateway-providers/deepinfra/gemma-4-26b-a4b-it": {
    "context_window": 262144,
    "supports_tools": true,
@@ -57688,6 +57734,23 @@
     "input": 1.32,
     "output": 3.96,
     "cache_read": 0.044
+   }
+  },
+  "llmgateway-providers/fireworks/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "llmgateway-providers/fireworks/kimi-k3": {
@@ -58735,6 +58798,23 @@
     "input": 0.14,
     "output": 0.28,
     "cache_read": 0.028
+   }
+  },
+  "llmgateway-providers/novita/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
    }
   },
   "llmgateway-providers/novita/ernie-4.5-vl-424b-a47b": {
@@ -60534,6 +60614,299 @@
     "output": 0.87
    }
   },
+  "llmgateway-providers/tencent/deepseek-v4-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.0028
+   }
+  },
+  "llmgateway-providers/tencent/deepseek-v4-pro": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.435,
+    "output": 0.87,
+    "cache_read": 0.00363
+   }
+  },
+  "llmgateway-providers/tencent/glm-5": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 3.2,
+    "cache_read": 0.2
+   }
+  },
+  "llmgateway-providers/tencent/glm-5-turbo": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.2,
+    "output": 4,
+    "cache_read": 0.24
+   }
+  },
+  "llmgateway-providers/tencent/glm-5.1": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   }
+  },
+  "llmgateway-providers/tencent/glm-5.2": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   }
+  },
+  "llmgateway-providers/tencent/glm-5v-turbo": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.2,
+    "output": 4,
+    "cache_read": 0.24
+   }
+  },
+  "llmgateway-providers/tencent/hy-mt2-plus": {
+   "context_window": 8192,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.074,
+    "output": 0.295
+   }
+  },
+  "llmgateway-providers/tencent/hy3": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
+   }
+  },
+  "llmgateway-providers/tencent/hy4-preview": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
+   }
+  },
+  "llmgateway-providers/tencent/kimi-k2.6": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.858,
+    "output": 3.566,
+    "cache_read": 0.145
+   }
+  },
+  "llmgateway-providers/tencent/kimi-k2.7-code": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.95,
+    "output": 4,
+    "cache_read": 0.19
+   }
+  },
+  "llmgateway-providers/tencent/kimi-k2.7-code-highspeed": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.9,
+    "output": 8,
+    "cache_read": 0.38
+   }
+  },
+  "llmgateway-providers/tencent/kimi-k3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "llmgateway-providers/tencent/mimo-v2.5-pro": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.435,
+    "output": 0.87,
+    "cache_read": 0.0036,
+    "tiers": [
+     {
+      "input": 2,
+      "output": 6,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 256000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2,
+     "output": 6,
+     "cache_read": 0.4
+    }
+   }
+  },
+  "llmgateway-providers/tencent/minimax-m2.7": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
+   }
+  },
+  "llmgateway-providers/tencent/minimax-m3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
+   }
+  },
   "llmgateway-providers/together-ai/deepseek-v4-flash": {
    "context_window": 163840,
    "supports_tools": true,
@@ -60564,6 +60937,23 @@
     "input": 1.32,
     "output": 3.96,
     "cache_read": 0.13
+   }
+  },
+  "llmgateway-providers/together-ai/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
    }
   },
   "llmgateway-providers/together-ai/gemma-4-31b-it": {
@@ -86459,6 +86849,22 @@
     "output": 0
    }
   },
+  "nvidia/z-ai/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
   "ofox/anthropic/claude-fable-5": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -88934,6 +89340,17 @@
    ]
   },
   "ollama-cloud/deepseek-v4-pro": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
+  "ollama-cloud/deepseek-v4-pro:0813": {
    "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
@@ -93753,9 +94170,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.06566,
-    "output": 0.13132,
-    "cache_read": 0.013132
+    "input": 0.04928,
+    "output": 0.09856,
+    "cache_read": 0.009856
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -97482,8 +97899,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.09,
-    "output": 0.3
+    "input": 0.04815,
+    "output": 0.19305
    }
   },
   "openrouter/qwen/qwen3-30b-a3b-thinking-2507": {
@@ -99383,9 +99800,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.03,
-    "output": 0.07,
-    "cache_read": 0.003
+    "input": 0.0352,
+    "output": 0.1056,
+    "cache_read": 0.00112
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -99454,9 +99871,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.375,
-    "output": 13.3,
-    "cache_read": 0.2755
+    "input": 2.1,
+    "output": 10.95
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -99681,9 +100097,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.8727,
-    "output": 3.36,
-    "cache_read": 0.1639
+    "input": 0.936,
+    "output": 3.168,
+    "cache_read": 0.1872
    }
   },
   "opper/anthropic/claude-fable-5": {
@@ -109999,9 +110415,26 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.5,
+    "output": 1.5,
+    "cache_read": 0.05
+   }
+  },
+  "requesty/deepseek-v4.1-flash@eu": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 1.5,
+    "cache_read": 0.05
    }
   },
   "requesty/devstral-latest": {
@@ -112229,38 +112662,6 @@
     "input": 0.2,
     "output": 1.15,
     "cache_read": 0.04
-   }
-  },
-  "requesty/thinkingcap-qwen3.6-27b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.4,
-    "output": 2.6,
-    "cache_read": 0.05
-   }
-  },
-  "requesty/thinkingcap-qwen3.6-27b@eu": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.4,
-    "output": 2.6,
-    "cache_read": 0.05
    }
   },
   "routing-run/claude-opus-4-8": {
@@ -117831,6 +118232,23 @@
     "input": 1.32,
     "output": 3.96,
     "cache_read": 0.13
+   }
+  },
+  "togetherai/deepseek-ai/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
    }
   },
   "togetherai/essentialai/rnj-1-instruct": {
