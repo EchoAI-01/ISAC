@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-12T19:53:47+00:00",
+ "generated_at": "2026-09-13T02:13:43+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7758,
  "override_count": 0,
@@ -49204,7 +49204,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro-0813": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -49705,7 +49705,7 @@
    }
   },
   "kilo/google/gemma-4-26b-a4b-it": {
-   "context_window": 131072,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -93818,9 +93818,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.019316
+    "input": 0.57816,
+    "output": 1.73448,
+    "cache_read": 0.018396
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -94401,8 +94401,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.042,
-    "output": 0.22
+    "input": 0.09,
+    "output": 0.3,
+    "cache_read": 0.05
    }
   },
   "openrouter/google/gemma-4-26b-a4b-it:free": {
@@ -94903,8 +94904,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.1,
+    "input": 0.35,
+    "output": 1.5,
     "cache_read": 0.04
    }
   },
@@ -95508,7 +95509,8 @@
    ],
    "x_cost": {
     "input": 0.6,
-    "output": 2.5
+    "output": 2.5,
+    "cache_read": 0.15
    }
   },
   "openrouter/moonshotai/kimi-k2.5": {
@@ -98628,9 +98630,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -99259,9 +99261,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.4,
-    "output": 4.4,
-    "cache_read": 0.26
+    "input": 1.092,
+    "output": 3.432,
+    "cache_read": 0.2028
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
