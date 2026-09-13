@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-13T15:20:19+00:00",
+ "generated_at": "2026-09-13T20:01:21+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7784,
  "override_count": 0,
@@ -31099,8 +31099,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.352,
-    "output": 1.056
+    "input": 0.176,
+    "output": 0.528
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -31114,8 +31114,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.122,
-    "output": 3.366
+    "input": 0.5808,
+    "output": 1.7424
    }
   },
   "edenai/qwen/qwen-max": {
@@ -49234,7 +49234,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro-0813": {
-   "context_window": 1048576,
+   "context_window": 1024000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -49984,7 +49984,8 @@
    ],
    "x_cost": {
     "input": 0.05,
-    "output": 0.23
+    "output": 0.23,
+    "cache_read": 0.05
    }
   },
   "kilo/inference-net/schematron-v2-turbo": {
@@ -49999,7 +50000,8 @@
    ],
    "x_cost": {
     "input": 0.03,
-    "output": 0.15
+    "output": 0.15,
+    "cache_read": 0.03
    }
   },
   "kilo/kilo-auto/balanced": {
@@ -54431,7 +54433,8 @@
    ],
    "x_cost": {
     "input": 2.1,
-    "output": 10.95
+    "output": 10.95,
+    "cache_read": 0.23
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -94170,9 +94173,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04872,
-    "output": 0.09744,
-    "cache_read": 0.009744
+    "input": 0.04732,
+    "output": 0.09464,
+    "cache_read": 0.009464
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -94235,9 +94238,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57816,
-    "output": 1.73448,
-    "cache_read": 0.018396
+    "input": 0.57948,
+    "output": 1.73844,
+    "cache_read": 0.019316
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -95089,7 +95092,8 @@
    ],
    "x_cost": {
     "input": 0.05,
-    "output": 0.23
+    "output": 0.23,
+    "cache_read": 0.05
    }
   },
   "openrouter/inference-net/schematron-v2-turbo": {
@@ -95104,7 +95108,8 @@
    ],
    "x_cost": {
     "input": 0.03,
-    "output": 0.15
+    "output": 0.15,
+    "cache_read": 0.03
    }
   },
   "openrouter/kwaipilot/kat-coder-pro-v2": {
@@ -99047,9 +99052,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -99872,7 +99877,8 @@
    ],
    "x_cost": {
     "input": 2.1,
-    "output": 10.95
+    "output": 10.95,
+    "cache_read": 0.23
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
