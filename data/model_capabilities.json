@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-14T11:18:12+00:00",
+ "generated_at": "2026-09-14T17:17:12+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 7789,
  "override_count": 0,
@@ -295,6 +295,23 @@
    "x_cost": {
     "input": 2,
     "output": 10
+   }
+  },
+  "302ai/deepseek-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.003
    }
   },
   "302ai/deepseek-v3.2": {
@@ -4007,7 +4024,8 @@
    ],
    "x_cost": {
     "input": 0.15,
-    "output": 0.25
+    "output": 0.25,
+    "cache_read": 0.08
    }
   },
   "aiand/deepseek-ai/deepseek-v4-pro": {
@@ -4022,7 +4040,8 @@
    ],
    "x_cost": {
     "input": 1,
-    "output": 2.5
+    "output": 2.5,
+    "cache_read": 0.25
    }
   },
   "aiand/google/gemma-4-31b-it": {
@@ -4038,7 +4057,8 @@
    ],
    "x_cost": {
     "input": 0.2,
-    "output": 0.5
+    "output": 0.5,
+    "cache_read": 0.05
    }
   },
   "aiand/moonshotai/kimi-k2.7-code": {
@@ -4054,7 +4074,8 @@
    ],
    "x_cost": {
     "input": 0.75,
-    "output": 3.5
+    "output": 3.5,
+    "cache_read": 0.2
    }
   },
   "aiand/moonshotai/kimi-k3": {
@@ -4086,7 +4107,8 @@
    ],
    "x_cost": {
     "input": 0.5,
-    "output": 2
+    "output": 2,
+    "cache_read": 0.2
    }
   },
   "aiand/openai/gpt-oss-120b": {
@@ -4101,7 +4123,8 @@
    ],
    "x_cost": {
     "input": 0.15,
-    "output": 0.6
+    "output": 0.6,
+    "cache_read": 0.08
    }
   },
   "aiand/qwen/qwen3.6-27b": {
@@ -4117,7 +4140,8 @@
    ],
    "x_cost": {
     "input": 0.32,
-    "output": 3.2
+    "output": 3.2,
+    "cache_read": 0.2
    }
   },
   "aiand/qwen/qwen3.8-27b": {
@@ -4149,7 +4173,8 @@
    ],
    "x_cost": {
     "input": 1,
-    "output": 4
+    "output": 4,
+    "cache_read": 0.3
    }
   },
   "aiand/zai-org/glm-5.3": {
@@ -7993,6 +8018,24 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  "alibaba-token-plan-cn/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -12891,7 +12934,7 @@
    }
   },
   "amd/deepseek-v4-flash": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -12923,7 +12966,24 @@
     "cache_read": 0.0028
    }
   },
-  "amd/minicpm5-1b": {
+  "amd/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.0028
+   }
+  },
+  "amd/minicpm5-2b": {
    "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
@@ -12937,6 +12997,21 @@
     "input": 0.124,
     "output": 0.7425,
     "cache_read": 0.124
+   }
+  },
+  "amd/qwen3.8-27b": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
    }
   },
   "amd/qwen3.8-flash-next": {
@@ -19831,6 +19906,23 @@
     "output": 0
    }
   },
+  "coralbricks/glm-5.3-flash-fp4": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0
+   }
+  },
   "coralbricks/glm-5.3-fp4": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -20086,9 +20178,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.334,
-    "output": 1.003,
-    "cache_read": 0.033
+    "input": 0.368,
+    "output": 1.103,
+    "cache_read": 0.037
    }
   },
   "cortecs/deepseek-r1-0528": {
@@ -20169,6 +20261,23 @@
     "input": 2,
     "output": 3.999,
     "cache_read": 0.5
+   }
+  },
+  "cortecs/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 1.499,
+    "cache_read": 0.13
    }
   },
   "cortecs/devstral-2512": {
@@ -21011,8 +21120,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.223,
-    "output": 0.223,
+    "input": 0.24,
+    "output": 0.24,
     "cache_read": 0.022
    }
   },
@@ -21028,9 +21137,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.111,
-    "output": 0.111,
-    "cache_read": 0.011
+    "input": 0.123,
+    "output": 0.123,
+    "cache_read": 0.012
    }
   },
   "cortecs/ministral-8b-2512": {
@@ -21045,8 +21154,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.167,
-    "output": 0.167,
+    "input": 0.179,
+    "output": 0.179,
     "cache_read": 0.017
    }
   },
@@ -21109,9 +21218,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.557,
-    "output": 1.671,
-    "cache_read": 0.056
+    "input": 0.613,
+    "output": 1.838,
+    "cache_read": 0.061
    }
   },
   "cortecs/mistral-medium-3.5": {
@@ -21126,9 +21235,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.393,
-    "output": 7.13,
-    "cache_read": 0.139
+    "input": 1.532,
+    "output": 7.843,
+    "cache_read": 0.154
    }
   },
   "cortecs/mistral-nemo-instruct-2407": {
@@ -21175,9 +21284,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.143,
-    "output": 0.568,
-    "cache_read": 0.014
+    "input": 0.156,
+    "output": 0.625,
+    "cache_read": 0.016
    }
   },
   "cortecs/mistral-small-3.2-24b-instruct-2506": {
@@ -21620,9 +21729,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.111,
-    "output": 0.334,
-    "cache_read": 0.011
+    "input": 0.123,
+    "output": 0.368,
+    "cache_read": 0.012
    }
   },
   "crof/deepseek-v3.2": {
@@ -29732,8 +29841,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.34776,
-    "output": 0.46368
+    "input": 0.34653,
+    "output": 0.46204
    }
   },
   "edenai/ionos/meta-llama/llama-3.3-70b-instruct": {
@@ -29747,8 +29856,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.75348,
-    "output": 0.75348
+    "input": 0.750815,
+    "output": 0.750815
    }
   },
   "edenai/ionos/openai/gpt-oss-120b": {
@@ -29762,8 +29871,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.17388,
-    "output": 0.75348
+    "input": 0.173265,
+    "output": 0.750815
    }
   },
   "edenai/minimax/minimax-m2": {
@@ -31116,8 +31225,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.352,
-    "output": 1.056
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.022
    }
   },
   "edenai/qwen/deepseek-v4-pro-0813": {
@@ -31131,8 +31241,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.122,
-    "output": 3.366
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.066
    }
   },
   "edenai/qwen/deepseek-v4.1-flash": {
@@ -31147,8 +31258,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.015
    }
   },
   "edenai/qwen/qwen-max": {
@@ -31521,8 +31633,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.46368,
-    "output": 0.92736
+    "input": 0.46204,
+    "output": 0.92408
    }
   },
   "edenai/scaleway/gemma-3-27b-it": {
@@ -31552,8 +31664,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.17388,
-    "output": 0.69552
+    "input": 0.173265,
+    "output": 0.69306
    }
   },
   "edenai/scaleway/llama-3.3-70b-instruct": {
@@ -31567,8 +31679,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.04328,
-    "output": 1.04328
+    "input": 1.03959,
+    "output": 1.03959
    }
   },
   "edenai/tensorx/deepseek/deepseek-v4-flash-0731": {
@@ -43168,7 +43280,7 @@
    }
   },
   "hyper/deepseek-v4-pro-0813": {
-   "context_window": 1048576,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -43184,7 +43296,7 @@
    }
   },
   "hyper/deepseek-v4.1-flash": {
-   "context_window": 1048576,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -43195,9 +43307,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.03
+    "input": 0.32664,
+    "output": 1.30656,
+    "cache_read": 0.032664
    }
   },
   "hyper/gemma-4-26b-a4b-it": {
@@ -43211,9 +43323,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.102,
-    "output": 0.356,
-    "cache_read": 0.051
+    "input": 0.1,
+    "output": 0.374,
+    "cache_read": 0.05
    }
   },
   "hyper/glm-5": {
@@ -43227,9 +43339,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.86,
-    "output": 2.752,
-    "cache_read": 0.43
+    "input": 0.94,
+    "output": 3.008,
+    "cache_read": 0.47
    }
   },
   "hyper/glm-5.1": {
@@ -43244,7 +43356,7 @@
    ],
    "x_cost": {
     "input": 1.318,
-    "output": 4.308,
+    "output": 4.268,
     "cache_read": 0.659
    }
   },
@@ -43309,9 +43421,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.168,
-    "output": 0.66,
-    "cache_read": 0.084
+    "input": 0.178,
+    "output": 0.68,
+    "cache_read": 0.089
    }
   },
   "hyper/inkling": {
@@ -43358,9 +43470,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5584,
-    "output": 2.935,
-    "cache_read": 0.2792
+    "input": 0.5344,
+    "output": 2.815,
+    "cache_read": 0.2672
    }
   },
   "hyper/kimi-k2.6": {
@@ -43381,7 +43493,7 @@
    }
   },
   "hyper/kimi-k2.7-code": {
-   "context_window": 262000,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -43457,9 +43569,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.396,
-    "output": 1.464,
-    "cache_read": 0.198
+    "input": 0.462,
+    "output": 1.728,
+    "cache_read": 0.231
    }
   },
   "hyper/minimax-m3": {
@@ -45469,6 +45581,42 @@
     "output": 2.35,
     "cache_read": 0.12,
     "cache_write": 0
+   }
+  },
+  "infer/infer/gpt-5.6-sol:official": {
+   "context_window": 271999,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.5,
+    "output": 12.5,
+    "cache_read": 0.25,
+    "cache_write": 3.125
+   }
+  },
+  "infer/infer/gpt-6-astra:official": {
+   "context_window": 271999,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 12.5,
+    "output": 62.5,
+    "cache_read": 1.25,
+    "cache_write": 15.625
    }
   },
   "inference/google/gemma-3": {
@@ -49284,7 +49432,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro-0813": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50312,8 +50460,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 0.696
+    "input": 0.1875,
+    "output": 0.6525
    }
   },
   "kilo/meta-llama/llama-4-scout": {
@@ -53754,9 +53902,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -54416,6 +54564,39 @@
     "cache_write": 2.5
    }
   },
+  "kilo/~deepseek/deepseek-flash-latest": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.003
+   }
+  },
+  "kilo/~deepseek/deepseek-pro-latest": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5808,
+    "output": 1.7424,
+    "cache_read": 0.05808
+   }
+  },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -54427,9 +54608,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0352,
-    "output": 0.1056,
-    "cache_read": 0.00112
+    "input": 0.04,
+    "output": 0.1,
+    "cache_read": 0.01
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -54621,9 +54802,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.92,
-    "output": 3.1372,
-    "cache_read": 0.184
+    "input": 0.91,
+    "output": 2.86,
+    "cache_read": 0.169
    }
   },
   "kimi-for-coding/k3": {
@@ -54663,7 +54844,7 @@
    }
   },
   "kimi-for-coding/kimi-for-coding": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57269,7 +57450,7 @@
    ],
    "x_cost": {
     "input": 0.2,
-    "output": 1,
+    "output": 0.6,
     "cache_read": 0.005
    }
   },
@@ -60518,7 +60699,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.8,
+    "input": 0.88,
     "output": 2.55,
     "cache_read": 0.16
    }
@@ -71702,94 +71883,6 @@
     "cache_read": 0.4
    }
   },
-  "nano-gpt/alibaba/qwen3.6-27b": {
-   "context_window": 260096,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.203,
-    "output": 2.24,
-    "cache_read": 0.1015
-   }
-  },
-  "nano-gpt/alibaba/qwen3.6-27b:thinking": {
-   "context_window": 260096,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.203,
-    "output": 2.24,
-    "cache_read": 0.1015
-   }
-  },
-  "nano-gpt/alibaba/qwen3.6-flash": {
-   "context_window": 991808,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.19,
-    "output": 1.16,
-    "cache_read": 0.02,
-    "cache_write": 0.24
-   }
-  },
-  "nano-gpt/alibaba/qwen3.8-flash": {
-   "context_window": 991808,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.14,
-    "output": 0.42,
-    "cache_read": 0.016,
-    "cache_write": 0.2
-   }
-  },
-  "nano-gpt/alibaba/qwen3.8-max-0902": {
-   "context_window": 991808,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2,
-    "output": 6,
-    "cache_read": 0.17,
-    "cache_write": 2.5
-   }
-  },
   "nano-gpt/amazon/nova-2-lite-v1": {
    "context_window": 1000000,
    "supports_tools": false,
@@ -71925,6 +72018,40 @@
     "cache_write": 12.5
    }
   },
+  "nano-gpt/anthropic/claude-haiku-4.5": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 5,
+    "cache_read": 0.1
+   }
+  },
+  "nano-gpt/anthropic/claude-haiku-4.5:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 5,
+    "cache_read": 0.1
+   }
+  },
   "nano-gpt/anthropic/claude-haiku-latest": {
    "context_window": 200000,
    "supports_tools": true,
@@ -71940,6 +72067,142 @@
     "input": 1,
     "output": 5,
     "cache_read": 0.1
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4.1": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4.1:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4.1:thinking:1024": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4.1:thinking:32768": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4.1:thinking:8192": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4.5": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4.5:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5
    }
   },
   "nano-gpt/anthropic/claude-opus-4.6": {
@@ -72095,6 +72358,74 @@
     "cache_read": 0.5
    }
   },
+  "nano-gpt/anthropic/claude-opus-4:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4:thinking:1024": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4:thinking:32768": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-4:thinking:8192": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 15,
+    "output": 75,
+    "cache_read": 1.5
+   }
+  },
   "nano-gpt/anthropic/claude-opus-5": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -72131,6 +72462,57 @@
     "cache_write": 6.25
    }
   },
+  "nano-gpt/anthropic/claude-sonnet-4": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "nano-gpt/anthropic/claude-sonnet-4.5": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "nano-gpt/anthropic/claude-sonnet-4.5:thinking": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
   "nano-gpt/anthropic/claude-sonnet-4.6": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -72149,6 +72531,91 @@
    }
   },
   "nano-gpt/anthropic/claude-sonnet-4.6:thinking": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "nano-gpt/anthropic/claude-sonnet-4:thinking": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "nano-gpt/anthropic/claude-sonnet-4:thinking:1024": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "nano-gpt/anthropic/claude-sonnet-4:thinking:32768": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "nano-gpt/anthropic/claude-sonnet-4:thinking:64000": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "nano-gpt/anthropic/claude-sonnet-4:thinking:8192": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -72331,51 +72798,6 @@
     "cache_read": 0.2
    }
   },
-  "nano-gpt/brave": {
-   "context_window": 8192,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 5,
-    "output": 5
-   }
-  },
-  "nano-gpt/brave-pro": {
-   "context_window": 8192,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 5,
-    "output": 5
-   }
-  },
-  "nano-gpt/brave-research": {
-   "context_window": 16384,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 5,
-    "output": 5
-   }
-  },
   "nano-gpt/bytedance-seed/seed-2-1-turbo": {
    "context_window": 262144,
    "supports_tools": true,
@@ -72493,396 +72915,6 @@
     "cache_read": 1
    }
   },
-  "nano-gpt/chutesai/mistral-small-3.2-24b-instruct-2506": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.4,
-    "cache_read": 0.1
-   }
-  },
-  "nano-gpt/claude-haiku-4-5-20251001": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 5,
-    "cache_read": 0.1
-   }
-  },
-  "nano-gpt/claude-haiku-4-5-20251001-thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 5,
-    "cache_read": 0.1
-   }
-  },
-  "nano-gpt/claude-opus-4-1-20250805": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-1-thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-1-thinking:1024": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-1-thinking:32768": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-1-thinking:8192": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-20250514": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-5-20251101": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5
-   }
-  },
-  "nano-gpt/claude-opus-4-5-20251101:thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5
-   }
-  },
-  "nano-gpt/claude-opus-4-thinking": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-thinking:1024": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-thinking:32768": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-opus-4-thinking:8192": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 15,
-    "output": 75,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/claude-sonnet-4-20250514": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
-   }
-  },
-  "nano-gpt/claude-sonnet-4-5-20250929": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
-   }
-  },
-  "nano-gpt/claude-sonnet-4-5-20250929-thinking": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
-   }
-  },
-  "nano-gpt/claude-sonnet-4-thinking": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
-   }
-  },
-  "nano-gpt/claude-sonnet-4-thinking:1024": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
-   }
-  },
-  "nano-gpt/claude-sonnet-4-thinking:32768": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
-   }
-  },
-  "nano-gpt/claude-sonnet-4-thinking:64000": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
-   }
-  },
-  "nano-gpt/claude-sonnet-4-thinking:8192": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3
-   }
-  },
   "nano-gpt/claw-high": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -72962,38 +72994,6 @@
     "input": 2.5,
     "output": 10,
     "cache_read": 1.25
-   }
-  },
-  "nano-gpt/crofai/greg-2-super": {
-   "context_window": 229376,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.5,
-    "output": 5,
-    "cache_read": 0.25
-   }
-  },
-  "nano-gpt/crofai/greg-2-ultra": {
-   "context_window": 229376,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 10,
-    "cache_read": 0.5
    }
   },
   "nano-gpt/deepclaude": {
@@ -73479,8 +73479,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
+    "input": 0.1,
+    "output": 0.4,
     "cache_read": 0.003
    }
   },
@@ -73496,8 +73496,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
+    "input": 0.1,
+    "output": 0.4,
     "cache_read": 0.003
    }
   },
@@ -73822,21 +73822,6 @@
     "input": 0.799,
     "output": 0.799,
     "cache_read": 0.3995
-   }
-  },
-  "nano-gpt/exa-answer": {
-   "context_window": 4096,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.5,
-    "output": 2.5
    }
   },
   "nano-gpt/failspy/meta-llama-3-70b-instruct-abliterated-v3.5": {
@@ -75482,6 +75467,38 @@
     "cache_read": 0.015
    }
   },
+  "nano-gpt/inference-net/schematron-v2-small": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.23,
+    "cache_read": 0.025
+   }
+  },
+  "nano-gpt/inference-net/schematron-v2-turbo": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.03,
+    "output": 0.15,
+    "cache_read": 0.015
+   }
+  },
   "nano-gpt/inflatebot/mn-12b-mag-mell-r1": {
    "context_window": 16384,
    "supports_tools": false,
@@ -75956,22 +75973,6 @@
     "cache_read": 0.0697
    }
   },
-  "nano-gpt/minimax-m2": {
-   "context_window": 200000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.17,
-    "output": 1.53,
-    "cache_read": 0.085
-   }
-  },
   "nano-gpt/minimax/minimax-01": {
    "context_window": 1000192,
    "supports_tools": false,
@@ -76004,6 +76005,22 @@
     "input": 0.3,
     "output": 1.2,
     "cache_read": 0.06
+   }
+  },
+  "nano-gpt/minimax/minimax-m2": {
+   "context_window": 200000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.17,
+    "output": 1.53,
+    "cache_read": 0.085
    }
   },
   "nano-gpt/minimax/minimax-m2-her": {
@@ -76166,57 +76183,6 @@
     "input": 0.3,
     "output": 0.9,
     "cache_read": 0.15
-   }
-  },
-  "nano-gpt/mistral-small-31-24b-instruct": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.3,
-    "cache_read": 0.05
-   }
-  },
-  "nano-gpt/mistral/mistral-medium-3.5": {
-   "context_window": 256000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.5,
-    "output": 7.5,
-    "cache_read": 0.75
-   }
-  },
-  "nano-gpt/mistral/mistral-medium-3.5:thinking": {
-   "context_window": 256000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.5,
-    "output": 7.5,
-    "cache_read": 0.75
    }
   },
   "nano-gpt/mistralai/codestral-2508": {
@@ -76398,6 +76364,40 @@
     "cache_read": 0.2
    }
   },
+  "nano-gpt/mistralai/mistral-medium-3.5": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.5,
+    "output": 7.5,
+    "cache_read": 0.75
+   }
+  },
+  "nano-gpt/mistralai/mistral-medium-3.5:thinking": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.5,
+    "output": 7.5,
+    "cache_read": 0.75
+   }
+  },
   "nano-gpt/mistralai/mistral-nemo-instruct-2407": {
    "context_window": 16384,
    "supports_tools": false,
@@ -76443,6 +76443,39 @@
    "x_cost": {
     "input": 0.1155,
     "output": 0.3465
+   }
+  },
+  "nano-gpt/mistralai/mistral-small-3.1-24b-instruct": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.3,
+    "cache_read": 0.05
+   }
+  },
+  "nano-gpt/mistralai/mistral-small-3.2-24b-instruct": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.4,
+    "cache_read": 0.1
    }
   },
   "nano-gpt/mistralai/mistral-small-4-119b-2603": {
@@ -77960,22 +77993,6 @@
     "cache_read": 0.075
    }
   },
-  "nano-gpt/perplexity-academic-researcher": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2,
-    "output": 8,
-    "cache_read": 1
-   }
-  },
   "nano-gpt/phi-4-mini-instruct": {
    "context_window": 128000,
    "supports_tools": false,
@@ -78073,25 +78090,23 @@
     "cache_read": 0.6
    }
   },
-  "nano-gpt/qwen-3.6-plus": {
-   "context_window": 991808,
+  "nano-gpt/qwen/qwen-2.5-72b-instruct": {
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 0.325,
-    "output": 1.95,
-    "cache_read": 0.0325,
-    "cache_write": 0.40625
+    "input": 0.357,
+    "output": 0.408,
+    "cache_read": 0.1785
    }
   },
-  "nano-gpt/qwen-long": {
+  "nano-gpt/qwen/qwen-long": {
    "context_window": 10000000,
    "supports_tools": false,
    "supports_vision": null,
@@ -78108,7 +78123,7 @@
     "cache_read": 0.05015
    }
   },
-  "nano-gpt/qwen-max": {
+  "nano-gpt/qwen/qwen-max": {
    "context_window": 32000,
    "supports_tools": false,
    "supports_vision": null,
@@ -78124,7 +78139,7 @@
     "cache_read": 0.79985
    }
   },
-  "nano-gpt/qwen-plus": {
+  "nano-gpt/qwen/qwen-plus": {
    "context_window": 995904,
    "supports_tools": false,
    "supports_vision": null,
@@ -78140,7 +78155,7 @@
     "cache_read": 0.19975
    }
   },
-  "nano-gpt/qwen-turbo": {
+  "nano-gpt/qwen/qwen-turbo": {
    "context_window": 1000000,
    "supports_tools": false,
    "supports_vision": null,
@@ -78154,22 +78169,6 @@
     "input": 0.04998,
     "output": 0.2006,
     "cache_read": 0.02499
-   }
-  },
-  "nano-gpt/qwen/qwen-2.5-72b-instruct": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.357,
-    "output": 0.408,
-    "cache_read": 0.1785
    }
   },
   "nano-gpt/qwen/qwen2.5-coder-32b-instruct": {
@@ -78237,22 +78236,6 @@
     "cache_read": 0.065
    }
   },
-  "nano-gpt/qwen/qwen3-235b-a22b-thinking-2507": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 0.5,
-    "cache_read": 0.15
-   }
-  },
   "nano-gpt/qwen/qwen3-30b-a3b": {
    "context_window": 41000,
    "supports_tools": false,
@@ -78267,6 +78250,22 @@
     "input": 0.1,
     "output": 0.3,
     "cache_read": 0.05
+   }
+  },
+  "nano-gpt/qwen/qwen3-30b-a3b-instruct-2507": {
+   "context_window": 256000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.5,
+    "cache_read": 0.1
    }
   },
   "nano-gpt/qwen/qwen3-32b": {
@@ -78316,6 +78315,22 @@
     "input": 0.13,
     "output": 0.5,
     "cache_read": 0.065
+   }
+  },
+  "nano-gpt/qwen/qwen3-coder-30b-a3b-instruct": {
+   "context_window": 128000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.4,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/qwen/qwen3-coder-flash": {
@@ -78382,6 +78397,22 @@
     "cache_read": 0.6001
    }
   },
+  "nano-gpt/qwen/qwen3-max-2026-01-23": {
+   "context_window": 256000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.2002,
+    "output": 6.001,
+    "cache_read": 0.6001
+   }
+  },
   "nano-gpt/qwen/qwen3-next-80b-a3b-instruct": {
    "context_window": 262144,
    "supports_tools": true,
@@ -78431,6 +78462,157 @@
     "cache_read": 0.15
    }
   },
+  "nano-gpt/qwen/qwen3-vl-235b-a22b-thinking": {
+   "context_window": 131072,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 6,
+    "cache_read": 0.25
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-0.8b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.06,
+    "output": 0.12,
+    "cache_read": 0.03
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-122b-a10b": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.437,
+    "output": 3.496,
+    "cache_read": 0.103788
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-122b-a10b:thinking": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.437,
+    "output": 3.496,
+    "cache_read": 0.103788
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-27b": {
+   "context_window": 260096,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.27,
+    "output": 2.16,
+    "cache_read": 0.135
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-27b:thinking": {
+   "context_window": 260096,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.27,
+    "output": 2.16,
+    "cache_read": 0.135
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-2b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.16,
+    "cache_read": 0.04
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-35b-a3b": {
+   "context_window": 260096,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.225,
+    "output": 1.8,
+    "cache_read": 0.1125
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-35b-a3b:thinking": {
+   "context_window": 260096,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.225,
+    "output": 1.8,
+    "cache_read": 0.1125
+   }
+  },
   "nano-gpt/qwen/qwen3.5-397b-a17b": {
    "context_window": 258048,
    "supports_tools": true,
@@ -78448,7 +78630,7 @@
     "cache_read": 0.3
    }
   },
-  "nano-gpt/qwen/qwen3.5-397b-a17b-thinking": {
+  "nano-gpt/qwen/qwen3.5-397b-a17b:thinking": {
    "context_window": 258048,
    "supports_tools": true,
    "supports_vision": null,
@@ -78463,6 +78645,23 @@
     "input": 0.6,
     "output": 3.6,
     "cache_read": 0.3
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-4b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.2,
+    "cache_read": 0.05
    }
   },
   "nano-gpt/qwen/qwen3.5-9b": {
@@ -78482,6 +78681,64 @@
     "cache_read": 0.025
    }
   },
+  "nano-gpt/qwen/qwen3.5-flash": {
+   "context_window": 991808,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.4,
+    "cache_read": 0.05
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-flash:thinking": {
+   "context_window": 991808,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.4,
+    "cache_read": 0.05
+   }
+  },
+  "nano-gpt/qwen/qwen3.5-omni-flash": {
+   "context_window": 49152,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
+  "nano-gpt/qwen/qwen3.5-omni-plus": {
+   "context_window": 983616,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
   "nano-gpt/qwen/qwen3.5-plus": {
    "context_window": 983616,
    "supports_tools": false,
@@ -78499,7 +78756,7 @@
     "cache_read": 0.04
    }
   },
-  "nano-gpt/qwen/qwen3.5-plus-thinking": {
+  "nano-gpt/qwen/qwen3.5-plus:thinking": {
    "context_window": 983616,
    "supports_tools": false,
    "supports_vision": null,
@@ -78514,6 +78771,40 @@
     "input": 0.4,
     "output": 2.4,
     "cache_read": 0.04
+   }
+  },
+  "nano-gpt/qwen/qwen3.6-27b": {
+   "context_window": 260096,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.203,
+    "output": 2.24,
+    "cache_read": 0.1015
+   }
+  },
+  "nano-gpt/qwen/qwen3.6-27b:thinking": {
+   "context_window": 260096,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.203,
+    "output": 2.24,
+    "cache_read": 0.1015
    }
   },
   "nano-gpt/qwen/qwen3.6-35b-a3b": {
@@ -78550,8 +78841,42 @@
     "cache_read": 0.056
    }
   },
-  "nano-gpt/qwen/qwen3.8-2.4t-a95b": {
-   "context_window": 991000,
+  "nano-gpt/qwen/qwen3.6-flash": {
+   "context_window": 991808,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.19,
+    "output": 1.16,
+    "cache_read": 0.02,
+    "cache_write": 0.24
+   }
+  },
+  "nano-gpt/qwen/qwen3.6-max-preview": {
+   "context_window": 245760,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.04,
+    "output": 6.24,
+    "cache_read": 0.52
+   }
+  },
+  "nano-gpt/qwen/qwen3.6-plus": {
+   "context_window": 991808,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -78562,10 +78887,133 @@
     "text"
    ],
    "x_cost": {
-    "input": 2,
-    "output": 6,
-    "cache_read": 0.25,
-    "cache_write": 2.5
+    "input": 0.325,
+    "output": 1.95,
+    "cache_read": 0.0325,
+    "cache_write": 0.40625
+   }
+  },
+  "nano-gpt/qwen/qwen3.7-flash": {
+   "context_window": 991808,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.03,
+    "output": 0.13,
+    "cache_read": 0.006,
+    "cache_write": 0.038
+   }
+  },
+  "nano-gpt/qwen/qwen3.7-flash:thinking": {
+   "context_window": 983616,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.03,
+    "output": 0.13,
+    "cache_read": 0.006,
+    "cache_write": 0.038
+   }
+  },
+  "nano-gpt/qwen/qwen3.7-max": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.5,
+    "output": 7.5,
+    "cache_read": 0.5,
+    "cache_write": 3.125
+   }
+  },
+  "nano-gpt/qwen/qwen3.7-max:thinking": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.5,
+    "output": 7.5,
+    "cache_read": 0.5,
+    "cache_write": 3.125
+   }
+  },
+  "nano-gpt/qwen/qwen3.7-plus": {
+   "context_window": 991808,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 1.6,
+    "cache_read": 0.08,
+    "cache_write": 0.5
+   }
+  },
+  "nano-gpt/qwen/qwen3.7-plus:thinking": {
+   "context_window": 983616,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 1.6,
+    "cache_read": 0.08,
+    "cache_write": 0.5
+   }
+  },
+  "nano-gpt/qwen/qwen3.8-27b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.7,
+    "cache_read": 0.04
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-fable": {
@@ -78599,7 +79047,7 @@
    "x_cost": {
     "input": 0.25,
     "output": 1.5,
-    "cache_read": 0.125
+    "cache_read": 0.2
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-obliterated:thinking": {
@@ -78616,7 +79064,7 @@
    "x_cost": {
     "input": 0.25,
     "output": 1.5,
-    "cache_read": 0.125
+    "cache_read": 0.2
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-queen": {
@@ -78670,9 +79118,9 @@
     "cache_read": 0.125
    }
   },
-  "nano-gpt/qwen25-vl-72b-instruct": {
-   "context_window": 32000,
-   "supports_tools": false,
+  "nano-gpt/qwen/qwen3.8-27b:thinking": {
+   "context_window": 262144,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "image",
@@ -78682,57 +79130,81 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.69989,
-    "output": 0.69989,
-    "cache_read": 0.349945
+    "input": 0.15,
+    "output": 0.7,
+    "cache_read": 0.04
    }
   },
-  "nano-gpt/qwen3-30b-a3b-instruct-2507": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.5,
-    "cache_read": 0.1
-   }
-  },
-  "nano-gpt/qwen3-coder-30b-a3b-instruct": {
-   "context_window": 128000,
+  "nano-gpt/qwen/qwen3.8-flash": {
+   "context_window": 991808,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 0.4,
-    "cache_read": 0.05
+    "input": 0.14,
+    "output": 0.42,
+    "cache_read": 0.016,
+    "cache_write": 0.2
    }
   },
-  "nano-gpt/qwen3-max-2026-01-23": {
-   "context_window": 256000,
-   "supports_tools": false,
+  "nano-gpt/qwen/qwen3.8-max": {
+   "context_window": 991000,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 1.2002,
-    "output": 6.001,
-    "cache_read": 0.6001
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25,
+    "cache_write": 2.5
+   }
+  },
+  "nano-gpt/qwen/qwen3.8-max-0902": {
+   "context_window": 991808,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.17,
+    "cache_write": 2.5
+   }
+  },
+  "nano-gpt/qwen/qwen3.8-max:thinking": {
+   "context_window": 991000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25,
+    "cache_write": 2.5
    }
   },
   "nano-gpt/qwen3-vl-235b-a22b-instruct-original": {
@@ -78750,89 +79222,6 @@
     "input": 0.5,
     "output": 1.2,
     "cache_read": 0.25
-   }
-  },
-  "nano-gpt/qwen3-vl-235b-a22b-thinking": {
-   "context_window": 32768,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.5,
-    "output": 6,
-    "cache_read": 0.25
-   }
-  },
-  "nano-gpt/qwen3.5-0.8b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.06,
-    "output": 0.12,
-    "cache_read": 0.03
-   }
-  },
-  "nano-gpt/qwen3.5-122b-a10b": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.437,
-    "output": 3.496,
-    "cache_read": 0.103788
-   }
-  },
-  "nano-gpt/qwen3.5-122b-a10b:thinking": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.437,
-    "output": 3.496,
-    "cache_read": 0.103788
-   }
-  },
-  "nano-gpt/qwen3.5-27b": {
-   "context_window": 260096,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.27,
-    "output": 2.16,
-    "cache_read": 0.135
    }
   },
   "nano-gpt/qwen3.5-27b-bluestar-v3-derestricted": {
@@ -78867,349 +79256,6 @@
     "input": 0.306,
     "output": 0.306,
     "cache_read": 0.153
-   }
-  },
-  "nano-gpt/qwen3.5-27b:thinking": {
-   "context_window": 260096,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.27,
-    "output": 2.16,
-    "cache_read": 0.135
-   }
-  },
-  "nano-gpt/qwen3.5-2b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.16,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/qwen3.5-35b-a3b": {
-   "context_window": 260096,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.225,
-    "output": 1.8,
-    "cache_read": 0.1125
-   }
-  },
-  "nano-gpt/qwen3.5-35b-a3b:thinking": {
-   "context_window": 260096,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.225,
-    "output": 1.8,
-    "cache_read": 0.1125
-   }
-  },
-  "nano-gpt/qwen3.5-4b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.2,
-    "cache_read": 0.05
-   }
-  },
-  "nano-gpt/qwen3.5-flash": {
-   "context_window": 991808,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.4,
-    "cache_read": 0.05
-   }
-  },
-  "nano-gpt/qwen3.5-flash:thinking": {
-   "context_window": 991808,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.4,
-    "cache_read": 0.05
-   }
-  },
-  "nano-gpt/qwen3.5-omni-flash": {
-   "context_window": 49152,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
-  "nano-gpt/qwen3.5-omni-plus": {
-   "context_window": 983616,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
-  "nano-gpt/qwen3.6-max-preview": {
-   "context_window": 245760,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.04,
-    "output": 6.24,
-    "cache_read": 0.52
-   }
-  },
-  "nano-gpt/qwen3.7-flash": {
-   "context_window": 991808,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.03,
-    "output": 0.13,
-    "cache_read": 0.006,
-    "cache_write": 0.038
-   }
-  },
-  "nano-gpt/qwen3.7-flash:thinking": {
-   "context_window": 983616,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.03,
-    "output": 0.13,
-    "cache_read": 0.006,
-    "cache_write": 0.038
-   }
-  },
-  "nano-gpt/qwen3.7-max": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.5,
-    "output": 7.5,
-    "cache_read": 0.5,
-    "cache_write": 3.125
-   }
-  },
-  "nano-gpt/qwen3.7-max:thinking": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.5,
-    "output": 7.5,
-    "cache_read": 0.5,
-    "cache_write": 3.125
-   }
-  },
-  "nano-gpt/qwen3.7-plus": {
-   "context_window": 991808,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.4,
-    "output": 1.6,
-    "cache_read": 0.08,
-    "cache_write": 0.5
-   }
-  },
-  "nano-gpt/qwen3.7-plus:thinking": {
-   "context_window": 983616,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.4,
-    "output": 1.6,
-    "cache_read": 0.08,
-    "cache_write": 0.5
-   }
-  },
-  "nano-gpt/qwen3.8-27b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.7,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/qwen3.8-27b:thinking": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.7,
-    "cache_read": 0.04
-   }
-  },
-  "nano-gpt/qwen3.8-max": {
-   "context_window": 991000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2,
-    "output": 6,
-    "cache_read": 0.25,
-    "cache_write": 2.5
-   }
-  },
-  "nano-gpt/qwen3.8-max:thinking": {
-   "context_window": 991000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2,
-    "output": 6,
-    "cache_read": 0.25,
-    "cache_write": 2.5
    }
   },
   "nano-gpt/readyart/ms3.2-the-omega-directive-24b-unslop-v2.0": {
@@ -79407,70 +79453,6 @@
     "cache_read": 0.25
    }
   },
-  "nano-gpt/sonar": {
-   "context_window": 127072,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1,
-    "output": 1,
-    "cache_read": 0.5
-   }
-  },
-  "nano-gpt/sonar-deep-research": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3.4,
-    "output": 13.6,
-    "cache_read": 1.7
-   }
-  },
-  "nano-gpt/sonar-pro": {
-   "context_window": 200000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 1.5
-   }
-  },
-  "nano-gpt/sonar-reasoning-pro": {
-   "context_window": 128000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2,
-    "output": 8,
-    "cache_read": 1
-   }
-  },
   "nano-gpt/soob3123/amoral-gemma3-27b-v2": {
    "context_window": 32768,
    "supports_tools": false,
@@ -79662,6 +79644,23 @@
     "input": 0.2,
     "output": 0.4,
     "cache_read": 0.04
+   }
+  },
+  "nano-gpt/tee/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.65,
+    "output": 1.45,
+    "cache_read": 0.13
    }
   },
   "nano-gpt/tee/gemma-4-26b-a4b-uncensored": {
@@ -79976,22 +79975,6 @@
     "cache_read": 0.35
    }
   },
-  "nano-gpt/tee/qwen3-8b": {
-   "context_window": 40960,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.11,
-    "output": 0.45,
-    "cache_read": 0.11
-   }
-  },
   "nano-gpt/tee/qwen3.5-27b": {
    "context_window": 262144,
    "supports_tools": false,
@@ -80207,7 +80190,7 @@
   },
   "nano-gpt/thedrummer/cydonia-24b-v4.1": {
    "context_window": 131072,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "text"
@@ -80734,38 +80717,6 @@
     "output": 0.87,
     "cache_read": 0.0036,
     "cache_write": 0
-   }
-  },
-  "nano-gpt/xiaomi/mimo-v2.5-pro-crof": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.4,
-    "output": 0.8,
-    "cache_read": 0.003
-   }
-  },
-  "nano-gpt/xiaomi/mimo-v2.5-pro-crof:thinking": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.4,
-    "output": 0.8,
-    "cache_read": 0.003
    }
   },
   "nano-gpt/xiaomi/mimo-v2.5-pro:thinking": {
@@ -81316,9 +81267,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.35,
-    "output": 1.4,
-    "cache_read": 0.175
+    "input": 0.2,
+    "output": 0.8,
+    "cache_read": 0.1
    }
   },
   "nano-gpt/z-ai/glm-5.3:thinking": {
@@ -94256,9 +94207,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.088606,
-    "output": 0.177212,
-    "cache_read": 0.017721
+    "input": 0.084,
+    "output": 0.168,
+    "cache_read": 0.0168
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -94321,9 +94272,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.9834,
-    "output": 2.9502,
-    "cache_read": 0.03278
+    "input": 0.65868,
+    "output": 1.97604,
+    "cache_read": 0.020958
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -95361,8 +95312,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 0.696
+    "input": 0.1875,
+    "output": 0.6525
    }
   },
   "openrouter/meta-llama/llama-4-scout": {
@@ -96236,8 +96187,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.085,
-    "output": 0.4
+    "input": 0.08,
+    "output": 0.45
    }
   },
   "openrouter/nvidia/nemotron-3-super-120b-a12b:free": {
@@ -99135,9 +99086,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -99877,6 +99828,39 @@
     "cache_write": 2.5
    }
   },
+  "openrouter/~deepseek/deepseek-flash-latest": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.003
+   }
+  },
+  "openrouter/~deepseek/deepseek-pro-latest": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5808,
+    "output": 1.7424,
+    "cache_read": 0.05808
+   }
+  },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
    "context_window": 1310720,
    "supports_tools": true,
@@ -99888,9 +99872,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0352,
-    "output": 0.1056,
-    "cache_read": 0.00112
+    "input": 0.04,
+    "output": 0.1,
+    "cache_read": 0.01
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -100186,9 +100170,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.92,
-    "output": 3.1372,
-    "cache_read": 0.184
+    "input": 0.91,
+    "output": 2.86,
+    "cache_read": 0.169
    }
   },
   "opper/anthropic/claude-fable-5": {
@@ -119860,23 +119844,7 @@
     "output": 15
    }
   },
-  "vancine/deepseek-v4-flash": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
-   }
-  },
-  "vancine/deepseek-v4-flash-vision-exp": {
+  "vancine/deepseek-flash": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -119888,25 +119856,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
-   }
-  },
-  "vancine/deepseek-v4-pro": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 0.24,
+    "output": 0.96,
+    "cache_read": 0.0048
    }
   },
   "vancine/glm-5.3": {
@@ -119937,9 +119889,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.06,
-    "output": 0.2,
-    "cache_read": 0.012
+    "input": 0.12,
+    "output": 0.4,
+    "cache_read": 0.024
    }
   },
   "vancine/hy4-preview": {
@@ -122631,23 +122583,6 @@
     "cache_write": 0.2
    }
   },
-  "vercel/alibaba/qwen3.8-flash-next": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.12,
-    "output": 0.4,
-    "cache_read": 0.01
-   }
-  },
   "vercel/alibaba/qwen3.8-max": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -123351,6 +123286,23 @@
     "cache_read": 0.05
    }
   },
+  "vercel/bytedance/seed-2.1-turbo": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 2.5,
+    "cache_read": 0.1
+   }
+  },
   "vercel/bytedance/seedance-2.0": {
    "context_window": 0,
    "supports_tools": false,
@@ -123693,7 +123645,7 @@
    }
   },
   "vercel/deepseek/deepseek-v4.1-flash": {
-   "context_window": 1048576,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -123704,9 +123656,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.006
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.015
    }
   },
   "vercel/fish-audio/s1": {
@@ -124371,6 +124323,38 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "vercel/inclusionai/ling-3.0-flash-vl": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "vercel/inclusionai/ling-3.0-flash-vl-free": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -125283,7 +125267,8 @@
    ],
    "x_cost": {
     "input": 0.05,
-    "output": 0.24
+    "output": 0.2,
+    "cache_read": 0.025
    }
   },
   "vercel/nvidia/nemotron-3-super-120b-a12b": {
@@ -126842,7 +126827,41 @@
     "text"
    ]
   },
+  "vercel/sakana/fugu-max": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25
+   }
+  },
   "vercel/sakana/fugu-ultra": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 30,
+    "cache_read": 0.5
+   }
+  },
+  "vercel/sakana/fugu-ultra-v2": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -129345,9 +129364,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.75,
-    "output": 2.75,
-    "cache_read": 0.15
+    "input": 0.5,
+    "output": 2.15,
+    "cache_read": 0.1
    }
   },
   "wandb/nvidia/nvidia-nemotron-3.5-lightning-30b-a3b": {
@@ -129361,9 +129380,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 0.25,
-    "cache_read": 0.05
+    "input": 0.07,
+    "output": 0.2,
+    "cache_read": 0.04
    }
   },
   "wandb/openai/gpt-oss-120b": {
