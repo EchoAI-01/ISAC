@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-13T20:01:21+00:00",
+ "generated_at": "2026-09-14T02:31:26+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7784,
+ "model_count": 7785,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -51157,7 +51157,7 @@
    }
   },
   "kilo/nvidia/nemotron-3-ultra-550b-a55b": {
-   "context_window": 256000,
+   "context_window": 202800,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -52591,7 +52591,7 @@
    }
   },
   "kilo/qwen/qwen3-14b": {
-   "context_window": 131072,
+   "context_window": 40960,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54229,7 +54229,7 @@
    }
   },
   "kilo/z-ai/glm-5.2": {
-   "context_window": 202752,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54245,7 +54245,7 @@
    }
   },
   "kilo/z-ai/glm-5.3": {
-   "context_window": 1048576,
+   "context_window": 1048575,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57188,6 +57188,22 @@
     "input": 0.05,
     "output": 0.1,
     "cache_read": 0.01
+   }
+  },
+  "llmgateway-providers/consensusprotocol/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 1,
+    "cache_read": 0.005
    }
   },
   "llmgateway-providers/consensusprotocol/gemma-4-31b-it": {
@@ -94173,9 +94189,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04732,
-    "output": 0.09464,
-    "cache_read": 0.009464
+    "input": 0.089866,
+    "output": 0.179732,
+    "cache_read": 0.017973
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -94189,9 +94205,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04,
-    "output": 0.08,
-    "cache_read": 0.008
+    "input": 0.06,
+    "output": 0.12,
+    "cache_read": 0.012
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -94238,9 +94254,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.019316
+    "input": 1.05468,
+    "output": 3.16404,
+    "cache_read": 0.035156
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -94255,9 +94271,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
-    "cache_read": 0.003
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -96183,9 +96199,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.625,
-    "output": 3.125,
-    "cache_read": 0.1875
+    "input": 0.6,
+    "output": 2.4,
+    "cache_read": 0.12
    }
   },
   "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
@@ -97828,8 +97844,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2275,
-    "output": 0.91
+    "input": 0.12,
+    "output": 0.24
    }
   },
   "openrouter/qwen/qwen3-235b-a22b": {
@@ -99052,9 +99068,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -99667,9 +99683,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 2,
-    "cache_read": 0.15
+    "input": 0.6832,
+    "output": 2.1472,
+    "cache_read": 0.12688
    }
   },
   "openrouter/z-ai/glm-5.3": {
@@ -99683,9 +99699,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.092,
-    "output": 3.432,
-    "cache_read": 0.2028
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
