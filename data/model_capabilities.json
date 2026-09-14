@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-14T17:17:12+00:00",
+ "generated_at": "2026-09-14T21:12:16+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7789,
+ "model_count": 7810,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -5982,6 +5982,22 @@
     "output": 0.5
    }
   },
+  "aki-io/glm5.3-754b": {
+   "context_window": 524288,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 3.5,
+    "cache_read": 0.25
+   }
+  },
   "aki-io/gpt-oss-120b": {
    "context_window": 128000,
    "supports_tools": true,
@@ -5995,22 +6011,6 @@
    "x_cost": {
     "input": 0.15,
     "output": 0.55
-   }
-  },
-  "aki-io/kimi-k2.7-code-1100b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.86,
-    "output": 3,
-    "cache_read": 0.18
    }
   },
   "aki-io/mistral4-119b": {
@@ -32837,6 +32837,23 @@
     "cache_read": 0.57
    }
   },
+  "empiriolabs/deepseek-v4-1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.3
+   }
+  },
   "empiriolabs/deepseek-v4-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -35675,7 +35692,7 @@
    }
   },
   "friendli/zai-org/glm-5.2": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -35701,9 +35718,26 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.4,
-    "output": 4.4,
-    "cache_read": 0.26
+    "input": 1.26,
+    "output": 3.96,
+    "cache_read": 0.234
+   }
+  },
+  "friendli/zai-org/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
    }
   },
   "frogbot/claude-haiku-4-5": {
@@ -54582,7 +54616,7 @@
    }
   },
   "kilo/~deepseek/deepseek-pro-latest": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54592,9 +54626,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5808,
-    "output": 1.7424,
-    "cache_read": 0.05808
+    "input": 0.57948,
+    "output": 1.73844,
+    "cache_read": 0.018438
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -54663,9 +54697,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.1,
-    "output": 10.95,
-    "cache_read": 0.23
+    "input": 1.975,
+    "output": 11.06,
+    "cache_read": 0.2291
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -54802,9 +54836,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.91,
-    "output": 2.86,
-    "cache_read": 0.169
+    "input": 0.9,
+    "output": 3.069,
+    "cache_read": 0.18
    }
   },
   "kimi-for-coding/k3": {
@@ -55857,6 +55891,21 @@
     "output": 10,
     "cache_read": 0.2,
     "cache_write": 2.5
+   }
+  },
+  "llmgateway-providers/atria/atria-dawn-preview": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
    }
   },
   "llmgateway-providers/aws-bedrock/claude-fable-5": {
@@ -62182,6 +62231,21 @@
     "cache_read": 0.03
    }
   },
+  "llmgateway/atria-dawn-preview": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
   "llmgateway/auto": {
    "context_window": 128000,
    "supports_tools": true,
@@ -66536,6 +66600,252 @@
     "output": 2.56
    }
   },
+  "melious/deepseek-r1-0528": {
+   "context_window": 164000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.69552,
+    "output": 2.78208,
+    "cache_read": 0.185472
+   }
+  },
+  "melious/deepseek-v3.2": {
+   "context_window": 164000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.34776,
+    "output": 0.5796,
+    "cache_read": 0.092736
+   }
+  },
+  "melious/deepseek-v4-flash-0731": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11592,
+    "output": 0.2898,
+    "cache_read": 0.023184
+   }
+  },
+  "melious/deepseek-v4-pro": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.85472,
+    "output": 3.70944,
+    "cache_read": 0.46368
+   }
+  },
+  "melious/deepseek-v4-pro-0813": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.1592,
+    "output": 3.4776,
+    "cache_read": 0.11592
+   }
+  },
+  "melious/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.23184,
+    "output": 1.1592,
+    "cache_read": 0.011592
+   }
+  },
+  "melious/glm-5": {
+   "context_window": 203000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.10124,
+    "output": 3.36168,
+    "cache_read": 0.266616
+   }
+  },
+  "melious/glm-5.1": {
+   "context_window": 203000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.50696,
+    "output": 4.6368,
+    "cache_read": 0.370944
+   }
+  },
+  "melious/glm-5.2": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.1592,
+    "output": 4.6368,
+    "cache_read": 0.2898
+   }
+  },
+  "melious/glm-5.3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.1592,
+    "output": 3.4776,
+    "cache_read": 0.23184
+   }
+  },
+  "melious/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11592,
+    "output": 0.46368,
+    "cache_read": 0.023184
+   }
+  },
+  "melious/kimi-k2.5": {
+   "context_window": 262000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5796,
+    "output": 2.95596,
+    "cache_read": 0.139104
+   }
+  },
+  "melious/kimi-k2.6": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.81144,
+    "output": 4.0572,
+    "cache_read": 0.266616
+   }
+  },
+  "melious/kimi-k2.7-code": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.81144,
+    "output": 3.4776,
+    "cache_read": 0.220248
+   }
+  },
+  "melious/kimi-k3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3.1878,
+    "output": 15.939,
+    "cache_read": 0.788256
+   }
+  },
   "merge-gateway/anthropic/claude-3-7-sonnet-20250219": {
    "context_window": 200000,
    "supports_tools": true,
@@ -67077,9 +67387,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 1.74,
+    "output": 3.48,
+    "cache_read": 0.145
    }
   },
   "merge-gateway/deepseek/deepseek-v4-pro-0423": {
@@ -67108,9 +67418,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 1.74,
+    "output": 3.48,
+    "cache_read": 0.003625
    }
   },
   "merge-gateway/deepseek/deepseek-v4.1-flash": {
@@ -69090,10 +69400,11 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-35b-a3b": {
-   "context_window": 131072,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -94207,9 +94518,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.084,
-    "output": 0.168,
-    "cache_read": 0.0168
+    "input": 0.07938,
+    "output": 0.15876,
+    "cache_read": 0.015876
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -94272,9 +94583,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.65868,
-    "output": 1.97604,
-    "cache_read": 0.020958
+    "input": 0.57948,
+    "output": 1.73844,
+    "cache_read": 0.018438
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -99856,9 +100167,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5808,
-    "output": 1.7424,
-    "cache_read": 0.05808
+    "input": 0.57948,
+    "output": 1.73844,
+    "cache_read": 0.018438
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -99943,9 +100254,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.1,
-    "output": 10.95,
-    "cache_read": 0.23
+    "input": 1.975,
+    "output": 11.06,
+    "cache_read": 0.2291
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -100170,9 +100481,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.91,
-    "output": 2.86,
-    "cache_read": 0.169
+    "input": 0.9,
+    "output": 3.069,
+    "cache_read": 0.18
    }
   },
   "opper/anthropic/claude-fable-5": {
@@ -118073,6 +118384,23 @@
     "cache_read": 0.748
    }
   },
+  "tinfoil/deepseek-v4-1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.65,
+    "output": 1.45,
+    "cache_read": 0.13
+   }
+  },
   "tinfoil/deepseek-v4-flash": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -129107,6 +129435,23 @@
      "cache_read": 0.13,
      "cache_write": 0
     }
+   }
+  },
+  "wallaby/moonshotai/kimi-k3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.7,
+    "output": 13.5,
+    "cache_read": 0.27
    }
   },
   "wandb/deepseek-ai/deepseek-v3.1": {
