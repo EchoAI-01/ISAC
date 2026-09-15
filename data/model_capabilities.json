@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-15T15:56:30+00:00",
+ "generated_at": "2026-09-15T20:40:28+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7805,
+ "model_count": 7824,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -8485,6 +8485,24 @@
     "cache_write": 0
    }
   },
+  "alibaba-token-plan/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
   "alibaba-token-plan/glm-5": {
    "context_window": 202752,
    "supports_tools": true,
@@ -9955,10 +9973,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/anthropic.claude-opus-4-7": {
@@ -10045,10 +10063,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3,
-    "cache_write": 3.75
+    "input": 3.3,
+    "output": 16.5,
+    "cache_read": 0.33,
+    "cache_write": 4.125
    }
   },
   "amazon-bedrock/anthropic.claude-sonnet-5": {
@@ -10122,6 +10140,24 @@
     "cache_write": 0.84
    }
   },
+  "amazon-bedrock/apac.anthropic.claude-sonnet-4-20250514-v1:0": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3,
+    "cache_write": 3.75
+   }
+  },
   "amazon-bedrock/au.anthropic.claude-haiku-4-5-20251001-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
@@ -10134,10 +10170,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 5,
-    "cache_read": 0.1,
-    "cache_write": 1.25
+    "input": 1.1,
+    "output": 5.5,
+    "cache_read": 0.11,
+    "cache_write": 1.375
    }
   },
   "amazon-bedrock/au.anthropic.claude-opus-4-6-v1": {
@@ -10152,10 +10188,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 16.5,
-    "output": 82.5,
-    "cache_read": 1.65,
-    "cache_write": 20.625
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/au.anthropic.claude-opus-4-7": {
@@ -10188,10 +10224,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/au.anthropic.claude-opus-5": {
@@ -10206,10 +10242,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/au.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -10224,10 +10260,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3,
-    "cache_write": 3.75
+    "input": 3.3,
+    "output": 16.5,
+    "cache_read": 0.33,
+    "cache_write": 4.125
    }
   },
   "amazon-bedrock/au.anthropic.claude-sonnet-4-6": {
@@ -10260,10 +10296,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 2,
-    "output": 10,
-    "cache_read": 0.2,
-    "cache_write": 2.5
+    "input": 2.2,
+    "output": 11,
+    "cache_read": 0.22,
+    "cache_write": 2.75
    }
   },
   "amazon-bedrock/ca.amazon.nova-lite-v1:0": {
@@ -10526,6 +10562,24 @@
     "cache_write": 6.875
    }
   },
+  "amazon-bedrock/eu.anthropic.claude-sonnet-4-20250514-v1:0": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3,
+    "cache_write": 3.75
+   }
+  },
   "amazon-bedrock/eu.anthropic.claude-sonnet-4-5-20250929-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
@@ -10756,6 +10810,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "amazon-bedrock/global.anthropic.claude-sonnet-4-20250514-v1:0": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3,
+    "cache_write": 3.75
    }
   },
   "amazon-bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -11171,10 +11243,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 5,
-    "cache_read": 0.1,
-    "cache_write": 1.25
+    "input": 1.1,
+    "output": 5.5,
+    "cache_read": 0.11,
+    "cache_write": 1.375
    }
   },
   "amazon-bedrock/jp.anthropic.claude-opus-4-7": {
@@ -11189,10 +11261,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/jp.anthropic.claude-opus-4-8": {
@@ -11207,10 +11279,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/jp.anthropic.claude-opus-5": {
@@ -11225,10 +11297,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/jp.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -11243,10 +11315,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3,
-    "cache_write": 3.75
+    "input": 3.3,
+    "output": 16.5,
+    "cache_read": 0.33,
+    "cache_write": 4.125
    }
   },
   "amazon-bedrock/jp.anthropic.claude-sonnet-4-6": {
@@ -11261,10 +11333,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3,
-    "cache_write": 3.75
+    "input": 3.3,
+    "output": 16.5,
+    "cache_read": 0.33,
+    "cache_write": 4.125
    }
   },
   "amazon-bedrock/jp.anthropic.claude-sonnet-5": {
@@ -11279,10 +11351,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 2,
-    "output": 10,
-    "cache_read": 0.2,
-    "cache_write": 2.5
+    "input": 2.2,
+    "output": 11,
+    "cache_read": 0.22,
+    "cache_write": 2.75
    }
   },
   "amazon-bedrock/meta.llama3-1-70b-instruct-v1:0": {
@@ -12147,10 +12219,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 10,
-    "output": 50,
-    "cache_read": 1,
-    "cache_write": 12.5
+    "input": 11,
+    "output": 55,
+    "cache_read": 1.1,
+    "cache_write": 13.75
    }
   },
   "amazon-bedrock/us.anthropic.claude-fable-5-1": {
@@ -12183,10 +12255,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 5,
-    "cache_read": 0.1,
-    "cache_write": 1.25
+    "input": 1.1,
+    "output": 5.5,
+    "cache_read": 0.11,
+    "cache_write": 1.375
    }
   },
   "amazon-bedrock/us.anthropic.claude-opus-4-1-20250805-v1:0": {
@@ -12219,10 +12291,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/us.anthropic.claude-opus-4-6-v1": {
@@ -12237,10 +12309,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/us.anthropic.claude-opus-4-7": {
@@ -12255,10 +12327,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/us.anthropic.claude-opus-4-8": {
@@ -12273,10 +12345,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "amazon-bedrock/us.anthropic.claude-opus-5": {
@@ -12291,13 +12363,13 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
-  "amazon-bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0": {
+  "amazon-bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
@@ -12315,6 +12387,24 @@
     "cache_write": 3.75
    }
   },
+  "amazon-bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0": {
+   "context_window": 200000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3.3,
+    "output": 16.5,
+    "cache_read": 0.33,
+    "cache_write": 4.125
+   }
+  },
   "amazon-bedrock/us.anthropic.claude-sonnet-4-6": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -12327,10 +12417,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.3,
-    "cache_write": 3.75
+    "input": 3.3,
+    "output": 16.5,
+    "cache_read": 0.33,
+    "cache_write": 4.125
    }
   },
   "amazon-bedrock/us.anthropic.claude-sonnet-5": {
@@ -12345,10 +12435,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 2,
-    "output": 10,
-    "cache_read": 0.2,
-    "cache_write": 2.5
+    "input": 2.2,
+    "output": 11,
+    "cache_read": 0.22,
+    "cache_write": 2.75
    }
   },
   "amazon-bedrock/us.deepseek.r1-v1:0": {
@@ -35122,6 +35212,17 @@
     "cache_read": 0.007
    }
   },
+  "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
   "fireworks-ai/accounts/fireworks/models/deepseek-v4-pro-0813": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -35288,6 +35389,22 @@
     "cache_read": 0.3
    }
   },
+  "fireworks-ai/accounts/fireworks/models/minimax-m2p7": {
+   "context_window": 196608,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.059
+   }
+  },
   "fireworks-ai/accounts/fireworks/models/minimax-m3": {
    "context_window": 512000,
    "supports_tools": true,
@@ -35415,6 +35532,39 @@
     "cache_read": 0.25
    }
   },
+  "fireworks-ai/accounts/fireworks/routers/deepseek-flash-latest": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
+   }
+  },
+  "fireworks-ai/accounts/fireworks/routers/deepseek-pro-latest": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.32,
+    "output": 3.96,
+    "cache_read": 0.044
+   }
+  },
   "fireworks-ai/accounts/fireworks/routers/glm-5p2-fast": {
    "context_window": 1048575,
    "supports_tools": true,
@@ -35447,6 +35597,72 @@
     "cache_read": 0.39
    }
   },
+  "fireworks-ai/accounts/fireworks/routers/glm-fast-latest": {
+   "context_window": 1048572,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.1,
+    "output": 6.6,
+    "cache_read": 0.39
+   }
+  },
+  "fireworks-ai/accounts/fireworks/routers/glm-flash-latest": {
+   "context_window": 1048573,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
+   }
+  },
+  "fireworks-ai/accounts/fireworks/routers/glm-latest": {
+   "context_window": 1048573,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   }
+  },
+  "fireworks-ai/accounts/fireworks/routers/kimi-fast-latest": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4.5,
+    "output": 22.5,
+    "cache_read": 0.45
+   }
+  },
   "fireworks-ai/accounts/fireworks/routers/kimi-k3-fast": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -35462,6 +35678,39 @@
     "input": 4.5,
     "output": 22.5,
     "cache_read": 0.45
+   }
+  },
+  "fireworks-ai/accounts/fireworks/routers/kimi-latest": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3
+   }
+  },
+  "fireworks-ai/accounts/fireworks/routers/minimax-latest": {
+   "context_window": 512000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
    }
   },
   "freemodel/claude-fable-5": {
@@ -53917,9 +54166,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -60534,6 +60783,22 @@
     "cache_read": 0.3
    }
   },
+  "llmgateway-providers/runware/deepseek-v4-1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.01
+   }
+  },
   "llmgateway-providers/runware/deepseek-v4-flash": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -62526,6 +62791,22 @@
     "input": 0.26,
     "output": 0.38,
     "cache_read": 0.13
+   }
+  },
+  "llmgateway/deepseek-v4-1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.01
    }
   },
   "llmgateway/deepseek-v4-flash": {
@@ -69383,11 +69664,10 @@
    }
   },
   "merge-gateway/qwen/qwen3.5-397b-a17b": {
-   "context_window": 256000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
@@ -94574,9 +94854,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08708,
-    "output": 0.17416,
-    "cache_read": 0.017416
+    "input": 0.07938,
+    "output": 0.15876,
+    "cache_read": 0.015876
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -99402,9 +99682,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -117940,6 +118220,23 @@
     "cache_write": 2.185
    }
   },
+  "tensorx/deepseek/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 1.5,
+    "cache_read": 0.13
+   }
+  },
   "tensorx/minimax/minimax-m2.5": {
    "context_window": 196608,
    "supports_tools": true,
@@ -118419,22 +118716,6 @@
     "input": 0.65,
     "output": 1.45,
     "cache_read": 0.13
-   }
-  },
-  "tinfoil/deepseek-v4-flash": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 0.7,
-    "cache_read": 0.06
    }
   },
   "tinfoil/gemma4-31b": {
@@ -124408,6 +124689,36 @@
     "input": 0.75,
     "output": 3.75,
     "cache_read": 0.075
+   }
+  },
+  "vercel/google/gemini-3.8-live": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 4.5
+   }
+  },
+  "vercel/google/gemini-3.8-live-extended-thinking": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 4.5
    }
   },
   "vercel/google/gemini-embedding-001": {
