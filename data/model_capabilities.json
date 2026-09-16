@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-15T20:40:28+00:00",
+ "generated_at": "2026-09-16T02:29:54+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7824,
+ "model_count": 7823,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -49731,7 +49731,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro-0813": {
-   "context_window": 1048576,
+   "context_window": 1024000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51302,7 +51302,7 @@
    }
   },
   "kilo/mistralai/mistral-small-3.2-24b-instruct": {
-   "context_window": 128000,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51313,8 +51313,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.2
+    "input": 0.09375,
+    "output": 0.25
    }
   },
   "kilo/mistralai/mixtral-8x22b-instruct": {
@@ -51635,7 +51635,7 @@
    }
   },
   "kilo/nvidia/nemotron-3-ultra-550b-a55b": {
-   "context_window": 202800,
+   "context_window": 256000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -53681,10 +53681,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.25,
-    "output": 3.75,
-    "cache_read": 0.125,
-    "cache_write": 1.5625
+    "input": 1.475,
+    "output": 4.425,
+    "cache_read": 0.295,
+    "cache_write": 1.84375
    }
   },
   "kilo/qwen/qwen3.7-plus": {
@@ -53701,7 +53701,7 @@
    "x_cost": {
     "input": 0.32,
     "output": 1.28,
-    "cache_read": 0.032,
+    "cache_read": 0.064,
     "cache_write": 0.4
    }
   },
@@ -54166,9 +54166,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.14,
+    "output": 0.58,
+    "cache_read": 0.035
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -54844,7 +54844,7 @@
    }
   },
   "kilo/~deepseek/deepseek-flash-latest": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54871,9 +54871,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.018438
+    "input": 0.96,
+    "output": 2.88,
+    "cache_read": 0.088
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -55481,6 +55481,22 @@
   },
   "llmgateway-providers/alibaba/glm-5.2": {
    "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.28
+   }
+  },
+  "llmgateway-providers/alibaba/glm-5.3": {
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -73922,9 +73938,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -74021,7 +74037,7 @@
    "x_cost": {
     "input": 0.1,
     "output": 0.4,
-    "cache_read": 0.003
+    "cache_read": 0.006
    }
   },
   "nano-gpt/deepseek/deepseek-v4.1-flash:thinking": {
@@ -74038,7 +74054,7 @@
    "x_cost": {
     "input": 0.1,
     "output": 0.4,
-    "cache_read": 0.003
+    "cache_read": 0.006
    }
   },
   "nano-gpt/doctor-shotgun/ms3.2-24b-magnum-diamond": {
@@ -74786,7 +74802,7 @@
    }
   },
   "nano-gpt/gemma-4-12b-it": {
-   "context_window": 262144,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -75259,40 +75275,6 @@
     "input": 0.306,
     "output": 0.306,
     "cache_read": 0.153
-   }
-  },
-  "nano-gpt/gemma-4-e2b-it": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.02,
-    "output": 0.1,
-    "cache_read": 0.01
-   }
-  },
-  "nano-gpt/gemma-4-e4b-it": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.04,
-    "output": 0.2,
-    "cache_read": 0.02
    }
   },
   "nano-gpt/glm-4-air-0111": {
@@ -79019,23 +79001,6 @@
     "cache_read": 0.25
    }
   },
-  "nano-gpt/qwen/qwen3.5-0.8b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.06,
-    "output": 0.12,
-    "cache_read": 0.03
-   }
-  },
   "nano-gpt/qwen/qwen3.5-122b-a10b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -79100,23 +79065,6 @@
     "input": 0.27,
     "output": 2.16,
     "cache_read": 0.135
-   }
-  },
-  "nano-gpt/qwen/qwen3.5-2b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.08,
-    "output": 0.16,
-    "cache_read": 0.04
    }
   },
   "nano-gpt/qwen/qwen3.5-35b-a3b": {
@@ -79185,23 +79133,6 @@
     "input": 0.6,
     "output": 3.6,
     "cache_read": 0.3
-   }
-  },
-  "nano-gpt/qwen/qwen3.5-4b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.2,
-    "cache_read": 0.05
    }
   },
   "nano-gpt/qwen/qwen3.5-9b": {
@@ -94854,9 +94785,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07938,
-    "output": 0.15876,
-    "cache_read": 0.015876
+    "input": 0.088606,
+    "output": 0.177212,
+    "cache_read": 0.017721
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -94870,9 +94801,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.06,
-    "output": 0.12,
-    "cache_read": 0.012
+    "input": 0.055,
+    "output": 0.11,
+    "cache_read": 0.011
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -94919,9 +94850,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.018438
+    "input": 0.9834,
+    "output": 2.9502,
+    "cache_read": 0.03278
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -94936,9 +94867,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
-    "cache_read": 0.003
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -96119,7 +96050,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.55,
+    "input": 0.4,
     "output": 2.2
    }
   },
@@ -96497,8 +96428,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.2
+    "input": 0.09375,
+    "output": 0.25
    }
   },
   "openrouter/mistralai/mixtral-8x22b-instruct": {
@@ -96627,9 +96558,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.71,
-    "output": 3.5,
-    "cache_read": 0.15
+    "input": 0.7062,
+    "output": 3.21,
+    "cache_read": 0.18
    }
   },
   "openrouter/moonshotai/kimi-k3": {
@@ -96829,9 +96760,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 2.4,
-    "cache_read": 0.12
+    "input": 0.625,
+    "output": 3.125,
+    "cache_read": 0.1875
    }
   },
   "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
@@ -99682,9 +99613,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -100345,9 +100276,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.25,
-    "cache_read": 0.015
+    "input": 0.1,
+    "output": 0.3333,
+    "cache_read": 0.02
    }
   },
   "openrouter/z-ai/glm-5v-turbo": {
@@ -100467,9 +100398,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57948,
-    "output": 1.73844,
-    "cache_read": 0.018438
+    "input": 0.96,
+    "output": 2.88,
+    "cache_read": 0.088
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -125024,6 +124955,38 @@
     "output": 0
    }
   },
+  "vercel/inference-net/schematron-v2-small": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.23,
+    "cache_read": 0.05
+   }
+  },
+  "vercel/inference-net/schematron-v2-turbo": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.03,
+    "output": 0.15,
+    "cache_read": 0.03
+   }
+  },
   "vercel/interfaze/interfaze-beta": {
    "context_window": 1000000,
    "supports_tools": false,
@@ -126911,6 +126874,17 @@
     "output": 30,
     "cache_read": 1.25
    }
+  },
+  "vercel/openai/gpt-live-1": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
   },
   "vercel/openai/gpt-oss-120b": {
    "context_window": 131072,
