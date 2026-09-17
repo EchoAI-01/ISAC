@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-17T10:41:23+00:00",
+ "generated_at": "2026-09-17T15:54:58+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7842,
+ "model_count": 7844,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -5964,6 +5964,23 @@
     "cache_read": 0.183112
    }
   },
+  "ainetcafe/kimi-k3": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.1,
+    "output": 10.5,
+    "cache_read": 0.3
+   }
+  },
   "aixy/openai/gpt-4.1-mini": {
    "context_window": 1047576,
    "supports_tools": true,
@@ -8231,6 +8248,23 @@
     "cache_write": 0
    }
   },
+  "alibaba-token-plan-cn/glm-5.3": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
   "alibaba-token-plan-cn/happyhorse-1.1-i2v": {
    "context_window": 0,
    "supports_tools": false,
@@ -8670,6 +8704,23 @@
    }
   },
   "alibaba-token-plan/glm-5.2": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  "alibaba-token-plan/glm-5.3": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -16871,6 +16922,40 @@
     "cache_read": 1.25
    }
   },
+  "azure/gpt-image-2.5-flare": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 30,
+    "cache_read": 1.25
+   }
+  },
+  "azure/gpt-image-2.5-sunburst": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 30,
+    "cache_read": 1.25
+   }
+  },
   "azure/grok-4-1-fast-non-reasoning": {
    "context_window": 128000,
    "supports_tools": true,
@@ -19392,6 +19477,42 @@
     "cache_write": 2.5
    }
   },
+  "cloudflare-ai-gateway/openai/gpt-6-astra": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12,
+    "tiers": [
+     {
+      "input": 20,
+      "output": 75,
+      "cache_read": 2,
+      "cache_write": 25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 20,
+     "output": 75,
+     "cache_read": 2,
+     "cache_write": 25
+    }
+   }
+  },
   "cloudflare-ai-gateway/openai/o3": {
    "context_window": 200000,
    "supports_tools": true,
@@ -19507,7 +19628,23 @@
    "x_cost": {
     "input": 2,
     "output": 6,
-    "cache_read": 0.3
+    "cache_read": 0.3,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 0.6,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 0.6
+    }
    }
   },
   "cloudflare-ai-gateway/xai/grok-4.6": {
@@ -19524,7 +19661,23 @@
    "x_cost": {
     "input": 2,
     "output": 6,
-    "cache_read": 0.5
+    "cache_read": 0.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 1,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 1
+    }
    }
   },
   "cloudflare-workers-ai/@cf/aisingapore/gemma-sea-lion-v4-27b-it": {
@@ -30089,8 +30242,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.34611,
-    "output": 0.46148
+    "input": 0.34443,
+    "output": 0.45924
    }
   },
   "edenai/ionos/meta-llama/llama-3.3-70b-instruct": {
@@ -30104,8 +30257,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.749905,
-    "output": 0.749905
+    "input": 0.746265,
+    "output": 0.746265
    }
   },
   "edenai/ionos/openai/gpt-oss-120b": {
@@ -30119,8 +30272,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.173055,
-    "output": 0.749905
+    "input": 0.172215,
+    "output": 0.746265
    }
   },
   "edenai/minimax/minimax-m2": {
@@ -31898,8 +32051,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.46148,
-    "output": 0.92296
+    "input": 0.45924,
+    "output": 0.91848
    }
   },
   "edenai/scaleway/gemma-3-27b-it": {
@@ -31929,8 +32082,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.173055,
-    "output": 0.69222
+    "input": 0.172215,
+    "output": 0.68886
    }
   },
   "edenai/scaleway/llama-3.3-70b-instruct": {
@@ -31944,8 +32097,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.038331,
-    "output": 1.038331
+    "input": 1.03329,
+    "output": 1.03329
    }
   },
   "edenai/tensorx/deepseek/deepseek-v4-flash-0731": {
@@ -43862,7 +44015,7 @@
    }
   },
   "hyper/gpt-oss-120b": {
-   "context_window": 128072,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54826,7 +54979,7 @@
    }
   },
   "kilo/z-ai/glm-4.6": {
-   "context_window": 202752,
+   "context_window": 198000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54836,9 +54989,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5,
-    "output": 2,
-    "cache_read": 0.1
+    "input": 0.43,
+    "output": 1.75,
+    "cache_read": 0.08
    }
   },
   "kilo/z-ai/glm-4.6v": {
@@ -55091,7 +55244,7 @@
    }
   },
   "kilo/~deepseek/deepseek-flash-latest": {
-   "context_window": 1048576,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -55118,9 +55271,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 0.57948,
+    "output": 1.73844,
+    "cache_read": 0.018438
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -88399,6 +88552,24 @@
     "cache_write": 0.5625
    }
   },
+  "ofox/bailian/qwen3.8-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.47,
+    "cache_read": 0.016,
+    "cache_write": 0.2
+   }
+  },
   "ofox/bailian/qwen3.8-max": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -95276,9 +95447,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.088606,
-    "output": 0.177212,
-    "cache_read": 0.017721
+    "input": 0.07,
+    "output": 0.14,
+    "cache_read": 0.014
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -95341,9 +95512,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 0.57948,
+    "output": 1.73844,
+    "cache_read": 0.018438
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -100622,9 +100793,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5,
-    "output": 2,
-    "cache_read": 0.1
+    "input": 0.43,
+    "output": 1.75,
+    "cache_read": 0.08
    }
   },
   "openrouter/z-ai/glm-4.6v": {
@@ -100904,9 +101075,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 0.57948,
+    "output": 1.73844,
+    "cache_read": 0.018438
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -115456,6 +115627,22 @@
     "cache_read": 0
    }
   },
+  "scnet-token-plan/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0
+   }
+  },
   "scnet-token-plan/glm-5": {
    "context_window": 204800,
    "supports_tools": true,
@@ -128347,6 +128534,21 @@
     "cache_read": 0.1
    }
   },
+  "vercel/typesafe-ai/jev": {
+   "context_window": 0,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.042,
+    "output": 0
+   }
+  },
   "vercel/voyage/rerank-2.5": {
    "context_window": 32000,
    "supports_tools": false,
@@ -134325,91 +134527,6 @@
     "output": 0.9
    }
   },
-  "zhipuai-coding-plan/glm-4.7": {
-   "context_window": 204800,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0,
-    "cache_write": 0
-   }
-  },
-  "zhipuai-coding-plan/glm-5-turbo": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0,
-    "cache_write": 0
-   }
-  },
-  "zhipuai-coding-plan/glm-5.1": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0,
-    "cache_write": 0
-   }
-  },
-  "zhipuai-coding-plan/glm-5.2": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0,
-    "cache_write": 0
-   }
-  },
-  "zhipuai-coding-plan/glm-5.2-highspeed": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0,
-    "cache_write": 0
-   }
-  },
   "zhipuai-coding-plan/glm-5.3": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -134429,41 +134546,6 @@
   },
   "zhipuai-coding-plan/glm-5.3-flash": {
    "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0,
-    "cache_write": 0
-   }
-  },
-  "zhipuai-coding-plan/glm-5.3-highspeed": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0,
-    "cache_write": 0
-   }
-  },
-  "zhipuai-coding-plan/glm-5v-turbo": {
-   "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
