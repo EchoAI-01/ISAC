@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-17T15:54:58+00:00",
+ "generated_at": "2026-09-17T20:46:42+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7844,
+ "model_count": 7846,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -49911,7 +49911,7 @@
    }
   },
   "kilo/deepseek/deepseek-chat": {
-   "context_window": 128000,
+   "context_window": 163840,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -49921,8 +49921,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2574,
-    "output": 1.0287
+    "input": 0.32,
+    "output": 0.89
    }
   },
   "kilo/deepseek/deepseek-chat-v3-0324": {
@@ -54124,6 +54124,22 @@
     "cache_write": 0.53125
    }
   },
+  "kilo/qwen/qwen3.8-27b:free": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
   "kilo/qwen/qwen3.8-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -54566,9 +54582,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -76648,21 +76664,6 @@
     "cache_read": 0.01
    }
   },
-  "nano-gpt/meta-llama/llama-3.1-405b-instruct": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2.0265,
-    "output": 2.0265
-   }
-  },
   "nano-gpt/meta-llama/llama-3.1-8b-instruct": {
    "context_window": 131072,
    "supports_tools": true,
@@ -80310,6 +80311,22 @@
     "cache_read": 0.25
    }
   },
+  "nano-gpt/slowburn/gemma4-31b-splituntied": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.3,
+    "cache_read": 0.05
+   }
+  },
   "nano-gpt/soob3123/amoral-gemma3-27b-v2": {
    "context_window": 32768,
    "supports_tools": false,
@@ -80697,22 +80714,6 @@
     "input": 2,
     "output": 2,
     "cache_read": 2
-   }
-  },
-  "nano-gpt/tee/gpt-oss-20b": {
-   "context_window": 131072,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.04,
-    "output": 0.15,
-    "cache_read": 0.02
    }
   },
   "nano-gpt/tee/kimi-k2.6": {
@@ -95308,8 +95309,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2574,
-    "output": 1.0287
+    "input": 0.32,
+    "output": 0.89
    }
   },
   "openrouter/deepseek/deepseek-chat-v3-0324": {
@@ -99929,6 +99930,22 @@
     "cache_read": 0.15
    }
   },
+  "openrouter/qwen/qwen3.8-27b:free": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
   "openrouter/qwen/qwen3.8-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -100290,9 +100307,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -134550,6 +134567,23 @@
    "supports_vision": null,
    "modalities_in": [
     "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  "zhipuai-coding-plan/glm-5.3-highspeed": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
     "text"
    ],
    "modalities_out": [
