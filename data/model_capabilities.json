@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-19T15:04:22+00:00",
+ "generated_at": "2026-09-19T19:47:37+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7864,
+ "model_count": 7870,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -54635,9 +54635,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -55065,7 +55065,7 @@
    }
   },
   "kilo/z-ai/glm-4.6": {
-   "context_window": 202752,
+   "context_window": 198000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -55075,9 +55075,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5,
-    "output": 2,
-    "cache_read": 0.1
+    "input": 0.43,
+    "output": 1.75,
+    "cache_read": 0.08
    }
   },
   "kilo/z-ai/glm-4.6v": {
@@ -55584,9 +55584,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.8918,
-    "output": 2.8028,
-    "cache_read": 0.16562
+    "input": 0.8442,
+    "output": 2.6532,
+    "cache_read": 0.15678
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -62514,38 +62514,6 @@
    "x_cost": {
     "input": 0.15,
     "output": 1.2
-   }
-  },
-  "llmgateway-providers/vichar-ai/glm-5.3": {
-   "context_window": 1048000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.4,
-    "output": 4.4,
-    "cache_read": 0.26
-   }
-  },
-  "llmgateway-providers/vichar-ai/glm-5.3-flash": {
-   "context_window": 1048000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.5,
-    "cache_read": 0.03
    }
   },
   "llmgateway-providers/xai/grok-4": {
@@ -75934,6 +75902,22 @@
     "cache_read": 0.35
    }
   },
+  "nano-gpt/google/diffusiongemma": {
+   "context_window": 262144,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.15,
+    "cache_read": 0.025
+   }
+  },
   "nano-gpt/google/gemini-3-flash-preview": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -83058,6 +83042,39 @@
     "cache_read": 0.15
    }
   },
+  "nebius/deepseek-ai/deepseek-v4-pro-0813": {
+   "context_window": 979000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.32,
+    "output": 3.96,
+    "cache_read": 1.32
+   }
+  },
+  "nebius/deepseek-ai/deepseek-v4.1-flash": {
+   "context_window": 1048000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.3
+   }
+  },
   "nebius/google/gemma-3-27b-it": {
    "context_window": 110000,
    "supports_tools": true,
@@ -83282,6 +83299,22 @@
    "x_cost": {
     "input": 1.4,
     "output": 4.4
+   }
+  },
+  "nebius/zai-org/glm-5.3": {
+   "context_window": 1024000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 1.4
    }
   },
   "nebius/zai-org/glm-5.3-flash": {
@@ -95724,9 +95757,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04284,
-    "output": 0.08568,
-    "cache_read": 0.008568
+    "input": 0.04004,
+    "output": 0.08008,
+    "cache_read": 0.008008
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -99740,8 +99773,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 0.7
+    "input": 0.13,
+    "output": 0.52
    }
   },
   "openrouter/qwen/qwen3-vl-30b-a3b-thinking": {
@@ -100582,9 +100615,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -101102,9 +101135,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5,
-    "output": 2,
-    "cache_read": 0.1
+    "input": 0.43,
+    "output": 1.75,
+    "cache_read": 0.08
    }
   },
   "openrouter/z-ai/glm-4.6v": {
@@ -101715,9 +101748,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.8918,
-    "output": 2.8028,
-    "cache_read": 0.16562
+    "input": 0.8442,
+    "output": 2.6532,
+    "cache_read": 0.15678
    }
   },
   "opper/anthropic/claude-fable-5": {
@@ -119105,23 +119138,6 @@
     "cache_read": 0.042
    }
   },
-  "tensorx/deepseek/deepseek-chat-v3.1": {
-   "context_window": 164000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.8,
-    "cache_read": 0.05,
-    "cache_write": 0.25
-   }
-  },
   "tensorx/deepseek/deepseek-r1-0528": {
    "context_window": 164000,
    "supports_tools": true,
@@ -119156,23 +119172,6 @@
     "cache_write": 0.375
    }
   },
-  "tensorx/deepseek/deepseek-v4-flash": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.3,
-    "cache_read": 0.0375,
-    "cache_write": 0.1875
-   }
-  },
   "tensorx/deepseek/deepseek-v4-flash-0731": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -119204,6 +119203,22 @@
     "output": 3.5,
     "cache_read": 0.4375,
     "cache_write": 2.185
+   }
+  },
+  "tensorx/deepseek/deepseek-v4-pro-0813": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 4,
+    "cache_read": 0.5
    }
   },
   "tensorx/deepseek/deepseek-v4.1-flash": {
@@ -119327,40 +119342,6 @@
     "cache_read": 0.75
    }
   },
-  "tensorx/nvidia/nemotron-3-super-120b-a12b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 0.9,
-    "cache_read": 0.075,
-    "cache_write": 0.375
-   }
-  },
-  "tensorx/openai/gpt-oss-120b": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.04,
-    "output": 0.2,
-    "cache_read": 0.01,
-    "cache_write": 0.05
-   }
-  },
   "tensorx/qwen/qwen3-235b-a22b-2507": {
    "context_window": 131000,
    "supports_tools": true,
@@ -119376,41 +119357,6 @@
     "output": 0.464,
     "cache_read": 0.018,
     "cache_write": 0.09
-   }
-  },
-  "tensorx/qwen/qwen3-coder-30b-a3b-instruct": {
-   "context_window": 262000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.06,
-    "output": 0.25,
-    "cache_read": 0.015,
-    "cache_write": 0.075
-   }
-  },
-  "tensorx/qwen/qwen3-vl-235b-a22b-instruct": {
-   "context_window": 131000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.21,
-    "output": 1.9,
-    "cache_read": 0.0525,
-    "cache_write": 0.2625
    }
   },
   "tensorx/qwen/qwen3.5-122b-a10b": {
@@ -119449,8 +119395,8 @@
     "cache_write": 0.1875
    }
   },
-  "tensorx/z-ai/glm-4.7": {
-   "context_window": 200000,
+  "tensorx/qwen/qwen3.8-2.4t-a95b": {
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -119460,10 +119406,43 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 2.2,
-    "cache_read": 0.15,
-    "cache_write": 0.75
+    "input": 2.5,
+    "output": 6,
+    "cache_read": 0.63
+   }
+  },
+  "tensorx/qwen/qwen3.8-27b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.4,
+    "output": 2.4,
+    "cache_read": 0.1
+   }
+  },
+  "tensorx/qwen/qwen3.8-flash-next": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.5,
+    "cache_read": 0.05
    }
   },
   "tensorx/z-ai/glm-5": {
@@ -119531,6 +119510,39 @@
     "input": 1.5,
     "output": 4.5,
     "cache_read": 0.375
+   }
+  },
+  "tensorx/z-ai/glm-5.3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.75,
+    "output": 4.5,
+    "cache_read": 0.44
+   }
+  },
+  "tensorx/z-ai/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.5,
+    "cache_read": 0.05
    }
   },
   "tensorx/z-ai/glm-5v-turbo": {
@@ -126569,6 +126581,22 @@
     "cache_read": 0.015
    }
   },
+  "vercel/mixedbread/toast-1": {
+   "context_window": 131000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 0.72,
+    "cache_read": 0.036
+   }
+  },
   "vercel/moonshotai/kimi-k2": {
    "context_window": 131072,
    "supports_tools": true,
@@ -128226,6 +128254,42 @@
     "text"
    ]
   },
+  "vercel/quiverai/arrow-2": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.4,
+    "cache_write": 5
+   }
+  },
+  "vercel/quiverai/arrow-2-telos": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 6,
+    "output": 30,
+    "cache_read": 0.6,
+    "cache_write": 7.5
+   }
+  },
   "vercel/recraft/recraft-v2": {
    "context_window": 512,
    "supports_tools": false,
@@ -128819,7 +128883,7 @@
    }
   },
   "vercel/typesafe-ai/jev": {
-   "context_window": 64000,
+   "context_window": 32000,
    "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
@@ -134283,74 +134347,6 @@
     "cache_read": 0.03
    }
   },
-  "zenmux/x-ai/grok-4": {
-   "context_window": 256000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 3,
-    "output": 15,
-    "cache_read": 0.75
-   }
-  },
-  "zenmux/x-ai/grok-4-fast": {
-   "context_window": 2000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.5,
-    "cache_read": 0.05
-   }
-  },
-  "zenmux/x-ai/grok-4.1-fast": {
-   "context_window": 2000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.5,
-    "cache_read": 0.05
-   }
-  },
-  "zenmux/x-ai/grok-4.1-fast-non-reasoning": {
-   "context_window": 2000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.5,
-    "cache_read": 0.05
-   }
-  },
   "zenmux/x-ai/grok-4.2-fast": {
    "context_window": 2000000,
    "supports_tools": true,
@@ -134363,8 +134359,20 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 9
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 0.2,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
    }
   },
   "zenmux/x-ai/grok-4.2-fast-non-reasoning": {
@@ -134379,8 +134387,20 @@
     "text"
    ],
    "x_cost": {
-    "input": 3,
-    "output": 9
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 0.2,
+      "tier": {
+       "type": "context",
+       "size": 128000
+      }
+     }
+    ]
    }
   },
   "zenmux/x-ai/grok-4.3": {
@@ -134398,13 +134418,11 @@
     "input": 1.25,
     "output": 2.5,
     "cache_read": 0.2,
-    "cache_write": 0,
     "tiers": [
      {
       "input": 2.5,
       "output": 5,
       "cache_read": 0.4,
-      "cache_write": 0,
       "tier": {
        "type": "context",
        "size": 200000
@@ -134414,12 +134432,44 @@
     "context_over_200k": {
      "input": 2.5,
      "output": 5,
-     "cache_read": 0.4,
-     "cache_write": 0
+     "cache_read": 0.4
     }
    }
   },
   "zenmux/x-ai/grok-4.5": {
+   "context_window": 500000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 1,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 1
+    }
+   }
+  },
+  "zenmux/x-ai/grok-4.6": {
    "context_window": 500000,
    "supports_tools": true,
    "supports_vision": null,
@@ -134469,21 +134519,40 @@
     "cache_read": 0.2
    }
   },
-  "zenmux/x-ai/grok-code-fast-1": {
-   "context_window": 256000,
-   "supports_tools": true,
+  "zenmux/x-ai/grok-imagine-image-2.0": {
+   "context_window": 66000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
+  "zenmux/x-ai/grok-voice-stt-1.0": {
+   "context_window": 15000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
+  },
+  "zenmux/x-ai/grok-voice-tts-1.0": {
+   "context_window": 15000,
+   "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
     "text"
    ],
    "modalities_out": [
     "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 1.5,
-    "cache_read": 0.02
-   }
+   ]
   },
   "zenmux/xiaomi/mimo-v2-flash": {
    "context_window": 262144,
@@ -134626,9 +134695,20 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.35,
-    "output": 1.54,
-    "cache_read": 0.07
+    "input": 0.2911,
+    "output": 1.1645,
+    "cache_read": 0.0582,
+    "tiers": [
+     {
+      "input": 0.5823,
+      "output": 2.3291,
+      "cache_read": 0.1165,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-4.5-air": {
@@ -134642,9 +134722,20 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.11,
-    "output": 0.56,
-    "cache_read": 0.02
+    "input": 0.1165,
+    "output": 0.2911,
+    "cache_read": 0.0233,
+    "tiers": [
+     {
+      "input": 0.1747,
+      "output": 1.1645,
+      "cache_read": 0.0349,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-4.6": {
@@ -134658,9 +134749,20 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.35,
-    "output": 1.54,
-    "cache_read": 0.07
+    "input": 0.2911,
+    "output": 1.1645,
+    "cache_read": 0.0582,
+    "tiers": [
+     {
+      "input": 0.5823,
+      "output": 2.3291,
+      "cache_read": 0.1165,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-4.6v": {
@@ -134675,9 +134777,20 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.42,
-    "cache_read": 0.03
+    "input": 0.1456,
+    "output": 0.4367,
+    "cache_read": 0.0291,
+    "tiers": [
+     {
+      "input": 0.2911,
+      "output": 0.8734,
+      "cache_read": 0.0582,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-4.6v-flash": {
@@ -134692,9 +134805,20 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.02,
-    "output": 0.21,
-    "cache_read": 0.0043
+    "input": 0.0218,
+    "output": 0.2184,
+    "cache_read": 0.0044,
+    "tiers": [
+     {
+      "input": 0.0437,
+      "output": 0.4367,
+      "cache_read": 0.0044,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-4.6v-flash-free": {
@@ -134710,7 +134834,19 @@
    ],
    "x_cost": {
     "input": 0,
-    "output": 0
+    "output": 0,
+    "cache_read": 0,
+    "tiers": [
+     {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-4.7": {
@@ -134724,9 +134860,20 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.28,
-    "output": 1.14,
-    "cache_read": 0.06
+    "input": 0.2911,
+    "output": 1.1645,
+    "cache_read": 0.0582,
+    "tiers": [
+     {
+      "input": 0.5823,
+      "output": 2.3291,
+      "cache_read": 0.1165,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-4.7-flash-free": {
@@ -134741,7 +134888,8 @@
    ],
    "x_cost": {
     "input": 0,
-    "output": 0
+    "output": 0,
+    "cache_read": 0
    }
   },
   "zenmux/z-ai/glm-4.7-flashx": {
@@ -134755,9 +134903,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07,
-    "output": 0.42,
-    "cache_read": 0.01
+    "input": 0.0728,
+    "output": 0.4367,
+    "cache_read": 0.0146
    }
   },
   "zenmux/z-ai/glm-5": {
@@ -134773,7 +134921,18 @@
    "x_cost": {
     "input": 0.58,
     "output": 2.6,
-    "cache_read": 0.14
+    "cache_read": 0.14,
+    "tiers": [
+     {
+      "input": 0.87,
+      "output": 3.18,
+      "cache_read": 0.22,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-5-turbo": {
@@ -134781,15 +134940,26 @@
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
-    "image",
     "text"
    ],
    "modalities_out": [
     "text"
    ],
    "x_cost": {
-    "input": 0.88,
-    "output": 3.48
+    "input": 0.73,
+    "output": 3.19,
+    "cache_read": 0.174,
+    "tiers": [
+     {
+      "input": 1.02,
+      "output": 3.77,
+      "cache_read": 0.261,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-5.1": {
@@ -134805,7 +134975,18 @@
    "x_cost": {
     "input": 0.8781,
     "output": 3.5126,
-    "cache_read": 0.1903
+    "cache_read": 0.1903,
+    "tiers": [
+     {
+      "input": 1.1709,
+      "output": 4.098,
+      "cache_read": 0.2927,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
   },
   "zenmux/z-ai/glm-5.2": {
@@ -134819,12 +135000,12 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.4,
-    "output": 4.5,
-    "cache_read": 0.26
+    "input": 0.98,
+    "output": 3.08,
+    "cache_read": 0.182
    }
   },
-  "zenmux/z-ai/glm-5.2-free": {
+  "zenmux/z-ai/glm-5.3": {
    "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
@@ -134835,9 +135016,43 @@
     "text"
    ],
    "x_cost": {
-    "input": 0,
-    "output": 0,
-    "cache_read": 0
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   }
+  },
+  "zenmux/z-ai/glm-5.3-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
+   }
+  },
+  "zenmux/z-ai/glm-5.3-flashx": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.375,
+    "output": 1.25,
+    "cache_read": 0.075
    }
   },
   "zenmux/z-ai/glm-5v-turbo": {
@@ -134854,8 +135069,30 @@
    "x_cost": {
     "input": 0.726,
     "output": 3.1946,
-    "cache_read": 0.1743
+    "cache_read": 0.1743,
+    "tiers": [
+     {
+      "input": 1.0165,
+      "output": 3.7754,
+      "cache_read": 0.2614,
+      "tier": {
+       "type": "context",
+       "size": 32000
+      }
+     }
+    ]
    }
+  },
+  "zenmux/z-ai/glm-image": {
+   "context_window": 10240,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
   },
   "zhipuai-coding-plan/glm-4.6v": {
    "context_window": 128000,
