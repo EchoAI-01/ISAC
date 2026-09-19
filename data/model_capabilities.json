@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-19T09:59:21+00:00",
+ "generated_at": "2026-09-19T15:04:22+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7860,
+ "model_count": 7864,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -55065,7 +55065,7 @@
    }
   },
   "kilo/z-ai/glm-4.6": {
-   "context_window": 198000,
+   "context_window": 202752,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -55075,9 +55075,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.43,
-    "output": 1.75,
-    "cache_read": 0.08
+    "input": 0.5,
+    "output": 2,
+    "cache_read": 0.1
    }
   },
   "kilo/z-ai/glm-4.6v": {
@@ -76237,6 +76237,23 @@
     "cache_read": 0.06
    }
   },
+  "nano-gpt/google/gemma-4-26b-a4b-it-cybersecurity": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1056,
+    "output": 0.3344,
+    "cache_read": 0.0528
+   }
+  },
   "nano-gpt/google/gemma-4-26b-a4b-it:thinking": {
    "context_window": 262144,
    "supports_tools": true,
@@ -78078,6 +78095,22 @@
     "input": 0.5,
     "output": 2.5,
     "cache_read": 0.25
+   }
+  },
+  "nano-gpt/nvidia/nemotron-3.5-content-safety": {
+   "context_window": 131072,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.15,
+    "cache_read": 0.025
    }
   },
   "nano-gpt/nvidia/nemotron-3.5-lightning": {
@@ -80031,6 +80064,23 @@
     "cache_read": 0.04
    }
   },
+  "nano-gpt/qwen/qwen3.8-27b-cybersecurity": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.6,
+    "cache_read": 0.05
+   }
+  },
   "nano-gpt/qwen/qwen3.8-27b-fable": {
    "context_window": 524288,
    "supports_tools": true,
@@ -80111,9 +80161,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 1.5,
-    "cache_read": 0.125
+    "input": 0.2,
+    "output": 1.7,
+    "cache_read": 0.18
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-uncensored:thinking": {
@@ -80128,9 +80178,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 1.5,
-    "cache_read": 0.125
+    "input": 0.2,
+    "output": 1.7,
+    "cache_read": 0.18
    }
   },
   "nano-gpt/qwen/qwen3.8-27b:thinking": {
@@ -82269,6 +82319,23 @@
     "input": 0.075,
     "output": 0.25,
     "cache_read": 0.015
+   }
+  },
+  "nano-gpt/z-ai/glm-5.3-flash-cybersecurity": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.075
    }
   },
   "nano-gpt/z-ai/glm-5.3-flash-uncensored": {
@@ -95657,9 +95724,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04536,
-    "output": 0.09072,
-    "cache_read": 0.009072
+    "input": 0.04284,
+    "output": 0.08568,
+    "cache_read": 0.008568
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -95721,9 +95788,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.503382,
-    "output": 1.006764,
-    "cache_read": 0.041949
+    "input": 0.422298,
+    "output": 0.844596,
+    "cache_read": 0.035192
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -101035,9 +101102,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.43,
-    "output": 1.75,
-    "cache_read": 0.08
+    "input": 0.5,
+    "output": 2,
+    "cache_read": 0.1
    }
   },
   "openrouter/z-ai/glm-4.6v": {
