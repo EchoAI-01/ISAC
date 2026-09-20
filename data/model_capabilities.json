@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-20T02:31:20+00:00",
+ "generated_at": "2026-09-20T10:19:25+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7870,
+ "model_count": 7868,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -50155,21 +50155,6 @@
     "cache_read": 0.028
    }
   },
-  "kilo/deepseek/deepseek-v4-flash-0731:free": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
-   }
-  },
   "kilo/deepseek/deepseek-v4-flash-vision-exp": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -51743,7 +51728,7 @@
   },
   "kilo/mistralai/mistral-small-3.1-24b-instruct": {
    "context_window": 128000,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "image",
@@ -55374,9 +55359,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57816,
-    "output": 1.73448,
-    "cache_read": 0.018396
+    "input": 0.5676,
+    "output": 1.7028,
+    "cache_read": 0.01806
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -80696,22 +80681,6 @@
     "cache_read": 0.25
    }
   },
-  "nano-gpt/tee/deepseek-v4-flash": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.2,
-    "output": 0.4,
-    "cache_read": 0.04
-   }
-  },
   "nano-gpt/tee/deepseek-v4.1-flash": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -95757,9 +95726,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.03724,
-    "output": 0.07448,
-    "cache_read": 0.007448
+    "input": 0.0364,
+    "output": 0.0728,
+    "cache_read": 0.00728
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -95776,21 +95745,6 @@
     "input": 0.04,
     "output": 0.08,
     "cache_read": 0.016
-   }
-  },
-  "openrouter/deepseek/deepseek-v4-flash-0731:free": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0,
-    "output": 0
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -95837,9 +95791,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57816,
-    "output": 1.73448,
-    "cache_read": 0.018396
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.022
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -96890,8 +96844,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.35,
-    "output": 1.5,
+    "input": 0.3,
+    "output": 1.2,
     "cache_read": 0.04
    }
   },
@@ -97372,7 +97326,7 @@
   },
   "openrouter/mistralai/mistral-small-3.1-24b-instruct": {
    "context_window": 128000,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
     "image",
@@ -101248,9 +101202,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5544,
-    "output": 1.7424,
-    "cache_read": 0.10296
+    "input": 0.6496,
+    "output": 2.0416,
+    "cache_read": 0.12064
    }
   },
   "openrouter/z-ai/glm-5.2:free": {
@@ -101435,9 +101389,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57816,
-    "output": 1.73448,
-    "cache_read": 0.018396
+    "input": 0.5676,
+    "output": 1.7028,
+    "cache_read": 0.01806
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -128770,6 +128724,23 @@
     "input": 0.2,
     "output": 1.15,
     "cache_read": 0.04
+   }
+  },
+  "vercel/stepfun/step-5-preview": {
+   "context_window": 1000000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 2.7,
+    "cache_read": 0.05
    }
   },
   "vercel/tencent/hy-mt2-lite": {
