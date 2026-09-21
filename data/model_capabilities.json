@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-21T02:28:57+00:00",
+ "generated_at": "2026-09-21T11:30:43+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 7863,
+ "model_count": 7865,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -21976,7 +21976,7 @@
    }
   },
   "cortecs/qwen3-32b": {
-   "context_window": 32000,
+   "context_window": 16384,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -21986,8 +21986,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.089,
-    "output": 0.312
+    "input": 0.179,
+    "output": 0.697
    }
   },
   "cortecs/qwen3-coder-30b-a3b-instruct": {
@@ -55345,9 +55345,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.52,
-    "cache_read": 0.0026
+    "input": 0.12,
+    "output": 0.48,
+    "cache_read": 0.0036
    }
   },
   "kilo/~deepseek/deepseek-pro-latest": {
@@ -55361,9 +55361,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7,
-    "output": 2.88,
-    "cache_read": 0.088
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.022
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -61593,6 +61593,22 @@
     "input": 5,
     "output": 30,
     "cache_read": 0.5
+   }
+  },
+  "llmgateway-providers/scx-ai-gp/deepseek-v4.1-flash": {
+   "context_window": 1000000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.01
    }
   },
   "llmgateway-providers/scx-ai-gp/glm-5.2": {
@@ -74487,9 +74503,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -79325,7 +79341,7 @@
   },
   "nano-gpt/qwen/qwen3-30b-a3b": {
    "context_window": 41000,
-   "supports_tools": true,
+   "supports_tools": false,
    "supports_vision": null,
    "modalities_in": [
     "text"
@@ -79545,7 +79561,7 @@
    ],
    "x_cost": {
     "input": 0.3,
-    "output": 1.2,
+    "output": 1.9,
     "cache_read": 0.15
    }
   },
@@ -80086,6 +80102,23 @@
     "cache_read": 0.125
    }
   },
+  "nano-gpt/qwen/qwen3.8-27b-hemmingway": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.125
+   }
+  },
   "nano-gpt/qwen/qwen3.8-27b-obliterated": {
    "context_window": 524288,
    "supports_tools": true,
@@ -80289,9 +80322,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5,
-    "output": 1.2,
-    "cache_read": 0.25
+    "input": 0.3,
+    "output": 1.9,
+    "cache_read": 0.15
    }
   },
   "nano-gpt/qwen3.5-27b-bluestar-v3-derestricted": {
@@ -95687,9 +95720,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.089866,
-    "output": 0.179732,
-    "cache_read": 0.017973
+    "input": 0.088606,
+    "output": 0.177212,
+    "cache_read": 0.017721
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -95736,9 +95769,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.9483,
-    "output": 1.8966,
-    "cache_read": 0.079025
+    "input": 0.95526,
+    "output": 1.91052,
+    "cache_read": 0.079605
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -95752,9 +95785,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.044
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.022
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -95769,9 +95802,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.006
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.003
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -101334,9 +101367,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.52,
-    "cache_read": 0.0026
+    "input": 0.12,
+    "output": 0.48,
+    "cache_read": 0.0036
    }
   },
   "openrouter/~deepseek/deepseek-pro-latest": {
@@ -101350,9 +101383,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7,
-    "output": 2.88,
-    "cache_read": 0.088
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.022
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
