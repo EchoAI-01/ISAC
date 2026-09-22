@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-22T15:58:47+00:00",
+ "generated_at": "2026-09-22T20:40:40+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8003,
+ "model_count": 8075,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -10623,6 +10623,24 @@
     "cache_write": 6.25
    }
   },
+  "amazon-bedrock/anthropic.claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
+   }
+  },
   "amazon-bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
@@ -10836,6 +10854,24 @@
     "output": 27.5,
     "cache_read": 0.55,
     "cache_write": 6.875
+   }
+  },
+  "amazon-bedrock/au.anthropic.claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4.4,
+    "output": 22,
+    "cache_read": 0.22,
+    "cache_write": 5.5
    }
   },
   "amazon-bedrock/au.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -11152,6 +11188,24 @@
     "cache_write": 6.875
    }
   },
+  "amazon-bedrock/eu.anthropic.claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4.4,
+    "output": 22,
+    "cache_read": 0.22,
+    "cache_write": 5.5
+   }
+  },
   "amazon-bedrock/eu.anthropic.claude-sonnet-4-20250514-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
@@ -11400,6 +11454,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "amazon-bedrock/global.anthropic.claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "amazon-bedrock/global.anthropic.claude-sonnet-4-20250514-v1:0": {
@@ -11891,6 +11963,24 @@
     "output": 27.5,
     "cache_read": 0.55,
     "cache_write": 6.875
+   }
+  },
+  "amazon-bedrock/jp.anthropic.claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4.4,
+    "output": 22,
+    "cache_read": 0.22,
+    "cache_write": 5.5
    }
   },
   "amazon-bedrock/jp.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -12959,6 +13049,24 @@
     "cache_write": 6.875
    }
   },
+  "amazon-bedrock/us.anthropic.claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4.4,
+    "output": 22,
+    "cache_read": 0.22,
+    "cache_write": 5.5
+   }
+  },
   "amazon-bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
@@ -13889,6 +13997,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "anthropic/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "anthropic/claude-sonnet-4-5": {
@@ -15039,6 +15165,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "azure-cognitive-services/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "azure-cognitive-services/claude-sonnet-4-5": {
@@ -16388,6 +16532,24 @@
     "cache_write": 6.25
    }
   },
+  "azure/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
+   }
+  },
   "azure/claude-sonnet-4-5": {
    "context_window": 200000,
    "supports_tools": true,
@@ -17241,6 +17403,78 @@
      "output": 75,
      "cache_read": 2,
      "cache_write": 25
+    }
+   }
+  },
+  "azure/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.2,
+      "output": 0.75,
+      "cache_read": 0.02,
+      "cache_write": 0.25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.2,
+     "output": 0.75,
+     "cache_read": 0.02,
+     "cache_write": 0.25
+    }
+   }
+  },
+  "azure/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 15,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 15,
+     "cache_read": 0.4,
+     "cache_write": 5
     }
    }
   },
@@ -20055,6 +20289,39 @@
    }
   },
   "cloudflare-ai-gateway/xai/grok-4.6": {
+   "context_window": 500000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 1,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 1
+    }
+   }
+  },
+  "cloudflare-ai-gateway/xai/grok-4.7": {
    "context_window": 500000,
    "supports_tools": true,
    "supports_vision": null,
@@ -38889,6 +39156,24 @@
     "cache_write": 18.75
    }
   },
+  "google-vertex-anthropic/claude-opus-5-5@default": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
+   }
+  },
   "google-vertex-anthropic/claude-opus-5@default": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -39211,6 +39496,24 @@
     "output": 75,
     "cache_read": 1.5,
     "cache_write": 18.75
+   }
+  },
+  "google-vertex/claude-opus-5-5@default": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "google-vertex/claude-opus-5@default": {
@@ -49852,7 +50155,7 @@
    }
   },
   "kilo/aion-labs/aion-2.0": {
-   "context_window": 1048576,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -49868,7 +50171,7 @@
    }
   },
   "kilo/aion-labs/aion-3.0": {
-   "context_window": 1048576,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -49884,7 +50187,7 @@
    }
   },
   "kilo/aion-labs/aion-3.0-mini": {
-   "context_window": 1048576,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -50187,6 +50490,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "kilo/anthropic/claude-opus-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "kilo/anthropic/claude-sonnet-4": {
@@ -53460,6 +53781,78 @@
     "cache_write": 12.5
    }
   },
+  "kilo/openai/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
+   }
+  },
+  "kilo/openai/gpt-6-luna-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
+   }
+  },
+  "kilo/openai/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+   }
+  },
+  "kilo/openai/gpt-6-sol-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+   }
+  },
   "kilo/openai/gpt-audio": {
    "context_window": 128000,
    "supports_tools": true,
@@ -54760,6 +55153,23 @@
     "cache_write": 2.5
    }
   },
+  "kilo/qwen/qwen3.8-omni-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.47,
+    "cache_read": 0.016
+   }
+  },
   "kilo/rekaai/reka-edge": {
    "context_window": 16384,
    "supports_tools": true,
@@ -55150,9 +55560,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.53,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -55905,10 +56315,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "kilo/~anthropic/claude-sonnet-latest": {
@@ -55941,13 +56351,13 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
-    "output": 0.48,
-    "cache_read": 0.0036
+    "input": 0.1,
+    "output": 0.8,
+    "cache_read": 0.1
    }
   },
   "kilo/~deepseek/deepseek-pro-latest": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -55957,9 +56367,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57156,
-    "output": 1.71468,
-    "cache_read": 0.019052
+    "input": 0.39996,
+    "output": 1.19988,
+    "cache_read": 0.012726
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -55974,7 +56384,7 @@
    ],
    "x_cost": {
     "input": 0.03,
-    "output": 1,
+    "output": 0.8,
     "cache_read": 0.008
    }
   },
@@ -56028,9 +56438,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.5,
-    "output": 7.5,
-    "cache_read": 0.15
+    "input": 1.4989,
+    "output": 10.758,
+    "cache_read": 0.3
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -56063,10 +56473,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 1.2,
-    "cache_read": 0.02,
-    "cache_write": 0.25
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
    }
   },
   "kilo/~openai/gpt-mini-latest": {
@@ -57238,6 +57648,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "llmgateway-providers/anthropic/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "llmgateway-providers/anthropic/claude-sonnet-4-5": {
@@ -59118,6 +59546,22 @@
     "cache_read": 0.205
    }
   },
+  "llmgateway-providers/deepinfra/glm-5.3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.2,
+    "output": 4,
+    "cache_read": 0.2
+   }
+  },
   "llmgateway-providers/deepinfra/hy3": {
    "context_window": 262144,
    "supports_tools": true,
@@ -59132,6 +59576,40 @@
     "input": 0.14,
     "output": 0.58,
     "cache_read": 0.035
+   }
+  },
+  "llmgateway-providers/deepinfra/inkling": {
+   "context_window": 524288,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.95,
+    "output": 4.05,
+    "cache_read": 0.16
+   }
+  },
+  "llmgateway-providers/deepinfra/inkling-small": {
+   "context_window": 524288,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.45,
+    "output": 1.2,
+    "cache_read": 0.1
    }
   },
   "llmgateway-providers/deepinfra/ling-3.0-flash": {
@@ -59215,6 +59693,23 @@
     }
    }
   },
+  "llmgateway-providers/deepinfra/muse-glimmer-30b": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.04
+   }
+  },
   "llmgateway-providers/deepinfra/nemotron-3-ultra-550b": {
    "context_window": 262144,
    "supports_tools": true,
@@ -59230,6 +59725,21 @@
     "input": 0.5,
     "output": 2.2,
     "cache_read": 0.1
+   }
+  },
+  "llmgateway-providers/deepinfra/nemotron-3.5-lightning": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.08,
+    "output": 0.2
    }
   },
   "llmgateway-providers/deepinfra/qwen3-vl-235b-a22b-instruct": {
@@ -59278,6 +59788,56 @@
    "x_cost": {
     "input": 0.1,
     "output": 0.15
+   }
+  },
+  "llmgateway-providers/deepinfra/qwen3.8-2.4t-a95b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.2
+   }
+  },
+  "llmgateway-providers/deepinfra/qwen3.8-27b": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 2.5,
+    "cache_read": 0.05
+   }
+  },
+  "llmgateway-providers/deepinfra/step-3.7-flash": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 1.15,
+    "cache_read": 0.04
    }
   },
   "llmgateway-providers/deepseek/deepseek-v4-pro": {
@@ -61252,6 +61812,22 @@
     "cache_read": 0.25
    }
   },
+  "llmgateway-providers/novita/qwen3.8-2.4t-a95b": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25
+   }
+  },
   "llmgateway-providers/novita/qwen3.8-27b": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -61315,6 +61891,23 @@
    "x_cost": {
     "input": 0.6,
     "output": 3.6
+   }
+  },
+  "llmgateway-providers/novita/step-3.7-flash": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 1.15,
+    "cache_read": 0.04
    }
   },
   "llmgateway-providers/openai/gpt-3.5-turbo": {
@@ -61811,6 +62404,42 @@
     "output": 50,
     "cache_read": 1,
     "cache_write": 12.5
+   }
+  },
+  "llmgateway-providers/openai/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
+   }
+  },
+  "llmgateway-providers/openai/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "llmgateway-providers/openai/o1": {
@@ -62773,6 +63402,39 @@
     "output": 2
    }
   },
+  "llmgateway-providers/together-ai/glm-5.3": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
+   }
+  },
+  "llmgateway-providers/together-ai/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
+   }
+  },
   "llmgateway-providers/together-ai/gpt-oss-120b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -62786,6 +63448,23 @@
    "x_cost": {
     "input": 0.15,
     "output": 0.6
+   }
+  },
+  "llmgateway-providers/together-ai/inkling": {
+   "context_window": 524288,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 4.05,
+    "cache_read": 0.17
    }
   },
   "llmgateway-providers/together-ai/kimi-k3": {
@@ -62819,6 +63498,39 @@
     "input": 0.3,
     "output": 1.2,
     "cache_read": 0.06
+   }
+  },
+  "llmgateway-providers/together-ai/muse-glimmer-30b": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.35,
+    "output": 1.5,
+    "cache_read": 0.04
+   }
+  },
+  "llmgateway-providers/together-ai/qwen3.8-2.4t-a95b": {
+   "context_window": 1010000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.25
    }
   },
   "llmgateway-providers/vertex-anthropic/claude-haiku-4-5": {
@@ -63915,6 +64627,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "llmgateway/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "llmgateway/claude-sonnet-4-5": {
@@ -65326,6 +66056,42 @@
     "output": 50,
     "cache_read": 1,
     "cache_write": 12.5
+   }
+  },
+  "llmgateway/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
+   }
+  },
+  "llmgateway/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "llmgateway/gpt-oss-120b": {
@@ -68669,6 +69435,24 @@
     "cache_write": 6.25
    }
   },
+  "merge-gateway/anthropic/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
+   }
+  },
   "merge-gateway/anthropic/claude-sonnet-4-20250514": {
    "context_window": 200000,
    "supports_tools": true,
@@ -70601,7 +71385,44 @@
    "x_cost": {
     "input": 10,
     "output": 50,
-    "cache_read": 1
+    "cache_read": 1,
+    "cache_write": 12.5
+   }
+  },
+  "merge-gateway/openai/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
+   }
+  },
+  "merge-gateway/openai/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "merge-gateway/openai/gpt-oss-120b": {
@@ -74407,6 +75228,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "nano-gpt/anthropic/claude-opus-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "nano-gpt/anthropic/claude-opus-latest": {
@@ -78656,6 +79495,22 @@
     "output": 0
    }
   },
+  "nano-gpt/nano/lumen-stealth": {
+   "context_window": 200000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0
+   }
+  },
   "nano-gpt/nanogpt/coding-router": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -79539,6 +80394,78 @@
     "output": 50,
     "cache_read": 1,
     "cache_write": 12.5
+   }
+  },
+  "nano-gpt/openai/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.25,
+    "cache_read": 0.005,
+    "cache_write": 0.0625
+   }
+  },
+  "nano-gpt/openai/gpt-6-luna-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.05,
+    "output": 0.25,
+    "cache_read": 0.005,
+    "cache_write": 0.0625
+   }
+  },
+  "nano-gpt/openai/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+   }
+  },
+  "nano-gpt/openai/gpt-6-sol-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
    }
   },
   "nano-gpt/openai/gpt-astra-latest": {
@@ -89429,6 +90356,24 @@
     "cache_write": 6.25
    }
   },
+  "ofox/anthropic/claude-opus-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
+   }
+  },
   "ofox/anthropic/claude-sonnet-4.5": {
    "context_window": 200000,
    "supports_tools": true,
@@ -92856,6 +93801,78 @@
     }
    }
   },
+  "openai/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.2,
+      "output": 0.75,
+      "cache_read": 0.02,
+      "cache_write": 0.25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.2,
+     "output": 0.75,
+     "cache_read": 0.02,
+     "cache_write": 0.25
+    }
+   }
+  },
+  "openai/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 15,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 15,
+     "cache_read": 0.4,
+     "cache_write": 5
+    }
+   }
+  },
   "openai/gpt-image-1": {
    "context_window": 0,
    "supports_tools": false,
@@ -94062,6 +95079,24 @@
     "cache_write": 6.25
    }
   },
+  "opencode/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
+   }
+  },
   "opencode/claude-sonnet-4": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -95033,6 +96068,78 @@
     }
    }
   },
+  "opencode/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.2,
+      "output": 0.75,
+      "cache_read": 0.02,
+      "cache_write": 0.25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.2,
+     "output": 0.75,
+     "cache_read": 0.02,
+     "cache_write": 0.25
+    }
+   }
+  },
+  "opencode/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 15,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 15,
+     "cache_read": 0.4,
+     "cache_write": 5
+    }
+   }
+  },
   "opencode/grok-4.5": {
    "context_window": 500000,
    "supports_tools": true,
@@ -95884,7 +96991,7 @@
    }
   },
   "openrouter/aion-labs/aion-2.0": {
-   "context_window": 1048576,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -95900,7 +97007,7 @@
    }
   },
   "openrouter/aion-labs/aion-3.0": {
-   "context_window": 1048576,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -95916,7 +97023,7 @@
    }
   },
   "openrouter/aion-labs/aion-3.0-mini": {
-   "context_window": 1048576,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -96255,6 +97362,24 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "openrouter/anthropic/claude-opus-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "openrouter/anthropic/claude-sonnet-4": {
@@ -96867,9 +97992,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.936294,
-    "output": 1.872588,
-    "cache_read": 0.078025
+    "input": 0.887226,
+    "output": 1.774452,
+    "cache_read": 0.073936
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -96900,9 +98025,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
-    "cache_read": 0.003
+    "input": 0.1,
+    "output": 0.8,
+    "cache_read": 0.1
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -99838,6 +100963,150 @@
     }
    }
   },
+  "openrouter/openai/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.2,
+      "output": 0.75,
+      "cache_read": 0.02,
+      "cache_write": 0.25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.2,
+     "output": 0.75,
+     "cache_read": 0.02,
+     "cache_write": 0.25
+    }
+   }
+  },
+  "openrouter/openai/gpt-6-luna-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.2,
+      "output": 0.75,
+      "cache_read": 0.02,
+      "cache_write": 0.25,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.2,
+     "output": 0.75,
+     "cache_read": 0.02,
+     "cache_write": 0.25
+    }
+   }
+  },
+  "openrouter/openai/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 15,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 15,
+     "cache_read": 0.4,
+     "cache_write": 5
+    }
+   }
+  },
+  "openrouter/openai/gpt-6-sol-pro": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 15,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 15,
+     "cache_read": 0.4,
+     "cache_write": 5
+    }
+   }
+  },
   "openrouter/openai/gpt-audio": {
    "context_window": 128000,
    "supports_tools": true,
@@ -101078,9 +102347,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 2,
-    "cache_read": 0.03
+    "input": 0.32,
+    "output": 2.7,
+    "cache_read": 0.15
    }
   },
   "openrouter/qwen/qwen3.6-35b-a3b": {
@@ -101369,6 +102638,23 @@
     "output": 6,
     "cache_read": 0.25,
     "cache_write": 2.5
+   }
+  },
+  "openrouter/qwen/qwen3.8-omni-flash": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.47,
+    "cache_read": 0.016
    }
   },
   "openrouter/rekaai/reka-edge": {
@@ -101680,9 +102966,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -102531,10 +103817,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "openrouter/~anthropic/claude-sonnet-latest": {
@@ -102567,9 +103853,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
-    "output": 0.48,
-    "cache_read": 0.0036
+    "input": 0.1,
+    "output": 0.8,
+    "cache_read": 0.1
    }
   },
   "openrouter/~deepseek/deepseek-pro-latest": {
@@ -102583,9 +103869,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.57156,
-    "output": 1.71468,
-    "cache_read": 0.019052
+    "input": 0.39996,
+    "output": 1.19988,
+    "cache_read": 0.012726
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -102600,7 +103886,7 @@
    ],
    "x_cost": {
     "input": 0.03,
-    "output": 1,
+    "output": 0.8,
     "cache_read": 0.008
    }
   },
@@ -102670,9 +103956,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.5,
-    "output": 7.5,
-    "cache_read": 0.15
+    "input": 1.4989,
+    "output": 10.758,
+    "cache_read": 0.3
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -102723,16 +104009,16 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 1.2,
-    "cache_read": 0.02,
-    "cache_write": 0.25,
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
     "tiers": [
      {
-      "input": 0.4,
-      "output": 1.8,
-      "cache_read": 0.04,
-      "cache_write": 0.5,
+      "input": 0.2,
+      "output": 0.75,
+      "cache_read": 0.02,
+      "cache_write": 0.25,
       "tier": {
        "type": "context",
        "size": 272000
@@ -102740,10 +104026,10 @@
      }
     ],
     "context_over_200k": {
-     "input": 0.4,
-     "output": 1.8,
-     "cache_read": 0.04,
-     "cache_write": 0.5
+     "input": 0.2,
+     "output": 0.75,
+     "cache_read": 0.02,
+     "cache_write": 0.25
     }
    }
   },
@@ -113150,6 +114436,42 @@
     "output": 25,
     "cache_read": 0.5,
     "cache_write": 6.25
+   }
+  },
+  "requesty/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   }
+  },
+  "requesty/claude-opus-5-5@eu": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 5.5,
+    "output": 27.5,
+    "cache_read": 0.55,
+    "cache_write": 6.875
    }
   },
   "requesty/claude-opus-5@eu": {
@@ -123805,6 +125127,24 @@
     "cache_write": 7.5
    }
   },
+  "venice/claude-opus-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4.8,
+    "output": 24,
+    "cache_read": 0.24,
+    "cache_write": 6
+   }
+  },
   "venice/claude-opus-5-fast": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -126890,6 +128230,42 @@
     "output": 50,
     "cache_read": 1,
     "cache_write": 12.5
+   }
+  },
+  "vercel/anthropic/claude-opus-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
+   }
+  },
+  "vercel/anthropic/claude-opus-5.5-fast": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 8,
+    "output": 40,
+    "cache_read": 0.4,
+    "cache_write": 10
    }
   },
   "vercel/anthropic/claude-sonnet-4": {
@@ -130211,6 +131587,150 @@
      "output": 150,
      "cache_read": 4,
      "cache_write": 50
+    }
+   }
+  },
+  "vercel/openai/gpt-6-luna": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.2,
+      "output": 0.75,
+      "cache_read": 0.02,
+      "cache_write": 0.25,
+      "tier": {
+       "type": "context",
+       "size": 272001
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.2,
+     "output": 0.75,
+     "cache_read": 0.02,
+     "cache_write": 0.25
+    }
+   }
+  },
+  "vercel/openai/gpt-6-luna-fast": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 1,
+    "cache_read": 0.02,
+    "cache_write": 0.25,
+    "tiers": [
+     {
+      "input": 0.4,
+      "output": 1.5,
+      "cache_read": 0.04,
+      "cache_write": 0.5,
+      "tier": {
+       "type": "context",
+       "size": 272001
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 0.4,
+     "output": 1.5,
+     "cache_read": 0.04,
+     "cache_write": 0.5
+    }
+   }
+  },
+  "vercel/openai/gpt-6-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 15,
+      "cache_read": 0.4,
+      "cache_write": 5,
+      "tier": {
+       "type": "context",
+       "size": 272001
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 15,
+     "cache_read": 0.4,
+     "cache_write": 5
+    }
+   }
+  },
+  "vercel/openai/gpt-6-sol-fast": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.4,
+    "cache_write": 5,
+    "tiers": [
+     {
+      "input": 8,
+      "output": 30,
+      "cache_read": 0.8,
+      "cache_write": 10,
+      "tier": {
+       "type": "context",
+       "size": 272001
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 8,
+     "output": 30,
+     "cache_read": 0.8,
+     "cache_write": 10
     }
    }
   },
@@ -133712,6 +135232,23 @@
     "input": 0.2,
     "output": 0.65,
     "cache_read": 0.03
+   }
+  },
+  "wandb/google/gemma-4-26b-a4b-it": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.3,
+    "cache_read": 0.05
    }
   },
   "wandb/google/gemma-4-31b-it": {
