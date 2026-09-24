@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-24T16:10:47+00:00",
+ "generated_at": "2026-09-24T20:57:24+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 8173,
  "override_count": 0,
@@ -56772,9 +56772,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.53,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -57682,8 +57682,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.4,
-    "output": 10.75,
+    "input": 1.35,
+    "output": 11.5,
     "cache_read": 0.3
    }
   },
@@ -76572,10 +76572,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 25,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
    }
   },
   "nano-gpt/anthropic/claude-sonnet-4": {
@@ -81846,10 +81846,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 1.2,
-    "cache_read": 0.02,
-    "cache_write": 0.25
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
    }
   },
   "nano-gpt/openai/gpt-oss-120b": {
@@ -84915,9 +84915,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2,
-    "output": 6,
-    "cache_read": 0.5
+    "input": 1.6,
+    "output": 4.8,
+    "cache_read": 0.4
    }
   },
   "nano-gpt/xiaomi/mimo-v2.5": {
@@ -99527,9 +99527,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.084,
-    "output": 0.168,
-    "cache_read": 0.0168
+    "input": 0.0686,
+    "output": 0.1372,
+    "cache_read": 0.01372
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -99576,9 +99576,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.919242,
-    "output": 1.838484,
-    "cache_read": 0.076604
+    "input": 0.871914,
+    "output": 1.743828,
+    "cache_read": 0.07266
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -104534,9 +104534,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -105314,9 +105314,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
-    "output": 0.5,
-    "cache_read": 0.05
+    "input": 0.045,
+    "output": 0.6,
+    "cache_read": 0.0285
    }
   },
   "openrouter/z-ai/glm-5.3-flashx": {
@@ -105556,8 +105556,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.4,
-    "output": 10.75,
+    "input": 1.35,
+    "output": 11.5,
     "cache_read": 0.3
    }
   },
