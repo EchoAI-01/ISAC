@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-25T02:37:29+00:00",
+ "generated_at": "2026-09-25T10:51:50+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8177,
+ "model_count": 8178,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -21925,9 +21925,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.73,
-    "output": 3.46,
-    "cache_read": 0.432
+    "input": 1.7,
+    "output": 3.4,
+    "cache_read": 0.15
    }
   },
   "cortecs/deepseek-v4-pro-0813": {
@@ -21958,9 +21958,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5,
-    "output": 1.499,
-    "cache_read": 0.13
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.075
    }
   },
   "cortecs/devstral-2512": {
@@ -22155,7 +22155,7 @@
    }
   },
   "cortecs/gemma-4-31b-it": {
-   "context_window": 262000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -22807,9 +22807,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.395,
-    "output": 1.977,
-    "cache_read": 0.099
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.06
    }
   },
   "cortecs/ministral-14b-2512": {
@@ -23358,7 +23358,7 @@
    }
   },
   "cortecs/qwen3.8-27b": {
-   "context_window": 262144,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -53967,8 +53967,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.8845,
-    "output": 10.5346,
+    "input": 3,
+    "output": 15,
     "cache_read": 0.3
    }
   },
@@ -57647,9 +57647,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3498,
-    "output": 1.0494,
-    "cache_read": 0.01113
+    "input": 0.2528,
+    "output": 2.88,
+    "cache_read": 0.08832
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -57720,7 +57720,7 @@
    "x_cost": {
     "input": 0.8845,
     "output": 10.5346,
-    "cache_read": 0.3
+    "cache_read": 0.33
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -77517,9 +77517,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -85042,6 +85042,22 @@
     "output": 0.28,
     "cache_read": 0.0028,
     "cache_write": 0
+   }
+  },
+  "nano-gpt/xiaomi/mimo-v2.6-flash-uncensored": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 1.5,
+    "cache_read": 0.275
    }
   },
   "nano-gpt/xiaomi/mimo-v2.6-pro": {
@@ -99612,9 +99628,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.828066,
-    "output": 1.656132,
-    "cache_read": 0.069006
+    "input": 0.783,
+    "output": 1.566,
+    "cache_read": 0.06525
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -99645,9 +99661,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.006
+    "input": 0.15,
+    "output": 0.6,
+    "cache_read": 0.003
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -101338,8 +101354,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.8845,
-    "output": 10.5346,
+    "input": 3,
+    "output": 15,
     "cache_read": 0.3
    }
   },
@@ -105385,8 +105401,8 @@
    ],
    "x_cost": {
     "input": 0.045,
-    "output": 0.6,
-    "cache_read": 0.0285
+    "output": 0.14,
+    "cache_read": 0.01
    }
   },
   "openrouter/z-ai/glm-5.3-flashx": {
@@ -105539,9 +105555,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3498,
-    "output": 1.0494,
-    "cache_read": 0.01113
+    "input": 0.2528,
+    "output": 2.88,
+    "cache_read": 0.08832
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -105628,7 +105644,7 @@
    "x_cost": {
     "input": 0.8845,
     "output": 10.5346,
-    "cache_read": 0.3
+    "cache_read": 0.33
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
