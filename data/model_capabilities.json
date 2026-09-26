@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-26T02:40:23+00:00",
+ "generated_at": "2026-09-26T10:32:31+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8180,
+ "model_count": 8181,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -30613,6 +30613,21 @@
     "output": 0.4
    }
   },
+  "edenai/cohere/c4ai-aya-expanse-32b": {
+   "context_window": 128000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.5,
+    "output": 1.5
+   }
+  },
   "edenai/cohere/command-a-03-2025": {
    "context_window": 288000,
    "supports_tools": true,
@@ -31174,6 +31189,22 @@
     "input": 0.13,
     "output": 0.53,
     "cache_read": 0.033
+   }
+  },
+  "edenai/deepinfra/tencent/hy4-preview": {
+   "context_window": 1048576,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
    }
   },
   "edenai/deepinfra/thinkingmachines/inkling": {
@@ -37713,22 +37744,6 @@
     "input": 0.22,
     "output": 0.66,
     "cache_read": 0.007
-   }
-  },
-  "fireworks-ai/accounts/fireworks/routers/deepseek-pro-latest": {
-   "context_window": 1000000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.044
    }
   },
   "fireworks-ai/accounts/fireworks/routers/glm-5p2-fast": {
@@ -57434,7 +57449,7 @@
    }
   },
   "kilo/z-ai/glm-5.3": {
-   "context_window": 1048575,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57616,9 +57631,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 3.5,
-    "cache_read": 0.249
+    "input": 0.24948,
+    "output": 0.74844,
+    "cache_read": 0.007938
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -57826,9 +57841,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.4746,
-    "output": 1.4916,
-    "cache_read": 0.08814
+    "input": 0.3794,
+    "output": 1.1924,
+    "cache_read": 0.07046
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -99581,9 +99596,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.418818,
-    "output": 0.837636,
-    "cache_read": 0.034902
+    "input": 0.368184,
+    "output": 0.736368,
+    "cache_read": 0.030682
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -99614,9 +99629,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.14,
-    "output": 0.42,
-    "cache_read": 0.0042
+    "input": 0.3,
+    "output": 1.2,
+    "cache_read": 0.006
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -105304,9 +105319,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.4,
-    "output": 4.4,
-    "cache_read": 0.26
+    "input": 0.3794,
+    "output": 1.1924,
+    "cache_read": 0.07046
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
@@ -105476,9 +105491,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.25,
-    "output": 3.5,
-    "cache_read": 0.249
+    "input": 0.24948,
+    "output": 0.74844,
+    "cache_read": 0.007938
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -105790,9 +105805,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.4746,
-    "output": 1.4916,
-    "cache_read": 0.08814
+    "input": 0.3794,
+    "output": 1.1924,
+    "cache_read": 0.07046
    }
   },
   "opper/claude-fable-5": {
