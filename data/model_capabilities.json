@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-26T20:24:09+00:00",
+ "generated_at": "2026-09-27T02:39:49+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 8174,
  "override_count": 0,
@@ -52086,7 +52086,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-pro-0813": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -53280,7 +53280,7 @@
    }
   },
   "kilo/minimax/minimax-m2": {
-   "context_window": 196608,
+   "context_window": 204800,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -53343,7 +53343,7 @@
    }
   },
   "kilo/minimax/minimax-m2.7": {
-   "context_window": 204800,
+   "context_window": 196608,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -55507,7 +55507,7 @@
    }
   },
   "kilo/qwen/qwen3-30b-a3b": {
-   "context_window": 40960,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -56626,9 +56626,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.13,
+    "output": 0.53,
+    "cache_read": 0.033
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -57450,9 +57450,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.24948,
-    "output": 0.74844,
-    "cache_read": 0.007938
+    "input": 0.24552,
+    "output": 0.73656,
+    "cache_read": 0.007812
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -57521,8 +57521,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.0301,
-    "output": 9.043,
+    "input": 1,
+    "output": 9,
     "cache_read": 0.3
    }
   },
@@ -57660,9 +57660,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3794,
-    "output": 1.1924,
-    "cache_read": 0.07046
+    "input": 0.238,
+    "output": 0.748,
+    "cache_read": 0.0391
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -84844,7 +84844,7 @@
    "x_cost": {
     "input": 0.5,
     "output": 1.5,
-    "cache_read": 0.275
+    "cache_read": 0.00903
    }
   },
   "nano-gpt/xiaomi/mimo-v2.6-flash-uncensored:thinking": {
@@ -84860,7 +84860,7 @@
    "x_cost": {
     "input": 0.5,
     "output": 1.5,
-    "cache_read": 0.275
+    "cache_read": 0.00903
    }
   },
   "nano-gpt/xiaomi/mimo-v2.6-pro": {
@@ -99497,9 +99497,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.264,
-    "output": 0.792,
-    "cache_read": 0.0088
+    "input": 0.24634,
+    "output": 3.5,
+    "cache_read": 0.24584
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -100697,8 +100697,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2
+    "input": 0.255,
+    "output": 1.02
    }
   },
   "openrouter/minimax/minimax-m2-her": {
@@ -100760,9 +100760,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.06
+    "input": 0.21,
+    "output": 0.84,
+    "cache_read": 0.042
    }
   },
   "openrouter/minimax/minimax-m3": {
@@ -103227,8 +103227,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
-    "output": 0.5
+    "input": 0.13,
+    "output": 0.52
    }
   },
   "openrouter/qwen/qwen3-30b-a3b-instruct-2507": {
@@ -104456,9 +104456,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -105204,9 +105204,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3794,
-    "output": 1.1924,
-    "cache_read": 0.07046
+    "input": 0.238,
+    "output": 0.748,
+    "cache_read": 0.0391
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
@@ -105376,9 +105376,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.24948,
-    "output": 0.74844,
-    "cache_read": 0.007938
+    "input": 0.24552,
+    "output": 0.73656,
+    "cache_read": 0.007812
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -105463,8 +105463,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.0301,
-    "output": 9.043,
+    "input": 1,
+    "output": 9,
     "cache_read": 0.3
    }
   },
@@ -105690,9 +105690,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3794,
-    "output": 1.1924,
-    "cache_read": 0.07046
+    "input": 0.238,
+    "output": 0.748,
+    "cache_read": 0.0391
    }
   },
   "opper/claude-fable-5": {
