@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-27T11:04:08+00:00",
+ "generated_at": "2026-09-27T16:04:19+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8169,
+ "model_count": 8170,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -51801,7 +51801,7 @@
    }
   },
   "kilo/deepseek/deepseek-chat": {
-   "context_window": 163840,
+   "context_window": 128000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -51811,8 +51811,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.32,
-    "output": 0.89
+    "input": 0.2574,
+    "output": 1.0287
    }
   },
   "kilo/deepseek/deepseek-chat-v3-0324": {
@@ -53199,7 +53199,7 @@
    }
   },
   "kilo/minimax/minimax-m2": {
-   "context_window": 204800,
+   "context_window": 196608,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57440,9 +57440,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 9,
-    "cache_read": 0.3
+    "input": 0.9875,
+    "output": 5.53,
+    "cache_read": 0.11455
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -57579,9 +57579,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2737,
+    "input": 0.3032,
     "output": 2.574,
-    "cache_read": 0.044965
+    "cache_read": 0.05951
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -79434,6 +79434,23 @@
     "cache_read": 0.015
    }
   },
+  "nano-gpt/longcat-2.5-preview": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.75,
+    "output": 2.95,
+    "cache_read": 0.015
+   }
+  },
   "nano-gpt/marinaraspaghetti/nemomix-unleashed-12b": {
    "context_window": 32768,
    "supports_tools": false,
@@ -99212,8 +99229,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.32,
-    "output": 0.89
+    "input": 0.2574,
+    "output": 1.0287
    }
   },
   "openrouter/deepseek/deepseek-chat-v3-0324": {
@@ -100616,8 +100633,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.255,
-    "output": 1.02
+    "input": 0.3,
+    "output": 1.2
    }
   },
   "openrouter/minimax/minimax-m2-her": {
@@ -105382,9 +105399,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 9,
-    "cache_read": 0.3
+    "input": 0.9875,
+    "output": 5.53,
+    "cache_read": 0.11455
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -105609,9 +105626,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2737,
+    "input": 0.3032,
     "output": 2.574,
-    "cache_read": 0.044965
+    "cache_read": 0.05951
    }
   },
   "opper/claude-fable-5": {
