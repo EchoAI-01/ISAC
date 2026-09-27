@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-27T02:39:49+00:00",
+ "generated_at": "2026-09-27T11:04:08+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8174,
+ "model_count": 8169,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -31323,38 +31323,6 @@
     "cache_read": 0.022
    }
   },
-  "edenai/fireworks_ai/accounts/fireworks/models/deepseek-v4-flash-0731": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
-   }
-  },
-  "edenai/fireworks_ai/accounts/fireworks/models/deepseek-v4-pro-0813": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.044
-   }
-  },
   "edenai/fireworks_ai/accounts/fireworks/models/inkling": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -31370,23 +31338,6 @@
     "input": 1,
     "output": 4.05,
     "cache_read": 0.17
-   }
-  },
-  "edenai/fireworks_ai/accounts/fireworks/models/muse-glimmer-30b": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.35,
-    "output": 1.5,
-    "cache_read": 0.04
    }
   },
   "edenai/fireworks_ai/gpt-oss-120b": {
@@ -31485,38 +31436,6 @@
     "input": 0.2,
     "output": 1.15,
     "cache_read": 0.03
-   }
-  },
-  "edenai/google/deep-research-max-preview-04-2026": {
-   "context_window": 131072,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2,
-    "output": 12
-   }
-  },
-  "edenai/google/deep-research-preview-04-2026": {
-   "context_window": 131072,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 2,
-    "output": 12
    }
   },
   "edenai/google/gemini-2.5-flash-image": {
@@ -52021,7 +51940,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-flash": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54017,7 +53936,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.065,
+    "input": 0.039,
     "output": 0.18
    }
   },
@@ -55507,7 +55426,7 @@
    }
   },
   "kilo/qwen/qwen3-30b-a3b": {
-   "context_window": 131072,
+   "context_window": 40960,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57268,7 +57187,7 @@
    }
   },
   "kilo/z-ai/glm-5.3": {
-   "context_window": 1048576,
+   "context_window": 1048575,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57450,9 +57369,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.24552,
-    "output": 0.73656,
-    "cache_read": 0.007812
+    "input": 0.2442,
+    "output": 0.7326,
+    "cache_read": 0.00777
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -57644,13 +57563,13 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04,
-    "output": 0.5,
-    "cache_read": 0.015
+    "input": 0.045,
+    "output": 0.14,
+    "cache_read": 0.01
    }
   },
   "kilo/~z-ai/glm-latest": {
-   "context_window": 1048576,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57660,9 +57579,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.238,
-    "output": 0.748,
-    "cache_read": 0.0391
+    "input": 0.2737,
+    "output": 2.574,
+    "cache_read": 0.044965
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -84844,7 +84763,7 @@
    "x_cost": {
     "input": 0.5,
     "output": 1.5,
-    "cache_read": 0.00903
+    "cache_read": 0.1995
    }
   },
   "nano-gpt/xiaomi/mimo-v2.6-flash-uncensored:thinking": {
@@ -84860,7 +84779,7 @@
    "x_cost": {
     "input": 0.5,
     "output": 1.5,
-    "cache_read": 0.00903
+    "cache_read": 0.1995
    }
   },
   "nano-gpt/xiaomi/mimo-v2.6-pro": {
@@ -85399,7 +85318,7 @@
    "x_cost": {
     "input": 0.2,
     "output": 0.8,
-    "cache_read": 0.1
+    "cache_read": 0.07
    }
   },
   "nano-gpt/z-ai/glm-5.3-uncensored": {
@@ -99432,9 +99351,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04704,
-    "output": 0.09408,
-    "cache_read": 0.009408
+    "input": 0.0469,
+    "output": 0.0938,
+    "cache_read": 0.00938
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -99465,9 +99384,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.2156,
+    "output": 0.6468,
+    "cache_read": 0.00686
    }
   },
   "openrouter/deepseek/deepseek-v4-pro": {
@@ -99497,9 +99416,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.24634,
+    "input": 0.24502,
     "output": 3.5,
-    "cache_read": 0.24584
+    "cache_read": 0.24452
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -103227,8 +103146,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.52
+    "input": 0.12,
+    "output": 0.5
    }
   },
   "openrouter/qwen/qwen3-30b-a3b-instruct-2507": {
@@ -105204,9 +105123,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.238,
-    "output": 0.748,
-    "cache_read": 0.0391
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
@@ -105221,9 +105140,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04,
-    "output": 0.5,
-    "cache_read": 0.015
+    "input": 0.045,
+    "output": 0.14,
+    "cache_read": 0.01
    }
   },
   "openrouter/z-ai/glm-5.3-flashx": {
@@ -105376,9 +105295,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.24552,
-    "output": 0.73656,
-    "cache_read": 0.007812
+    "input": 0.2442,
+    "output": 0.7326,
+    "cache_read": 0.00777
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -105674,9 +105593,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04,
-    "output": 0.5,
-    "cache_read": 0.015
+    "input": 0.045,
+    "output": 0.14,
+    "cache_read": 0.01
    }
   },
   "openrouter/~z-ai/glm-latest": {
@@ -105690,9 +105609,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.238,
-    "output": 0.748,
-    "cache_read": 0.0391
+    "input": 0.2737,
+    "output": 2.574,
+    "cache_read": 0.044965
    }
   },
   "opper/claude-fable-5": {
