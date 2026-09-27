@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-27T16:04:19+00:00",
+ "generated_at": "2026-09-27T20:37:53+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 8170,
  "override_count": 0,
@@ -56545,9 +56545,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.53,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -57440,9 +57440,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.9875,
-    "output": 5.53,
-    "cache_read": 0.11455
+    "input": 1,
+    "output": 9,
+    "cache_read": 0.3
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -57569,7 +57569,7 @@
    }
   },
   "kilo/~z-ai/glm-latest": {
-   "context_window": 262144,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57579,9 +57579,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3032,
-    "output": 2.574,
-    "cache_read": 0.05951
+    "input": 0.3556,
+    "output": 1.1176,
+    "cache_read": 0.06604
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -99433,9 +99433,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.24502,
+    "input": 0.29304,
     "output": 3.5,
-    "cache_read": 0.24452
+    "cache_read": 0.172
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -104392,9 +104392,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -105399,9 +105399,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.9875,
-    "output": 5.53,
-    "cache_read": 0.11455
+    "input": 1,
+    "output": 9,
+    "cache_read": 0.3
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -105626,9 +105626,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3032,
-    "output": 2.574,
-    "cache_read": 0.05951
+    "input": 0.3556,
+    "output": 1.1176,
+    "cache_read": 0.06604
    }
   },
   "opper/claude-fable-5": {
