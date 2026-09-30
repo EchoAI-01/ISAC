@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-09-29T21:40:34+00:00",
+ "generated_at": "2026-09-30T03:07:38+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8318,
+ "model_count": 8323,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -19845,6 +19845,22 @@
     "cache_read": 0.03
    }
   },
+  "baseten/deepseek-ai/deepseek-v4.1-flash-fast": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.6,
+    "output": 2.4
+   }
+  },
   "baseten/minimaxai/minimax-m2.5": {
    "context_window": 204000,
    "supports_tools": true,
@@ -23910,6 +23926,24 @@
     "input": 2.4,
     "output": 11.999,
     "cache_read": 0.24,
+    "cache_write": 3
+   }
+  },
+  "cortecs/gpt-6.1-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.4,
+    "output": 11.999,
+    "cache_read": 0.12,
     "cache_write": 3
    }
   },
@@ -28873,7 +28907,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
+    "input": 0.14,
     "output": 0.28,
     "cache_read": 0.0028
    }
@@ -31917,7 +31951,7 @@
    }
   },
   "edenai/cloudflare/@cf/deepseek-ai/deepseek-v4-flash-0731": {
-   "context_window": 1310720,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57057,7 +57091,7 @@
    }
   },
   "kilo/qwen/qwen3-30b-a3b": {
-   "context_window": 40960,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -57667,7 +57701,7 @@
    }
   },
   "kilo/qwen/qwen3.8-27b": {
-   "context_window": 262144,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -58176,9 +58210,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.13,
+    "output": 0.53,
+    "cache_read": 0.033
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -58601,9 +58635,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.28,
-    "cache_read": 0.0028
+    "input": 0.04,
+    "output": 1.28,
+    "cache_read": 0.04
    }
   },
   "kilo/xiaomi/mimo-v2.6-pro": {
@@ -59210,9 +59244,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1428,
-    "output": 2.992,
-    "cache_read": 0.1955
+    "input": 0.12,
+    "output": 1.5,
+    "cache_read": 0.12
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -74264,9 +74298,10 @@
   },
   "merge-gateway/openai/gpt-6.1-sol": {
    "context_window": 1050000,
-   "supports_tools": false,
+   "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -79049,9 +79084,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -99352,13 +99387,13 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5,
     "tiers": [
      {
       "input": 4,
       "output": 15,
-      "cache_read": 0.4,
+      "cache_read": 0.2,
       "cache_write": 5,
       "tier": {
        "type": "context",
@@ -99369,7 +99404,7 @@
     "context_over_200k": {
      "input": 4,
      "output": 15,
-     "cache_read": 0.4,
+     "cache_read": 0.2,
      "cache_write": 5
     }
    }
@@ -101298,13 +101333,13 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0763,
-    "output": 0.1526,
-    "cache_read": 0.01526
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.028
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
-   "context_window": 1310720,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -101347,9 +101382,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.915936,
-    "output": 1.831872,
-    "cache_read": 0.076328
+    "input": 0.95526,
+    "output": 1.91052,
+    "cache_read": 0.079605
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -101363,9 +101398,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3942,
-    "output": 3.49,
-    "cache_read": 0.3153
+    "input": 1.32,
+    "output": 3.96,
+    "cache_read": 0.044
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -102386,8 +102421,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
+    "input": 0.35,
+    "output": 1.5,
     "cache_read": 0.04
    }
   },
@@ -105185,8 +105220,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
-    "output": 0.5
+    "input": 0.13,
+    "output": 0.52
    }
   },
   "openrouter/qwen/qwen3-30b-a3b-instruct-2507": {
@@ -105997,9 +106032,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0249,
-    "output": 4.4,
-    "cache_read": 0.0199
+    "input": 0.42,
+    "output": 3,
+    "cache_read": 0.085
    }
   },
   "openrouter/qwen/qwen3.8-27b:free": {
@@ -106413,9 +106448,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -107129,9 +107164,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.9646,
-    "output": 3.0316,
-    "cache_read": 0.17914
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26
    }
   },
   "openrouter/z-ai/glm-5.2": {
@@ -107145,13 +107180,13 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2807,
+    "input": 0.2087,
     "output": 3.99,
-    "cache_read": 0.2245
+    "cache_read": 0.167
    }
   },
   "openrouter/z-ai/glm-5.3": {
-   "context_window": 1310720,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -107167,7 +107202,7 @@
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
-   "context_window": 1310720,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -107339,7 +107374,7 @@
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
-   "context_window": 1310720,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -107620,7 +107655,7 @@
    }
   },
   "openrouter/~z-ai/glm-flash-latest": {
-   "context_window": 1310720,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -107637,7 +107672,7 @@
    }
   },
   "openrouter/~z-ai/glm-latest": {
-   "context_window": 1310720,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -107647,9 +107682,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1428,
-    "output": 2.992,
-    "cache_read": 0.1955
+    "input": 0.12,
+    "output": 1.5,
+    "cache_read": 0.12
    }
   },
   "opper/claude-fable-5": {
@@ -134727,6 +134762,36 @@
     "cache_read": 0.015
    }
   },
+  "vercel/inclusionai/ling-3.1-flash": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "vercel/inclusionai/ling-3.1-flash-free": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
   "vercel/inference-net/schematron-v2-small": {
    "context_window": 128000,
    "supports_tools": false,
@@ -134861,6 +134926,21 @@
    "modalities_out": [
     "text"
    ]
+  },
+  "vercel/liquid/d1": {
+   "context_window": 32000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
   },
   "vercel/meituan/longcat-2.5-preview": {
    "context_window": 1048576,
