@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-02T17:05:10+00:00",
+ "generated_at": "2026-10-02T21:36:40+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 8383,
  "override_count": 0,
@@ -23702,7 +23702,8 @@
    "x_cost": {
     "input": 0.33,
     "output": 2.749,
-    "cache_read": 0.033
+    "cache_read": 0.033,
+    "cache_write": 0.082
    }
   },
   "cortecs/gemini-3.6-flash": {
@@ -56043,7 +56044,7 @@
    }
   },
   "kilo/nvidia/nemotron-3-ultra-550b-a55b": {
-   "context_window": 202800,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -58796,9 +58797,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7506,
-    "output": 2.2509,
-    "cache_read": 0.0378
+    "input": 0.83,
+    "output": 2.5,
+    "cache_read": 0.04
    }
   },
   "kilo/thedrummer/cydonia-24b-v4.1": {
@@ -59206,9 +59207,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07,
+    "input": 0.12,
     "output": 0.28,
-    "cache_read": 0.002
+    "cache_read": 0.0028
    }
   },
   "kilo/xiaomi/mimo-v2.6-pro": {
@@ -59439,7 +59440,7 @@
    }
   },
   "kilo/z-ai/glm-5.3-flash": {
-   "context_window": 1048576,
+   "context_window": 1048575,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -59589,9 +59590,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.015,
-    "output": 1.2,
-    "cache_read": 0.002115
+    "input": 0.02,
+    "output": 0.6,
+    "cache_read": 0.02
    }
   },
   "kilo/~deepseek/deepseek-pro-latest": {
@@ -59621,9 +59622,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.012825,
-    "output": 1.6,
-    "cache_read": 0.012825
+    "input": 0.008625,
+    "output": 0.808374,
+    "cache_read": 0.00105
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -59676,9 +59677,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.34,
-    "output": 13,
-    "cache_read": 0.8
+    "input": 1,
+    "output": 11.357,
+    "cache_read": 0.29
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -59800,7 +59801,7 @@
    ],
    "x_cost": {
     "input": 0.02625,
-    "output": 0.9,
+    "output": 0.928749,
     "cache_read": 0.01125
    }
   },
@@ -102190,9 +102191,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0171,
+    "input": 0.0115,
     "output": 1.28,
-    "cache_read": 0.0171
+    "cache_read": 0.0115
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -102256,9 +102257,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.006
+    "input": 0.02,
+    "output": 0.6,
+    "cache_read": 0.02
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -102804,9 +102805,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.09,
-    "output": 0.3,
-    "cache_read": 0.05
+    "input": 0.0675,
+    "output": 0.225,
+    "cache_read": 0.0375
    }
   },
   "openrouter/google/gemma-4-26b-a4b-it:free": {
@@ -102995,9 +102996,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.06,
-    "output": 0.18,
-    "cache_read": 0.012
+    "input": 0.042,
+    "output": 0.1232,
+    "cache_read": 0.0084
    }
   },
   "openrouter/inclusionai/ling-3.0-flash-sante:free": {
@@ -104136,9 +104137,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6,
-    "output": 2.4,
-    "cache_read": 0.12
+    "input": 0.5,
+    "output": 2.2,
+    "cache_read": 0.1
    }
   },
   "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
@@ -108087,9 +108088,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.02625,
-    "output": 0.9,
-    "cache_read": 0.01125
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
    }
   },
   "openrouter/z-ai/glm-5.3-flashx": {
@@ -108226,9 +108227,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.015,
-    "output": 1.2,
-    "cache_read": 0.002115
+    "input": 0.02,
+    "output": 0.6,
+    "cache_read": 0.02
    }
   },
   "openrouter/~deepseek/deepseek-pro-latest": {
@@ -108258,9 +108259,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.012825,
-    "output": 1.6,
-    "cache_read": 0.012825
+    "input": 0.0115,
+    "output": 1.28,
+    "cache_read": 0.0115
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -108329,9 +108330,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.34,
-    "output": 13,
-    "cache_read": 0.8
+    "input": 1,
+    "output": 11.357,
+    "cache_read": 0.29
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -108541,7 +108542,7 @@
    ],
    "x_cost": {
     "input": 0.02625,
-    "output": 0.9,
+    "output": 0.928749,
     "cache_read": 0.01125
    }
   },
