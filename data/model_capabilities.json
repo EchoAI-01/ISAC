@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-03T03:01:20+00:00",
+ "generated_at": "2026-10-03T10:50:39+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8383,
+ "model_count": 8385,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -33140,6 +33140,22 @@
     "cache_read": 0.009
    }
   },
+  "edenai/flexai/deepseek-v4.1-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.14,
+    "output": 0.42,
+    "cache_read": 0.021
+   }
+  },
   "edenai/flexai/gpt-oss-120b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -33566,6 +33582,22 @@
      "output": 18,
      "cache_read": 0.4
     }
+   }
+  },
+  "edenai/greenference/gpt-oss-20b": {
+   "context_window": 131072,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.009,
+    "output": 0.045,
+    "cache_read": 0.0045
    }
   },
   "edenai/groq/openai/gpt-oss-120b": {
@@ -35642,6 +35674,22 @@
     "input": 0.834,
     "output": 2.501,
     "cache_read": 0.042
+   }
+  },
+  "edenai/tencent/step-5-preview": {
+   "context_window": 1000000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1,
+    "output": 2.7,
+    "cache_read": 0.05
    }
   },
   "edenai/tensorx/deepseek/deepseek-v4-flash-0731": {
@@ -55832,9 +55880,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.43415,
-    "output": 1.828,
-    "cache_read": 0.07312
+    "input": 0.95,
+    "output": 4,
+    "cache_read": 0.16
    }
   },
   "kilo/moonshotai/kimi-k2.7-code": {
@@ -57660,7 +57708,7 @@
    }
   },
   "kilo/qwen/qwen3-30b-a3b-instruct-2507": {
-   "context_window": 262144,
+   "context_window": 128000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -59208,7 +59256,7 @@
    "x_cost": {
     "input": 0.12,
     "output": 0.28,
-    "cache_read": 0.006
+    "cache_read": 0.09
    }
   },
   "kilo/xiaomi/mimo-v2.6-pro": {
@@ -59223,9 +59271,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.435,
+    "input": 0.43,
     "output": 0.87,
-    "cache_read": 0.004
+    "cache_read": 0.0036
    }
   },
   "kilo/xiaomi/mimo-v2.6-pro-ultraspeed": {
@@ -59589,9 +59637,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.015,
-    "output": 0.676999,
-    "cache_read": 0.002097
+    "input": 0.02,
+    "output": 0.6,
+    "cache_read": 0.01
    }
   },
   "kilo/~deepseek/deepseek-pro-latest": {
@@ -59621,9 +59669,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0051,
+    "input": 0.0188,
     "output": 1.28,
-    "cache_read": 0.0051
+    "cache_read": 0.0188
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -59676,7 +59724,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.74,
+    "input": 0.9895,
     "output": 13,
     "cache_read": 0.45
    }
@@ -59799,9 +59847,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.02625,
-    "output": 0.928749,
-    "cache_read": 0.01125
+    "input": 0.035,
+    "output": 0.5,
+    "cache_read": 0.035
    }
   },
   "kilo/~z-ai/glm-latest": {
@@ -59815,9 +59863,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.066,
-    "output": 2.789,
-    "cache_read": 0.147
+    "input": 0.12,
+    "output": 4,
+    "cache_read": 0.08
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -81958,22 +82006,6 @@
     "cache_read": 0.2
    }
   },
-  "nano-gpt/kitani/clover-1-150b": {
-   "context_window": 200000,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.8
-   }
-  },
   "nano-gpt/latitudegames/wayfarer-large-70b-llama-3.3": {
    "context_window": 32768,
    "supports_tools": false,
@@ -102189,9 +102221,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0051,
+    "input": 0.0188,
     "output": 1.28,
-    "cache_read": 0.0051
+    "cache_read": 0.0188
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -103913,9 +103945,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.43415,
-    "output": 1.828,
-    "cache_read": 0.07312
+    "input": 0.95,
+    "output": 4,
+    "cache_read": 0.16
    }
   },
   "openrouter/moonshotai/kimi-k2.7-code": {
@@ -106089,8 +106121,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 0.3
+    "input": 0.04815,
+    "output": 0.19305
    }
   },
   "openrouter/qwen/qwen3-30b-a3b-thinking-2507": {
@@ -108224,9 +108256,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.015,
-    "output": 0.676999,
-    "cache_read": 0.002097
+    "input": 0.02,
+    "output": 0.6,
+    "cache_read": 0.01
    }
   },
   "openrouter/~deepseek/deepseek-pro-latest": {
@@ -108256,9 +108288,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0051,
+    "input": 0.0188,
     "output": 1.28,
-    "cache_read": 0.0051
+    "cache_read": 0.0188
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -108327,7 +108359,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.74,
+    "input": 0.9895,
     "output": 13,
     "cache_read": 0.45
    }
@@ -108538,9 +108570,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.02625,
-    "output": 0.928749,
-    "cache_read": 0.01125
+    "input": 0.035,
+    "output": 0.5,
+    "cache_read": 0.035
    }
   },
   "openrouter/~z-ai/glm-latest": {
@@ -108554,9 +108586,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.066,
-    "output": 2.789,
-    "cache_read": 0.147
+    "input": 0.12,
+    "output": 4,
+    "cache_read": 0.08
    }
   },
   "opper/claude-fable-5": {
@@ -131090,8 +131122,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.375,
-    "output": 1.5,
+    "input": 0.3,
+    "output": 1.2,
     "cache_read": 0.0075
    }
   },
