@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-03T10:50:39+00:00",
+ "generated_at": "2026-10-03T15:26:50+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8385,
+ "model_count": 8386,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -55914,9 +55914,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.7,
-    "output": 13.5,
-    "cache_read": 0.27
+    "input": 0.99,
+    "output": 13,
+    "cache_read": 0.8
    }
   },
   "kilo/morph/morph-v3-fast": {
@@ -59254,7 +59254,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
+    "input": 0.11,
     "output": 0.28,
     "cache_read": 0.09
    }
@@ -59653,9 +59653,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
+    "input": 0.22,
     "output": 4.2,
-    "cache_read": 0.1
+    "cache_read": 0.14
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -85958,6 +85958,23 @@
     "cache_read": 0.5
    }
   },
+  "nano-gpt/sakana/sakana-namazu": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.95,
+    "output": 4,
+    "cache_read": 0.15
+   }
+  },
   "nano-gpt/salesforce/llama-xlam-2-70b-fc-r": {
    "context_window": 128000,
    "supports_tools": false,
@@ -102270,9 +102287,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 0.22,
+    "output": 4.2,
+    "cache_read": 0.14
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -103979,9 +103996,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 2.7,
-    "output": 13.5,
-    "cache_read": 0.27
+    "input": 0.99,
+    "output": 13,
+    "cache_read": 0.8
    }
   },
   "openrouter/morph/morph-v3-fast": {
@@ -108272,9 +108289,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
+    "input": 0.22,
     "output": 4.2,
-    "cache_read": 0.1
+    "cache_read": 0.14
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
