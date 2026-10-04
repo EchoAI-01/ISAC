@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-03T20:22:00+00:00",
+ "generated_at": "2026-10-04T03:30:22+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 8386,
  "override_count": 0,
@@ -54025,7 +54025,7 @@
    }
   },
   "kilo/deepseek/deepseek-chat-v3-0324": {
-   "context_window": 128000,
+   "context_window": 163840,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54035,9 +54035,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.29,
-    "output": 1.14,
-    "cache_read": 0.11
+    "input": 0.25,
+    "output": 1
    }
   },
   "kilo/deepseek/deepseek-chat-v3.1": {
@@ -54134,7 +54133,7 @@
    }
   },
   "kilo/deepseek/deepseek-v4-flash": {
-   "context_window": 1024000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -58813,9 +58812,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.13,
+    "output": 0.53,
+    "cache_read": 0.033
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -58845,9 +58844,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7506,
-    "output": 2.2509,
-    "cache_read": 0.0378
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
    }
   },
   "kilo/thedrummer/cydonia-24b-v4.1": {
@@ -59255,7 +59254,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.11,
+    "input": 0.1,
     "output": 0.28,
     "cache_read": 0.09
    }
@@ -59638,9 +59637,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.02,
-    "output": 0.6,
-    "cache_read": 0.01
+    "input": 0.003,
+    "output": 2.4,
+    "cache_read": 0.003
    }
   },
   "kilo/~deepseek/deepseek-pro-latest": {
@@ -59654,9 +59653,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
+    "input": 0.176,
     "output": 4.2,
-    "cache_read": 0.14
+    "cache_read": 0.16
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -59670,9 +59669,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0188,
+    "input": 0.0152,
     "output": 1.28,
-    "cache_read": 0.0188
+    "cache_read": 0.0137
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -59725,9 +59724,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.73,
+    "input": 0.576,
     "output": 13,
-    "cache_read": 0.45
+    "cache_read": 0.3
    }
   },
   "kilo/~openai/gpt-astra-latest": {
@@ -59848,9 +59847,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.035,
+    "input": 0.0303,
     "output": 0.5,
-    "cache_read": 0.035
+    "cache_read": 0.0273
    }
   },
   "kilo/~z-ai/glm-latest": {
@@ -59864,9 +59863,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
-    "output": 4,
-    "cache_read": 0.08
+    "input": 0.05,
+    "output": 4.4,
+    "cache_read": 0.04
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -102114,9 +102113,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.29,
-    "output": 1.14,
-    "cache_read": 0.11
+    "input": 0.25,
+    "output": 1
    }
   },
   "openrouter/deepseek/deepseek-chat-v3.1": {
@@ -102223,9 +102221,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.028,
-    "output": 0.056,
-    "cache_read": 0.0056
+    "input": 0.0224,
+    "output": 1.28,
+    "cache_read": 0.0202
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -102239,9 +102237,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0188,
+    "input": 0.0152,
     "output": 1.28,
-    "cache_read": 0.0188
+    "cache_read": 0.0137
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -102305,9 +102303,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.006
+    "input": 0.003,
+    "output": 2.4,
+    "cache_read": 0.003
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -103262,8 +103260,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 0.32
+    "input": 0.22,
+    "output": 0.5,
+    "cache_read": 0.11
    }
   },
   "openrouter/meta-llama/llama-4-maverick": {
@@ -103997,7 +103996,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.74,
+    "input": 0.72,
     "output": 13,
     "cache_read": 0.7
    }
@@ -107353,9 +107352,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -107385,9 +107384,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7506,
-    "output": 2.2509,
-    "cache_read": 0.0378
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
    }
   },
   "openrouter/thedrummer/cydonia-24b-v4.1": {
@@ -108102,8 +108101,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.41,
-    "output": 3.99,
+    "input": 0.38,
+    "output": 3.49,
     "cache_read": 0.26
    }
   },
@@ -108118,9 +108117,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 3.39,
-    "cache_read": 0.176
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.14
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
@@ -108274,9 +108273,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.02,
-    "output": 0.6,
-    "cache_read": 0.01
+    "input": 0.003,
+    "output": 2.4,
+    "cache_read": 0.003
    }
   },
   "openrouter/~deepseek/deepseek-pro-latest": {
@@ -108290,9 +108289,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
+    "input": 0.176,
     "output": 4.2,
-    "cache_read": 0.14
+    "cache_read": 0.16
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -108306,9 +108305,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0188,
+    "input": 0.0152,
     "output": 1.28,
-    "cache_read": 0.0188
+    "cache_read": 0.0137
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -108377,9 +108376,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.73,
+    "input": 0.576,
     "output": 13,
-    "cache_read": 0.45
+    "cache_read": 0.3
    }
   },
   "openrouter/~openai/gpt-astra-latest": {
@@ -108588,9 +108587,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.035,
+    "input": 0.0303,
     "output": 0.5,
-    "cache_read": 0.035
+    "cache_read": 0.0273
    }
   },
   "openrouter/~z-ai/glm-latest": {
@@ -108604,9 +108603,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.12,
-    "output": 4,
-    "cache_read": 0.08
+    "input": 0.05,
+    "output": 4.4,
+    "cache_read": 0.04
    }
   },
   "opper/claude-fable-5": {
