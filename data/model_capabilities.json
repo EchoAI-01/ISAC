@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-04T11:32:56+00:00",
+ "generated_at": "2026-10-04T16:11:37+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 8393,
  "override_count": 0,
@@ -59778,7 +59778,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6677,
+    "input": 0.629,
     "output": 13,
     "cache_read": 0.45
    }
@@ -59917,9 +59917,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
+    "input": 0.08,
     "output": 5,
-    "cache_read": 0.04
+    "cache_read": 0.07
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -63049,7 +63049,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
+    "input": 0.2,
     "output": 0.4
    }
   },
@@ -79555,9 +79555,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.4,
-    "output": 1.7,
-    "cache_read": 0.2
+    "input": 0.5,
+    "output": 2.15,
+    "cache_read": 0.35
    }
   },
   "nano-gpt/deepseek-ai/deepseek-v3.1": {
@@ -102358,9 +102358,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.33,
+    "input": 0.55,
     "output": 4.2,
-    "cache_read": 0.26
+    "cache_read": 0.45
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -108174,9 +108174,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.38,
-    "output": 3.49,
-    "cache_read": 0.26
+    "input": 0.0504,
+    "output": 8,
+    "cache_read": 0.0504
    }
   },
   "openrouter/z-ai/glm-5.3": {
@@ -108449,7 +108449,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.6705,
+    "input": 0.629,
     "output": 13,
     "cache_read": 0.45
    }
@@ -108676,9 +108676,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
+    "input": 0.08,
     "output": 5,
-    "cache_read": 0.04
+    "cache_read": 0.07
    }
   },
   "opper/claude-fable-5": {
