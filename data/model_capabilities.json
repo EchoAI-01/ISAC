@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-05T23:29:52+00:00",
+ "generated_at": "2026-10-06T03:58:23+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8398,
+ "model_count": 8389,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -7422,7 +7422,7 @@
     "cache_read": 0.1
    }
   },
-  "aki-io/deepseek-v4-flash-0731-284b": {
+  "aki-io/deepseek-v4.1-flash-552b": {
    "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
@@ -7433,8 +7433,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2,
-    "output": 0.5,
+    "input": 0.25,
+    "output": 1,
     "cache_read": 0.1
    }
   },
@@ -54082,22 +54082,6 @@
    }
   },
   "kilo/deepseek/deepseek-v3.1-terminus": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 1,
-    "cache_read": 0.135
-   }
-  },
-  "kilo/deepseek/deepseek-v3.2": {
    "context_window": 163840,
    "supports_tools": true,
    "supports_vision": null,
@@ -54108,9 +54092,24 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.259,
+    "input": 0.27,
+    "output": 1
+   }
+  },
+  "kilo/deepseek/deepseek-v3.2": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.28,
     "output": 0.42,
-    "cache_read": 0.135
+    "cache_read": 0.028
    }
   },
   "kilo/deepseek/deepseek-v3.2-exp": {
@@ -55844,7 +55843,8 @@
    ],
    "x_cost": {
     "input": 0.6,
-    "output": 2.5
+    "output": 2.5,
+    "cache_read": 0.15
    }
   },
   "kilo/moonshotai/kimi-k2.5": {
@@ -57704,7 +57704,7 @@
    }
   },
   "kilo/qwen/qwen3-30b-a3b-instruct-2507": {
-   "context_window": 128000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -58776,9 +58776,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.13,
+    "output": 0.53,
+    "cache_read": 0.033
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -58808,9 +58808,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7506,
-    "output": 2.2509,
-    "cache_read": 0.0378
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
    }
   },
   "kilo/thedrummer/cydonia-24b-v4.1": {
@@ -59451,7 +59451,7 @@
    }
   },
   "kilo/z-ai/glm-5.3-flash": {
-   "context_window": 1048575,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -59617,9 +59617,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2783,
-    "output": 4.2,
-    "cache_read": 0.28
+    "input": 0.3,
+    "output": 6,
+    "cache_read": 0.3
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -59633,9 +59633,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0152,
+    "input": 0.009,
     "output": 1.28,
-    "cache_read": 0.0152
+    "cache_read": 0.009
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -59688,7 +59688,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7884,
+    "input": 0.94,
     "output": 13,
     "cache_read": 0.45
    }
@@ -59811,9 +59811,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0352,
+    "input": 0.0214,
     "output": 0.5,
-    "cache_read": 0.0232
+    "cache_read": 0.0141
    }
   },
   "kilo/~z-ai/glm-latest": {
@@ -79825,9 +79825,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -102345,9 +102345,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1,
-    "cache_read": 0.135
+    "input": 0.27,
+    "output": 1
    }
   },
   "openrouter/deepseek/deepseek-v3.2": {
@@ -102361,9 +102360,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.259,
+    "input": 0.28,
     "output": 0.42,
-    "cache_read": 0.135
+    "cache_read": 0.028
    }
   },
   "openrouter/deepseek/deepseek-v3.2-exp": {
@@ -102392,9 +102391,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.03,
+    "input": 0.0179,
     "output": 1.28,
-    "cache_read": 0.03
+    "cache_read": 0.0179
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -102408,9 +102407,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0152,
+    "input": 0.009,
     "output": 1.28,
-    "cache_read": 0.0152
+    "cache_read": 0.009
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -102457,9 +102456,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 1.32,
+    "output": 3.96,
+    "cache_read": 0.044
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -102474,9 +102473,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.006
+    "input": 0.003,
+    "output": 2.4,
+    "cache_read": 0.003
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -104101,7 +104100,8 @@
    ],
    "x_cost": {
     "input": 0.6,
-    "output": 2.5
+    "output": 2.5,
+    "cache_read": 0.15
    }
   },
   "openrouter/moonshotai/kimi-k2.5": {
@@ -104167,9 +104167,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.19,
+    "input": 0.95,
     "output": 14,
-    "cache_read": 0.39
+    "cache_read": 0.31
    }
   },
   "openrouter/morph/morph-v3-fast": {
@@ -106263,9 +106263,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0875,
-    "output": 0.35,
-    "cache_read": 0.0175
+    "input": 0.09,
+    "output": 0.55
    }
   },
   "openrouter/qwen/qwen3-235b-a22b-thinking-2507": {
@@ -106309,8 +106308,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04815,
-    "output": 0.19305
+    "input": 0.1,
+    "output": 0.3
    }
   },
   "openrouter/qwen/qwen3-30b-a3b-thinking-2507": {
@@ -106760,9 +106759,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.55,
-    "output": 3.5,
-    "cache_read": 0.225
+    "input": 0.45,
+    "output": 3,
+    "cache_read": 0.22
    }
   },
   "openrouter/qwen/qwen3.5-9b": {
@@ -107493,9 +107492,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -107525,9 +107524,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7506,
-    "output": 2.2509,
-    "cache_read": 0.0378
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
    }
   },
   "openrouter/thedrummer/cydonia-24b-v4.1": {
@@ -108242,9 +108241,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0312,
+    "input": 0.0112,
     "output": 12,
-    "cache_read": 0.0312
+    "cache_read": 0.0112
    }
   },
   "openrouter/z-ai/glm-5.3": {
@@ -108275,9 +108274,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.15,
+    "input": 0.0214,
     "output": 0.5,
-    "cache_read": 0.03
+    "cache_read": 0.0141
    }
   },
   "openrouter/z-ai/glm-5.3-flashx": {
@@ -108430,9 +108429,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2783,
-    "output": 4.2,
-    "cache_read": 0.28
+    "input": 0.3,
+    "output": 6,
+    "cache_read": 0.3
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -108446,9 +108445,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0152,
+    "input": 0.009,
     "output": 1.28,
-    "cache_read": 0.0152
+    "cache_read": 0.009
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -108517,7 +108516,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7975,
+    "input": 0.94,
     "output": 13,
     "cache_read": 0.45
    }
@@ -108728,9 +108727,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0352,
+    "input": 0.0214,
     "output": 0.5,
-    "cache_read": 0.0232
+    "cache_read": 0.0141
    }
   },
   "openrouter/~z-ai/glm-latest": {
@@ -141886,22 +141885,6 @@
     "cache_read": 0.55
    }
   },
-  "wandb/deepseek-ai/deepseek-v4-flash": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.14,
-    "output": 0.28,
-    "cache_read": 0.07
-   }
-  },
   "wandb/deepseek-ai/deepseek-v4-flash-0731": {
    "context_window": 262144,
    "supports_tools": true,
@@ -141916,22 +141899,6 @@
     "input": 0.13,
     "output": 0.28,
     "cache_read": 0.07
-   }
-  },
-  "wandb/deepseek-ai/deepseek-v4-pro": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 1.15,
-    "output": 2.55,
-    "cache_read": 0.2
    }
   },
   "wandb/deepseek-ai/deepseek-v4-pro-0813": {
@@ -142001,22 +141968,6 @@
     "cache_read": 0.1
    }
   },
-  "wandb/ibm-granite/granite-4.1-8b": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.05,
-    "output": 0.1,
-    "cache_read": 0.05
-   }
-  },
   "wandb/ibm-granite/granite-4.2-8b": {
    "context_window": 131072,
    "supports_tools": true,
@@ -142031,38 +141982,6 @@
     "input": 0.1,
     "output": 0.15,
     "cache_read": 0.05
-   }
-  },
-  "wandb/jetbrains/mellum2-12b-a2.5b-instruct": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.05,
-    "output": 0.1,
-    "cache_read": 0.05
-   }
-  },
-  "wandb/meta-llama/llama-3.1-70b-instruct": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.8,
-    "output": 0.8,
-    "cache_read": 0.8
    }
   },
   "wandb/meta-llama/llama-3.1-8b-instruct": {
@@ -142210,72 +142129,6 @@
     "input": 0.03,
     "output": 0.13,
     "cache_read": 0.03
-   }
-  },
-  "wandb/openpipe/qwen3-14b-instruct": {
-   "context_window": 32768,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.05,
-    "output": 0.22,
-    "cache_read": 0.05
-   }
-  },
-  "wandb/qwen/qwen3-30b-a3b-instruct-2507": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.1,
-    "output": 0.3,
-    "cache_read": 0.1
-   }
-  },
-  "wandb/qwen/qwen3.5-35b-a3b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.25,
-    "output": 1.25,
-    "cache_read": 0.25
-   }
-  },
-  "wandb/qwen/qwen3.6-27b": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.6,
-    "output": 3.6,
-    "cache_read": 0.12
    }
   },
   "wandb/qwen/qwen3.6-35b-a3b": {
