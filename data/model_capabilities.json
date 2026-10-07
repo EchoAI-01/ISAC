@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-07T12:21:12+00:00",
+ "generated_at": "2026-10-07T22:27:31+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8418,
+ "model_count": 8453,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -10682,8 +10682,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.72,
-    "output": 0.72
+    "input": 0.07,
+    "output": 0.16
    }
   },
   "alibaba/qwen-vl-plus": {
@@ -11611,6 +11611,36 @@
     "cache_write": 1.25
    }
   },
+  "amazon-bedrock/anthropic.claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "amazon-bedrock/anthropic.claude-opus-4-1-20250805-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
@@ -11896,6 +11926,36 @@
     "output": 5.5,
     "cache_read": 0.11,
     "cache_write": 1.375
+   }
+  },
+  "amazon-bedrock/au.anthropic.claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11,
+    "output": 0.55,
+    "cache_read": 0.011,
+    "cache_write": 0.1375,
+    "tiers": [
+     {
+      "input": 0.55,
+      "output": 2.75,
+      "cache_read": 0.055,
+      "cache_write": 0.6875,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "amazon-bedrock/au.anthropic.claude-opus-4-6-v1": {
@@ -12212,6 +12272,36 @@
     "cache_write": 1.375
    }
   },
+  "amazon-bedrock/eu.anthropic.claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11,
+    "output": 0.55,
+    "cache_read": 0.011,
+    "cache_write": 0.1375,
+    "tiers": [
+     {
+      "input": 0.55,
+      "output": 2.75,
+      "cache_read": 0.055,
+      "cache_write": 0.6875,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "amazon-bedrock/eu.anthropic.claude-opus-4-5-20251101-v1:0": {
    "context_window": 200000,
    "supports_tools": true,
@@ -12496,6 +12586,36 @@
     "output": 5,
     "cache_read": 0.1,
     "cache_write": 1.25
+   }
+  },
+  "amazon-bedrock/global.anthropic.claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "amazon-bedrock/global.anthropic.claude-opus-4-5-20251101-v1:0": {
@@ -13273,6 +13393,36 @@
     "output": 5.5,
     "cache_read": 0.11,
     "cache_write": 1.375
+   }
+  },
+  "amazon-bedrock/jp.anthropic.claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11,
+    "output": 0.55,
+    "cache_read": 0.011,
+    "cache_write": 0.1375,
+    "tiers": [
+     {
+      "input": 0.55,
+      "output": 2.75,
+      "cache_read": 0.055,
+      "cache_write": 0.6875,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "amazon-bedrock/jp.anthropic.claude-opus-4-7": {
@@ -14411,6 +14561,36 @@
     "output": 5.5,
     "cache_read": 0.11,
     "cache_write": 1.375
+   }
+  },
+  "amazon-bedrock/us.anthropic.claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11,
+    "output": 0.55,
+    "cache_read": 0.011,
+    "cache_write": 0.1375,
+    "tiers": [
+     {
+      "input": 0.55,
+      "output": 2.75,
+      "cache_read": 0.055,
+      "cache_write": 0.6875,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "amazon-bedrock/us.anthropic.claude-opus-4-1-20250805-v1:0": {
@@ -15577,6 +15757,36 @@
     "cache_write": 1.25
    }
   },
+  "anthropic/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "anthropic/claude-opus-4-5": {
    "context_window": 200000,
    "supports_tools": true,
@@ -16707,6 +16917,36 @@
     "output": 5,
     "cache_read": 0.1,
     "cache_write": 1.25
+   }
+  },
+  "azure-cognitive-services/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "azure-cognitive-services/claude-mythos-5": {
@@ -18338,6 +18578,36 @@
     "cache_write": 1.25
    }
   },
+  "azure/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "azure/claude-mythos-5": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -19678,10 +19948,22 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.25,
+    "input": 2,
     "output": 6,
     "cache_read": 0.5
    }
+  },
+  "azure/grok-4.7": {
+   "context_window": 500000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ]
   },
   "azure/kimi-k2.5": {
    "context_window": 262144,
@@ -20648,7 +20930,7 @@
    }
   },
   "berget/zai-org/glm-5.3-flash": {
-   "context_window": 524288,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -21967,6 +22249,24 @@
     "cache_write": 2.5
    }
   },
+  "cloudflare-ai-gateway/anthropic/claude-sonnet-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+   }
+  },
   "cloudflare-ai-gateway/deepseek/deepseek-v4-pro": {
    "context_window": 131072,
    "supports_tools": true,
@@ -22410,6 +22710,42 @@
      "input": 4,
      "output": 15,
      "cache_read": 0.4,
+     "cache_write": 5
+    }
+   }
+  },
+  "cloudflare-ai-gateway/openai/gpt-6.1-sol": {
+   "context_window": 1050000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.1,
+    "cache_write": 2.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 15,
+      "cache_read": 0.2,
+      "cache_write": 5,
+      "tier": {
+       "type": "context",
+       "size": 272000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 15,
+     "cache_read": 0.2,
      "cache_write": 5
     }
    }
@@ -23339,24 +23675,6 @@
     "cache_write": 1.68
    }
   },
-  "coralbricks/glm-5.3-flash-fp4": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.5,
-    "cache_read": 0,
-    "cache_write": 0.23
-   }
-  },
   "coralbricks/glm-5.3-fp4": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -23585,6 +23903,24 @@
     "output": 11,
     "cache_read": 0.219,
     "cache_write": 2.749
+   }
+  },
+  "cortecs/claude-sonnet-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 2.25,
+    "output": 11.249,
+    "cache_read": 0.225,
+    "cache_write": 2.813
    }
   },
   "cortecs/codestral-2508": {
@@ -24582,6 +24918,23 @@
     "input": 0.613,
     "output": 1.838,
     "cache_read": 0.061
+   }
+  },
+  "cortecs/mistral-large-4-0": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.765,
+    "output": 2.351,
+    "cache_read": 0.079
    }
   },
   "cortecs/mistral-medium-3.5": {
@@ -31942,6 +32295,36 @@
     "cache_write": 12.5
    }
   },
+  "edenai/anthropic/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "edenai/anthropic/claude-opus-4-5": {
    "context_window": 200000,
    "supports_tools": true,
@@ -32136,7 +32519,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -32154,7 +32537,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -33724,8 +34107,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.33807,
-    "output": 0.45076
+    "input": 0.33531,
+    "output": 0.44708
    }
   },
   "edenai/ionos/meta-llama/llama-3.3-70b-instruct": {
@@ -33739,8 +34122,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.732485,
-    "output": 0.732485
+    "input": 0.726505,
+    "output": 0.726505
    }
   },
   "edenai/ionos/openai/gpt-oss-120b": {
@@ -33754,8 +34137,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.169035,
-    "output": 0.732485
+    "input": 0.167655,
+    "output": 0.726505
    }
   },
   "edenai/minimax/minimax-m2": {
@@ -33836,6 +34219,23 @@
     "input": 0.3,
     "output": 1.2,
     "cache_read": 0.06
+   }
+  },
+  "edenai/mistral/codestral-2508": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 0.9,
+    "cache_read": 0.03
    }
   },
   "edenai/mistral/codestral-latest": {
@@ -35642,9 +36042,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.45076,
-    "output": 0.90152,
-    "cache_read": 0.090152
+    "input": 0.44708,
+    "output": 0.89416,
+    "cache_read": 0.089416
    }
   },
   "edenai/scaleway/gemma-3-27b-it": {
@@ -35674,8 +36074,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.169035,
-    "output": 0.67614
+    "input": 0.167655,
+    "output": 0.67062
    }
   },
   "edenai/scaleway/llama-3.3-70b-instruct": {
@@ -35689,8 +36089,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.01421,
-    "output": 1.01421
+    "input": 1.005931,
+    "output": 1.005931
    }
   },
   "edenai/tencent/deepseek-v4-pro-0813": {
@@ -40636,7 +41036,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -42135,6 +42535,36 @@
     "cache_write": 1.25
    }
   },
+  "google-vertex-anthropic/claude-haiku-5-5@default": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "google-vertex-anthropic/claude-opus-4-1@20250805": {
    "context_window": 200000,
    "supports_tools": true,
@@ -42493,6 +42923,36 @@
     "output": 5,
     "cache_read": 0.1,
     "cache_write": 1.25
+   }
+  },
+  "google-vertex/claude-haiku-5-5@default": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "google-vertex/claude-opus-4-1@20250805": {
@@ -53591,6 +54051,24 @@
     "cache_write": 1.25
    }
   },
+  "kilo/anthropic/claude-haiku-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
+   }
+  },
   "kilo/anthropic/claude-opus-4.1": {
    "context_window": 200000,
    "supports_tools": true,
@@ -53803,7 +54281,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -54153,7 +54631,7 @@
    }
   },
   "kilo/deepseek/deepseek-v3.2": {
-   "context_window": 131072,
+   "context_window": 163840,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -54163,9 +54641,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.28,
+    "input": 0.259,
     "output": 0.42,
-    "cache_read": 0.028
+    "cache_read": 0.135
    }
   },
   "kilo/deepseek/deepseek-v3.2-exp": {
@@ -56109,8 +56587,7 @@
    ],
    "x_cost": {
     "input": 0.05,
-    "output": 0.2,
-    "cache_read": 0.03
+    "output": 0.2
    }
   },
   "kilo/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
@@ -58355,7 +58832,7 @@
    }
   },
   "kilo/qwen/qwen3.8-2.4t-a95b": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -58849,9 +59326,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.13,
-    "output": 0.53,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -58881,9 +59358,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.834,
-    "output": 2.501,
-    "cache_read": 0.042
+    "input": 0.7506,
+    "output": 2.2509,
+    "cache_read": 0.0378
    }
   },
   "kilo/thedrummer/cydonia-24b-v4.1": {
@@ -59609,7 +60086,7 @@
    }
   },
   "kilo/~anthropic/claude-haiku-latest": {
-   "context_window": 200000,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -59620,10 +60097,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 5,
-    "cache_read": 0.1,
-    "cache_write": 1.25
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
    }
   },
   "kilo/~anthropic/claude-opus-latest": {
@@ -59658,7 +60135,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -59674,7 +60151,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
+    "input": 0.0248,
     "output": 1.2,
     "cache_read": 0.02
    }
@@ -59690,9 +60167,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.4,
-    "output": 4.3,
-    "cache_read": 0.033
+    "input": 0.2862,
+    "output": 4.2,
+    "cache_read": 0.2
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -59761,7 +60238,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.61,
+    "input": 0.49,
     "output": 13,
     "cache_read": 0.45
    }
@@ -59884,9 +60361,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0214,
+    "input": 0.04,
     "output": 0.5,
-    "cache_read": 0.0214
+    "cache_read": 0.025
    }
   },
   "kilo/~z-ai/glm-latest": {
@@ -59900,9 +60377,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.063,
-    "output": 6.3,
-    "cache_read": 0.0585
+    "input": 0.062,
+    "output": 3.39,
+    "cache_read": 0.06
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -60931,6 +61408,24 @@
     "cache_write": 1.25
    }
   },
+  "llmgateway-providers/anthropic/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
+   }
+  },
   "llmgateway-providers/anthropic/claude-opus-4-5-20251101": {
    "context_window": 200000,
    "supports_tools": true,
@@ -61214,6 +61709,24 @@
     "output": 5,
     "cache_read": 0.1,
     "cache_write": 1.25
+   }
+  },
+  "llmgateway-providers/aws-bedrock/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
    }
   },
   "llmgateway-providers/aws-bedrock/claude-opus-4-1-20250805": {
@@ -63442,6 +63955,23 @@
     "input": 0.2,
     "output": 0.6,
     "cache_read": 0.005
+   }
+  },
+  "llmgateway-providers/entrim/glm-5.3-flash": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.35,
+    "cache_read": 0.0175
    }
   },
   "llmgateway-providers/fireworks/deepseek-v4-flash": {
@@ -68130,6 +68660,24 @@
     "output": 5,
     "cache_read": 0.1,
     "cache_write": 1.25
+   }
+  },
+  "llmgateway/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
    }
   },
   "llmgateway/claude-opus-4-1-20250805": {
@@ -73074,6 +73622,23 @@
     "cache_write": 1.25
    }
   },
+  "merge-gateway/anthropic/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": false,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
+   }
+  },
   "merge-gateway/anthropic/claude-opus-4-1-20250805": {
    "context_window": 200000,
    "supports_tools": true,
@@ -74277,7 +74842,7 @@
    "x_cost": {
     "input": 0.6,
     "output": 2.4,
-    "cache_read": 0.06,
+    "cache_read": 0.03,
     "cache_write": 0.375
    }
   },
@@ -75145,9 +75710,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 5,
-    "output": 30,
-    "cache_read": 0.5,
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.4,
     "cache_write": 5
    }
   },
@@ -75384,7 +75949,8 @@
    "x_cost": {
     "input": 0.022,
     "output": 0.216,
-    "cache_read": 0.0044
+    "cache_read": 0.0044,
+    "cache_write": 0.0275
    }
   },
   "merge-gateway/qwen/qwen-plus": {
@@ -75400,7 +75966,8 @@
    "x_cost": {
     "input": 0.115,
     "output": 0.287,
-    "cache_read": 0.023
+    "cache_read": 0.023,
+    "cache_write": 0.14375
    }
   },
   "merge-gateway/qwen/qwen3-235b-a22b": {
@@ -75494,7 +76061,8 @@
    "x_cost": {
     "input": 0.144,
     "output": 0.574,
-    "cache_read": 0.0288
+    "cache_read": 0.0288,
+    "cache_write": 0.18
    }
   },
   "merge-gateway/qwen/qwen3-coder-next": {
@@ -75526,7 +76094,8 @@
    "x_cost": {
     "input": 0.574,
     "output": 2.294,
-    "cache_read": 0.1148
+    "cache_read": 0.1148,
+    "cache_write": 0.7175
    }
   },
   "merge-gateway/qwen/qwen3-max": {
@@ -75542,7 +76111,8 @@
    "x_cost": {
     "input": 0.359,
     "output": 1.434,
-    "cache_read": 0.0718
+    "cache_read": 0.0718,
+    "cache_write": 0.44875
    }
   },
   "merge-gateway/qwen/qwen3-next-80b-a3b-instruct": {
@@ -75624,7 +76194,8 @@
    "x_cost": {
     "input": 0.143,
     "output": 1.434,
-    "cache_read": 0.0286
+    "cache_read": 0.0286,
+    "cache_write": 0.17875
    }
   },
   "merge-gateway/qwen/qwen3.5-122b-a10b": {
@@ -75720,7 +76291,8 @@
    "x_cost": {
     "input": 0.029,
     "output": 0.287,
-    "cache_read": 0.0058
+    "cache_read": 0.0029,
+    "cache_write": 0.03625
    }
   },
   "merge-gateway/qwen/qwen3.5-plus": {
@@ -75736,7 +76308,8 @@
    "x_cost": {
     "input": 0.115,
     "output": 0.688,
-    "cache_read": 0.023
+    "cache_read": 0.0115,
+    "cache_write": 0.14375
    }
   },
   "merge-gateway/qwen/qwen3.6-27b": {
@@ -75784,7 +76357,8 @@
    "x_cost": {
     "input": 0.165,
     "output": 0.99,
-    "cache_read": 0.033
+    "cache_read": 0.0165,
+    "cache_write": 0.20625
    }
   },
   "merge-gateway/qwen/qwen3.6-max-preview": {
@@ -75815,7 +76389,8 @@
    "x_cost": {
     "input": 0.276,
     "output": 1.651,
-    "cache_read": 0.0552
+    "cache_read": 0.0276,
+    "cache_write": 0.345
    }
   },
   "merge-gateway/qwen/qwen3.7-max": {
@@ -75831,7 +76406,8 @@
    "x_cost": {
     "input": 0.825,
     "output": 2.4755,
-    "cache_read": 0.165
+    "cache_read": 0.165,
+    "cache_write": 1.03125
    }
   },
   "merge-gateway/qwen/qwen3.7-plus": {
@@ -75896,7 +76472,8 @@
    "x_cost": {
     "input": 2,
     "output": 6,
-    "cache_read": 0.25
+    "cache_read": 0.25,
+    "cache_write": 2.5
    }
   },
   "merge-gateway/sakana/fugu-ultra": {
@@ -76343,9 +76920,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.075,
-    "output": 0.25,
-    "cache_read": 0.015
+    "input": 0.15,
+    "output": 0.5,
+    "cache_read": 0.03
    }
   },
   "meta/muse-spark-1.1": {
@@ -76900,7 +77477,7 @@
    "x_cost": {
     "input": 0.6,
     "output": 2.4,
-    "cache_read": 0.06,
+    "cache_read": 0.03,
     "cache_write": 0.375
    }
   },
@@ -76969,6 +77546,22 @@
      "output": 2.4,
      "cache_read": 0.12
     }
+   }
+  },
+  "mistral/codestral-2508": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.3,
+    "output": 0.9,
+    "cache_read": 0.03
    }
   },
   "mistral/codestral-latest": {
@@ -77077,6 +77670,22 @@
     "output": 0.3
    }
   },
+  "mistral/glm-5-2": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.14
+   }
+  },
   "mistral/labs-devstral-small-2512": {
    "context_window": 256000,
    "supports_tools": true,
@@ -77092,11 +77701,28 @@
     "output": 0
    }
   },
-  "mistral/magistral-medium-latest": {
-   "context_window": 128000,
+  "mistral/labs-leanstral-1-5-1": {
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "mistral/magistral-medium-latest": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
     "text"
    ],
    "modalities_out": [
@@ -77105,6 +77731,40 @@
    "x_cost": {
     "input": 2,
     "output": 5
+   }
+  },
+  "mistral/ministral-14b-2512": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.2,
+    "output": 0.2,
+    "cache_read": 0.02
+   }
+  },
+  "mistral/ministral-3b-2512": {
+   "context_window": 131072,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.1,
+    "cache_read": 0.01
    }
   },
   "mistral/ministral-3b-latest": {
@@ -77121,6 +77781,23 @@
    "x_cost": {
     "input": 0.04,
     "output": 0.04
+   }
+  },
+  "mistral/ministral-8b-2512": {
+   "context_window": 262144,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.15,
+    "output": 0.15,
+    "cache_read": 0.015
    }
   },
   "mistral/ministral-8b-latest": {
@@ -77463,6 +78140,22 @@
    "modalities_out": [
     "text"
    ]
+  },
+  "mistral/voxtral-small-2507": {
+   "context_window": 32768,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.4
+   }
   },
   "mistral/voxtral-small-latest": {
    "context_window": 32768,
@@ -78176,7 +78869,8 @@
    "x_cost": {
     "input": 3,
     "output": 15,
-    "cache_read": 0.3
+    "cache_read": 0.3,
+    "cache_write": 3
    }
   },
   "moonshotai/kimi-k2.6": {
@@ -78244,7 +78938,8 @@
    "x_cost": {
     "input": 3,
     "output": 15,
-    "cache_read": 0.3
+    "cache_read": 0.3,
+    "cache_write": 3
    }
   },
   "morph/auto": {
@@ -78763,6 +79458,24 @@
     "input": 1,
     "output": 5,
     "cache_read": 0.1
+   }
+  },
+  "nano-gpt/anthropic/claude-haiku-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
    }
   },
   "nano-gpt/anthropic/claude-haiku-latest": {
@@ -79987,6 +80700,38 @@
     "cache_read": 0.0028
    }
   },
+  "nano-gpt/deepseek/deepseek-v4-flash-0423": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.03
+   }
+  },
+  "nano-gpt/deepseek/deepseek-v4-flash-0423:thinking": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.03
+   }
+  },
   "nano-gpt/deepseek/deepseek-v4-flash-0731": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -80231,38 +80976,6 @@
     "cache_read": 0.2295
    }
   },
-  "nano-gpt/doubao-seed-1-6-250615": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.204,
-    "output": 0.51,
-    "cache_read": 0.102
-   }
-  },
-  "nano-gpt/doubao-seed-1-6-flash-250615": {
-   "context_window": 256000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.0374,
-    "output": 0.374,
-    "cache_read": 0.0187
-   }
-  },
   "nano-gpt/doubao-seed-2-0-code-preview-260215": {
    "context_window": 256000,
    "supports_tools": false,
@@ -80406,23 +81119,6 @@
     "input": 0.75,
     "output": 3,
     "cache_read": 0.75
-   }
-  },
-  "nano-gpt/ernie-x1.1-preview": {
-   "context_window": 64000,
-   "supports_tools": false,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.15,
-    "output": 0.6,
-    "cache_read": 0.075
    }
   },
   "nano-gpt/eva-unit-01/eva-llama-3.33-70b-v0.0": {
@@ -97458,6 +98154,23 @@
     "output": 1.5
    }
   },
+  "ollama-cloud/mistral-large-4": {
+   "context_window": 1048576,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 1.36,
+    "output": 4.18,
+    "cache_read": 0.14
+   }
+  },
   "ollama-cloud/nemotron-3-nano:30b": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -98619,6 +99332,36 @@
     "output": 0
    }
   },
+  "opencode-go/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "opencode-go/deepseek-v4-flash": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -99420,6 +100163,36 @@
     "output": 5,
     "cache_read": 0.1,
     "cache_write": 1.25
+   }
+  },
+  "opencode/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "opencode/claude-opus-4-1": {
@@ -101890,6 +102663,36 @@
     "cache_write": 1.25
    }
   },
+  "openrouter/anthropic/claude-haiku-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "openrouter/anthropic/claude-opus-4.1": {
    "context_window": 200000,
    "supports_tools": true,
@@ -102192,7 +102995,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -102617,9 +103420,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.28,
+    "input": 0.259,
     "output": 0.42,
-    "cache_read": 0.028
+    "cache_read": 0.135
    }
   },
   "openrouter/deepseek/deepseek-v3.2-exp": {
@@ -102730,9 +103533,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
+    "input": 0.3,
     "output": 1.2,
-    "cache_read": 0.02
+    "cache_read": 0.006
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -103294,9 +104097,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.09,
-    "output": 0.3,
-    "cache_read": 0.05
+    "input": 0.0765,
+    "output": 0.255,
+    "cache_read": 0.0425
    }
   },
   "openrouter/google/gemma-4-26b-a4b-it:free": {
@@ -104441,7 +105244,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.62,
+    "input": 0.5,
     "output": 15,
     "cache_read": 0.43
    }
@@ -104567,8 +105370,7 @@
    ],
    "x_cost": {
     "input": 0.05,
-    "output": 0.2,
-    "cache_read": 0.03
+    "output": 0.2
    }
   },
   "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
@@ -104691,9 +105493,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.06,
-    "output": 0.16,
-    "cache_read": 0.03
+    "input": 0.049,
+    "output": 0.14,
+    "cache_read": 0.0245
    }
   },
   "openrouter/nvidia/nemotron-3.5-lightning:free": {
@@ -107766,9 +108568,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -107798,9 +108600,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.834,
-    "output": 2.501,
-    "cache_read": 0.042
+    "input": 0.7506,
+    "output": 2.2509,
+    "cache_read": 0.0378
    }
   },
   "openrouter/thedrummer/cydonia-24b-v4.1": {
@@ -108531,9 +109333,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.07,
-    "output": 7,
-    "cache_read": 0.065
+    "input": 0.062,
+    "output": 3.39,
+    "cache_read": 0.06
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
@@ -108622,7 +109424,7 @@
    }
   },
   "openrouter/~anthropic/claude-haiku-latest": {
-   "context_window": 200000,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -108633,10 +109435,22 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 5,
-    "cache_read": 0.1,
-    "cache_write": 1.25
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "openrouter/~anthropic/claude-opus-latest": {
@@ -108671,7 +109485,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -108687,7 +109501,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
+    "input": 0.0248,
     "output": 1.2,
     "cache_read": 0.02
    }
@@ -108703,9 +109517,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.4,
-    "output": 4.3,
-    "cache_read": 0.033
+    "input": 0.2862,
+    "output": 4.2,
+    "cache_read": 0.2
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -108790,7 +109604,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.61,
+    "input": 0.49,
     "output": 13,
     "cache_read": 0.45
    }
@@ -109001,9 +109815,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0214,
+    "input": 0.04,
     "output": 0.5,
-    "cache_read": 0.0214
+    "cache_read": 0.025
    }
   },
   "openrouter/~z-ai/glm-latest": {
@@ -109017,9 +109831,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.063,
-    "output": 6.3,
-    "cache_read": 0.0585
+    "input": 0.062,
+    "output": 3.39,
+    "cache_read": 0.06
    }
   },
   "opper/claude-fable-5": {
@@ -121725,7 +122539,7 @@
    }
   },
   "requesty/mistral-large-4": {
-   "context_window": 1000000,
+   "context_window": 524288,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -121742,7 +122556,7 @@
    }
   },
   "requesty/mistral-large-4@eu": {
-   "context_window": 1000000,
+   "context_window": 524288,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -131669,7 +132483,7 @@
    "x_cost": {
     "input": 2.5,
     "output": 12.5,
-    "cache_read": 0.25,
+    "cache_read": 0.125,
     "cache_write": 3.125
    }
   },
@@ -134687,6 +135501,36 @@
     "cache_write": 1.25
    }
   },
+  "vercel/anthropic/claude-haiku-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100001
+      }
+     }
+    ]
+   }
+  },
   "vercel/anthropic/claude-opus-4": {
    "context_window": 200000,
    "supports_tools": true,
@@ -135445,22 +136289,6 @@
     "input": 0.25,
     "output": 0.95,
     "cache_read": 0.13
-   }
-  },
-  "vercel/deepseek/deepseek-v3.1-terminus": {
-   "context_window": 131072,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.27,
-    "output": 1,
-    "cache_read": 0.135
    }
   },
   "vercel/deepseek/deepseek-v3.2": {
@@ -139875,6 +140703,21 @@
    "modalities_out": [
     "text"
    ]
+  },
+  "vercel/stealth/glyph-cluster": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0
+   }
   },
   "vercel/stepfun/step-3.5-flash": {
    "context_window": 262114,
