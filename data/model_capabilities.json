@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-07T22:27:31+00:00",
+ "generated_at": "2026-10-08T03:41:04+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8453,
+ "model_count": 8451,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -15914,7 +15914,7 @@
    }
   },
   "anthropic/claude-sonnet-4-5": {
-   "context_window": 1000000,
+   "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -15932,7 +15932,7 @@
    }
   },
   "anthropic/claude-sonnet-4-5-20250929": {
-   "context_window": 1000000,
+   "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -15999,7 +15999,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -58425,7 +58425,7 @@
    }
   },
   "kilo/qwen/qwen3-next-80b-a3b-instruct": {
-   "context_window": 262144,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -59326,9 +59326,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.13,
+    "output": 0.53,
+    "cache_read": 0.033
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -59358,9 +59358,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7506,
-    "output": 2.2509,
-    "cache_read": 0.0378
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
    }
   },
   "kilo/thedrummer/cydonia-24b-v4.1": {
@@ -59886,7 +59886,7 @@
    "x_cost": {
     "input": 0.3,
     "output": 0.9,
-    "cache_read": 0.05
+    "cache_read": 0.055
    }
   },
   "kilo/z-ai/glm-4.7": {
@@ -60151,9 +60151,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0248,
+    "input": 0.0184,
     "output": 1.2,
-    "cache_read": 0.02
+    "cache_read": 0.01
    }
   },
   "kilo/~deepseek/deepseek-pro-latest": {
@@ -60167,9 +60167,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2862,
+    "input": 0.1773,
     "output": 4.2,
-    "cache_read": 0.2
+    "cache_read": 0.13
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -60183,9 +60183,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.018,
-    "output": 1.28,
-    "cache_read": 0.018
+    "input": 0.00632,
+    "output": 1.536,
+    "cache_read": 0.00632
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -60238,7 +60238,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.49,
+    "input": 0.64,
     "output": 13,
     "cache_read": 0.45
    }
@@ -60361,9 +60361,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04,
-    "output": 0.5,
-    "cache_read": 0.025
+    "input": 0.032,
+    "output": 0.66,
+    "cache_read": 0.02
    }
   },
   "kilo/~z-ai/glm-latest": {
@@ -60377,9 +60377,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.062,
-    "output": 3.39,
-    "cache_read": 0.06
+    "input": 0.0392,
+    "output": 12,
+    "cache_read": 0.0365
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -63563,22 +63563,6 @@
     "input": 0.06,
     "output": 0.25,
     "cache_read": 0.015
-   }
-  },
-  "llmgateway-providers/deepinfra/hy3": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.14,
-    "output": 0.58,
-    "cache_read": 0.035
    }
   },
   "llmgateway-providers/deepinfra/inkling": {
@@ -80792,9 +80776,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.66,
-    "cache_read": 0.007
+    "input": 0.44,
+    "output": 1.32,
+    "cache_read": 0.014
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -103451,9 +103435,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.03,
+    "input": 0.0173,
     "output": 1.28,
-    "cache_read": 0.03
+    "cache_read": 0.0173
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -103467,9 +103451,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.018,
+    "input": 0.0104,
     "output": 1.28,
-    "cache_read": 0.018
+    "cache_read": 0.0104
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -103500,9 +103484,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2088,
-    "output": 0.4176,
-    "cache_read": 0.0174
+    "input": 0.95526,
+    "output": 1.91052,
+    "cache_read": 0.079605
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -103516,9 +103500,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.66,
-    "output": 1.98,
-    "cache_read": 0.022
+    "input": 1.32,
+    "output": 3.96,
+    "cache_read": 0.044
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -104490,9 +104474,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.22,
-    "output": 0.5,
-    "cache_read": 0.11
+    "input": 0.1,
+    "output": 0.32
    }
   },
   "openrouter/meta-llama/llama-4-maverick": {
@@ -105244,7 +105227,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.5,
+    "input": 0.65,
     "output": 15,
     "cache_read": 0.43
    }
@@ -105369,8 +105352,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.05,
-    "output": 0.2
+    "input": 0.06,
+    "output": 0.24
    }
   },
   "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
@@ -105400,8 +105383,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.08,
-    "output": 0.45
+    "input": 0.085,
+    "output": 0.4
    }
   },
   "openrouter/nvidia/nemotron-3-super-120b-a12b:free": {
@@ -107641,9 +107624,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1,
-    "output": 1.1,
-    "cache_read": 0.07
+    "input": 0.15,
+    "output": 1.5
    }
   },
   "openrouter/qwen/qwen3-next-80b-a3b-thinking": {
@@ -107802,8 +107784,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.195,
-    "output": 1.56
+    "input": 0.26,
+    "output": 2.6
    }
   },
   "openrouter/qwen/qwen3.5-35b-a3b": {
@@ -108568,9 +108550,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0825,
-    "output": 0.33,
-    "cache_read": 0.020625
+    "input": 0.132,
+    "output": 0.528,
+    "cache_read": 0.033
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -108600,9 +108582,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.7506,
-    "output": 2.2509,
-    "cache_read": 0.0378
+    "input": 0.834,
+    "output": 2.501,
+    "cache_read": 0.042
    }
   },
   "openrouter/thedrummer/cydonia-24b-v4.1": {
@@ -109224,7 +109206,7 @@
    "x_cost": {
     "input": 0.3,
     "output": 0.9,
-    "cache_read": 0.05
+    "cache_read": 0.055
    }
   },
   "openrouter/z-ai/glm-4.7": {
@@ -109318,8 +109300,8 @@
    ],
    "x_cost": {
     "input": 0.171,
-    "output": 7.2,
-    "cache_read": 0.162
+    "output": 12,
+    "cache_read": 0.15
    }
   },
   "openrouter/z-ai/glm-5.3": {
@@ -109333,9 +109315,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.062,
+    "input": 0.049,
     "output": 3.39,
-    "cache_read": 0.06
+    "cache_read": 0.048
    }
   },
   "openrouter/z-ai/glm-5.3-flash": {
@@ -109501,9 +109483,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0248,
+    "input": 0.0184,
     "output": 1.2,
-    "cache_read": 0.02
+    "cache_read": 0.01
    }
   },
   "openrouter/~deepseek/deepseek-pro-latest": {
@@ -109517,7 +109499,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.2862,
+    "input": 0.198,
     "output": 4.2,
     "cache_read": 0.2
    }
@@ -109533,9 +109515,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.018,
+    "input": 0.0104,
     "output": 1.28,
-    "cache_read": 0.018
+    "cache_read": 0.0104
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -109604,7 +109586,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.49,
+    "input": 0.64,
     "output": 13,
     "cache_read": 0.45
    }
@@ -109815,9 +109797,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.04,
-    "output": 0.5,
-    "cache_read": 0.025
+    "input": 0.032,
+    "output": 0.66,
+    "cache_read": 0.02
    }
   },
   "openrouter/~z-ai/glm-latest": {
@@ -109831,9 +109813,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.062,
-    "output": 3.39,
-    "cache_read": 0.06
+    "input": 0.0392,
+    "output": 12,
+    "cache_read": 0.0365
    }
   },
   "opper/claude-fable-5": {
@@ -132253,6 +132235,36 @@
     "cache_write": 15
    }
   },
+  "venice/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.125,
+    "output": 0.625,
+    "cache_read": 0.0125,
+    "cache_write": 0.15625,
+    "tiers": [
+     {
+      "input": 0.625,
+      "output": 3.125,
+      "cache_read": 0.0625,
+      "cache_write": 0.78125,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "venice/claude-opus-4-5": {
    "context_window": 198000,
    "supports_tools": true,
@@ -132547,9 +132559,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.175,
-    "output": 0.35,
-    "cache_read": 0.035
+    "input": 0.13,
+    "output": 0.26,
+    "cache_read": 0.028
    }
   },
   "venice/deepseek-v4-flash-0731-fast": {
@@ -135748,7 +135760,7 @@
    }
   },
   "vercel/anthropic/claude-sonnet-4.5": {
-   "context_window": 1000000,
+   "context_window": 200000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -135833,7 +135845,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -137962,22 +137974,6 @@
    "x_cost": {
     "input": 0.57,
     "output": 2.3
-   }
-  },
-  "vercel/moonshotai/kimi-k2-thinking": {
-   "context_window": 216144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.47,
-    "output": 2,
-    "cache_read": 0.141
    }
   },
   "vercel/moonshotai/kimi-k2.5": {
@@ -140717,22 +140713,6 @@
    "x_cost": {
     "input": 0,
     "output": 0
-   }
-  },
-  "vercel/stepfun/step-3.5-flash": {
-   "context_window": 262114,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.09,
-    "output": 0.3,
-    "cache_read": 0.02
    }
   },
   "vercel/stepfun/step-3.7-flash": {
