@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-08T03:41:04+00:00",
+ "generated_at": "2026-10-08T12:30:33+00:00",
  "source": "https://models.dev/api.json",
- "model_count": 8451,
+ "model_count": 8455,
  "override_count": 0,
  "models": {
   "302ai/claude-fable-5": {
@@ -11835,7 +11835,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -12496,7 +12496,7 @@
    "x_cost": {
     "input": 2.2,
     "output": 11,
-    "cache_read": 0.22,
+    "cache_read": 0.11,
     "cache_write": 2.75
    }
   },
@@ -12812,7 +12812,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -14805,7 +14805,7 @@
    "x_cost": {
     "input": 2.2,
     "output": 11,
-    "cache_read": 0.22,
+    "cache_read": 0.11,
     "cache_write": 2.75
    }
   },
@@ -25899,6 +25899,36 @@
     "cache_write": 1.25
    }
   },
+  "crossmodel/anthropic/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
   "crossmodel/anthropic/claude-opus-4-7": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -26021,7 +26051,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -40912,6 +40942,36 @@
     "output": 5,
     "cache_read": 0.1,
     "cache_write": 1.25
+   }
+  },
+  "github-copilot/claude-haiku-5.5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "github-copilot/claude-opus-4.7": {
@@ -59186,6 +59246,23 @@
     "cache_write": 3
    }
   },
+  "kilo/stealth/glyph-cluster": {
+   "context_window": 256000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache_read": 0
+   }
+  },
   "kilo/stealth/qwen3.6-plus": {
    "context_window": 1000000,
    "supports_tools": true,
@@ -60151,8 +60228,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0184,
-    "output": 1.2,
+    "input": 0.0351,
+    "output": 1,
     "cache_read": 0.01
    }
   },
@@ -60167,9 +60244,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.1773,
-    "output": 4.2,
-    "cache_read": 0.13
+    "input": 0.108,
+    "output": 8,
+    "cache_read": 0.081
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -60183,9 +60260,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.00632,
-    "output": 1.536,
-    "cache_read": 0.00632
+    "input": 0.0144,
+    "output": 0.386526,
+    "cache_read": 0.0144
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -60238,7 +60315,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.64,
+    "input": 0.45,
     "output": 13,
     "cache_read": 0.45
    }
@@ -60362,7 +60439,7 @@
    ],
    "x_cost": {
     "input": 0.032,
-    "output": 0.66,
+    "output": 2.756983,
     "cache_read": 0.02
    }
   },
@@ -60377,9 +60454,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0392,
+    "input": 0.036,
     "output": 12,
-    "cache_read": 0.0365
+    "cache_read": 0.0335
    }
   },
   "kimi-code-plan-cn/k3": {
@@ -79463,7 +79540,7 @@
    }
   },
   "nano-gpt/anthropic/claude-haiku-latest": {
-   "context_window": 200000,
+   "context_window": 1000000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -79474,9 +79551,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 5,
-    "cache_read": 0.1
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125
    }
   },
   "nano-gpt/anthropic/claude-opus-4.1": {
@@ -80007,7 +80085,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -80025,7 +80103,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -80061,7 +80139,7 @@
    "x_cost": {
     "input": 2,
     "output": 10,
-    "cache_read": 0.2,
+    "cache_read": 0.1,
     "cache_write": 2.5
    }
   },
@@ -80305,9 +80383,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13
    }
   },
   "nano-gpt/claw-low": {
@@ -80321,9 +80399,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2,
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13,
     "cache_write": 0.08333
    }
   },
@@ -80338,9 +80416,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13
    }
   },
   "nano-gpt/cohere/command-r-plus-08-2024": {
@@ -80717,7 +80795,7 @@
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash-0731": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -80733,7 +80811,7 @@
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash-0731:thinking": {
-   "context_window": 1000000,
+   "context_window": 1048576,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -80776,9 +80854,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.44,
-    "output": 1.32,
-    "cache_read": 0.014
+    "input": 0.22,
+    "output": 0.66,
+    "cache_read": 0.007
    }
   },
   "nano-gpt/deepseek/deepseek-v4-flash:thinking": {
@@ -82592,9 +82670,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13
    }
   },
   "nano-gpt/hermes-low": {
@@ -82608,9 +82686,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2,
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13,
     "cache_write": 0.08333
    }
   },
@@ -82625,9 +82703,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13
    }
   },
   "nano-gpt/holo3-35b-a3b": {
@@ -83969,7 +84047,7 @@
    }
   },
   "nano-gpt/moonshotai/kimi-k2.5": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -83986,7 +84064,7 @@
    }
   },
   "nano-gpt/moonshotai/kimi-k2.5:thinking": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -84003,7 +84081,7 @@
    }
   },
   "nano-gpt/moonshotai/kimi-k2.6": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -84020,7 +84098,7 @@
    }
   },
   "nano-gpt/moonshotai/kimi-k2.6:thinking": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -85200,7 +85278,7 @@
    }
   },
   "nano-gpt/openai/gpt-oss-20b": {
-   "context_window": 128000,
+   "context_window": 131072,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -85997,7 +86075,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.5-122b-a10b": {
-   "context_window": 131072,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86013,7 +86091,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.5-122b-a10b:thinking": {
-   "context_window": 131072,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86097,7 +86175,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.5-397b-a17b": {
-   "context_window": 258048,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86114,7 +86192,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.5-397b-a17b:thinking": {
-   "context_window": 258048,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86131,7 +86209,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.5-9b": {
-   "context_window": 256000,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86240,7 +86318,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.6-27b": {
-   "context_window": 260096,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86257,7 +86335,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.6-27b:thinking": {
-   "context_window": 260096,
+   "context_window": 262144,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86466,7 +86544,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.8-27b": {
-   "context_window": 262144,
+   "context_window": 1001536,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86720,7 +86798,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-uncensored": {
-   "context_window": 524288,
+   "context_window": 1010000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86737,7 +86815,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.8-27b-uncensored:thinking": {
-   "context_window": 524288,
+   "context_window": 1010000,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -86754,7 +86832,7 @@
    }
   },
   "nano-gpt/qwen/qwen3.8-27b:thinking": {
-   "context_window": 262144,
+   "context_window": 1001536,
    "supports_tools": true,
    "supports_vision": null,
    "modalities_in": [
@@ -89026,9 +89104,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13
    }
   },
   "nano-gpt/z-ai/glm-5.3-flash": {
@@ -89143,9 +89221,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13
    }
   },
   "nano-gpt/z-ai/glm-5:thinking": {
@@ -89209,9 +89287,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1,
-    "output": 3.2,
-    "cache_read": 0.2
+    "input": 0.7,
+    "output": 2.2,
+    "cache_read": 0.13
    }
   },
   "nearai/anthropic/claude-haiku-4-5": {
@@ -103435,9 +103513,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0173,
+    "input": 0.0228,
     "output": 1.28,
-    "cache_read": 0.0173
+    "cache_read": 0.0228
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -103451,9 +103529,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0104,
+    "input": 0.018,
     "output": 1.28,
-    "cache_read": 0.0104
+    "cache_read": 0.018
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -103500,9 +103578,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 1.32,
-    "output": 3.96,
-    "cache_read": 0.044
+    "input": 0.66,
+    "output": 1.98,
+    "cache_read": 0.022
    }
   },
   "openrouter/deepseek/deepseek-v4.1-flash": {
@@ -103517,9 +103595,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.006
+    "input": 0.0351,
+    "output": 1,
+    "cache_read": 0.01
    }
   },
   "openrouter/dots-studio/dots-3-note-preview:free": {
@@ -104081,9 +104159,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0765,
-    "output": 0.255,
-    "cache_read": 0.0425
+    "input": 0.09,
+    "output": 0.3,
+    "cache_read": 0.05
    }
   },
   "openrouter/google/gemma-4-26b-a4b-it:free": {
@@ -105227,8 +105305,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.65,
-    "output": 15,
+    "input": 0.62,
+    "output": 12.3,
     "cache_read": 0.43
    }
   },
@@ -109299,9 +109377,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.171,
-    "output": 12,
-    "cache_read": 0.15
+    "input": 0.03,
+    "output": 10,
+    "cache_read": 0.03
    }
   },
   "openrouter/z-ai/glm-5.3": {
@@ -109483,8 +109561,8 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0184,
-    "output": 1.2,
+    "input": 0.0351,
+    "output": 1,
     "cache_read": 0.01
    }
   },
@@ -109499,9 +109577,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.198,
-    "output": 4.2,
-    "cache_read": 0.2
+    "input": 0.108,
+    "output": 8,
+    "cache_read": 0.081
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -109515,9 +109593,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0104,
-    "output": 1.28,
-    "cache_read": 0.0104
+    "input": 0.0144,
+    "output": 0.386526,
+    "cache_read": 0.0144
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -109586,7 +109664,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.64,
+    "input": 0.45,
     "output": 13,
     "cache_read": 0.45
    }
@@ -109798,7 +109876,7 @@
    ],
    "x_cost": {
     "input": 0.032,
-    "output": 0.66,
+    "output": 2.756983,
     "cache_read": 0.02
    }
   },
@@ -109813,9 +109891,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0392,
+    "input": 0.036,
     "output": 12,
-    "cache_read": 0.0365
+    "cache_read": 0.0335
    }
   },
   "opper/claude-fable-5": {
@@ -113157,21 +113235,6 @@
    "x_cost": {
     "input": 1.01,
     "output": 1.01
-   }
-  },
-  "ovhcloud/qwen3-coder-30b-a3b-instruct": {
-   "context_window": 262144,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.07,
-    "output": 0.26
    }
   },
   "ovhcloud/qwen3.5-397b-a17b": {
@@ -119877,10 +119940,10 @@
     "text"
    ],
    "x_cost": {
-    "input": 10,
-    "output": 50,
-    "cache_read": 1,
-    "cache_write": 12.5
+    "input": 11,
+    "output": 55,
+    "cache_read": 1.1,
+    "cache_write": 13.75
    }
   },
   "requesty/claude-fable-5.1": {
@@ -119971,6 +120034,66 @@
     "output": 5.5,
     "cache_read": 0.11,
     "cache_write": 1.375
+   }
+  },
+  "requesty/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.13,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.63,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
+   }
+  },
+  "requesty/claude-haiku-5-5@eu": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.11,
+    "output": 0.55,
+    "cache_read": 0.02,
+    "cache_write": 0.14,
+    "tiers": [
+     {
+      "input": 0.55,
+      "output": 2.75,
+      "cache_read": 0.06,
+      "cache_write": 0.69,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "requesty/claude-opus-4-1": {
@@ -136431,23 +136554,6 @@
     "cache_read": 0.007
    }
   },
-  "vercel/deepseek/deepseek-v4.1-flash-fast": {
-   "context_window": 1048576,
-   "supports_tools": true,
-   "supports_vision": null,
-   "modalities_in": [
-    "image",
-    "text"
-   ],
-   "modalities_out": [
-    "text"
-   ],
-   "x_cost": {
-    "input": 0.3,
-    "output": 1.2,
-    "cache_read": 0.006
-   }
-  },
   "vercel/fireworks/ember-1": {
    "context_window": 1048576,
    "supports_tools": true,
@@ -141488,6 +141594,36 @@
     "output": 50,
     "cache_read": 0.5,
     "cache_write": 12.5
+   }
+  },
+  "vivgrid/claude-haiku-5-5": {
+   "context_window": 1000000,
+   "supports_tools": true,
+   "supports_vision": null,
+   "modalities_in": [
+    "image",
+    "text"
+   ],
+   "modalities_out": [
+    "text"
+   ],
+   "x_cost": {
+    "input": 0.1,
+    "output": 0.5,
+    "cache_read": 0.01,
+    "cache_write": 0.125,
+    "tiers": [
+     {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "tier": {
+       "type": "context",
+       "size": 100000
+      }
+     }
+    ]
    }
   },
   "vivgrid/claude-opus-5": {
