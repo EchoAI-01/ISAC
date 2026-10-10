@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import TYPE_CHECKING, Any
 
 from isac.agent.tools.base import Tool, ToolContext
@@ -78,7 +79,10 @@ class MCPClient:
         """启动子进程 + 拿 stdin/stdout 流。"""
         command = self.config.get("command")
         args = list(self.config.get("args", []))
-        env = self.config.get("env", {})
+        # 2026-08-19 (M6): 此前直接把 config.env (默认 {}) 作为子进程 env —— 空 dict
+        # 会让 MCP 子进程拿到**完全为空**的环境 (无 PATH/HOME 等), 绝大多数命令
+        # 无法启动。改为继承 os.environ 并用 config.env 覆盖 (自定义键优先)。
+        env = {**os.environ, **dict(self.config.get("env", {}))}
         if not command:
             raise ValueError("stdio 传输需要 command 配置")
         try:
@@ -130,9 +134,16 @@ class MCPClient:
         ]
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> ToolResult:
-        """转发 tools/call 到 MCP Server。"""
-        if not self._connected:
-            return ToolResult(content=f"MCP Client 未连接, 无法调用 {name}", is_error=True)
+        """转发 tools/call 到 MCP Server。
+
+        M5: 调用前做存活检测, stdio 子进程已崩溃时自动重连一次 —— 此前崩溃无感知,
+        此后该 server 全部调用恒失败且无恢复路径。
+        """
+        if not await self.ensure_connected():
+            return ToolResult(
+                content=f"MCP server {self.server_name} 不可用 (未连接或重连失败), 无法调用 {name}",
+                is_error=True,
+            )
         response = await self._send_request(
             "tools/call",
             {"name": name, "arguments": args},
@@ -147,6 +158,38 @@ class MCPClient:
         content_blocks = result.get("content", [])
         text_parts = [b.get("text", "") for b in content_blocks if b.get("type") == "text"]
         return ToolResult(content="\n".join(text_parts))
+
+    def is_alive(self) -> bool:
+        """M5 健康检测: 已连接且传输层存活。
+
+        stdio: 子进程存活 (returncode is None); http: client 未关闭。
+        未连接/已主动断开返回 False。
+        """
+        if not self._connected:
+            return False
+        if self._transport == "stdio":
+            return self._process is not None and self._process.returncode is None
+        return self._http_client is not None
+
+    async def ensure_connected(self) -> bool:
+        """M5: 保证可用 —— 已崩溃 (曾连接但传输层死亡) 时自动重连一次。
+
+        从未连接/已主动 disconnect 的不自动重连 (语义上无人期望它活着)。
+        重连成功返回 True; 失败记日志返回 False (调用方据此返回明确错误)。
+        """
+        if self.is_alive():
+            return True
+        if not self._connected:
+            return False
+        logger.warning("MCP server 连接已丢失, 尝试重连", server=self.server_name)
+        try:
+            await self.disconnect()  # 清理残留进程/客户端状态
+            await self.connect()  # 重连 (含握手)
+            logger.info("MCP server 重连成功", server=self.server_name)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MCP server 重连失败", server=self.server_name, error=str(exc))
+            return False
 
     async def disconnect(self) -> None:
         """断开连接 (kill 子进程 / 关闭 httpx)。"""

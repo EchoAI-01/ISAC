@@ -16,7 +16,7 @@ ISAC 支持三种插件格式:
 
 ```
 plugins/my_plugin/
-├── manifest.jsonc       # 插件清单 (SPECIFICATION.md 2.6)
+├── manifest.jsonc       # 插件清单 (SPECIFICATION.md 2.7)
 └── plugin.py            # 入口, 含一个 ISACPlugin 子类
 ```
 
@@ -28,6 +28,7 @@ plugins/my_plugin/
     "version": "1.0.0",
     "description": "示例插件",
     "author": "your_name",
+    "trust": "sandboxed",           // U6: sandboxed (默认, 子进程隔离) | hosted (宿主进程, 需部署方确认)
     "isac_version": ">=1.0.0",      // 兼容的 ISAC 版本 (PEP 440)
     "entry": "plugin.py",          // 入口文件 (默认 plugin.py)
     "hooks": ["pre_llm", "post_tool"],
@@ -240,7 +241,69 @@ PluginManager 错误隔离:
 
 ---
 
-## 5. 最佳实践
+## 5. 安装与热重载
+
+### 5.1 安装源 (四类)
+
+控制面 `POST /api/v1/plugins/install` 接受 `source` dict, `type` ∈ `market` / `git` / `url` / `upload`:
+
+| type | 参数 | 说明 |
+|------|------|------|
+| `market` | `name` | 从市场清单 (`data/plugin_marketplace.jsonc` + 可选远程 `marketplace_url`) 查条目安装 |
+| `git` | `repo_url` (可选 `download_url` 兜底) | `git clone --depth 1`; git 不可用且有 `download_url` 时降级为 `url` |
+| `url` | `url` | 下载 zip (SSRF 校验 + 超时 + 限 3 跳重定向) |
+| `upload` | `zip_b64` (或已落地 zip 路径) | 控制面上传 (base64 传输, 不引 multipart 依赖) |
+
+安全防护: 插件名白名单 (防路径穿越) + zip slip / symlink 校验 + 解压体积上限 + 失败回滚删半成品目录。
+
+### 5.2 控制面端点
+
+| 端点 | 操作 |
+|------|------|
+| `GET /api/v1/plugins/loaded` | 已加载插件 (含是否隔离) |
+| `GET /api/v1/plugins/marketplace[?refresh=true]` | 市场清单 |
+| `POST /api/v1/plugins/install` | 安装 (四类安装源) |
+| `POST /api/v1/plugins/{name}/reload` | 热重载 |
+| `DELETE /api/v1/plugins/{name}` | 卸载 (删目录) |
+| `GET /api/v1/plugins/failed`、`POST /api/v1/plugins/{name}/retry` | 失败清单 / 重试加载 |
+
+写操作需 `plugin:write` scope; `control.plugins.allow_install=false` 时不注册安装/重载/卸载写端点 (仅保留读)。
+
+### 5.3 CLI (`python -m isac plugin ...`)
+
+无 console script, 统一经 `python -m isac` 调用 (内部走控制面 API, 需服务运行中):
+
+```bash
+uv run python -m isac plugin list                  # 列出已加载
+uv run python -m isac plugin marketplace --refresh # 市场清单 (强制刷新远程)
+uv run python -m isac plugin install <市场名|git URL|zip URL>
+uv run python -m isac plugin reload <name>         # 热重载
+uv run python -m isac plugin uninstall <name>
+uv run python -m isac plugin failed                # 加载失败清单
+uv run python -m isac plugin retry <name>          # 重试加载失败插件
+```
+
+默认连 `http://127.0.0.1:8765` + `ISAC_API_TOKEN`, 可用 `--url` / `--token` 覆盖。
+
+---
+
+## 6. 信任分级 (U6)
+
+| 插件形态 | 加载位置 | 条件 |
+|----------|---------|------|
+| 原生 (有 `manifest.jsonc`) | **子进程隔离** (默认) | `trust` 缺省或 `"sandboxed"`; 资源限额 + 崩溃自动重启 (最多重试上限) |
+| 原生 + `trust: "hosted"` | 宿主进程内 | 且目录名在部署方 `control.plugins.trust_hosted` 确认清单中 |
+| AstrBot / MaiBot 兼容层 (无 manifest) | 宿主进程内 (**无隔离**) | 启动时打印告警; 默认不隔离, 可用 `isolated_plugins` 显式强制 |
+
+- 市场 / git / url / upload 安装的插件, 未声明 `"hosted"` 一律进入沙箱;
+- 部署方可用 `control.plugins.isolated_plugins` (目录名列表, 或 `"*"` 表示全部) **强制隔离**,
+  按目录名指定时对 AstrBot / MaiBot 兼容层插件同样生效;
+- `hosted` 是显式信任决策: manifest 声明 `trust` **与** 部署配置确认缺一不可,
+  信任责任在部署方 —— 不要对来源不明的插件开启。
+
+---
+
+## 7. 最佳实践
 
 1. **插件边界清晰**: 一个插件只做一件事 (如翻译/搜索/特定业务)
 2. **错误处理**: `execute` 内 try/except, 失败返回 `ToolResult(is_error=True)` 而非抛异常

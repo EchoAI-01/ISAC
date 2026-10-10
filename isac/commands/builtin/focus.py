@@ -25,7 +25,7 @@ class FocusCommand(Command):
 
         args 为空 / on / <秒数> 时开启; off / close / exit 关闭。
         """
-        gating = context.services.get("gating")
+        gating = context.services.gating
         if gating is None:
             return "门控系统未注入, 无法切换 Focus Mode。"
         session_id = context.session.session_id if context.session else ""

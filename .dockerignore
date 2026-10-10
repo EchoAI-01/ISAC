@@ -24,15 +24,25 @@ dist/
 build/
 *.egg
 
-# 测试与文档 (运行时不需要)
+# 测试与文档 (运行时不需要); README.md 必须保留 —— Dockerfile COPY 与
+# pyproject `readme` 均依赖它 (注意: .dockerignore 不支持行内注释, 之前的
+# "!README.md  # ..." 整行被当字面 pattern, 导致 docker build 找不到 README)
 tests/
 docs/
 *.md
-!README.md  # 保留 README (Dockerfile 引用)
+!README.md
 
-# 数据 (避免镜像内置用户数据, 通过 volume 挂载)
+# 数据 (避免镜像内置用户数据, 通过 volume 挂载); 但保留随包默认资产 ——
+# 2026-08-19: 此前 data/* 仅留 .gitkeep, COPY data/ 实际为空, 镜像内无
+# model_capabilities.json (U7 能力路由静默降级)、无 pricing.jsonc (成本估算恒
+# None)、无 catalogs。现放行这几项只读默认资产, 用户运行数据仍走 volume。
 data/*
 !data/.gitkeep
+!data/config.sample.jsonc
+!data/model_capabilities.json
+!data/model_capabilities.overrides.json
+!data/pricing.jsonc
+!data/catalogs
 
 # 系统文件
 .DS_Store

@@ -1,4 +1,4 @@
-"""AstrBot EventType 映射 (SPECIFICATION.md 2.7)。
+"""AstrBot EventType 映射 (SPECIFICATION.md 2.8)。
 
 消息事件 → EventBus；LLM 事件 → AgentHooks (不经过 EventBus)。
 """

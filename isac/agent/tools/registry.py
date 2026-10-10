@@ -43,6 +43,7 @@ from isac.agent.tools.decision_reasons import (
 from isac.agent.tools.guard import OUTCOME_DENIED
 from isac.core.exceptions import ToolError
 from isac.core.types import AgentContext, ToolCall, ToolResult
+from isac.runtime.services import ServiceContainer
 from isac.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -169,18 +170,29 @@ class ToolRegistry:
     def effective_policy(self, tool_name: str, platform: str = "") -> str:
         """返回工具有效策略: allow / restricted / ask / deny。
 
-        合并顺序: ToolPermission (全局默认+Agent tools_policy) → EnableMatrix (Channel 覆盖)。
-        U5: 引入 ask 档 (人工审批)。Channel 明确 deny/restricted/ask 覆盖基础策略。
+        合并顺序: 框架基线 (DEFAULT_POLICY ∪ Agent tools_policy) → 配置层显式覆盖
+        (全局运维 → Agent → Channel)。
+        U5: 引入 ask 档 (人工审批)。
+        M3: 配置层传**纯 Agent 层** (permission.agent_policy, 不混 DEFAULT_POLICY),
+        且仅在配置层有显式条目 (非空返回) 时覆盖基线 —— 此前 DEFAULT_POLICY 条目
+        混在 Agent 层传入, 恒覆盖全局运维 tools_policy; 无配置时兜底 allow 又会误
+        覆盖框架默认 deny。
         """
         policy = self.permission.check(tool_name)
         if self.enable_matrix is not None:
-            agent_policy_dict = self.permission.policy
             platform_policy = self.enable_matrix.tool_policy(
-                tool_name, agent_policy_dict, agent_id=self.agent_id, platform=platform
+                tool_name, self.permission.agent_policy, agent_id=self.agent_id, platform=platform
             )
-            # Channel 明确 deny / restricted / ask 优先
-            if platform_policy in ("deny", "restricted", "ask"):
+            # 配置层有显式条目才覆盖基线 ("" = 三层均未配置, 保留框架基线)
+            if platform_policy:
                 policy = platform_policy
+            # M4: mcp:* 工具按平台做 Channel 级 MCP 门控 —— 该平台 mcp 配置禁用此
+            # server 时拒绝 (接线层无 platform 上下文, Channel 门控在此生效)。
+            if policy != "deny" and tool_name.startswith("mcp:"):
+                parts = tool_name.split(":", 2)
+                server = parts[1] if len(parts) >= 3 else ""
+                if server and not self.enable_matrix.mcp_channel_enabled(server, platform):
+                    policy = "deny"
         return policy
 
     def definitions(self, platform: str = "") -> list[dict]:
@@ -271,19 +283,31 @@ class ToolRegistry:
             return ToolResult(content=f"工具 {tool_name} 已被配置禁用", is_error=True)
         if policy == "restricted":
             required = self._required_service(tool_name)
-            if required:
-                # Q0: 支持备选服务键 (tuple) —— 任一后端注入即放行, 如 task 工具
-                # 的 subagent_supervisor (生产) / task_runner (旧路径向后兼容)。
-                candidates = required if isinstance(required, tuple) else (required,)
-                if not services or all(services.get(key) is None for key in candidates):
-                    await self._log_tool_event(
-                        services, session_key, tool_name, "denied",
-                        decision=DECISION_DENY, decider=DECIDER_SYSTEM, reason=REASON_SERVICE_MISSING,
-                    )
-                    return ToolResult(
-                        content=f"工具 {tool_name} 为受限工具, 需注入服务 {' 或 '.join(candidates)} 后方可使用。",
-                        is_error=True,
-                    )
+            if not required:
+                # 2026-08-19 (M2) fail-closed: 未登记 _required_service 映射的 restricted
+                # 工具, 此前 `if required:` 为假直接跳过检查 → 等效 allow (语义矛盾,
+                # 任何经 tools_policy 设为 restricted 的插件工具都落入此洞)。受限工具
+                # 必须声明依赖服务方可校验; 无映射时拒绝并提示补登记。
+                await self._log_tool_event(
+                    services, session_key, tool_name, "denied",
+                    decision=DECISION_DENY, decider=DECIDER_SYSTEM, reason=REASON_SERVICE_MISSING,
+                )
+                return ToolResult(
+                    content=f"工具 {tool_name} 为受限工具但未登记依赖服务映射, 已拒绝 (fail-closed)。",
+                    is_error=True,
+                )
+            # Q0: 支持备选服务键 (tuple) —— 任一后端注入即放行, 如 task 工具
+            # 的 subagent_supervisor (生产) / task_runner (旧路径向后兼容)。
+            candidates = required if isinstance(required, tuple) else (required,)
+            if not services or all(services.get(key) is None for key in candidates):
+                await self._log_tool_event(
+                    services, session_key, tool_name, "denied",
+                    decision=DECISION_DENY, decider=DECIDER_SYSTEM, reason=REASON_SERVICE_MISSING,
+                )
+                return ToolResult(
+                    content=f"工具 {tool_name} 为受限工具, 需注入服务 {' 或 '.join(candidates)} 后方可使用。",
+                    is_error=True,
+                )
         return None
 
     async def _run_ask_gate(
@@ -346,7 +370,8 @@ class ToolRegistry:
         await self._log_tool_event(
             services, session_key, tool.name, "called", decision=decision, decider=decider, reason=reason,
         )
-        context = ToolContext(args=tool_call.arguments, agent_context=agent_context, services=services or {})
+        container = services if isinstance(services, ServiceContainer) else ServiceContainer(services or {})
+        context = ToolContext(args=tool_call.arguments, agent_context=agent_context, services=container)
         try:
             result = await tool.execute(context)
         except ToolError:
@@ -494,7 +519,7 @@ class ToolRegistry:
         没有列入的 restricted 工具默认只要求 services 非空 (任意后端存在即可)。
 
         U0 Fix-87: mcp: 桥接工具映射到 "mcp_clients" —— MCP 接线时 assembly 注入
-        agent_services["mcp_clients"] (非空列表); 未接线则缺失/为空, restricted 门
+        per-Agent 服务的 `mcp_clients` 键 (非空列表); 未接线则缺失/为空, restricted 门
         拒绝。此前 mcp: 工具在 ToolPermission.check 默认 restricted 但本映射无对应项
         → restricted 等效 allow (语义矛盾: "受限"却恒放行)。补映射后 restricted 语义
         落实: LLM 直调未接线 Agent 的 mcp 工具被拒。

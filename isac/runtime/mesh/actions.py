@@ -40,7 +40,7 @@ class MeshActionBroker:
     def policy_for(self, from_agent: str, to_agent: str) -> MeshLinkPolicy | None:
         """P2: 从 (from, to) 对应的 enabled Link 解析出该链路的策略; 无 Link 返回 None。
 
-        此前工具从 services["mesh_link_policy"] 取**单值**策略, 与"每条 Link 一套
+        此前工具从 `mesh_link_policy` 服务键取**单值**策略, 与"每条 Link 一套
         权限"的现实不匹配 (且生产无人注入 → 恒 None → 全部拒绝)。现在策略随
         Link 配置 (links.jsonc / 控制面 POST /links), 按对端解析。
         """

@@ -72,7 +72,7 @@ class AstrBotStarAdapter:
         """把 @filter.llm_tool 标记的方法桥接为 ISAC Tool 注册, 返回注册清单。
 
         Args:
-            tools_registry: 进程级共享 ToolRegistry (services["plugin_tools"])。
+            tools_registry: 进程级共享 ToolRegistry (`plugin_tools` 服务键)。
                 None 时只扫描不注册 (向后兼容单测路径)。
 
         Returns:

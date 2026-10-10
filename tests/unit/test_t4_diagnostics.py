@@ -127,8 +127,13 @@ class TestLogBuffer:
                 buf.append({"level": "info", "event": "from-thread"})
                 done.set()
 
-            threading.Thread(target=_worker).start()
+            t = threading.Thread(target=_worker)
+            t.start()
             entry = await asyncio.wait_for(q.get(), timeout=2.0)
+            # 2026-10-10: 先 join 工作线程再断言 —— append 内 call_soon_threadsafe
+            # 之后, loop 线程可能先于 done.set() 唤醒并送达条目 (曾致 ~15% 概率
+            # 在 "条目已收到但 done 未置位" 时误报失败)。
+            t.join(timeout=2.0)
             assert entry["event"] == "from-thread"
             assert done.is_set()
             await buf.unsubscribe(q)
@@ -166,8 +171,29 @@ class TestHealthEndpoint:
             def list(self) -> list[Any]:
                 return [_A()]
 
-        result = _aggregate_health(_AM(), _StubPM(), {"enabled": False}, _StubChannelReg())
+        import asyncio
+
+        result = asyncio.run(
+            _aggregate_health(_AM(), _StubPM(), {"enabled": False}, _StubChannelReg())
+        )
         assert result["status"] == "ok"
+        assert result["subsystems"]["agents"]["running"] == 1
+
+    async def test_aggregate_health_awaits_async_agent_manager_list(self) -> None:
+        """回归 (2026-10-10): 真实 AgentManager.list 是协程 —— 此前同步调用被宽
+        except 吞掉, agents 统计恒 0 且产生 "coroutine was never awaited"。"""
+
+        class _A:
+            status = "running"
+
+        class _AsyncAM:
+            async def list(self) -> list[Any]:
+                return [_A()]
+
+        result = await _aggregate_health(
+            _AsyncAM(), _StubPM(), {"enabled": False}, _StubChannelReg()
+        )
+        assert result["subsystems"]["agents"]["total"] == 1
         assert result["subsystems"]["agents"]["running"] == 1
 
 

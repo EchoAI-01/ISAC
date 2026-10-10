@@ -1,6 +1,6 @@
 """web_search 工具: 网络搜索 (只读)。
 
-经 services["web_search"] 调用搜索后端; 未注入时返回友好错误。
+经服务袋 `web_search` 键调用搜索后端; 未注入时返回友好错误。
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class WebSearchTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        search = context.services.get("web_search")
+        search = context.services.web_search
         if search is None:
             return ToolResult(content="未配置 web_search 后端, 无法搜索网络信息。", is_error=True)
 

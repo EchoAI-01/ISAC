@@ -1,4 +1,4 @@
-"""AgentManager: Agent 生命周期管理 (ARCHITECTURE.md 3.1 / SPECIFICATION.md 2.8)。
+"""AgentManager: Agent 生命周期管理 (ARCHITECTURE.md 3.1 / SPECIFICATION.md 2.9)。
 
 所有公开方法同时暴露给控制面 (Admin API / MCP Server)，control/ 不复制业务逻辑。
 """
@@ -14,7 +14,10 @@ from typing import TYPE_CHECKING, Any
 
 from isac.core.constants import DEFAULT_AGENT_ID, INTERAGENT_PLATFORM
 from isac.core.exceptions import AgentNotFoundError
+from isac.gateway.lock import conversation_lock_key
 from isac.gating.types import GateKind
+from isac.memory.pipeline import is_shared_namespace
+from isac.memory.salience import score_importance
 from isac.runtime.assembly import assemble_agent
 from isac.runtime.config import AgentConfig
 from isac.runtime.conversation import (
@@ -77,6 +80,11 @@ class AgentManager:
         # Fix-26: 值从"仅强引用"扩为 task → agent_id, 供 destroy(keep_memory=False)
         # 只等待该 agent 自己的在途任务, 不必等待其它 Agent 无关的写入。
         self._memory_tasks: dict[asyncio.Task[None], str] = {}
+        # 阶段3-2 (M2): U1 会话压缩后台任务跟踪 —— _compression_tasks 强引用集合
+        # (同 _memory_tasks, 防 GC 取消); _compressing_sessions 记录在途压缩的
+        # session_key, 避免同一会话并发重复压缩。
+        self._compression_tasks: set[asyncio.Task[None]] = set()
+        self._compressing_sessions: set[str] = set()
 
     # ── 生命周期 (控制面暴露) ──────────────────────────────
 
@@ -242,7 +250,7 @@ class AgentManager:
         metadata = getattr(pipeline, "metadata", None)
         if metadata is None or not namespace:
             return  # NoOpMemoryPipeline / memory 未启用: 无可清理数据
-        if namespace == "shared" or namespace.endswith(":shared"):
+        if is_shared_namespace(namespace):
             logger.warning("shared 记忆命名空间被多 Agent 共享, 拒绝清理", namespace=namespace)
             return
         try:
@@ -271,8 +279,8 @@ class AgentManager:
         GraphStore.delete_by_namespace() 两个稳定契约方法, 这里只是两次直调。
         失败只记 warning, 不影响 metadata 已成功的清理。
         """
-        services = getattr(instance, "services", None) or {}
-        vector_resolver = services.get("vector_resolver")
+        services = getattr(instance, "services", None) or ServiceContainer()
+        vector_resolver = services.vector_resolver
         if callable(vector_resolver):
             vector = vector_resolver(namespace)
             if vector is not None:
@@ -280,7 +288,7 @@ class AgentManager:
                     await vector.purge()
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("vector 文件清理失败, 已忽略", namespace=namespace, error=str(exc))
-        graph_store = services.get("graph_store")
+        graph_store = services.graph_store
         if graph_store is not None:
             try:
                 await graph_store.delete_by_namespace(namespace)
@@ -399,10 +407,10 @@ class AgentManager:
         lock_mgr = self._services.session_lock
         if lock_mgr is None:
             return await self.handle_message(agent_id, message, session, user_profile, progress_sender)
-        lock_key = (
-            f"{session.platform}:{agent_id}:"
-            f"{session.user_id or 'unknown'}:{session.group_id or 'private'}"
-        )
+        # 2026-08-19 Critical 修复: 会话段统一走 conversation_lock_key 的"群 或 用户"
+        # 粒度 (群聊忽略 user_id); 前缀 agent_id 保留"目标 Agent × 会话"精确隔离。
+        # 平台段恒为 INTERAGENT_PLATFORM, 与普通入口键空间天然隔离。
+        lock_key = f"{agent_id}:{conversation_lock_key(session.platform, session.user_id, session.group_id)}"
         lock = await lock_mgr.acquire(lock_key)
         acquired = False
         try:
@@ -508,6 +516,9 @@ class AgentManager:
                 instance, message, session, user_profile, result.content, user_content,
                 turn_seq=turn_seq,
             )
+            # 阶段3-2 (M2): U1 会话压缩闭环 —— 事件数超阈值时后台触发 compress_session
+            # (默认关闭; session.compression.enabled=true 才生效, 不阻塞回复)。
+            self._maybe_schedule_compression(instance, message)
         return result.content or None
 
     async def _debounce_should_yield(
@@ -578,7 +589,7 @@ class AgentManager:
         from isac.core.types import AgentContext
 
         reporter = self._get_or_create_progress_reporter(instance, session.session_id, progress_sender)
-        progress_services: dict[str, Any] = {"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id}
+        progress_services = ServiceContainer({"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id})
         if reporter is not None:
             progress_services["progress_slow_tool_threshold_seconds"] = reporter.policy.slow_tool_threshold_seconds
             progress_services["progress_report_before_slow_tool"] = reporter.policy.report_before_slow_tool
@@ -667,13 +678,13 @@ class AgentManager:
             session=session,
             user_profile=user_profile,
             current_message=message,
-            services={
+            services=ServiceContainer({
                 "gating": instance.gating,
                 "agent_manager": self,
                 "session_mgr": self._services.session_mgr,
                 "bus": instance.services.bus or self._services.bus,
                 "agent_id": instance.agent_id,
-            },
+            }),
         )
         return await instance.commands.try_execute(message, agent_context_for_cmd)
 
@@ -1020,7 +1031,10 @@ class AgentManager:
             return
 
         lock_mgr = self._services.session_lock
-        lock_key = f"{session.platform}:{session.user_id or 'unknown'}:{session.group_id or 'private'}"
+        # 2026-08-19 Critical 修复: 强制话轮与普通消息必须共用同一锁键空间才能真正
+        # 串行同一会话 —— 统一走 conversation_lock_key (与 dispatch._process_locked 同款)。
+        # 此前自拼 platform:user:group 与普通入口键不一致, 主动话轮与在途消息仍会并发。
+        lock_key = conversation_lock_key(session.platform, session.user_id, session.group_id)
         lock = None  # Fix-116: 取锁移入 try, lock/acquired 预置供 finally 判定
         acquired = False
         turn_owns_state = False  # Fix-81: 仅当本协程设置过 forced_turn/THINKING 才复位
@@ -1164,7 +1178,7 @@ class AgentManager:
             session_id=session.session_id,
             content=content,
         )
-        turn_services: dict[str, Any] = {"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id}
+        turn_services = ServiceContainer({"task_id": uuid.uuid4().hex, "agent_id": instance.agent_id})
         if runtime is not None:
             turn_services["conversation_runtime"] = runtime
         agent_context = AgentContext(
@@ -1242,6 +1256,47 @@ class AgentManager:
         )
         self._memory_tasks[task] = instance.agent_id
         task.add_done_callback(lambda t: self._memory_tasks.pop(t, None))
+
+    def _maybe_schedule_compression(self, instance: AgentInstance, message: ISACMessage) -> None:
+        """阶段3-2 (M2): U1 会话压缩闭环触发 (默认关闭, 不阻塞回复)。
+
+        session.compression.enabled=true 且本会话事件数 ≥ trigger_events 时, 派生后台
+        任务 compress_session (旧前缀 LLM 摘要 → turn.compressed replace 事件 + 保留
+        GC)。未启用/无压缩器/无事件 store/同会话已在途压缩 → 直接跳过 (零行为变化)。
+        """
+        compressor = instance.services.session_compressor
+        if compressor is None:
+            return
+        trigger_events = int(getattr(compressor, "trigger_events", 0) or 0)
+        if trigger_events <= 0:
+            return
+        session_key = self._session_key_for(instance, message)
+        if not session_key or session_key in self._compressing_sessions:
+            return
+        store = self._services.session_event_store
+        if store is None:
+            return
+        task = asyncio.create_task(
+            self._run_session_compression(compressor, store, session_key, trigger_events),
+            name=f"session-compress-{session_key}",
+        )
+        self._compression_tasks.add(task)
+        task.add_done_callback(self._compression_tasks.discard)
+
+    async def _run_session_compression(
+        self, compressor: Any, store: Any, session_key: str, trigger_events: int
+    ) -> None:
+        """后台执行单会话压缩: 先轻量计数判阈值, 再 compress_session (失败隔离)。"""
+        self._compressing_sessions.add(session_key)
+        try:
+            count = await store.count_events(session_key)
+            if count < trigger_events:
+                return  # 未达阈值, 不压缩
+            await compressor.compress_session(session_key)
+        except Exception as exc:  # noqa: BLE001 压缩失败不影响主链路
+            logger.warning("会话压缩后台任务异常", session_key=session_key, error=str(exc))
+        finally:
+            self._compressing_sessions.discard(session_key)
 
     async def _project_episode_content(
         self, instance: AgentInstance, message: ISACMessage, turn_seq: int | None
@@ -1334,7 +1389,12 @@ class AgentManager:
                 # consolidation 时即死); user_profile 为 None 时回退平台 id 向后兼容。
                 user_id=(getattr(user_profile, "user_id", "") or message.user_id),
                 group_id=message.group_id or "",
-                metadata={"importance": 0.5},
+                # 阶段2-4 (P1-3): importance 改由规则显著度评分器产出真实分布 ——
+                # 此前恒 0.5 使 consolidator 剪枝 (阈值 <0.2) 永远删不到东西。
+                # 琐碎寒暄落 <0.2 可被时间衰减剪掉, 含记住/偏好/事实/约定的回合居高位。
+                metadata={"importance": score_importance(
+                    said, reply, observed=False, is_group=bool(message.group_id),
+                )},
             )
             await self._update_person_profile(instance, message, user_profile)
             # P1(L5): conversation 启用时顺带保存会话拟人状态快照 (启动恢复的数据源)
@@ -1495,7 +1555,15 @@ class AgentManager:
                     # 同一用户在旁听/主写两侧键分裂, 按 master_id 检索召回不到旁听记忆。
                     user_id=(getattr(user_profile, "user_id", "") or message.user_id),
                     group_id=message.group_id or "",
-                    metadata={"importance": 0.3, "observed": True},
+                    # 阶段2-4 (P1-3): 旁听同样走显著度评分, observed=True 施加折扣 ——
+                    # 此前恒 0.3。旁听非本 Agent 主回合, 评分器内部乘 OBSERVED_FACTOR,
+                    # 整体低于主写, 与"旁听记忆次要"的语义一致。
+                    metadata={
+                        "importance": score_importance(
+                            message.content, "", observed=True, is_group=bool(message.group_id),
+                        ),
+                        "observed": True,
+                    },
                 )
                 await self._update_person_profile(instance, message, user_profile)
                 logger.debug("旁听消息已入记忆", agent_id=agent_id)

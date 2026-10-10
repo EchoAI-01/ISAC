@@ -6,8 +6,9 @@
 - dispatch/wiring/bootstrap 各 ≤ 500 行;
 - services 袋键数 ≤ 36 (build_services 字面量 + bootstrap 注册并集);
 - constants.py 硬编码门控词条目数 ≤ 27 (U3 已迁 locales, 只减不增);
-- 残余 services 字符串键访问数 ≤ 167 (ServiceContainer 迁移棘轮; U9 冻结 205,
-  N5/Z1-A 收紧至 167)。
+- 残余 services 字符串键访问数 ≤ 35 (ServiceContainer 迁移棘轮; U9 冻结 205,
+  N5/Z1-A→167, Z1-B→130, Z1-C→35)。剩余 = 装配写侧构造 (bootstrap/assembly/manager
+  向容器灌键) + 控制面/插件兼容层少数回退读 + 两处动态键。
 
 用法:
     python scripts/check_redlines.py           # 检查, 越线 exit=1
@@ -26,7 +27,7 @@ MAIN_MAX_LINES = 120
 MODULE_MAX_LINES = 500
 SERVICES_KEYS_MAX = 36
 GATING_MARKERS_MAX = 27
-SERVICES_GET_REMAINING_MAX = 130
+SERVICES_GET_REMAINING_MAX = 35
 
 _LINE_LIMITS = {
     "isac/main.py": MAIN_MAX_LINES,

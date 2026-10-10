@@ -46,9 +46,9 @@ class _MediaToolBase(Tool):
     _modalities_out: set[str] = set()
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        router: ModelRouter | None = context.services.get("model_router")
-        pm: Any = context.services.get("provider_manager")
-        artifact_store: ArtifactStore | None = context.services.get("artifact_store")
+        router: ModelRouter | None = context.services.model_router
+        pm: Any = context.services.provider_manager
+        artifact_store: ArtifactStore | None = context.services.artifact_store
         if router is None or pm is None:
             return ToolResult(content=_NO_ROUTER, is_error=True)
         selection = router.select(
@@ -68,15 +68,24 @@ class _MediaToolBase(Tool):
         try:
             result = await self._call_provider(provider, context, artifact_store)
         except LLMError as exc:
-            _record_media_usage(self._operation, context, descriptor, status="failed", latency_ms=_ms(started))
+            _record_media_usage(
+                self._operation, context, descriptor, status="failed",
+                latency_ms=_ms(started), provider=provider,
+            )
             return ToolResult(content=f"模型调用失败: {exc.message}", is_error=True)
         except Exception as exc:  # noqa: BLE001
-            _record_media_usage(self._operation, context, descriptor, status="failed", latency_ms=_ms(started))
+            _record_media_usage(
+                self._operation, context, descriptor, status="failed",
+                latency_ms=_ms(started), provider=provider,
+            )
             return ToolResult(content=f"工具执行异常: {exc}", is_error=True)
-        # R1-③: 成功调用 provider 后计多模态用量 (传 provider_id/model_id 与 pricing 对齐)。
+        # R1-③: 成功调用 provider 后计多模态用量 (H4: provider 传实例 → 类名口径)。
         # _NOT_WIRED (video 等) 返回 is_error, 不计 (无真实 provider 调用)。
         if not result.is_error:
-            _record_media_usage(self._operation, context, descriptor, status="success", latency_ms=_ms(started))
+            _record_media_usage(
+                self._operation, context, descriptor, status="success",
+                latency_ms=_ms(started), provider=provider,
+            )
         return result
 
     async def _call_provider(
@@ -114,41 +123,50 @@ def _record_media_usage(
     *,
     status: str,
     latency_ms: int,
+    provider: Any = None,
 ) -> None:
-    """R1-③: 媒体工具调用 provider 后计多模态用量 (传 provider_id/model_id 与 pricing 对齐)。
+    """R1-③: 媒体工具调用 provider 后计多模态用量。
 
     operation (工具 _operation) → recorder 方法映射:
       image_gen→record_image_gen, video_gen/video_understand→record_video,
       stt→record_stt, tts→record_tts。vision (vision_chat) 不在此计 (record_llm 已在
       provider manager 接)。usage_recorder 经 context.services 取, None 时 no-op。
+
+    H4: provider 键统一为**实例类名** (与 LLM type(provider).__name__ / embedder /
+    pricing.jsonc 口径一致); 此前记 descriptor.provider_id, 与价目表键无法命中 →
+    成本恒 None。provider 实例缺失时回退 provider_id (向后兼容)。
     """
-    recorder = context.services.get("usage_recorder")
+    recorder = context.services.usage_recorder
     if recorder is None:
         return
     session = getattr(context.agent_context, "session", None)
     agent_id = getattr(session, "agent_id", "") if session else ""
     session_id = getattr(session, "session_id", "") if session else ""
     model = str(getattr(descriptor, "model_id", "") or "")
-    provider = str(getattr(descriptor, "provider_id", "") or "")
+    provider_key = (
+        type(provider).__name__
+        if provider is not None
+        else str(getattr(descriptor, "provider_id", "") or "")
+    )
     try:
         if operation == "image_gen":
             recorder.record_image_gen(
-                model=model, provider=provider, status=status, latency_ms=latency_ms,
+                model=model, provider=provider_key, status=status, latency_ms=latency_ms,
                 agent_id=agent_id, session_id=session_id,
             )
         elif operation == "stt":
             recorder.record_stt(
-                model=model, provider=provider, status=status, latency_ms=latency_ms,
+                model=model, provider=provider_key, status=status, latency_ms=latency_ms,
                 agent_id=agent_id, session_id=session_id,
             )
         elif operation == "tts":
             recorder.record_tts(
-                model=model, provider=provider, status=status, latency_ms=latency_ms,
+                model=model, provider=provider_key, status=status, latency_ms=latency_ms,
                 agent_id=agent_id, session_id=session_id,
             )
         elif operation in ("video_gen", "video_understand"):
             recorder.record_video(
-                operation=operation, model=model, provider=provider, status=status,
+                operation=operation, model=model, provider=provider_key, status=status,
                 latency_ms=latency_ms, agent_id=agent_id, session_id=session_id,
             )
     except Exception:  # noqa: BLE001 计量失败不阻塞工具返回
@@ -248,7 +266,7 @@ class TranscribeAudioTool(_MediaToolBase):
     async def _call_provider(
         self, provider: Any, context: ToolContext, artifact_store: Any
     ) -> ToolResult:
-        normalizer: MediaNormalizer | None = context.services.get("media_normalizer")
+        normalizer: MediaNormalizer | None = context.services.media_normalizer
         if normalizer is None:
             return ToolResult(content=_NO_NORMALIZER, is_error=True)
         media_uri = str(context.args.get("media_uri", ""))
@@ -367,7 +385,7 @@ class VisionUnderstandTool(_MediaToolBase):
     async def _call_provider(
         self, provider: Any, context: ToolContext, artifact_store: Any
     ) -> ToolResult:
-        normalizer: MediaNormalizer | None = context.services.get("media_normalizer")
+        normalizer: MediaNormalizer | None = context.services.media_normalizer
         if normalizer is None:
             return ToolResult(content=_NO_NORMALIZER, is_error=True)
         media_uri = str(context.args.get("media_uri", ""))

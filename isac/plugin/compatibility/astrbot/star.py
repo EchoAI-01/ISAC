@@ -1,4 +1,4 @@
-"""AstrBot Star 基类兼容 (SPECIFICATION.md 2.7)。
+"""AstrBot Star 基类兼容 (SPECIFICATION.md 2.8)。
 
 插件作者继承 Star, 在类内用 @filter.llm_tool / @filter.on_* 装饰方法,
 ISAC 兼容层保留 Star 基类与注册流程, 装饰器桥接到 ISAC ToolRegistry / EventBus。

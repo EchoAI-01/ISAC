@@ -127,29 +127,16 @@ ISAC MCP Server 暴露 11 个工具:
 
 ### 2.3 启动 MCP Server
 
-MCP Server 集成在控制面启动流程中。配置 `control.mcp.enabled=true` 后,
-MCP 客户端可通过 stdio 协议连接。
+MCP Server 集成在控制面启动流程中 (随 ISAC 服务一起启动): 配置
+`control.mcp_server.enabled=true` 后, 进程会 spawn 一个 stdio JSON-RPC 桥接,
+通过 stdin/stdout NDJSON 收发 (与主进程同生命周期), 默认关闭。
 
-### 2.4 Claude Desktop 集成示例
+> 注意: 当前实现**没有独立入口** (无 `python -m isac.control.mcp_server` 形式、
+> 无 console script), 也没有 `ISAC_MCP_TRANSPORT` 环境变量; stdio 面向"随服务启动、
+> 由同机父进程持有管道"的场景。外部 MCP 客户端 (如 Claude Desktop) 直接拉起 ISAC
+> 作为 MCP Server **暂未支持** —— 外部自动化请走 Admin REST API, 或等待后续节点。
 
-`~/.config/claude/claude_desktop_config.json`:
-
-```json
-{
-    "mcpServers": {
-        "isac": {
-            "command": "python",
-            "args": ["-m", "isac.control.mcp_server"],
-            "env": {
-                "ISAC_API_TOKEN": "your-token",
-                "ISAC_MCP_TRANSPORT": "stdio"
-            }
-        }
-    }
-}
-```
-
-### 2.5 JSON-RPC 示例
+### 2.4 JSON-RPC 示例
 
 ```json
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
@@ -183,19 +170,23 @@ import httpx
 
 async def setup_webhooks():
     async with httpx.AsyncClient() as client:
-        # 订阅 message.received 事件
+        # 订阅 message.responded 事件 (POST /api/v1/webhooks; 需 Bearer + webhook:write scope)
         response = await client.post(
-            "http://127.0.0.1:8765/api/v1/webhooks/subscribe",
-            json={"event": "message.received", "url": "https://my-app.com/hook"},
+            "http://127.0.0.1:8765/api/v1/webhooks",
+            headers={"Authorization": "Bearer <token>"},
+            json={"event": "message.responded", "url": "https://my-app.com/hook"},
         )
         return response.json()
+
+# 查询订阅: GET    http://127.0.0.1:8765/api/v1/webhooks[?event=...]
+# 取消订阅: DELETE http://127.0.0.1:8765/api/v1/webhooks?event=message.responded&url=https://my-app.com/hook
 ```
 
 Webhook 推送 payload 格式:
 
 ```json
 {
-    "event": "message.received",
+    "event": "message.responded",
     "data": {
         "msg_id": "...",
         "platform": "qq",
@@ -204,6 +195,12 @@ Webhook 推送 payload 格式:
     }
 }
 ```
+
+> **当前实际派发的事件**: `message.responded` (Agent 处理完成)、`message.sent`
+> (回复发送完成)、内置告警 `alert.*` (见 `observability/alerting.py` 默认规则),
+> 以及 `POST /automation/trigger` 触发的自定义事件。
+> 事件目录中的 `message.received` / `agent.created` / `agent.stopped` /
+> `inter_agent.sent` 暂未在生产代码中派发, 订阅了也不会收到推送。
 
 ### 3.3 自动化触发 (/automation/trigger)
 
@@ -223,7 +220,7 @@ curl -X POST http://127.0.0.1:8765/api/v1/automation/trigger \
 
 ### 3.4 重试机制
 
-- 失败自动重试 3 次 (指数退避 1s/2s/4s)
+- 最多 3 次尝试 (首次 + 2 次重试), 退避 1s / 2s
 - 重试耗尽后记录日志, 不影响主流程
 - HTTP 状态码 2xx 视为成功, 其他视为失败
 
@@ -246,7 +243,7 @@ curl -X POST http://127.0.0.1:8765/api/v1/automation/trigger \
 ### 4.3 Webhooks 特殊
 
 - 订阅 URL 应使用 HTTPS
-- 推送失败 3 次后停止重试, 避免雪崩
+- 单次推送最多 3 次尝试 (首次 + 2 重试), 之后放弃, 避免雪崩
 - 订阅 URL 失效应及时 unsubscribe
 
 ---
@@ -280,8 +277,15 @@ for i in {1..30}; do
     sleep 1
 done
 
-# 自动化配置
-./scripts/setup_isac.sh  # 创建 Agent + Link + 路由
+# 自动化配置 (创建 Agent + 启动 + 默认路由; 完整示例见 scripts/smoke_control_setup.py)
+curl -X POST http://127.0.0.1:8765/api/v1/agents \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"agent_id": "tech_agent", "display_name": "技术助手"}'
+curl -X POST http://127.0.0.1:8765/api/v1/agents/tech_agent/start \
+    -H "Authorization: Bearer $TOKEN"
+curl -X PUT http://127.0.0.1:8765/api/v1/routing/rules \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"bindings": [], "default_agents": {"qq": "tech_agent"}}'
 
 # 触发 smoke test
 curl -X POST http://127.0.0.1:8765/api/v1/automation/trigger \

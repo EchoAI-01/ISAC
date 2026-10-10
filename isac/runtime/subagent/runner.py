@@ -14,6 +14,7 @@ from isac.agent.tools.registry import ToolRegistry
 from isac.channel.model import ISACMessage
 from isac.core.types import AgentContext, Budget
 from isac.gateway.models import Session
+from isac.runtime.services import ServiceContainer
 from isac.runtime.subagent.models import SubAgentResult, SubAgentTask
 from isac.utils.logger import get_logger
 
@@ -97,12 +98,12 @@ def configure_subagent_runner(supervisor: SubAgentSupervisor, manager: AgentMana
                 remaining_iterations=max(1, task.policy.max_tool_calls + 1),
                 max_tokens=task.policy.max_tokens,
             ),
-            services={
+            services=ServiceContainer({
                 "agent_id": task.parent_agent_id,
                 "task_id": task.task_id,
                 "task_depth": int(task.context.get("task_depth", 0)),
                 "task_max_depth": task.policy.max_depth,
-            },
+            }),
         )
         result = await loop.run([{"role": "user", "content": user_content}], context)
         status = "succeeded" if not result.stopped_by_budget else "failed"
@@ -193,6 +194,16 @@ def _build_services(parent_services: dict[str, Any], task: SubAgentTask) -> dict
         keys.update(_TOOL_SERVICE_KEYS.get(tool_name, ()))
     if not task.policy.readable_memory_scopes:
         keys.discard("memory")
+    # 2026-08-19 (H3): 子 Agent 纳入 U5 权限管线 —— 此前收窄 services 仅含工具后端
+    # 四键, 缺 deny_guard/session_event_store/session_mgr, 导致子 Agent 工具调用
+    # ① U5 事件表零留痕 (_log_tool_event 因缺 store/session_key 静默跳过)、
+    # ② 无单调 deny_guard (拒绝可被翻回)。现增注:
+    #   - session_event_store + session_mgr: session_key 经 session_mgr 从子会话
+    #     (platform="subagent", session_id=subagent:<task_id>) 派生, 工具调用得留痕;
+    #   - deny_guard: 单调拒绝继承父会话守卫 (被拒工具子 Agent 也不可再执行)。
+    # approval_gate 不下放: 子 Agent 是父 Agent 已授权的内部委派, 不再二次人工审批
+    # (ask 档工具若不在 policy.allowed_tools 白名单内根本不会出现)。
+    keys.update({"deny_guard", "session_event_store", "session_mgr"})
     return {key: parent_services[key] for key in keys if key in parent_services}
 
 

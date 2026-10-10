@@ -260,11 +260,19 @@ class SubAgentSupervisor:
     ) -> list[SubAgentRun]:
         """列出子任务 (可选按 status/parent_agent_id 过滤)。
 
-        list 没有单一 task_id 可交给 _authorize 做存在性校验, 跨 Agent 边界改为
-        直接按 parent_agent_id 过滤结果集 (调用方按需传入, 不强制)。
+        M10: requester 带具体 Agent 身份 (services.agent_id) 时, 强制只返回该 Agent
+        自己创建的子任务 —— 否则任何 Agent 都能 enumerate 出**所有** Agent 的
+        task_id+status (status/log/cancel 均有 _authorize 边界, 唯独 list 没有)。
+        控制面调用 (requester=None) 不做身份过滤, 由 Control API 自己的 scope 校验负责。
         """
         self._authorize(requester, None)
         runs = list(self._runs.values())
+        # M10: 身份强制过滤 (派生口径与 _authorize 一致: requester.services.agent_id)
+        if requester is not None:
+            services = getattr(requester, "services", None)
+            requester_agent_id = str(getattr(services, "agent_id", "") or "")
+            if requester_agent_id:
+                runs = [r for r in runs if r.parent_agent_id == requester_agent_id]
         filters = filters or {}
         status = filters.get("status")
         if status:
@@ -358,8 +366,8 @@ class SubAgentSupervisor:
             return
         # getattr 防御: requester 理论上总是真实 AgentContext (由 loop/tool 层构造),
         # 但保留兜底避免调用方传入不完整占位对象时直接抛 AttributeError 崩掉主链路。
-        services = getattr(requester, "services", None) or {}
-        requester_agent_id = str(services.get("agent_id", "") or "")
+        services = getattr(requester, "services", None)
+        requester_agent_id = str(getattr(services, "agent_id", "") or "")
         if requester_agent_id and requester_agent_id != run.parent_agent_id:
             raise PermissionError(f"无权访问其它 Agent 创建的子任务: {task_id}")
 

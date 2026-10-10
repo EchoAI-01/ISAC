@@ -1,6 +1,6 @@
 """write_file 工具: 写入项目目录内的文件 (restricted 策略)。
 
-路径白名单: 相对 services["workspace_root"] 解析, 禁止绝对路径与 .. 越权。
+路径白名单: 相对服务袋 `workspace_root` 键解析, 禁止绝对路径与 .. 越权。
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ class WriteFileTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        workspace_root = context.services.get("workspace_root")
+        workspace_root = context.services.workspace_root
         if not workspace_root:
             return ToolResult(content="未配置 workspace_root, write_file 不可用。", is_error=True)
 

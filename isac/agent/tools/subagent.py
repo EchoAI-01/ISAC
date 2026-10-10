@@ -38,7 +38,7 @@ class _SupervisorToolBase(Tool):
 
     @staticmethod
     def _supervisor(context: ToolContext) -> SubAgentSupervisor | None:
-        return context.services.get("subagent_supervisor")
+        return context.services.subagent_supervisor
 
 
 class DelegateTaskTool(_SupervisorToolBase):
@@ -84,8 +84,8 @@ class DelegateTaskTool(_SupervisorToolBase):
         category = str(context.args.get("category", "") or "").strip().lower()
         # Fix-68: task_depth 由 runner 写入 AgentContext.services, 此前从
         # ToolContext.services (收窄后的 loop.services) 读恒 0 → 深度守卫失效。
-        depth = int(context.agent_context.services.get("task_depth", 0) or 0)
-        max_depth = int(context.agent_context.services.get("task_max_depth", 1) or 1)
+        depth = int(context.agent_context.services.task_depth or 0)
+        max_depth = int(context.agent_context.services.task_max_depth or 1)
         if depth >= max_depth:
             return ToolResult(
                 content=f"子任务递归深度已达上限 ({max_depth}), 拒绝继续委派。",
@@ -97,9 +97,9 @@ class DelegateTaskTool(_SupervisorToolBase):
         task_id = f"sub-{uuid.uuid4().hex[:12]}"
         task = SubAgentTask(
             task_id=task_id,
-            parent_agent_id=str(agent_ctx.services.get("agent_id", "") or ""),
+            parent_agent_id=str(agent_ctx.services.agent_id or ""),
             session_id=getattr(agent_ctx.session, "session_id", ""),
-            trace_id=str(agent_ctx.services.get("task_id", "") or task_id),
+            trace_id=str(agent_ctx.services.task_id or task_id),
             objective=objective,
             context={"summary": summary, "task_depth": depth + 1, "category": category},
             policy=SubAgentPolicy(max_depth=max_depth),

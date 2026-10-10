@@ -28,6 +28,7 @@ from isac.router.types import RoutingRules
 from isac.runtime.bus import InterAgentBus, InterAgentLink, InterAgentMessage
 from isac.runtime.config import AgentConfig
 from isac.runtime.manager import AgentManager
+from isac.runtime.services import ServiceContainer
 from tests.fixtures.fakes import FakeChannel, FakeLLMProvider, make_final_reply, make_tool_call_response
 
 
@@ -397,7 +398,7 @@ async def test_handoff_to_self_revokes_ownership() -> None:
     tool = HandoffConversationTool()
     ctx = type("Ctx", (), {})()
     ctx.args = {"target_agent": "b", "summary": "交还"}
-    ctx.services = {"mesh_action_broker": MeshActionBroker(bus), "agent_id": "b", "router": router}
+    ctx.services = ServiceContainer({"mesh_action_broker": MeshActionBroker(bus), "agent_id": "b", "router": router})
     ctx.agent_context = AgentContext(
         session=Session(session_id="s1", user_id="u1", agent_id="b", platform="fake"),
         user_profile=None, current_message=None,
@@ -429,7 +430,7 @@ async def test_handoff_to_non_running_target_rejected() -> None:
     tool = HandoffConversationTool()
     ctx = type("Ctx", (), {})()
     ctx.args = {"target_agent": "ghost", "summary": "请接手"}
-    ctx.services = {"mesh_action_broker": MeshActionBroker(bus), "agent_id": "a", "router": router}
+    ctx.services = ServiceContainer({"mesh_action_broker": MeshActionBroker(bus), "agent_id": "a", "router": router})
     ctx.agent_context = AgentContext(
         session=Session(session_id="s1", user_id="u1", agent_id="a", platform="fake"),
         user_profile=None, current_message=None,

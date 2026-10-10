@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -162,7 +163,7 @@ def _build_auth_dependency(
     return make_auth_dependency("", session_secret, setup_manager)
 
 
-def _aggregate_health(
+async def _aggregate_health(
     agent_manager: Any,
     provider_manager: Any,
     config: dict[str, Any],
@@ -172,6 +173,9 @@ def _aggregate_health(
 
     各子系统用 getattr 防御: 旧测试替身/未注入的 manager 可能缺方法。任一关键
     子系统异常 → status=degraded; 否则 ok。引用真实配置路径让用户知道去哪修。
+    2026-10-10: AgentManager.list 是协程, 此前按同步调用被宽 except 吞掉,
+    agents 统计恒 0 且产生 "coroutine was never awaited" RuntimeWarning;
+    对 awaitable 结果统一 await (同步替身保持兼容)。
     """
     # agents: running/total
     agents_total = agents_running = 0
@@ -179,6 +183,8 @@ def _aggregate_health(
     if callable(list_agents):
         try:
             instances = list_agents()
+            if inspect.isawaitable(instances):
+                instances = await instances
             agents_total = len(instances)
             agents_running = sum(1 for a in instances if getattr(a, "status", "") == "running")
         except Exception:  # noqa: BLE001
@@ -420,7 +426,7 @@ def create_control_app(
         任一关键子系统异常 → status=degraded。setup_required=true 时控制面处于
         首登待设置态 (T3-backend), 仅 /setup 与 /health 可用。探针用途, 无认证。
         """
-        result = _aggregate_health(agent_manager, provider_manager, config, channel_registry)
+        result = await _aggregate_health(agent_manager, provider_manager, config, channel_registry)
         result["setup_required"] = setup_manager is not None and setup_manager.is_setup_required
         return result
 
@@ -705,10 +711,11 @@ def _mount_optional_routers(
         app, webhook_manager, auth_dependency=auth_dependency,
         scope_dependency=scope_dependency, audit_log=audit_log,
     )
-    # R6-①: 租户路由 (tenant_manager 注入时挂载)
+    # R6-①: 租户路由 (tenant_manager 注入时挂载; #25 透传 tokens/session_secret 做绑定强制)
     _mount_tenant_router(
         app, tenant_manager, auth_dependency=auth_dependency,
         scope_dependency=scope_dependency, audit_log=audit_log,
+        tokens=tokens, session_secret=session_secret,
     )
     # U5: 审批路由 (approval_gate 注入时挂载; HITL ask 档运维侧回流)
     _mount_approvals_router(
@@ -740,8 +747,13 @@ def _mount_approvals_router(
 def _mount_tenant_router(
     app: Any, tenant_manager: Any, *,
     auth_dependency: Any, scope_dependency: Any, audit_log: Any,
+    tokens: Any = None, session_secret: bytes | None = None,
 ) -> None:
-    """R6-①: 挂载租户控制面路由 (tenant_manager 注入时; 仿 routes_workflows 无注入返回 None)。"""
+    """R6-①: 挂载租户控制面路由 (tenant_manager 注入时; 仿 routes_workflows 无注入返回 None)。
+
+    #25: tokens/session_secret 透传给路由做租户绑定强制 (绑定租户的 token 只能
+    操作自己的租户); 未配置 tokens[] 时行为与之前完全一致。
+    """
     if tenant_manager is None:
         return
     from isac.control.api import routes_tenants
@@ -749,6 +761,7 @@ def _mount_tenant_router(
     router = routes_tenants.build_router(
         tenant_manager, auth_dependency=auth_dependency,
         scope_dependency=scope_dependency, audit_log=audit_log,
+        tokens=tokens, session_secret=session_secret,
     )
     if router is not None:
         app.include_router(router, prefix="/api/v1")
