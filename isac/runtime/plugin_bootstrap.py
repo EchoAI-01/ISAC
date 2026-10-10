@@ -108,7 +108,7 @@ async def _fire_plugin_on_load(
 ) -> None:
     """R3: 构造 PluginContext + 触发 native 插件 on_load + 桥接兼容层插件装饰器。
 
-    agent_hooks 是进程级共享注册表 (services["plugin_agent_hooks"]), 组装每个
+    agent_hooks 是进程级共享注册表 (`plugin_agent_hooks` 服务键), 组装每个
     Agent 时由 assemble_agent 合并进该 Agent 的私有 hooks; event_bus 缺失
     (极少数测试路径) 时跳过, 不构造无效 context。失败只记日志不阻塞启动。
 
@@ -238,7 +238,9 @@ def _build_plugin_enable_matrix(services: dict[str, Any] | None) -> EnableMatrix
     从 shared services 的 global_config 读取 policy 与 channels.matrix, 构造全局
     EnableMatrix。未注入 global_config 时返回空矩阵 (默认放行, 向后兼容)。
     """
-    global_cfg = services.get("global_config") if isinstance(services, dict) else None
+    from isac.runtime.services import ServiceContainer
+
+    global_cfg = ServiceContainer(services).global_config if isinstance(services, dict) else None
     if not isinstance(global_cfg, dict):
         return EnableMatrix()
     channel_overrides: dict[str, dict] = {}

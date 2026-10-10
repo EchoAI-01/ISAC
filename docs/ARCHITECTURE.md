@@ -243,7 +243,7 @@ class AgentManager:
 - `ModelCatalog` 维护文本、视觉、语音、图片、视频、Embedding、Reranker 的能力声明；`ModelRouter` 按 operation、输入/输出模态、Agent 授权、健康状态、成本和延迟选择实现
 - Agent 只看到语义能力工具，不感知具体厂商模型；生成媒体统一写入 `ArtifactStore`，由 Channel Adapter 按平台能力发送或降级为受控链接
 - 配置来源: `data/agents/<agent_id>/config.jsonc`（只写相对全局配置的覆盖项）
-- 注册表持久化: `data/agents/registry.jsonc`，重启后自动恢复 running 状态的 Agent
+- 重启恢复: 启动时扫描 `data/agents/*/config.jsonc` (`manager.load_persisted_agents`), `enabled=true` 的 Agent 自动恢复启动; 无独立 `registry.jsonc` 注册表文件
 - 向后兼容: 无 `data/agents/` 时自动创建默认 Agent，行为同单 Agent 模式
 
 ---
@@ -256,7 +256,7 @@ class AgentManager:
 @dataclass
 class RoutingDecision:
     agent_id: str
-    matched_by: str                     # "binding" | "trigger_word" | "default"
+    matched_by: str                     # "handoff" | "binding" | "trigger_word" | "default"
     content: str                        # 剥离触发词后的内容
 
 
@@ -266,6 +266,8 @@ class MessageRouter:
     async def route(self, message: ISACMessage) -> RoutingDecision | None:
         """
         优先级 (先匹配先生效):
+        0. 会话移交 (handoff): 该会话已被交接给某 Agent (最高优先, P2; 登记有 TTL,
+           接手方不可路由时自愈清除并回落常规路由)
         1. 显式绑定: (platform, group_id/user_id) → agent_id
         2. 触发词: 消息以某 Agent 的 trigger_word 开头 (专用/特定触发词)
         3. 默认 Agent: 该 platform 配置 default_agent_id (无需任何触发词)
@@ -303,7 +305,7 @@ class InterAgentLink:
 class InterAgentMessage:
     from_agent: str
     to_agent: str
-    type: str                           # "request" | "response" | "notify" | "handoff"
+    type: str                           # "request" | "response" | "notify" | "handoff" | "memory_query"
     content: str
     context: dict = field(default_factory=dict)  # 会话摘要等附带信息
 
@@ -754,7 +756,7 @@ Message In
     ▼
 [Gating System]
     │
-    ├── 是私聊且 @bot → 直接 TRIGGER
+    ├── 被 @ 或私聊 → 直接 TRIGGER (T1: 私聊无条件触发)
     │
     ├── 计算 Reply Necessity Score
     │   基础分: has_at(100) | has_mention(80) | private(40) | focus(40) | 普通(0)
@@ -789,8 +791,9 @@ class GatingSystem:
         if self.focus_mode.is_active(context.session.session_id):
             return GateDecision.TRIGGER
 
-        # 2. 强制触发
-        if context.has_at or (context.is_private and context.has_mention):
+        # 2. 强制触发 (T1: 私聊无条件触发; 原 `has_at or (is_private and has_mention)`
+        #    会让私聊普通消息落到 score 40 < 80 被静默 WAIT, isac/gating/system.py)
+        if context.has_at or context.is_private:
             return GateDecision.TRIGGER
 
         # 3. 回复必要性评分
@@ -1019,6 +1022,7 @@ sys.meta_path.insert(0, AstrBotImportFinder())
 **设计要点**:
 - 自动化示例: Webhook 收到事件 → `POST /agents` 创建 Agent → `POST /channels/{platform}/agents/{id}` 绑定 → 设置默认 Agent
 - 认证: `Authorization: Bearer <api_token>`，默认仅监听 127.0.0.1
+- 容器部署外绑: 默认仍只接受 loopback (非安全 host 强制回退 127.0.0.1); 容器须外绑时显式 `control.allow_external_host=true` (env `ISAC_CONTROL_ALLOW_EXTERNAL_HOST`) 放行并打告警, 提醒配置 api_token/tokens 并以前置反向代理/防火墙限制访问来源
 - 通过自动化创建的 Agent 使用受限默认配置（deny-by-default 工具策略）
 - WebUI 只作为 Control API 客户端，不直读配置文件或运行时对象；配置修改经过 Schema 校验 → diff → 确认 → `If-Match` 乐观并发 → 审计
 - Provider 密钥只可替换不可回显，管理 Token 不写入浏览器 localStorage；实时状态通过按 scope 过滤、可断线恢复的 SSE/WebSocket 提供
@@ -1068,6 +1072,20 @@ class ConfigMigrator:
 
         return config
 ```
+
+---
+
+### 4.2 配置覆盖层与热重载 (N1e)
+
+控制面**不整体回写** `data/config.jsonc` (会丢注释), 而是写入独立覆盖层 `data/config.override.json` (机器所有, 原子写, 含 `__revision__`)。加载序 (后者覆盖前者): 内置默认 ← `config.jsonc` (用户手编) ← `config.override.json` (控制面写入) ← 环境变量 ← CLI (`isac/utils/config.py::load_config`)。
+
+```text
+GET    /config/global          有效配置 (敏感键脱敏) + override revision
+PATCH  /config/global          深合并部分更新 (叶值 null = 撤销覆盖; If-Match 乐观锁)
+POST   /config/global/reload   从磁盘重读 config.jsonc + override 并热应用
+```
+
+热重载边界: 可热应用节原地更新 services 持有的 global_config dict 并同步重建运行中 Agent; `control` / `channels` / `logging` / `debug` / `log_level` 在 bootstrap 构造服务端点、运行中不可重建 → 持久化但列入 `restart_required`, 下次重启生效 (PATCH 响应严格区分 `applied` / `reload_required` / `restart_required`)。端点语义与乐观锁细节见 [CONTROL_PLANE_SPEC.md](./CONTROL_PLANE_SPEC.md) §3.7。
 
 ---
 
@@ -1137,7 +1155,7 @@ LLM 回复 → turn.completed 事件追加 → episodes 事件投影写入记忆
 核心规则：
 
 - **Model-visible ⟺ Logged**: 任何可能进入 LLM 上下文的入站消息, 必须先作为 `message.user` 事件落盘 (副作用前 `flush()`), 才允许发起 LLM 请求。
-- **不可变 + 可溯源**: 压缩不删改原始事件, 而是追加 `turn.compressed` replace 事件 (payload.source_seqs 指向被替代区间); 摘要不小于原文时拒绝提交 (`validate_compression`)。
+- **replace 事件 + 保留 GC**: 压缩先追加 `turn.compressed` replace 事件 (payload.source_seqs 指向被替代区间), 摘要不小于原文时拒绝提交 (`validate_compression`); 通过后由 `SessionCompressor` (`session/compressor.py`) 物理删除被替代的**内容**事件 (保留 GC, 遏制事件表无界增长)。`tool.*` / `turn.aborted` / `session.migrated` 不参与压缩且必须保留 (DenyGuard 账本与 torn-tail 修复依赖其配对)。配置 `session.compression` (`enabled` 默认 false; `trigger_events` / `keep_recent_messages` / `min_compress_messages`), 事件数达阈值时后台触发, 失败/无 LLM 时跳过不破坏事件流。
 - **未知事件默认拒绝重建**: 白名单外事件类型触发 `UnknownSessionEventError`, 仅 `IGNORABLE_EVENT_TYPES` (如 `session.migrated` 迁移标记) 可安全跳过 —— 前向兼容且不静默吞语义变化。
 - **torn-tail 容忍**: kill -9 可能留下孤儿 `tool.called` (无 outcome); 启动时逐分区 `repair_torn_tail` 合成 `OUTCOME_UNKNOWN` 结果事件, 不猜结果。
 - **episodes 是事件投影**: 记忆写入侧从事件流读回本回合 `message.user`/`turn.completed` 事件对作为内容源 (检索面不变), 事件流不可用时回退直写。
@@ -1212,9 +1230,9 @@ tool_heavy (必须 supports_tools) / chat (最便宜档); 画像可经
 ### 3.17 SessionWriteGate + 治理门禁 (U8)
 
 **SessionWriteGate** (`isac/runtime/write_gate.py`): 会话写入统一仲裁门 ——
-主动/注入式写入 (强制话轮 proactive、handoff 归属转移、插件注入、记忆注入) 动手前
-`reserve(session_key, source)` 取租约:
+主动/注入式写入动手前 `reserve(session_key, source)` 取租约:
 
+- **当前登记来源**: `proactive` (强制话轮) / `handoff` (归属转移); 插件注入、记忆注入**待接入** (真接入时须登记进 `_ALLOWED_SOURCES` 并补审计测试)。
 - **先预约后写入**: 同一 session_key 同时只允许一个活跃租约 (先到者得, 后来者拿
   None 即放弃, 不排队不抢锁); 未登记来源 (`_ALLOWED_SOURCES` 之外) 直接拒绝。
 - **hold 窗口**: 租约默认 30s (clamp 1~600s, monotonic), 超时作废。
@@ -1255,7 +1273,7 @@ User 发送消息
     │                                                        │
     ▼                                                        │
 [🧭 MessageRouter]  ⬅ 消息归属哪个 Agent?                    │
-    │  显式绑定 → 触发词 → 默认 Agent                        │
+    │  会话移交 → 显式绑定 → 触发词 → 默认 Agent             │
     │  剥离触发词，附带 agent_id                              │
     │                                                        │
     ▼                                                        │
@@ -1308,6 +1326,11 @@ User 发送消息
 User 收到回复
 ```
 
+**投递保障 (2026-08-19 增补)**:
+
+- **入站幂等去重** (`isac/gateway/inbound_dedup.py`): dispatch 入口按 `(platform, msg_id)` 统一去重 (LRU 4096 + TTL 600s 双限), 一次覆盖全部渠道 —— OneBot WS 重连 / webhook 重试的重复投递不再重复落事件、重复回复。空 `msg_id` 放行 (无法判重), TTL 窗口外的"古老重投"会再放行 (有界内存权衡, 不无界增长)。
+- **出站有界重试 + 死信环** (`isac/outbound.py`): 发送失败至多重试 3 次 (0.5s 退避基数), 仍失败记入有界死信环 (deque maxlen=200, `recent()` 可查 + 结构化日志), "回复发不出去"不再静默丢失; 死信持久化表留后续。
+
 ---
 
 ## 六、目录结构
@@ -1325,9 +1348,10 @@ ISAC/
 │   ├── __init__.py                 # 版本号
 │   ├── __main__.py                 # CLI 入口 (run/password/secret/plugin 子命令)
 │   ├── main.py                     # 薄入口 (U2: 纯 re-export 兼容面, ≤120 行红线)
-│   ├── dispatch.py                 # U2 消息主链路 (入站→路由→Agent→出站)
+│   ├── dispatch.py                 # U2 消息主链路 (入站→路由→Agent→出站; 入站幂等去重接线)
 │   ├── wiring.py                   # U2 服务装配 (build_services → ServiceContainer)
 │   ├── bootstrap.py                # U2 启动编排 (main 运行时生命周期)
+│   ├── outbound.py                 # U2 出站发送 (重试 + 死信环)
 │   │
 │   ├── core/                       # 核心框架
 │   │   ├── __init__.py
@@ -1353,18 +1377,21 @@ ISAC/
 │   │       ├── onebot/
 │   │       ├── telegram/
 │   │       ├── discord/
-│   │       ├── wechat/
-│   │       ├── wecom/
-│   │       ├── slack/
+│   │       ├── wechat/             # 微信 (mode="wecom" 企业微信 / mode="mp" 公众号骨架)
 │   │       ├── feishu/
-│   │       └── ...                 # 更多平台
+│   │       ├── webchat/            # 内置 Web 聊天
+│   │       ├── template/           # 新适配器骨架模板
+│   │       └── ...                 # slack 未实现
 │   │
 │   ├── gateway/                    # Gateway
 │   │   ├── __init__.py
 │   │   ├── event_bus.py            # EventBus (Intercept + Async)
 │   │   ├── session.py              # SessionManager
 │   │   ├── user_mapper.py          # 跨平台用户映射
-│   │   ├── lock.py                 # SessionLockManager (并发控制)
+│   │   ├── lock.py                 # SessionLockManager (引用计数并发控制)
+│   │   ├── inbound_dedup.py        # 入站幂等去重 (LRU + TTL)
+│   │   ├── incoming_media.py       # 入站媒体下载落盘
+│   │   ├── identity/               # IdentityResolver 跨平台身份归一
 │   │   └── models.py               # Session/Profile 数据模型
 │   │
 │   ├── session/                    # U1 事件溯源会话内核
@@ -1372,6 +1399,7 @@ ISAC/
 │   │   ├── models.py               # SessionEvent + 事件类型白名单
 │   │   ├── event_store.py          # SessionEventStore (append-only, WAL + write-behind)
 │   │   ├── history.py              # SessionHistoryDeriver (折叠/窗口/压缩溯源)
+│   │   ├── compressor.py           # SessionCompressor 压缩写侧 (replace + 保留 GC)
 │   │   └── migrate.py              # 旧 sessions 数据迁移脚本
 │   │
 │   ├── router/                     # 消息路由 (Agent 归属)
@@ -1441,8 +1469,16 @@ ISAC/
 │   │   ├── manager.py              # AgentManager (生命周期)
 │   │   ├── assembly.py             # 按 AgentConfig 组装子系统
 │   │   ├── config.py               # AgentConfig / 配置分层加载
+│   │   ├── application.py          # ApplicationRuntime (应用生命周期/后台任务)
+│   │   ├── services.py             # ServiceContainer (U2 装配产物, 类型化键)
+│   │   ├── write_gate.py           # SessionWriteGate (U8 会话写入仲裁门)
+│   │   ├── plugin_bootstrap.py     # MCP/workflow/插件 on_load 集成装配
 │   │   ├── progress.py             # ProgressEvent / ProgressReporter
 │   │   ├── bus.py                  # InterAgentBus (Agent 互联)
+│   │   ├── conversation/           # 拟人化会话运行时 (debounce/proactive/recovery)
+│   │   ├── mesh/                   # Agent Mesh (observer/candidate 路由与 A2A 动作)
+│   │   ├── tenancy/                # 多租户 (TenantManager)
+│   │   ├── workflow/               # 工作流编排引擎
 │   │   └── subagent/               # 隔离子任务运行时
 │   │       ├── models.py           # Task/Run/Event/Result/Policy
 │   │       ├── supervisor.py       # 派发、并发、取消与恢复
@@ -1455,6 +1491,9 @@ ISAC/
 │   │   ├── pipeline.py             # MemoryRetrievalPipeline
 │   │   ├── embedder.py             # EmbeddingManager
 │   │   ├── reranker.py             # Reranker
+│   │   ├── salience.py             # 记忆显著度评分 (importance producer)
+│   │   ├── stack.py                # U2 记忆子系统构造器
+│   │   ├── model/                  # MemoryItem 统一模型与适配器
 │   │   ├── injector/               # 记忆注入策略
 │   │   │   ├── __init__.py
 │   │   │   ├── heuristic.py        # HeuristicMemoryInjector
@@ -1466,7 +1505,8 @@ ISAC/
 │   │   │   ├── vector.py           # VectorStore (sqlite-vec)
 │   │   │   ├── metadata.py         # MetadataStore (SQLite+FTS5)
 │   │   │   ├── graph.py            # GraphStore
-│   │   │   └── sparse.py           # SparseBM25Index
+│   │   │   ├── sparse.py           # SparseBM25Index
+│   │   │   └── tenant_bound.py     # TenantBoundDB (租户隔离唯一入口)
 │   │   └── consolidator.py         # 后台整合
 │   │
 │   ├── persona/                    # 人格系统 (纯 Prompt 注入)
@@ -1514,9 +1554,9 @@ ISAC/
 │   │   ├── llm/                    # LLM / Vision Providers
 │   │   ├── embed/                  # Embedding Providers
 │   │   ├── rerank/                 # Reranking Providers
-│   │   ├── speech/                 # STT / TTS Providers
-│   │   ├── image/                  # Image Generation Providers
-│   │   └── video/                  # Video Understanding / Generation Providers
+│   │   ├── stt_tts/                # STT / TTS Providers
+│   │   ├── image_gen/              # Image Generation Providers
+│   │   └── video_gen/              # Video Understanding / Generation Providers
 │   │
 │   ├── artifacts/                  # 多模态制品存储、保留期、授权下载
 │   │   ├── models.py               # ArtifactRef
@@ -1529,13 +1569,19 @@ ISAC/
 │   │   ├── __init__.py
 │   │   ├── api/                    # Admin REST API (FastAPI)
 │   │   │   ├── __init__.py
-│   │   │   ├── server.py
-│   │   │   ├── routes_agents.py
-│   │   │   ├── routes_routing.py
-│   │   │   └── routes_plugins.py
+│   │   │   ├── server.py           # 应用装配 + /health + /audit
+│   │   │   └── routes_*.py         # 19 个路由模块 (agents/routing/config/events/
+│   │   │                           #   plugins/providers/sessions/memory/subagent/
+│   │   │                           #   identity/tenants/workflows/webhooks/logs/...)
 │   │   ├── mcp_server.py           # ISAC 作为 MCP 服务端
 │   │   ├── webhooks.py             # 事件推送 / 自动化触发
-│   │   └── auth.py                 # Token 认证
+│   │   ├── auth.py                 # Token 认证 / scope / 会话 Cookie
+│   │   ├── audit.py                # 审计日志 (data/audit.ndjson)
+│   │   ├── bootstrap.py            # 控制面启动装配
+│   │   ├── defaults.py             # 安全默认值 (host 兜底等)
+│   │   ├── setup.py                # 首登 setup (T3-backend)
+│   │   ├── webui/                  # 内置静态 WebUI (deprecated, 前端 F2 后移除)
+│   │   └── ...
 │   │
 │   └── utils/                      # 工具
 │       ├── __init__.py
@@ -1550,10 +1596,10 @@ ISAC/
 │
 ├── data/                           # 运行数据 (gitignored)
 │   ├── config.jsonc                # 全局配置
+│   ├── config.override.json        # 控制面写入的配置覆盖层 (N1e, 含 __revision__)
 │   ├── agents/                     # 多 Agent
-│   │   ├── registry.jsonc          # Agent 注册表
 │   │   └── <agent_id>/
-│   │       ├── config.jsonc        # 该 Agent 独立配置
+│   │       ├── config.jsonc        # 该 Agent 独立配置 (启动时扫描恢复, enabled=true 自动 start)
 │   │       └── memory/             # 该 Agent 记忆数据
 │   ├── routing.jsonc               # 路由规则 (绑定 / 默认 Agent)
 │   ├── links.jsonc                 # Agent 互联 Link

@@ -5,7 +5,7 @@
 
 ## 项目状态
 
-**当前定位**: **T 开箱可用轮 T1/T2/T4 已完成 (2026-08-04), 转入前后端分离开发 (后端先行)**。**1568 单元/集成测试全绿、ruff/mypy 全绿 (2026-08-15 实测)**。背景链: 2026-07-31 首次真机冒烟推翻"MVP 已达成"(私聊被门控静默 WAIT、WebUI 开箱不可用、必须手写配置才能启动) → 新增 T 开箱可用轮 → **T1 开箱能对话** (门控私聊无条件触发 + 未回复可观测 + 占位 key 检测)、**T2 零配置启动** (默认配置内置 + 首启建 data 目录)、**T4 错误可诊断** (401/429 中文可操作提示 + `/health` 聚合 + `/logs/tail` 实时日志 SSE) 已完成并附真机冒烟证据。**T3 按前后端分离重定义**: 后端先交付控制面开箱 + setup/auth API (FE0 API 契约冻结 → FE1 CORS/跨源认证/静态托管降级 → T3-backend), 前端独立项目 (F1-F4) 在 API 基线冻结后启动, 决策见 `ARCHITECTURE.md` ADR-012。更早轮次 (A-K 基础体系 / P0-P2 主链路接线 / Q0-Q2 MVP 收尾 / S1-S7 骨架激活) 均已交付; 2026-07-28/29 两轮评审遗留项已整合进 `DEVELOPMENT_PLAN.md` (架构债清单), Review 报告与 S 轮 HANDOFF 已删除 (2026-08-15 文档整合)。
+**当前定位**: **后端功能与架构演进完成, 最小实例运行双向真机验证 (2026-10-10)** —— A-K 基础体系 / P0-P2 主链路接线 / Q0-Q2 MVP 收尾 / S1-S7 骨架激活 / T1-T7 / R1-R6 / FE0-FE1+T3-backend / U0-U9 全部交付; N1b~N1e 三轮全量审查清偿 (Fix-37~137) + 2026-08-19 加固轮 (会话锁/幂等去重/压缩写侧/成本闭环/U4 绑定等) + 2026-10-10 最小实例修复 (CI build/docker 修复后 **CI 5/5 全绿**, 源码 + Docker compose 双向 /health 真机通过)。全量 **2346 测试通过**、ruff/mypy/红线全绿 (2026-10-10 实测)。2026-07-31 真机冒烟推翻"MVP 已达成"的教训仍为验收铁律之源; T1 开箱能对话 / T2 零配置启动 / T4 错误可诊断 均已修复并有真机证据。T3 按前后端分离重定义 (ADR-012): 后端段完成, 前端 F1-F4 独立项目待启动。
 
 - 进度事实源: [docs/PROGRESS.md](./docs/PROGRESS.md)
 - 文档导航: [docs/README.md](./docs/README.md)
@@ -47,15 +47,15 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 
 ## 剩余工作
 
-后端代码工作已基本收尾: 阶段 0 / FE0 / FE1 / T3-backend / T1/T2/T4 / T6 / R1-R6 全部完成, R7 代码部分完成 (P3/P4/P5 集成测试补齐 + RELEASE_AUDIT 取证 + QUICKSTART); N1b/N1c/N1d 三轮全量代码审查修复清偿完毕 (Fix-37~137, Critical/Major/Minor 代码级清零) + N1e 全局配置持久化与热重载落地; 全量 2098 测试通过、ruff/mypy 全绿、红线全绿 (2026-08-18 实测)。**剩余项几乎全部是环境/凭据依赖与前端轨道**, 下一步行动见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) **§三之三 下一步行动计划 (N1-N5)**:
+后端代码工作已收尾 (2026-08-16~10-10): 阶段 0 / FE0 / FE1 / T3-backend / T1/T2/T4 / T6 / R1-R6 / U0-U9 全部完成; N1b/N1c/N1d 三轮全量审查修复 (Fix-37~137) + N1e 全局配置持久化热重载 + 2026-08-19 加固轮 + 2026-10-10 最小实例修复; 全量 **2346 测试通过**、ruff/mypy (299 源文件)/红线全绿、CI check/browser/catalog-drift/build/docker 5/5 全绿 (2026-10-10 实测)。**剩余项为环境/凭据依赖与前端轨道**, 下一步行动见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) **§三之三 下一步行动计划 (N1-N5)** 与 [docs/PROGRESS.md](./docs/PROGRESS.md):
 
-1. **N1 文档与标记收敛** ✅ 已完成 (2026-08-18) — 三态标记收敛 + T7/R7 剩余项逐一挂 RELEASE_AUDIT §三 + README/AGENTS 同步。
-2. **N2 环境准入项清偿** — Docker 冒烟 + browser CI 复核 (I 节点 85%→100%) + release_checklist 七段 + **24h soak** (需 docker daemon/浏览器环境/真实 LLM key)。
+1. **N1 文档与标记收敛** ✅ 已完成 (2026-08-18; 2026-10-11 全库二次收敛: 88 项漂移勘误, 见 docs/PROGRESS.md)。
+2. **N2 环境准入项清偿** — **Docker 冒烟 ✅ (2026-10-10: compose healthy + 宿主 `/health` 200 + CI docker job 绿)、browser CI 复核 ✅ (CI 真跑 2 passed)**; 剩 release_checklist 发版段 (版本号/标签/回滚, 发版时执行) + **24h soak** (需真实 LLM key 与长时运行环境)。
 3. **N3 T5 真实 IM 验收** (外部阻塞) — 凭据准备清单先行, OneBot 先行联调, 飞书/QQ 官方/wecom 逐个真机验证。
-4. **N4 前端轨道启动** — API 基线已冻结 (FE0 openapi.json + FE1 CORS + T3-backend setup API + config schema 端点); 技术栈决策 → F1 登录/setup 向导 → F2 十域迁移 (完成后移除内置 WebUI) → F3 实时 → F4 插件市场 UI。
-5. **N5 剩余架构债并行线** — services 强类型化 Z1 批 A+B 已完成 (50 键宽容属性 + 全局容器/per-Agent 面迁移, 棘轮 205→130; 批 C 剩 context.services 热路径与 control 路由面) / Z2 main.py 拆分已由 U2 收敛 / 同步 IO 异步化 / reload_config 差量更新。
+4. **N4 前端轨道启动** — API 基线已冻结 (FE0 openapi.json + FE1 CORS + T3-backend setup API + config schema 端点); 技术栈决策 → F1 登录/setup 向导 → F2 十域迁移 (完成后移除内置 WebUI) → F3 实时 → F4 插件市场 UI。开工前建议先补 API 基线缺口 (生产挂载路径未入基线/securitySchemes 缺失/config schema 仅 3 键, 见 2026-10-10 审计)。
+5. **N5 剩余架构债并行线** — services 强类型化 Z1 批 A+B+C 已完成 (棘轮 205→35) / Z2 main.py 拆分已由 U2 收敛 / 剩同步 IO 异步化 (插件解压/配置写盘) 与 reload_config 差量更新 (观察项); 另有 2026-10-10 审计登记的代码缺陷批次 (入站去重键缺会话维度、tools_policy 非法档位 fail-open、压缩 GC 与摘要输入不一致、压缩摘要排序、插件 reload 绕过 plugins_allow/deny) 待修。
 
-**里程碑**: M-T1 ✅ → M-T2 后端段 ✅ (前端 F1/F2 落地即全达成) → M-T3 可接入 (N2+N3) → M-T4 可扩展 ✅ (R3+T6) → **M-GA** = N2 全过 + N3 至少一个平台真机通过 + F2 完成。GA 后进入 §四 GA 后开发计划 (V/X/Y/Z)。
+**里程碑**: M-T1 ✅ → M-T2 后端段 ✅ (前端 F1/F2 落地即全达成) → M-T3 可接入 (N2 大部已过, 剩 soak/发版段; N3 待凭据) → M-T4 可扩展 ✅ (R3+T6) → **M-GA** = N2 全过 + N3 至少一个平台真机通过 + F2 完成。GA 后进入 §四 GA 后开发计划 (V/X/Y/Z)。
 
 **验收铁律**:任何节点声明完成必须附**真机部署证据**(命令 + 实际输出),不接受"单测通过"作为可用性证明。节点定义见 [docs/DEVELOPMENT_PLAN.md](./docs/DEVELOPMENT_PLAN.md) §三之三/§四,进度见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
 

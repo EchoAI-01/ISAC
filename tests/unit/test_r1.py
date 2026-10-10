@@ -69,6 +69,21 @@ def test_pricing_load_parses_jsonc(tmp_path: object) -> None:
     assert snap.input_price_per_unit == "0.00015"
 
 
+def test_shipped_pricing_jsonc_loads_non_empty() -> None:
+    """2026-08-19 发货面回归: 随包 data/pricing.jsonc 必须存在且可加载出非空目录。
+
+    此前该文件从未提交 (.gitignore data/* 排除), fresh 部署 PricingCatalog 恒空、
+    estimated_cost 一律 None。现锁定"入仓 + 可加载 + 至少含 LLM 主链路一条"。
+    """
+    from pathlib import Path
+
+    shipped = Path(__file__).resolve().parent.parent.parent / "data" / "pricing.jsonc"
+    assert shipped.exists(), "data/pricing.jsonc 未随包 (成本计量开箱失效)"
+    cat = PricingCatalog.load(shipped)
+    # 至少登记了 OpenAI 兼容主链路的一个文本模型 (provider 键为类名口径)
+    assert cat.lookup("OpenAICompatProvider", "gpt-4o-mini", "text") is not None
+
+
 def test_pricing_load_malformed_returns_empty(tmp_path: object) -> None:
     """R1-④: 解析失败返回空 catalog (不 raise)。"""
     p = tmp_path  # type: ignore[assignment]
@@ -225,7 +240,9 @@ async def test_media_tool_records_usage() -> None:
     # 成功 → 应计 record_image_gen
     assert len(calls) == 1
     assert calls[0][1]["model"] == "dall-e-3"
-    assert calls[0][1]["provider"] == "openai"
+    # H4: provider 键统一为实例类名 (此处为 _PM2.multimodal_provider 内的 _P),
+    # 不再是 descriptor.provider_id "openai"。
+    assert calls[0][1]["provider"] == "_P"
 
 
 # ── helpers ─────────────────────────────────────────────

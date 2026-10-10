@@ -157,19 +157,21 @@ uv run python -m mypy isac/<layer>/<subsystem>/
 - PROGRESS.md: 节点总览行 + 待实现能力表更新。
 - 若引入新术语,加入 DEVELOPMENT_PLAN.md 术语表。
 
-## 五、完整范例: ConversationRuntime (L1)
+## 五、历史脚手架范例: ConversationRuntime (L1)
 
-L1 是本范式的最新范例,可直接对照源码学习。
+L1 是本范式的**最初范例** (历史存档): **L1-L5 已于 P1 (2026-07-27) 完成主链路接线并升 `[x]`**,
+脚手架阶段的 `TODO(L2/L3/L4)` 挂接点已随实现清除。下表保留作 scaffolding 范式对照, 记录的
+是 L1 脚手架阶段的落地位置; 当前代码状态以源码为准。
 
-| 要素 | 落地位置 |
-|------|---------|
-| 契约 | `isac/runtime/conversation/models.py` — `ConversationState`/`WaitState`/`ProactiveTask`/`ForcedTurnState` |
-| 类骨架 | `isac/runtime/conversation/runtime.py` — `ConversationRuntime`,`should_trigger`/`resolve_wait` 标 `TODO(L2)`,`request_interrupt` 标 `TODO(L4)` |
+| 要素 | 落地位置 (脚手架阶段) |
+|------|---------------------|
+| 契约 | `isac/runtime/conversation/models.py` — `ConversationState`/`WaitState`/`ProactiveTask`/`ForcedTurnState` (后补 `InterruptState`) |
+| 类骨架 | `isac/runtime/conversation/runtime.py` — `ConversationRuntime`; 脚手架阶段 `should_trigger`/`resolve_wait` 标 `TODO(L2)`、`request_interrupt` 标 `TODO(L4)` (P1 已实现) |
 | registry | `isac/runtime/conversation/registry.py` — `ConversationRuntimeRegistry`,`MAX_RUNTIMES_PER_AGENT=1000` FIFO |
-| 队列 | `isac/runtime/conversation/proactive.py` — `ProactiveTaskQueue`,enqueue/poll 标 `TODO(L3)` |
+| 队列 | `isac/runtime/conversation/proactive.py` — `ProactiveTaskQueue`,脚手架阶段 enqueue/poll 标 `TODO(L3)` (P1 已实现; 另有 `ProactiveScheduler`) |
 | 导出 | `isac/runtime/conversation/__init__.py` |
-| 接线 | `assembly.py` 注入 `conversation_registry`;`manager.py::_dispatch_message` 用 `_conversation_enabled()` 守卫 (默认 False) |
-| 挂接锚点 | `agent/tools/social/wait.py` 标 `TODO(L2)`;`agent/loop.py` 读 `interrupt_requested` 处标 `TODO(L4)` |
+| 接线 | `assembly.py` 注入 `conversation_registry`;`manager.py` 用 `_conversation_enabled()` 守卫 (`conversation.enabled` 默认 False) |
+| 挂接锚点 | `agent/tools/social/wait.py` (L2 已接通 `enter_wait`);`agent/loop.py` 打断判定改用 `ConversationRuntime.interrupt_seq` 基线比对 (L4 已接通) |
 | 骨架单测 | `tests/unit/test_conversation_runtime.py` — 状态机/registry 隔离与上限/队列 FIFO/`enabled=False` 零行为变化 |
 | 文档 | DEVELOPMENT_PLAN.md §四 L1;PROGRESS.md;本指南 |
 

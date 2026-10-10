@@ -35,15 +35,15 @@ class NotifyAgentTool(Tool):
         """M2: 经 MeshActionBroker.notify → InterAgentBus 发 NOTIFY 消息。
 
         P2: 策略按 (from, to) 从 Link 解析 (broker.policy_for), 不再依赖单值
-        services["mesh_link_policy"] —— 显式注入时仍优先用它 (测试/特殊场景)。
+        `mesh_link_policy` 服务 —— 显式注入时仍优先用它 (测试/特殊场景)。
         """
-        broker = context.services.get("mesh_action_broker")
+        broker = context.services.mesh_action_broker
         if broker is None:
             return ToolResult(content="notify_agent 未接入 mesh_action_broker", is_error=True)
-        policy: MeshLinkPolicy | None = context.services.get("mesh_link_policy")
+        policy: MeshLinkPolicy | None = context.services.mesh_link_policy
         target = str(context.args.get("target_agent", ""))
         content = str(context.args.get("content", ""))
-        agent_id = str(context.services.get("agent_id", ""))
+        agent_id = str(context.services.agent_id or "")
         ok = await broker.notify(agent_id, target, content, policy)
         if not ok:
             return ToolResult(

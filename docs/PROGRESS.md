@@ -2,6 +2,51 @@
 
 > 本文件是各节点进度的**唯一事实源**。`DEVELOPMENT_PLAN.md` 描述节点定义与验收,`AGENTS.md` 只做一句话概述并链接此处;二者不再各自维护进度表。
 >
+> ⚠️ **最近更新: 2026-10-11 —— 全库文档收敛 + 最小实例运行修复 (全量 2346 通过, CI 5/5 全绿 —— 7/24 以来首次)**。
+> **①最小实例修复 (2026-10-10)**: CI `build` job (`uv venv` 无 pip → `uv pip install --python`) + `docker` job (`.dockerignore` 行内注释致 `!README.md` 失效、`COPY README.md` 必失败; 根因经本机最小实验复现) 全修; 新增 `control.allow_external_host` 显式放行 (默认仍强制 loopback, 严格 `is True` fail-closed; env `ISAC_CONTROL_ALLOW_EXTERNAL_HOST`), compose/CI/文档/样例/catalog 同步; `/health` 聚合 await 异步 `AgentManager.list` (此前 agents 统计恒 0 + coroutine 警告); LogBuffer 跨线程测试竞态根治 (~15% flake → 30/30)。真机证据: `smoke_webchat`/`smoke_control_setup` exit=0; 绑定放行/回退两用例 PASS; `docker compose up -d` healthy + 宿主 `/health` 200; 容器内创建+启动 Agent 后 `/health` agents{total:2,running:2}; GitHub CI run 38064914621 check/browser/catalog-drift/build/docker 全绿 (后续 run 38067838565 因 dev 分支被外部 force-push 重跑)。
+> **②文档收敛 (2026-10-11)**: 全库文档对照代码审计 88 项漂移修复 —— 状态文档 + 使用文档 8 篇 + 设计规范文档 9 篇; **N2-1 Docker 冒烟 ✅** 与 **N2-2 browser CI 复核 ✅** 依据证据标记完成 (I 节点 85%→100%)。
+>
+> ⚠️ **最近更新: 2026-08-19 —— #25 U4 完整租户鉴权做实 (token↔tenant 绑定强制 + 删除级联, 全量 2321 通过)**。
+> 此前租户控制面只有 scope 门禁, 任何持 tenant:* scope 的 token 可操作**任意**租户; 删租户也只删 tenants/tenant_members 两张控制面表, 数据面打标行永久残留。本批做实两环:
+> **①token↔tenant 绑定强制**: TokenScope 增 `tenant_id` (tokens[].tenant_id 配置); `resolve_caller_tenant` 与认证同口径解析绑定 (Bearer 优先, 回退会话 Cookie); routes_tenants 全端点强制 —— 绑定 token 跨租户 get/delete/成员管理一律 403 TENANT_FORBIDDEN, create 恒 403, list 只可见自己租户; 未绑定 = 管理身份不限租户 (未配置 tokens[] 行为与之前完全一致, 向后兼容)。server.py `_mount_tenant_router` 透传 tokens/session_secret。
+> **②删除级联**: TenantManager 增 `on_delete` 回调 (best-effort, 失败只记日志不推翻删除结果); 新增 `make_metadata_cascade` —— 扫 sqlite_master 自适应清 metadata.db 里所有含 tenant_id 列表中该租户的打标行 (schema 演进免改), wiring 经 `_build_tenant_manager(tenancy_config, memory_config)` 按 memory.enabled 门控注入 (wiring.py 保持单行 498 未破红线)。
+> config.sample.jsonc 补 tokens[] 配置文档 (scopes/name/tenant_id); 新增 test_tenant_token_binding_u4 12 例 (绑定解析口径/路由强制端到端/级联触发与失败兜底/真实 metadata.db 按租户清理)。**全量 2321 单测通过**, ruff/mypy/红线全绿。成员深度消费 (IM 身份→成员校验) 与请求级数据面全链传播留作设计文档后续项。
+>
+> ⚠️ **最近更新: 2026-08-19 —— Review 后加固第二轮: #29 审计 actor 归因 + #26 策略合并语义 + #27 MCP M4+M5 + #28 AstrBot M12 (全量 2200 通过)**。
+> **#29 审计 actor 归因**: TokenScope 增 name (审计显示 token:\<name\>, 无 name 落不可逆指纹, 绝不落裸 token); make_auth_dependency 返回凭据来源 (api_token/session/setup_password/anonymous); 8 个控制面路由 (agents/approvals/config/plugins/providers/routing/tenants/webhooks) 审计从硬编码 "authenticated" 改经 caller 依赖注入真实身份。新增 12 例。
+> **#26 策略合并语义 (tools M3)**: 修 tool_policy 四级合并被 DEFAULT_POLICY 遮蔽 —— 全局运维 tools_policy 对未显式配置的 Agent 永不生效。语义改为 "" 哨兵 (无覆盖), 仅非空值参与覆盖; ToolPermission 增 agent_policy 纯 Agent 层。enable_matrix 测试重写适配置空=无覆盖语义。新增 registry 合并序 62 行断言。
+> **#27 MCP 运行时健壮性 + Channel 门控 (tools M4+M5)**: MCPClient 增 is_alive (stdio returncode 检测) + ensure_connected (崩溃自动重连一次, 失败明确报错不再恒超时); mcp:* 工具按 platform Channel 门控 (effective_policy + mcp_channel_enabled 抽出)。新增 13 例。
+> **#28 AstrBot import 重定向接线 (tools M12)**: 此前 install_sandbox 全仓零调用, 真实 AstrBot 插件 (plugin.py 内 from astrbot.api.star import Star) 必然 ImportError; loader._load_astrbot 接线 install_sandbox (幂等) + AstrBotNamespaceLoader 补父包空命名空间, 未映射 astrbot.* 子模块明确 fail-fast。新增 6 例 (真实插件加载/多映射/幂等/父包/未映射拒绝)。
+>
+> ⚠️ **最近更新: 2026-08-19 —— 阶段3-3 记忆进阶 + 成本闭环 完成 (全量 2164 通过)**。
+> **①成本闭环 (H4)**: 用量 provider 键三口径统一为**实例类名** —— 此前 LLM 记 type(provider).__name__、媒体记 descriptor.provider_id、embed/rerank 记 config["provider"] (默认无该键恒空), 三口径无法命中同一份价目表 → 开箱 estimated_cost 恒 None。现 embedder/reranker/media 统一记 provider 实例类名 (对齐 pricing.jsonc 键与 LLM 口径); pricing.jsonc 已入仓 (阶段1-7) 键即类名, LLM/embed 成本查表可命中。新增 test_cost_loop_h4 6 例。
+> **②记忆进阶: 召回可解释性 (Y1 基础)**: 四路召回 (FTS/BM25/向量/图谱) RRF 融合后, 把每条记忆的命中路径写入 MemoryHit.metadata["recall_sources"] (排序去重), 回答"这条记忆为何被召回"; 新增 _collect_recall_sources (抽独立函数降 search C901), MemoryHit schema 不动 (走 metadata)。新增 test_recall_explainability 6 例。
+> **全量 2164 单测通过**, ruff/mypy/红线全绿。
+>
+> ⚠️ **最近更新: 2026-08-19 —— 阶段3-2 压缩闭环 + 幂等重试 全部完成 (全量 2152 通过)**。
+> **①入站幂等去重 (M4)**: 新增 `isac/gateway/inbound_dedup.py` InboundDeduplicator (LRU+TTL 双限, 同 qq_official Fix-96 同构), dispatch 入口统一接线一次覆盖全渠道 (此前仅 qq_official 有适配器级去重, OneBot WS 重连/webhook 重试会重复落事件+重复回复); 重复消息记 isac_messages_deduplicated_total 指标后丢弃。顺带抽 `_emit_incoming_signal` 降 dispatch 复杂度。
+> **②U1 会话压缩写侧闭环 (M2)**: 新增 `isac/session/compressor.py` SessionCompressor —— 保留活跃窗口, 旧前缀内容事件 LLM 归纳为摘要 (增量卷起), validate_compression 拒负压缩, 追加 turn.compressed replace 事件 (summary+source_seqs); 保留 GC (event_store.delete_events/count_events) 物理删被替代**内容**事件遏制无界增长, 但保留 tool.*/aborted/migrated (DenyGuard/torn-tail 安全边界); 摘要注入防护 (对齐 Fix-105)。生产接线默认关 (session.compression.enabled), assembly 经 dict 字面量注入 + manager 走类型化属性 (不新增 services 字符串键, U9 红线保持 35)。此前 EVENT_TURN_COMPRESSED 零写入点、validate_compression 零调用方、事件表无限增长。
+> **③出站投递保障 (M4)**: `_send_reply` 有界重试 (默认 3 次短退避, 成功即停防重复投递, 异常按失败重试) + OutboundDeadLetter 死信环 (有界 deque + ERROR 日志, 不再静默丢)。此前发送失败即丢无重试无死信。
+> 新增 26 例 (去重 7 + 压缩 13 + 出站 6); config catalog 重生成; **全量 2152 单测通过**, ruff/mypy/红线全绿。
+>
+> ⚠️ **最近更新: 2026-08-19 —— 阶段3-1 富媒体第一波: Telegram 入站媒体解析 + 429/Retry-After + CGNAT 封堵 (全量 2126 通过)**。
+> **入站媒体 (Telegram, 此前仅 OneBot 可用)**: `_extract_media` 解析 photo/voice/video/animation/audio/document 的 file_id (photo 取分辨率最高、animation 归 image、kind 对齐下载管线); `_resolve_file_url` 经 getFile 换下载 URL; `_attach_media_segments` 追加 media segment 供既有入站下载管线落盘 (单媒体失败隔离)。配套安全: incoming_media 日志 URL 脱敏 (/bot<token>/ 与 token 查询参数掩码), 避免 Telegram 文件 URL 内嵌 bot token 泄露到日志。
+> **429/Retry-After (M7)**: 新增 `isac/utils/retry.py` parse_retry_after (整数秒解析 + 封顶 60s); RateLimitError 携带 retry_after; openai_compat 429 读 Retry-After 头; ProviderManager._retry_backoff 尊重 retry_after (取与指数退避较大者), 避免配额未恢复就盲目重发再次 429。
+> **CGNAT SSRF 封堵 (M6)**: safe_install._is_ip_unsafe 补 RFC6598 CGNAT 段 (100.64.0.0/10), 对齐 ssrf.py 口径。
+> 新增 42 例 (Telegram 媒体 21 + M7/M6 21); **全量 2126 单测通过**, ruff/mypy 全绿, wiring.py 498 行未破红线。**Feishu 入站 image / 出站媒体 / Discord 附件**留第二波 (需 Feishu resources API 鉴权与出站 multipart)。
+>
+> ⚠️ **最近更新: 2026-08-19 —— 全景 Review 后加固轮: 阶段1 止血 (7 项) + 阶段2 (SubAgent/U4/Medium 批清/记忆 importance) 全部完成, 全量 2093 通过**。
+> 依据 2026-08-19 五路并行全量代码审查 (报告归档 `.tmpfiles/agent-review-2026-08-19/`), 按"先止血、再缺陷批清、后功能接线"推进, 全部提交已推 dev:
+> **阶段1 止血 (7 项 Critical/Major)**: ①CI 修复至全绿; ②群聊锁粒度 (锁键与会话键同粒度, 三处入口统一权威派生); ③append-only 后门封堵 (显式 seq 改纯 INSERT, 撞既有 seq 主键冲突报错); ④shared ACL 口径统一 + 租户 fail-open 止血; ⑤审批读端点补 tools:read scope + SSE 未登记事件 fail-closed; ⑥插件来源追踪 + per-Agent 启用矩阵接线; ⑦发货面 pricing.jsonc 入仓随包 + sample 端口统一 8765。
+> **阶段2-1** SubAgent 纳入 U5 权限管线 (H3: 工具调用留痕 + 单调拒绝继承)。**阶段2-2** U4 租户鉴权首段 (handoff 租约 fail-closed + SessionWriteGate 死来源清理)。
+> **阶段2-3 Medium 缺陷批清 (10 项, 3 批, 各配回归测试)**: M1 DenyGuard 惰性重建竞态 (收尾改合并保并发写入); M2 restricted fail-closed (未登记服务映射的受限工具拒绝); M13 workflow_id 路径穿越 (register 拒绝 ../ 与分隔符); M6 MCP stdio 空环境 (继承 os.environ 覆盖); M7 git 安装防护对齐 zip (入口特征+symlink 拒绝+体积上限); M8 loader entry 路径穿越 (resolve+is_relative_to 断言子树); M9 CommandRegistry 同名覆盖留痕; M10 list_subagents 跨 Agent 泄漏 (requester 身份强制只列自身子任务); M11 rlimits 静默失效+默认值不可用 (失败记日志 + cpu (1,1)→(60,60)); M5 drain_inflight 超时取消残留任务。剩余设计/功能型 Medium (tools M3/M4/MCP 重连/AstrBot 兼容/审计 actor 归因) 另立任务, 不半实现。
+> **阶段2-4 记忆 importance 接线 (P1-3)**: 新增 `isac/memory/salience.py` 规则显著度评分器 (纯函数、确定性、无 LLM/IO 依赖, 单一 score() 接口留 LLM 升级位), 产出真实分布 (琐碎 <0.2 / 普通居中 / 值得记 >0.5), 替换 manager 两处写入点 (_write_memory / observe_message) 硬编码 0.5/0.3, 使 consolidator "重要性+时间衰减剪枝" 由恒空转转为真正可用。28 例评分器单测 + 2 例剪枝闭环联动测试。
+> **全量 2093 单测通过**, ruff/mypy 全绿, wiring.py 498 行未破红线。
+>
+> ⚠️ **最近更新: 2026-08-18 —— N5/Z1-C ServiceContainer 迁移热路径面 (全量 2144 通过)**。
+> `AgentContext.services` / `ToolContext.services` **类型化为 ServiceContainer** (裸 dict 经 `__post_init__` 归一, 测试零改动); loop `self.services` 归一化; 全部内置工具 (bash/read/write/web_search/task/task_runner + social 全套 + media + subagent) 与 commands (agents/focus) / supervisor / activation 的字符串键读取迁宽容属性; manager progress/turn/命令上下文构造改容器。`runtime/services` 8 个类型导入移入 TYPE_CHECKING 断开运行时依赖, core/types 得以模块级引用容器 (无环)。
+> 红线棘轮**再收紧 130→35** (累计 205→35, -170); 容器测试补 per-turn 17 键 + Context 归一化用例 (共 46 例)。剩余 35 = 装配写侧灌键 + 控制面/兼容层少数回退读 + 2 处动态键 (有意保留)。**全量 2144 通过**, ruff/mypy (295 源文件)/红线全绿。Z1 三面 (全局/per-Agent/热路径) 迁移完毕。
+>
 > ⚠️ **最近更新: 2026-08-18 —— N5/Z1-B ServiceContainer 迁移次批: per-Agent 面 (全量 2141 通过)**。
 > 容器属性扩 14 个 per-Agent 键 (memory/mcp_clients/proactive_scheduler/conversation_*/plugin_* 等); `assemble_agent` 归一化裸 dict (`_as_container` 抽出避免 C901), per-Agent 袋改由 ServiceContainer 构造 (全局快照 ∪ per-Agent 键, dict 子类零破坏); `instance.services` 属性访问迁移 manager 19 处 + dispatch 关停链 + subagent runner 模型路由; provider_manager/memory_factory 装配不变量经 cast 收敛 (不加 C901 分支)。
 > 红线棘轮**再收紧 167→130** (累计 205→130, -75); 容器测试补 per-Agent 键宽容/合并面用例。测试适配: u7/runtime_assembly 的 fake instance 改构造容器。剩余 `context.services` (Loop/工具热路径) 与 control 路由面另立批 C。**全量 2141 通过**, ruff/mypy (295 源文件)/红线全绿。
@@ -222,7 +267,7 @@
 | F | 插件生态 | 100% | AstrBot / MaiBot / Native / 加载器 |
 | G | 控制面与自动化 | 100% | Admin API / MCP / Webhook / 安全默认值 |
 | H | 平台与工具扩展 | 100% | Telegram/Discord/WebChat + MCP Client + 实用工具 |
-| I | 生产化与交付 | 85% | 部署/文档/数据工具/监控完成;WebUI v2 完成;浏览器测试 CI 已随 K8 接入,待复核升 100% |
+| I | 生产化与交付 | 100% | 部署/文档/数据工具/监控完成;WebUI v2 完成 (FE1 标 deprecated, F2 迁移后移除);浏览器测试 CI 复核完成 (2026-08-19 首次真跑 2 passed, 2026-10-10 CI 复验 2 passed);Docker 冒烟完成 (2026-10-10 compose healthy + 宿主 /health 200 + CI docker job 绿) |
 | J | 模型能力、计量与管理面 | 100% | J1+J2+J3+J4 完成 (非桩实现+测试+运行验证+文档同步);2026-07-26 五维度代码评审发现的 J2/J3/J4 缺口 (媒体校验未接线、J4 执行循环未接线、Token Scope/SSE scope 过滤/CSRF 会话缺失等 20 项) 已逐项修复,详见下方"J2/J3/J4 补充修复"|
 | K | 稳定化与可用版本闭环 | 100% | K1-K8 全部完成 (K8-2 Playwright CI + release_checklist 已落地) |
 | L | 拟人化运行时落地 | 100% | **P1 已接线 (2026-07-27)**: debounce 合并/wait 三路唤醒/thinking 期打断+旧回复抑制/主动任务强制话轮/会话快照恢复 全部接入生产主链路 (conversation.enabled 开关, 默认关闭零行为变化); L1-L5 升级为 [x] |
@@ -231,7 +276,7 @@
 | O | 企业化与平台扩展 | 主体完成, 剩 mp/O5 (GA 后 V2/V3) | O1/O2/O3 经 R6 收敛 (routes_tenants+TenantManager / 隔离核验满足 / Workflow action_handler+agent: 决策落地); S7 飞书+QQ 官方真实收发; wecom 企业微信已实现; 剩: 微信 mp 公众号 (V3)、O5 视频 Provider 端点 (V2, 用户选型暂缓)、Slack (V4) |
 | P | 主链路接线与激活 | **全部完成 (2026-08-16 收敛)** | P0/P1/P2 完成 (2026-07-27); P3/P4/P5 于 2026-08-16 升 `[x]` —— P3 图谱召回+Reranker (S3) + 集成测试 test_p3 (R7), 剩余实体关系图抽取层转 Y1; P4 身份归一控制面 (S4) + 集成测试 test_p4 (R7); P5 由 R6 收敛 (routes_tenants + 隔离核验满足 + agent: 入口决策落地) + 集成测试 test_p5 (R7)。定义见 DEVELOPMENT_PLAN §四 P |
 | Q | MVP 收尾(新增) | **全部完成 (Q3-Q6 于 2026-08-16 收敛)** | Q0/Q1/Q2 完成 (2026-07-27/29); **Q3 由 R3 收敛** (共享注册表+AstrBot/MaiBot 桥接+MCPClient 接线); **Q4 由 R1 收敛** (出入站闭环+6 个 record_* 计量+价目表); **Q5/Q6 由 R2 收敛** (真实 revision+list-all+webhooks+MCP 5 工具+envelope/evidence_refs)。均于 2026-08-16 升 `[x]`。定义见 DEVELOPMENT_PLAN §四 Q |
-| T | **开箱可用 (最高优先级)** | T1/T2/T4 完成 + T3-backend 后端段完成 (2026-08-16); T3 前端段 F1/F2 待启动 | T1 开箱能对话 (门控私聊修复 + 未回复可观测 + 占位 key 检测)、T2 零配置启动、T4 错误可诊断 已完成并附真机冒烟证据;T3 按前后端分离重定义 (后端段 = FE/T3-backend);T5 真实 IM 验收 (需凭据)、T6 插件市场 ✅ 完成 (2026-08-16, 依赖 R3 已满足)、T7 分发运维**代码可做部分完成 (2026-08-16)**, 环境验证待环境 (Docker 冒烟/24h soak/真人复现, 见 RELEASE_AUDIT §三)。定义见 DEVELOPMENT_PLAN §四 T |
+| T | **开箱可用 (最高优先级)** | T1/T2/T4 完成 + T3-backend 后端段完成 (2026-08-16); T3 前端段 F1/F2 待启动 | T1 开箱能对话 (门控私聊修复 + 未回复可观测 + 占位 key 检测)、T2 零配置启动、T4 错误可诊断 已完成并附真机冒烟证据;T3 按前后端分离重定义 (后端段 = FE/T3-backend);T5 真实 IM 验收 (需凭据)、T6 插件市场 ✅ 完成 (2026-08-16, 依赖 R3 已满足)、T7 分发运维**代码可做部分完成 (2026-08-16)**, **Docker 冒烟 ✅ + browser CI 复核 ✅ (2026-10-10)**, 剩 24h soak/真人复现待环境 (见 RELEASE_AUDIT §三)。定义见 DEVELOPMENT_PLAN §四 T |
 | FE | **前后端分离 (2026-08-15 制定, 后端先行)** | FE0/FE1/T3-backend 完成 (2026-08-16); F1-F4 待启动 | FE0 API 契约冻结 → FE1 分离基建 (CORS/跨源认证/静态托管降级) → T3-backend 控制面开箱后端支撑;前端轨道 F1-F4 (独立项目) 在 API 基线冻结后启动。定义见 DEVELOPMENT_PLAN §四 FE |
 | R | 功能广度 (降级到 T 之后) | R3/R5/R2/R6/R1/R4 ✅ 完成 (2026-08-16); R7 集成测试部分完成 (2026-08-16, 环境准入项待环境) | 补齐需求十二条仍缺的实现 + Q3-Q6/P3-P5 剩余接线。**2026-07-31 整组降级到 T 之后**(主干不可用时补功能广度无意义)。**R3 插件与 MCP 生态激活 (Q3) 已完成 (2026-08-16)**: 共享注册表 + AstrBot/MaiBot adapt 桥接 + MCPClient 生产接线 + CLI 工具 services 注入 (详见 §四 R3, 真机冒烟 `MCP server 已接入 server=echo tools=1`)。**R5 持久化与密钥安全已完成 (2026-08-16)**: SessionManager SQLite 写穿+重启恢复 (照 UserMapper 同构) + SecretStore `secret:` 前缀接入 + CLI `isac secret` (真机冒烟重启恢复 session_id exit=0, 详见 §四 R5)。**R2 控制面与 SubAgent收尾已完成 (2026-08-16)**: `GET /agents/{id}/config` 真实 revision + SubAgent list-all + routes_webhooks (WebhookManager+EventBus 订阅+AlertManager 注入) + MCP Server 5 工具/生产启动点 + ContextEnvelopeBuilder 真传背景摘要 + evidence_refs 生成 (详见 §四 R2)。**R6 企业化激活已完成 (2026-08-16)**: routes_tenants (CRUD 租户+成员 + tenant:read/write scope) + TenantManager (SQLite 持久化照 UserMapper 同构) + ②loader 子进程隔离已满足零工作 + ③workflow agent 入口决策落地选 B (文档化不做, 消除悬空) (详见 §四 R6)。**R1 多模态出入站闭环已完成 (2026-08-16)**: ①_send_reply 扫 artifact 经 get_ref+MediaResolver 转 segment + ②入站下载落盘 data/uploads 闭环 + ③6 个 record_* 计量 + ④pricing.jsonc 价目表 + ⑤model_capabilities_allow 工具可见性 (详见 §四 R1)。**R4 记忆完整性补齐已完成 (2026-08-16)**: ①行话学习写入回路 consolidator `_extract_jargon_step` 群聊高频词 LLM 释义落 `upsert_jargon` + ②中期记忆真实 COMPRESS 方案 A (hook 入队+consolidator 后台摘要落 `episodes.summary`+MidTermMemoryInjector 改读 summary 注入 RecallCue) + ③语义关系图跳过留架构债 (写边层已就绪待补 LLM 抽取层, 留 Y1) (详见 §四 R4)。**R7 集成测试补齐代码可做部分已完成 (2026-08-16)**: 新增 test_p3/p4/p5 三套集成测试 19 例 (向量+图谱+治理过滤召回 / 两平台 bind→记忆聚合 / 跨租户不可见+插件隔离+workflow 声明式执行), 全绿; 环境准入项 (真机/Docker/24h soak/browser CI/十二条逐条取证) 待环境 (详见 §四 R7)。定义见 DEVELOPMENT_PLAN §四 R |
 | 可观测性 | trace 贯穿 + 分级日志 (横切) | 100% | trace_id/session_id/agent_id 贯穿全链路;level + per_module 分级;默认零输出零开销 |

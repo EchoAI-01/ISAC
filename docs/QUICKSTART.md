@@ -22,7 +22,10 @@ ISAC_API_TOKEN=your-token docker compose up -d
 - 健康检查：`curl http://127.0.0.1:8765/health`
 - 数据持久化在 `isac_data` 卷（Agent 配置 / 记忆 / 审计）
 
-> 首次启动控制面需设置管理密码（T3-backend 首登强制设密码状态机）。Docker 模式默认未配 LLM，WebUI 会引导配置。
+> Docker 模式由 compose 注入 `ISAC_API_TOKEN`（默认 `change-me-in-prod`），属静态凭证，
+> 因此**跳过首登设密码**，直接用该 token 登录控制面（生产务必改成强随机值）。
+> 源码模式且未配 `api_token` 时才进入首登态：admin 端点返回 428，
+> 需先 `POST /api/v1/setup` 设置管理密码。Docker 模式默认未配 LLM，WebUI 会引导配置。
 
 ---
 
@@ -90,14 +93,17 @@ uv sync --extra onebot               # 装 OneBot 依赖
 
 在 NapCat 配置反向 WebSocket 连到 `ws://127.0.0.1:8080`，即可收发消息。
 
-> 飞书 / QQ 官方 / 企业微信 / WebChat 等平台配置见 [SPECIFICATION.md](./SPECIFICATION.md) 配置规范。
+> 飞书 / QQ 官方 / 企业微信 / WebChat 等平台的启用方式与默认端口见
+> [usage.md](./usage.md) §3.3 平台适配器; 各适配器的具体配置键
+> (如 `app_id`/`app_secret`、`corp_id`/`secret`/`agent_id`) 见
+> `isac/channel/adapters/<platform>/adapter.py` 及 `data/config.sample.jsonc` 对应段落。
 
 ---
 
 ## 验证清单（跑通即成功）
 
-- [ ] 进程启动无报错（日志 `ISAC 已启动` 或 `/health` 返回 200）
-- [ ] `default` Agent 就绪（`GET /agents` 含 `default`）
+- [ ] 进程启动无报错（日志 `ISAC 启动完成` 或 `/health` 返回 200）
+- [ ] `default` Agent 就绪（`GET /agents` 含 `default`；源码模式未配 `api_token` 时先完成 setup 或配置 token，否则返回 428）
 - [ ] （路径 C）WebChat 或 IM 发一条消息，收到回复
 - [ ] 重启后 session_id 不变（R5 持久化生效）
 

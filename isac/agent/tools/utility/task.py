@@ -49,13 +49,13 @@ class TaskTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        # 递归深度检查: services["task_depth"] 由 runtime (subagent/runner.py) 写入
+        # 递归深度检查: `task_depth` 由 runtime (subagent/runner.py) 写入
         # **AgentContext.services**。Fix-68: 此前从 ToolContext.services (= loop.services,
         # 子 Agent 经 _build_services 收窄, 不含 task_depth) 读 → 恒 0 → 深度守卫
         # 形同虚设, 一旦启用委派即无限递归。改从 agent_context.services 读
         # (与本文件其他 agent_id/task_id 取值口径一致)。
-        depth = int(context.agent_context.services.get("task_depth", 0) or 0)
-        max_depth = int(context.agent_context.services.get("task_max_depth", 3) or 3)
+        depth = int(context.agent_context.services.task_depth or 0)
+        max_depth = int(context.agent_context.services.task_max_depth or 3)
         if depth >= max_depth:
             return ToolResult(
                 content=f"子任务递归深度已达上限 ({max_depth}), 拒绝继续委派。",
@@ -68,11 +68,11 @@ class TaskTool(Tool):
         budget = min(_MAX_BUDGET_TOKENS, max(500, int(context.args.get("budget_tokens", 2000) or 2000)))
 
         # J4-2: 优先走 SubAgentSupervisor; 无 supervisor 时回退到 task_runner (向后兼容)
-        supervisor: SubAgentSupervisor | None = context.services.get("subagent_supervisor")
+        supervisor: SubAgentSupervisor | None = context.services.subagent_supervisor
         if supervisor is not None:
             return await self._delegate_to_supervisor(context, task_text, budget, depth, max_depth)
         # 向后兼容: 旧 task_runner 路径
-        runner = context.services.get("task_runner")
+        runner = context.services.task_runner
         if runner is None:
             return ToolResult(
                 content="未配置 SubAgent 运行时, 也未配置 task_runner, 无法委派子 Agent。",
@@ -93,14 +93,14 @@ class TaskTool(Tool):
         self, context: ToolContext, objective: str, budget: int, depth: int, max_depth: int
     ) -> ToolResult:
         """委托 supervisor.submit + 等终态 + 返回结果摘要。"""
-        supervisor = context.services["subagent_supervisor"]
+        supervisor = context.services.subagent_supervisor
         agent_ctx = context.agent_context
         task_id = f"sub-{uuid.uuid4().hex[:12]}"
         task = SubAgentTask(
             task_id=task_id,
-            parent_agent_id=str(agent_ctx.services.get("agent_id", "") or ""),
+            parent_agent_id=str(agent_ctx.services.agent_id or ""),
             session_id=getattr(agent_ctx.session, "session_id", ""),
-            trace_id=str(agent_ctx.services.get("task_id", "") or task_id),
+            trace_id=str(agent_ctx.services.task_id or task_id),
             objective=objective,
             context={"task_depth": depth + 1},
             policy=SubAgentPolicy(max_tokens=budget, max_depth=max_depth),

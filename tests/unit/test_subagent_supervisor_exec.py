@@ -314,3 +314,47 @@ class _Memory:
 
     async def search(self, *args, **kwargs):
         return []
+
+
+def test_build_services_injects_u5_pipeline_keys() -> None:
+    """2026-08-19 (H3) 回归: 子 Agent services 必须含 deny_guard/session_event_store/
+    session_mgr —— 否则工具调用零留痕、无单调拒绝。此前收窄 services 仅含工具后端键。"""
+    from isac.runtime.subagent.runner import _build_services
+
+    sentinel_guard = object()
+    sentinel_store = object()
+    sentinel_mgr = object()
+    parent_services = {
+        "deny_guard": sentinel_guard,
+        "session_event_store": sentinel_store,
+        "session_mgr": sentinel_mgr,
+        "memory": _Memory(),
+    }
+    task = _task()
+    # task.policy.allowed_tools 默认含 query_memory → 需要 memory 键
+    services = _build_services(parent_services, task)
+    assert services["deny_guard"] is sentinel_guard
+    assert services["session_event_store"] is sentinel_store
+    assert services["session_mgr"] is sentinel_mgr
+
+
+def test_subagent_session_key_derives_non_empty() -> None:
+    """2026-08-19 (H3): 子 Agent 会话经 session_mgr 派生非空 session_key, 使
+    _log_tool_event 不再因空键静默跳过 (留痕前提)。"""
+    from isac.agent.tools.registry import ToolRegistry
+    from isac.core.types import AgentContext
+    from isac.gateway.models import Session
+    from isac.gateway.session import SessionManager
+
+    mgr = SessionManager()
+    session = Session(
+        session_id="subagent:t1", user_id="parent", agent_id="parent", platform="subagent",
+    )
+
+    class _Msg:
+        content = "x"
+
+    ctx = AgentContext(session=session, user_profile=None, current_message=_Msg())
+    key = ToolRegistry._session_key_for(ctx, {"session_mgr": mgr})
+    assert key != "", "子 Agent 会话键不得为空 (否则工具调用零留痕)"
+    assert "subagent" in key

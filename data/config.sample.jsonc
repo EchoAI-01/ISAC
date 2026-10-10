@@ -178,6 +178,20 @@
       "enabled": true,
       "window_turns": 10,
       "budget_tokens": null
+    },
+
+    // 阶段3-2 (M2): U1 会话压缩闭环 (默认关闭)。enabled=true 后, 回合完成时若某会话
+    // 事件数 ≥ trigger_events, 后台用 LLM 把活跃窗口之外的旧对话前缀归纳为摘要,
+    // 追加 turn.compressed replace 事件并保留 GC 被替代的内容事件 (遏制事件表无界
+    // 增长)。tool.*/打断补偿/迁移标记事件不参与压缩与 GC (DenyGuard/torn-tail 依赖)。
+    //   - trigger_events: 触发压缩的事件数阈值
+    //   - keep_recent_messages: 保留最近 N 条内容消息不压缩 (须 ≥ 滑窗, 默认 20)
+    //   - min_compress_messages: 前缀至少 N 条内容消息才值得压缩 (默认 6)
+    "compression": {
+      "enabled": false,
+      "trigger_events": 60,
+      "keep_recent_messages": 20,
+      "min_compress_messages": 6
     }
   },
 
@@ -261,9 +275,28 @@
   "control": {
     "enabled": true,
     "host": "127.0.0.1",
-    "port": 8091,
+    // Docker/容器部署: 容器内必须监听 0.0.0.0 才能被宿主经发布端口访问。
+    // 默认 false = 非 loopback 地址一律强制回退 127.0.0.1 (K7 安全基线);
+    // 显式置 true 才放行所配 host, 同时务必配置 api_token/tokens 并限制访问来源
+    // (compose 部署经 ISAC_CONTROL_ALLOW_EXTERNAL_HOST=true 注入)。
+    "allow_external_host": false,
+    // 2026-08-19: 与 docker-compose.yml / CI / QUICKSTART 全链路统一为 8765
+    // (此前样例误写 8091, 照抄会与部署链路端口矛盾)。
+    "port": 8765,
     "agents_dir": "data/agents",
     "api_token": "",
+    // Fix-12 多 Token Scope 模型 (CONTROL_PLANE_SPEC.md §6.1, 可选)。配置 tokens[]
+    // 后 api_token 扁平认证即被取代, 每条 {token, scopes, name?, tenant_id?}:
+    //   scopes   —— 授权范围清单 ("*" = 全权限), 如 ["agents:read", "config:write"];
+    //   name     —— 审计归因显示名 (缺省落不可逆 token 指纹, 绝不落裸 token);
+    //   tenant_id —— #25 租户绑定: 非空时该 token 在 /tenants 端点只能操作自己的
+    //                租户 (跨租户 403 TENANT_FORBIDDEN); 缺省 = 管理身份不限租户。
+    // 未配置 tokens[] 时行为与上方单一 api_token 完全一致。
+    // "tokens": [
+    //   {"token": "ops-xxx", "name": "ops", "scopes": ["*"]},
+    //   {"token": "t1-xxx", "name": "t1-bot", "tenant_id": "t1",
+    //    "scopes": ["agents:read", "tenant:read", "tenant:write"]}
+    // ],
     // T3-backend: 首登强制设密码 (对标 AstrBot password_change_required)。开箱控制面
     // 仅绑 127.0.0.1; setup_enabled=true 时 admin 端点首登态返回 428 SETUP_REQUIRED,
     // POST /api/v1/setup {password} 设密码后才可用 (密码经 PBKDF2 哈希, 不落明文)。

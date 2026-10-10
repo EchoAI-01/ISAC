@@ -1,6 +1,6 @@
 """send_emoji 工具: 发送表情 (ARCHITECTURE.md 3.5)。
 
-经 services["channel_send"] 调用 Channel 适配器发送 emoji 分段。
+经服务袋 `channel_send` 键调用 Channel 适配器发送 emoji 分段。
 若 channel_send 未注入 (无 Channel 场景), 返回友好错误而非 NotImplementedError,
 避免把内部桩状态暴露给 LLM。
 """
@@ -41,7 +41,7 @@ class SendEmojiTool(Tool):
         if not emoji:
             return ToolResult(content="send_emoji 缺少 emoji 内容。", is_error=True)
 
-        sender = context.services.get("channel_send")
+        sender = context.services.channel_send
         if sender is None:
             return ToolResult(content="当前未启用 Channel 发送能力，无法发送表情。", is_error=True)
 

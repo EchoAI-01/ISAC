@@ -82,6 +82,7 @@ from isac.runtime.conversation import (
 from isac.runtime.instance import AgentInstance
 from isac.runtime.progress import build_progress_reporter
 from isac.runtime.services import ServiceContainer
+from isac.session.compressor import SessionCompressor
 from isac.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -177,6 +178,32 @@ def _build_memory_consolidator(
     )
 
 
+def _build_session_compressor(
+    config: AgentConfig, global_config: dict, llm: Any, services: Any
+) -> SessionCompressor | None:
+    """按 session.compression 配置构造 U1 会话压缩器; 默认关闭 (enabled!=true → None)。
+
+    阶段3-2 (M2): 压缩写侧闭环 —— 事件数超阈时由 AgentManager 后台触发
+    compress_session (旧前缀 LLM 摘要 → turn.compressed replace 事件 + 保留 GC)。
+    依赖全局 session_event_store (U1 事件表) 与本 Agent 的 llm; 任一缺失 → None。
+    阈值/窗口参数可配, 缺省保守 (trigger_events=60, keep_recent=20, min_compress=6)。
+    trigger_events 随压缩器对象携带 (避免在 services 袋另存字符串键, U9 红线)。
+    """
+    compression_cfg = (global_config.get("session", {}) or {}).get("compression", {}) or {}
+    if not bool(compression_cfg.get("enabled", False)):
+        return None
+    event_store = getattr(services, "session_event_store", None)
+    if event_store is None or llm is None:
+        return None
+    return SessionCompressor(
+        event_store,
+        llm=llm,
+        keep_recent_messages=int(compression_cfg.get("keep_recent_messages", 20) or 20),
+        min_compress_messages=int(compression_cfg.get("min_compress_messages", 6) or 6),
+        trigger_events=max(0, int(compression_cfg.get("trigger_events", 60) or 60)),
+    )
+
+
 def _register_compress_listener(hooks: AgentHooks, consolidator: MemoryConsolidator) -> None:
     """R4-②: 把 COMPRESS hook 回调注册进本 Agent 私有 hooks。
 
@@ -224,9 +251,9 @@ async def _setup_conversation_runtime(
     agent_services["conversation_enabled"] = conversation_enabled
 
     def _interrupt_runtime_provider(session_id: str):  # noqa: ANN001, ANN202
-        if not agent_services["conversation_enabled"]:
+        if not agent_services.conversation_enabled:
             return None
-        return agent_services["conversation_registry"].get(config.agent_id, session_id)
+        return agent_services.conversation_registry.get(config.agent_id, session_id)
 
     prompt_builder.register(InterruptInjector(runtime_provider=_interrupt_runtime_provider))
     recovery_injector = RecoveryInjector()
@@ -241,7 +268,7 @@ async def _setup_conversation_runtime(
     # 消费者, 队列恒空, 主动任务功能不可达)。默认 idle_reengage_seconds=0 时不构造,
     # 主链路零行为变化; 配置 > 0 时会话静默超阈值即主动关心一次 (按新消息重新武装)。
     task_producer = _build_task_producer(
-        config, proactive_cfg, agent_services["conversation_registry"], memory=memory
+        config, proactive_cfg, agent_services.conversation_registry, memory=memory
     )
     agent_services["proactive_scheduler"] = ProactiveScheduler(
         min_interval_seconds=float(proactive_cfg.get("min_interval_seconds", 600) or 0),
@@ -285,8 +312,26 @@ def _register_media_tools(config: AgentConfig, tools: ToolRegistry) -> None:
         tools.register(UnderstandVideoTool())
 
 
+def _plugin_enabled_for_agent(config: AgentConfig, plugin_name: str) -> bool:
+    """按 AgentConfig.plugins_allow/plugins_deny 判定插件对该 Agent 是否启用。
+
+    2026-08-19 (H2 启用矩阵接线): 语义与 EnableMatrix.is_plugin_enabled 的 Agent 层
+    对齐, 但修正其"allow 为空 → 放行"的缺陷 —— 受限默认配置用 ``plugins_allow=[]``
+    表达"禁用所有外部插件", 空 allow 必须等于"全禁"而非"全放" (否则形同虚设)。
+    规则: deny 优先; allow=["*"] 放行未 deny 者; allow 显式白名单仅放列内者;
+    allow=[] 一律拒绝。builtin 来源不经此判定 (内置工具恒可用)。
+    """
+    if plugin_name in config.plugins_deny:
+        return False
+    allow = config.plugins_allow
+    if "*" in allow:
+        return True
+    return plugin_name in allow
+
+
 def _merge_shared_plugin_tools(
-    services: ServiceContainer, tools: ToolRegistry, prompt_builder: SystemPromptBuilder
+    services: ServiceContainer, tools: ToolRegistry, prompt_builder: SystemPromptBuilder,
+    config: AgentConfig,
 ) -> None:
     """R3: 合并进程级共享插件 tools/injectors 进 per-Agent registry。
 
@@ -295,6 +340,11 @@ def _merge_shared_plugin_tools(
     native 插件经 on_load 主动 register, AstrBot/MaiBot 兼容层经 _adapt_compat_plugins
     调 adapter.adapt 注册到共享表 (_fire_plugin_on_load 收集)。默认无插件时空操作。
     shared_commands 合并由调用方在 commands 构造后单独处理 (commands 此处尚未构造)。
+
+    2026-08-19 (H2): 合并前按 ``config.plugins_allow/plugins_deny`` 过滤 —— 此前把共享
+    表**全部**插件工具合并进**每个** Agent, 从不查启用矩阵, 导致声明 plugins_allow=[]
+    的受限 Agent 也拿到全部插件工具。现仅合并该 Agent 启用的插件 (source 即插件名)
+    的工具; builtin 来源恒合并。
     """
     shared_tools = services.plugin_tools
     if shared_tools is not None:
@@ -302,6 +352,8 @@ def _merge_shared_plugin_tools(
             # T6: 透传共享表来源, 让 per-Agent registry 也带 source 追踪,
             # 否则热重载 deregister_by_source 在运行中 Agent 不生效。
             _src = shared_tools._source.get(_name, "builtin")  # noqa: SLF001
+            if _src != "builtin" and not _plugin_enabled_for_agent(config, _src):
+                continue
             tools.register(_tool, source=_src)
     shared_prompt = services.plugin_prompt_builder
     if shared_prompt is not None:
@@ -310,7 +362,8 @@ def _merge_shared_plugin_tools(
 
 
 async def _wire_mcp_clients(
-    config: AgentConfig, services: ServiceContainer, tools: ToolRegistry
+    config: AgentConfig, services: ServiceContainer, tools: ToolRegistry,
+    enable_matrix: EnableMatrix | None = None,
 ) -> list[Any]:
     """R3: 按 AgentConfig.mcp_servers 构造并连接 MCPClient, MCP 工具注册进 tools。
 
@@ -320,6 +373,10 @@ async def _wire_mcp_clients(
     返回 MCPClient 实例列表 (供 per-Agent `mcp_clients` 键存储, stop/destroy 时
     disconnect)。默认 mcp_servers=[] 或无全局定义时返回空列表, 零行为变化。
     逐 server 错误隔离, 失败不阻塞 Agent 启动。
+
+    M4: 接线层经 EnableMatrix.is_mcp_enabled 门控 (Agent 白名单 ∩ Channel 矩阵) ——
+    此前该函数零生产调用 (死代码), policy 宣称的 "mcp_servers ∩ Channel 矩阵" 未落实。
+    接线阶段无 platform 上下文, Channel 门控在调用层 (effective_policy) 按平台生效。
     """
     mcp_clients: list[Any] = []
     mcp_servers_def = services.mcp_servers or {}
@@ -328,6 +385,15 @@ async def _wire_mcp_clients(
     from isac.agent.tools.mcp.client import MCPClient
 
     for _srv_name in config.mcp_servers:
+        # M4: 启用矩阵门控 (白名单 + Channel); 无矩阵时回退直连 (向后兼容)。
+        if enable_matrix is not None and not enable_matrix.is_mcp_enabled(
+            _srv_name, config.mcp_servers, agent_id=config.agent_id
+        ):
+            logger.info(
+                "MCP server 被启用矩阵禁用, 跳过接线",
+                server=_srv_name, agent_id=config.agent_id,
+            )
+            continue
         _srv_cfg = mcp_servers_def.get(_srv_name)
         if not _srv_cfg:
             logger.warning(
@@ -363,18 +429,24 @@ async def _wire_mcp_clients(
 
 
 def _merge_shared_plugin_commands(
-    services: ServiceContainer, commands: CommandRegistry
+    services: ServiceContainer, commands: CommandRegistry, config: AgentConfig
 ) -> None:
     """R3: 合并进程级共享插件 commands 进 per-Agent CommandRegistry。
 
     同 plugin_agent_hooks 合并模式; 由 assemble_agent 在 commands 构造后调用
     (commands 在 tools 之后定义, 故不能并入 _merge_shared_plugin_tools)。
     默认无插件时空操作。
+
+    2026-08-19 (H2): 与 _merge_shared_plugin_tools 同款, 按 config.plugins_allow/deny
+    过滤, 仅合并该 Agent 启用的插件 (source 即插件名) 的命令; builtin 恒合并。
     """
     shared_commands = services.plugin_commands
     if shared_commands is not None:
-        for _cmd in shared_commands._commands.values():  # noqa: SLF001
-            commands.register(_cmd)
+        for _name, _cmd in shared_commands._commands.items():  # noqa: SLF001
+            _src = shared_commands._source.get(_name, "builtin")  # noqa: SLF001
+            if _src != "builtin" and not _plugin_enabled_for_agent(config, _src):
+                continue
+            commands.register(_cmd, source=_src)
 
 
 def _register_identity_prompts(
@@ -595,8 +667,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # 合并模式; shared_commands 合并见下方 commands 定义后) + MCPClient 按
     # AgentConfig.mcp_servers 构造+connect+list_tools 注册 MCP 工具进 tools。client
     # 存 per-Agent 服务的 mcp_clients 键供 stop/destroy disconnect。默认空, 零行为变化。
-    _merge_shared_plugin_tools(services, tools, prompt_builder)
-    mcp_clients = await _wire_mcp_clients(config, services, tools)
+    _merge_shared_plugin_tools(services, tools, prompt_builder, config)
+    mcp_clients = await _wire_mcp_clients(config, services, tools, enable_matrix)
 
     prompt_builder.register(ToolsAvailableInjector(tools))
 
@@ -614,7 +686,8 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     commands.register(UnmuteCommand())
     # R3: 合并进程级共享插件命令 (plugin_commands 共享键) 进 per-Agent
     # CommandRegistry, 同 plugin_agent_hooks 合并模式。默认空。
-    _merge_shared_plugin_commands(services, commands)
+    # 2026-08-19 (H2): 传入 config 按 plugins_allow/deny 过滤。
+    _merge_shared_plugin_commands(services, commands, config)
 
     # build_services 恒注册 provider_manager/memory_factory (装配层不变量, cast 收敛)。
     provider_manager = cast(Any, services.provider_manager)
@@ -624,7 +697,12 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     prompt_builder.register(JargonInjector(memory))
     prompt_builder.register(HeuristicMemoryInjector(memory))
     prompt_builder.register(MidTermMemoryInjector(memory))
-    agent_services = ServiceContainer({**services, "memory": memory})
+    # 阶段3-2 (M2): U1 会话压缩器 (默认关闭 → None)。与 memory 同经 dict 字面量注入
+    # per-Agent 容器, manager 侧走 ServiceContainer 类型化属性 (不新增字符串键, U9 红线)。
+    session_compressor = _build_session_compressor(config, global_config, llm, services)
+    agent_services = ServiceContainer(
+        {**services, "memory": memory, "session_compressor": session_compressor}
+    )
     # R3: MCPClient 引用 (上方构造) 存入 services, 供 AgentManager.stop/destroy
     # 与 _shutdown_message_pipeline 调 disconnect (避免子进程/HTTP 连接泄漏)。
     agent_services["mcp_clients"] = mcp_clients

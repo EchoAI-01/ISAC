@@ -52,7 +52,7 @@ cat > data/config.jsonc <<'EOF'
 
     "llm": {
         "provider": "openai_compat",
-        "api_key": "your-api-key",
+        "api_key": "sk-your-key",  // 占位值会走 StubProvider; 换成真实 key 才会真正调用
         "model": "deepseek-chat",
         "base_url": "https://api.deepseek.com/v1"
     },
@@ -60,8 +60,7 @@ cat > data/config.jsonc <<'EOF'
     "memory": {
         "enabled": true,
         "embedding": {
-            "provider": "fastembed",
-            "model": "BGE-small-zh",
+            "model": "BGE-small-zh",  // 稠密召回需同时配 api_key; 未配时纯稀疏检索
             "dimension": 512
         }
     },
@@ -81,10 +80,10 @@ cat > data/config.jsonc <<'EOF'
     },
 
     "control": {
-        "enabled": false,
+        "enabled": true,  // 内置默认即开启控制面; 后续章节的 Admin API / WebUI 均依赖它
         "host": "127.0.0.1",
         "port": 8765,
-        "api_token": "change-me-in-prod"
+        "api_token": "change-me-in-prod"  // 生产务必换成强随机 token
     }
 }
 EOF
@@ -138,17 +137,26 @@ docker compose up -d
 ```jsonc
 "memory": {
     "enabled": true,
+    // embedding 只认 api_key + model (+ 可选 base_url / dimension);
+    // 两者齐全才会注入 OpenAI 兼容 Embedding Provider 启用稠密召回
     "embedding": {
-        "provider": "fastembed",  // 或 "openai_compat"
+        "api_key": "sk-xxx",
         "model": "BGE-small-zh",
+        "base_url": "",   // 可选: OpenAI 兼容 /embeddings 服务地址
         "dimension": 512
     },
+    // reranker 同样只认 api_key + model (+ 可选 base_url / protocol);
+    // protocol 默认 cohere (支持 "cohere" / "jina")
     "reranker": {
-        "provider": "bge-reranker"  // 或 "cohere" / "jina"
+        "api_key": "sk-xxx",
+        "model": "rerank-xxx",
+        "protocol": "cohere"
     }
 }
 ```
 
+未配置 `embedding.api_key` (或 `model`) 时 EmbeddingManager 保持降级 (`is_degraded=true`),
+检索走纯稀疏 (BM25) 路径; `reranker` 未配置 `api_key`+`model` 时跳过重排步骤。
 `memory.enabled=false` 时使用 `NoOpMemoryPipeline` (检索返回空, 存储空操作), 主链路不受影响。
 
 ---
@@ -184,12 +192,19 @@ nohup uv run python -m isac > isac.log 2>&1 &
 
 ### 3.3 平台适配器
 
-| 平台 | 启用方式 | 配置示例 |
-|------|---------|---------|
-| QQ (OneBot) | `channels.onebot.enabled=true` + NapCat 反向 WebSocket | 见 [1.3](#13-首次配置) |
-| Telegram | `channels.telegram.enabled=true` + `bot_token` | [Telegram 配置](../isac/channel/adapters/telegram/adapter.py) |
-| Discord | `channels.discord.enabled=true` + `bot_token` | [Discord 配置](../isac/channel/adapters/discord/adapter.py) |
-| WebChat | `channels.webchat.enabled=true` + bind host/port | [WebChat 配置](../isac/channel/adapters/webchat/adapter.py) |
+| 平台 | 启用方式 | 默认端口 / 入口 |
+|------|---------|----------------|
+| QQ (OneBot) | `channels.onebot.enabled=true` + NapCat 反向 WebSocket | 8080 (反向 WS) |
+| Telegram | `channels.telegram.enabled=true` + `bot_token` | — (Long Polling) |
+| Discord | `channels.discord.enabled=true` + `bot_token` | — (Gateway) |
+| 飞书 (Feishu) | `channels.feishu.enabled=true` + `app_id`/`app_secret` | Webhook 9099 |
+| 企业微信 (WeCom) | `channels.wechat.enabled=true` + `corp_id`/`secret`/`agent_id` | Webhook 9097 |
+| QQ 官方 (QQ Bot) | `channels.qq_official.enabled=true` + `app_id`/`secret` | Webhook 8443 (官方限 80/443/8080/8443) |
+| WebChat | 内置默认开启 (`channels.webchat.enabled=true`) | 仅 `127.0.0.1:8090` (loopback) |
+
+> WebChat 默认开启且只监听回环地址, 开箱即可本地聊天; 需要跨机访问时须显式改
+> `channels.webchat.bind_host` 并自行评估暴露风险。飞书 / 企业微信 / QQ 官方的
+> `webhook_host` / `webhook_port` / `webhook_path` 均可在对应 `channels.*` 段覆盖。
 
 ---
 
@@ -305,9 +320,9 @@ curl "http://127.0.0.1:8765/api/v1/audit?action=create_agent&limit=20" \
 
 ### 7.4 日志位置
 
-- 应用日志: stdout (structlog 格式)
+- 应用日志: stderr (structlog 格式)
 - 审计日志: `data/audit.ndjson` (一行一条 JSON, 可用 `jq` 分析)
-- 控制面访问日志: uvicorn 默认 stdout (warning 级别)
+- 控制面访问日志: uvicorn 默认 stderr (warning 级别)
 
 ---
 

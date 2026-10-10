@@ -34,8 +34,8 @@ class AskAgentTool(Tool):
         }
 
     async def execute(self, context: ToolContext) -> ToolResult:
-        """经 services["bus"] 发送 request 消息并返回响应。"""
-        bus = context.services.get("bus")
+        """经服务袋 `bus` 键发送 request 消息并返回响应。"""
+        bus = context.services.bus
         if bus is None:
             return ToolResult(content="当前 Agent 未启用互联总线，无法调用其他 Agent。", is_error=True)
 

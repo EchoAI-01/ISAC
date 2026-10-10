@@ -1,6 +1,6 @@
 """bash 工具: 受限 shell 执行 (默认禁用, DEVELOP.md 7.3)。
 
-仅当 services["bash_allowlist"] 注入时可用; 命令必须能在白名单内匹配通过。
+仅当服务袋注入 `bash_allowlist` 时可用; 命令必须能在白名单内匹配通过。
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ class BashTool(Tool):
 
     async def execute(self, context: ToolContext) -> ToolResult:
         """执行受白名单限制的 shell 命令 (默认禁用, 需在配置中显式启用)。"""
-        allowlist = context.services.get("bash_allowlist")
+        allowlist = context.services.bash_allowlist
         if not allowlist:
             return ToolResult(content="未配置 bash_allowlist, bash 工具不可用。", is_error=True)
 

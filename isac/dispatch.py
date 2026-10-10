@@ -17,8 +17,9 @@ from isac.channel.registry import ChannelRegistry
 from isac.core.events import EventType
 from isac.gateway.event_bus import EventBus
 from isac.gateway.identity.resolver import IdentityResolver
+from isac.gateway.inbound_dedup import InboundDeduplicator
 from isac.gateway.incoming_media import download_inbound_media
-from isac.gateway.lock import SessionLockManager
+from isac.gateway.lock import SessionLockManager, conversation_lock_key
 from isac.gateway.models import UserProfile
 from isac.gateway.session import SessionManager
 from isac.gateway.user_mapper import UserMapper
@@ -273,6 +274,46 @@ async def _apply_mesh_routing(
     return winner or decision.agent_id
 
 
+async def _cancel_lingering_tasks(tasks: set[asyncio.Task[None]]) -> None:
+    """2026-08-19 (M5): 取消 drain 超时后的残留任务并 gather 收尾。
+
+    抽出独立函数既复用取消语义, 也让 make_message_dispatcher 的嵌套分支不堆叠
+    (C901)。_process_locked 的 finally 会在取消传播时释放会话锁。
+    """
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _emit_incoming_signal(
+    message: ISACMessage,
+    router: MessageRouter,
+    session_mgr: SessionManager,
+    agent_manager: AgentManager,
+) -> None:
+    """P1: 锁外拟人化信号 (抽出降 make_message_dispatcher 复杂度, 行为不变)。
+
+    会话锁被正在 thinking 的上一条消息持有时, 新消息的缓存/唤醒/打断信号必须先于
+    锁到达 ConversationRuntime (conversation 关闭时 notify_incoming 内部短路, 零行为
+    变化)。路由与会话解析幂等, process_message 会再次执行 (代价可忽略)。
+    get_or_create 会把 message.session_id 改写为内部 sess_*, 信号阶段结束后还原为
+    平台会话键, 保证 process_message 自己的 platform_session_id 捕获不受影响。
+    失败不影响主处理 (仅记日志)。
+    """
+    platform_session_id = message.session_id
+    try:
+        decision = await router.route(message)
+        if decision is not None:
+            session = await session_mgr.get_or_create(message, agent_id=decision.agent_id)
+            if platform_session_id and not session.platform_session_id:
+                session.platform_session_id = platform_session_id
+            await agent_manager.notify_incoming(decision.agent_id, session.session_id, message)
+    except Exception:  # noqa: BLE001
+        logger.warning("锁外拟人化信号处理失败, 不影响主处理", exc_info=True)
+    finally:
+        message.session_id = platform_session_id
+
+
 def make_message_dispatcher(
     *,
     event_bus: EventBus,
@@ -301,26 +342,18 @@ def make_message_dispatcher(
     """
     inflight: set[asyncio.Task[None]] = set()
 
+    # 阶段3-2 (M4): 网关级入站幂等去重 —— OneBot WS 重连/webhook 重试的重复投递
+    # 此前会重复落事件 + 重复回复 (仅 qq_official 有适配器级去重)。入口统一拦截,
+    # 一次覆盖全部渠道; 重复消息记 dedicated 指标后直接丢弃, 不进入处理链。
+    inbound_dedup = InboundDeduplicator()
+
     async def _process_locked(message: ISACMessage) -> None:
-        # P1: 锁外拟人化信号 —— 会话锁被正在 thinking 的上一条消息持有时, 新消息
-        # 的缓存/唤醒/打断信号必须先于锁到达 ConversationRuntime (conversation
-        # 关闭时 notify_incoming 内部短路, 零行为变化)。路由与会话解析幂等,
-        # process_message 会再次执行 (代价可忽略)。get_or_create 会把
-        # message.session_id 改写为内部 sess_*, 信号阶段结束后还原为平台会话键,
-        # 保证 process_message 自己的 platform_session_id 捕获不受影响。
-        platform_session_id = message.session_id
-        try:
-            decision = await router.route(message)
-            if decision is not None:
-                session = await session_mgr.get_or_create(message, agent_id=decision.agent_id)
-                if platform_session_id and not session.platform_session_id:
-                    session.platform_session_id = platform_session_id
-                await agent_manager.notify_incoming(decision.agent_id, session.session_id, message)
-        except Exception:  # noqa: BLE001
-            logger.warning("锁外拟人化信号处理失败, 不影响主处理", exc_info=True)
-        finally:
-            message.session_id = platform_session_id
-        lock_key = f"{message.platform}:{message.user_id or 'unknown'}:{message.group_id or 'private'}"
+        await _emit_incoming_signal(message, router, session_mgr, agent_manager)
+        # 2026-08-19 Critical 修复: 锁键必须与会话键同粒度 (群聊按 group 聚合, 忽略
+        # user_id)。此前锁键含 user_id, 同群不同成员拿不同锁却并发跑同一会话: 事件流
+        # 交织、THINKING 互踩、互相打断。统一走 conversation_lock_key 权威派生
+        # (与 _run_forced_turn / 跨 Agent 投递同一键空间)。
+        lock_key = conversation_lock_key(message.platform, message.user_id, message.group_id)
         lock = await session_lock.acquire(lock_key)
         # CR3-Fix: acquire() 会累加 _waiters 引用计数, 必须配对 release() 才能触发
         # SessionLockManager 的 K7 锁回收 (否则 _locks/_waiters 无界增长)。
@@ -346,6 +379,14 @@ def make_message_dispatcher(
             session_lock.release(lock_key)
 
     async def handle_message(message: ISACMessage) -> None:
+        # 阶段3-2 (M4): 入站幂等去重 —— 重复投递 (WS 重连/webhook 重试) 直接丢弃,
+        # 不进入处理链 (避免重复落事件 + 重复回复)。空 msg_id 不去重 (放行)。
+        if inbound_dedup.is_duplicate(message.platform, message.msg_id):
+            metrics.counter("isac_messages_deduplicated_total").inc()
+            logger.debug(
+                "入站消息重复, 已跳过", platform=message.platform, msg_id=message.msg_id
+            )
+            return
         task = asyncio.create_task(
             _process_locked(message),
             name=f"msg-{message.platform}-{message.msg_id or 'anon'}",
@@ -360,7 +401,11 @@ def make_message_dispatcher(
         logger.info("等待在途消息处理完成", count=len(pending))
         _done, still_pending = await asyncio.wait(pending, timeout=drain_timeout_seconds)
         if still_pending:
-            logger.warning("在途消息处理未在超时内完成, 继续关闭", count=len(still_pending))
+            # 2026-08-19 (M5): 超时后必须取消残留任务 —— 此前只记 warning 不取消,
+            # 随后 LIFO 链关闭 providers/store, 残留任务在已关闭资源上继续运行并各自
+            # 抛错, 优雅关闭的"不丢消息"承诺在超时分支不成立。
+            logger.warning("在途消息处理未在超时内完成, 取消残留任务", count=len(still_pending))
+            await _cancel_lingering_tasks(still_pending)
 
     return handle_message, drain_inflight
 

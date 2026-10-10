@@ -9,6 +9,31 @@
 
 ## [Unreleased]
 
+### 加固轮 + 最小实例修复 + 全库文档收敛 (2026-08-19 ~ 10-11)
+
+**2026-08-19 Review 后加固轮** (全量 2321 通过): 阶段 1 止血 (群聊锁粒度 Critical /
+append-only 后门封堵 / shared ACL / 审批 scope / 插件来源追踪 + per-Agent 启用矩阵 /
+发货面 pricing.jsonc 入仓); 阶段 2 (SubAgent 纳入 U5 权限管线 / U4 handoff 租约
+fail-closed / Medium 批清 10 项 / 记忆 importance 规则显著度接线); 阶段 3 (入站幂等
+去重 / 出站有界重试 + 死信环 / U1 会话压缩写侧 + 保留 GC / Telegram 入站媒体 /
+429 Retry-After / CGNAT 封堵 / 成本闭环 provider 键统一 / 召回可解释性 recall_sources);
+#25-#29 (U4 token↔tenant 绑定 + 删除级联 / 审计 actor 归因 / 策略合并语义 / MCP 重连
++ Channel 门控 / AstrBot import 重定向接线); Z1-C ServiceContainer 热路径迁移
+(红线棘轮 130→35)。
+
+**2026-10-10 最小实例运行修复** (全量 2346 通过): CI `build` job (uv venv 无 pip) 与
+`docker` job (.dockerignore 行内注释致 README 被排除, docker build 从未通过) 修复,
+**CI 5/5 全绿 (自 07-24 以来首次)**; 新增 `control.allow_external_host` 显式放行
+(默认仍强制 loopback, 严格布尔 fail-closed; compose/CI 注入), 源码 + Docker compose
+双向真机验证; `/health` 聚合 await 异步 AgentManager.list 修复 (此前 agents 统计恒 0)。
+
+**2026-10-11 全库文档收敛**: 对照代码审计修复 88 项文档漂移 —— 状态文档
+(README/AGENTS/CHANGELOG/PROGRESS/DEVELOPMENT_PLAN/RELEASE_AUDIT/release_checklist),
+使用文档 8 篇 (usage/deployment/QUICKSTART/api/control_automation/MAINTENANCE/LOGGING/
+plugin_development), 设计规范文档 9 篇 (ARCHITECTURE/SPECIFICATION/CONTROL_PLANE_SPEC/
+HUMANLIKE_RUNTIME/MEMORY_DESIGN/ROUTING_AND_AGENT_MESH/PLUGIN_COMPATIBILITY/MODULE_GUIDE/
+ROADMAP); Docker 冒烟 (N2-1) 与 browser CI 复核 (N2-2) 依据真机/CI 证据标记完成。
+
 ### U 架构演进轮 (2026-08-17 ~ 08-18)
 
 **U9 A+ 复评门禁**: 红线指标 CI 常驻 (scripts/check_redlines.py: main.py ≤120 行 /

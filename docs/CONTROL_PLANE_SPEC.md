@@ -47,7 +47,7 @@
 | ToolPolicyResource | `/agents/{id}/tools` | 工具权限策略 |
 | MCPPolicyResource | `/agents/{id}/mcp` | MCP Server 启用策略 |
 | WebhookSubscription | `/webhooks/{id}` | Webhook 订阅 |
-| AuditEvent | `/audit/events` | 审计事件 |
+| AuditEvent | `/audit` | 审计事件 (实际端点 `GET /api/v1/audit`, 非 `/audit/events`) |
 | ModelUsageResource | `/usage/models` | 模型请求、Token/计量单位与成本聚合 |
 | ProviderResource | `/providers/{id}` | Provider 配置摘要、模型能力与健康状态 |
 | ModelResource | `/models/{provider}/{model}` | 模态、operation、限制、成本/延迟层级与健康状态 |
@@ -105,7 +105,7 @@
 |------|------|------|
 | GET | `/routing/rules` | 获取路由规则 |
 | PUT | `/routing/rules` | 覆盖路由规则 |
-| PATCH | `/routing/defaults/{platform}` | 设置平台默认 Agent |
+| PATCH | `/routing/defaults/{platform}` | 未单列端点; 以 `PUT /routing/rules` 的 `default_agents` 整体更新代替 |
 
 ### 3.3 Channel Binding
 
@@ -115,7 +115,9 @@
 | POST | `/channels/{platform}/agents/{agent_id}` | 绑定 Agent |
 | DELETE | `/channels/{platform}/agents/{agent_id}` | 解绑 Agent |
 
-绑定请求：
+> **状态**: 本节 REST 端点**未实现** (路由与 OpenAPI 基线均无 `/channels*`; Channel 摘要当前仅见 `/health` 聚合)。绑定能力**仅 MCP 工具提供**: `channel_bind_agent` / `channel_unbind_agent` (platform + agent_id + group_id/user_id, `agent:write` 收窄); REST 端点待前端轨道补齐。
+
+绑定请求 (目标态):
 
 ```json
 {
@@ -125,7 +127,7 @@
 }
 ```
 
-`mode` 可选：`primary` / `observer` / `candidate`。
+`mode` 可选：`primary` / `observer` / `candidate` (目标态; 实现侧 mesh 角色现由 `AgentConfig.mesh_role` 表达)。
 
 ### 3.4 Inter-Agent Link
 
@@ -257,7 +259,7 @@ ISAC MCP Server 与 Admin API 共用业务方法和权限模型。
 | `plugin_set_enabled` | agent_id + plugin_id + enabled | PluginPolicy | 插件启停 |
 | `message_send` | agent_id + target + content | MessageResult | 自动化发送入口 |
 
-MCP 工具返回必须包含：
+MCP 工具返回 (目标态, **未实现**): 规划中的统一包络
 
 ```json
 {
@@ -266,6 +268,8 @@ MCP 工具返回必须包含：
     "data": {}
 }
 ```
+
+当前实现仅标准 MCP `content` 文本包络 (`{"content": [{"type": "text", "text": "<JSON>"}]}`, `_text_result`), 不返回 `success`/`trace_id` 字段; 统一包络待 GA 后补齐。
 
 ---
 
@@ -308,7 +312,11 @@ MCP 工具返回必须包含：
 
 ### 5.3 签名
 
-Webhook 必须支持 HMAC 签名。
+> **状态 (2026-08-19)**: **未实现** —— 当前 Webhook 仅 JSON POST 推送, 不附签名头, 接收方无法校验来源; HMAC 签名与校验待办 (GA 后)。
+
+目标契约 (待实现):
+
+Webhook 支持 HMAC 签名。
 
 Header：
 
@@ -329,31 +337,45 @@ timestamp + "." + raw_body
 
 ### 6.1 Token Scope
 
-```json
+Token 模型 (`control.tokens: [{token, scopes, name?, tenant_id?}, ...]`; 未配置
+`tokens[]` 时回退单一 `api_token` 扁平认证, 不做 scope 校验, 向后兼容):
+
+```jsonc
 {
-    "token_id": "default_admin",
+    "token": "tok_xxxxxxxx",      // 必填: 参与恒定时间比对的 Token 值
+    "name": "default_admin",      // 可选: 审计归因显示名 (缺省落不可逆指纹 token:<tok-xxx>)
+    "tenant_id": "",              // 可选: 租户绑定 (#25/U4); 绑定后只能操作自己的租户
     "scopes": [
-        "agent:read",
-        "agent:write",
+        // Agent / 路由 / Link
+        "agent:read", "agent:write",
         "routing:write",
-        "plugin:write",
         "link:write",
-        "message:send",
-        "usage:read",
-        "usage:detail",
-        "provider:read",
-        "provider:write",
-        "artifact:read",
-        "artifact:delete",
-        "webhook:read",
-        "webhook:write",
-        "tenant:read",
-        "tenant:write",
-        "config:read",
-        "config:write"
+        // 插件 / 工具
+        "plugin:read", "plugin:write",
+        "tools:read", "tools:write",
+        // 身份 / 记忆
+        "identity:read", "identity:write",
+        "memory:read", "memory:write",
+        // SubAgent
+        "subagent:run", "subagent:read", "subagent:cancel", "subagent:log:read",
+        // 工作流
+        "workflow:read", "workflow:write",
+        // 用量 / Provider / 制品
+        "usage:read", "usage:detail",
+        "provider:read", "provider:write",
+        "artifact:read", "artifact:delete",
+        // Webhook / 租户 / 全局配置
+        "webhook:read", "webhook:write",
+        "tenant:read", "tenant:write",
+        "config:read", "config:write",
+        // 通配 (全部权限)
+        "*"
     ]
 }
 ```
+
+> 状态: 以上为按域的实际 scope 清单 (`scope_dependency` 逐端点接线), 另持 `"*"` 通配可见全部资源与未分类事件。
+> `message:send` 为规划 scope, **未实现** —— 当前 `message_send` MCP 工具按 `agent:write` 收窄 (§四 TOOL_SCOPE_MAP)。
 
 ### 6.2 审计事件
 
@@ -477,6 +499,8 @@ GET resource + schema + revision
 
 客户端断线后使用 `Last-Event-ID` 恢复；高频指标采用 5–15 秒聚合快照，日志按需订阅并设置速率和行数上限。实时通道只发送当前 Token scope 可读的资源。
 
+> **状态 (2026-08-19)**: 实现侧 SSE (`/events/stream`) 桥接 EventBus **全部事件**, 事件名取 payload 的 `event_type` 字段; 未登记者落 `unknown` 兜底名, **仅 `"*"` 通配 scope 可见** (fail-closed)。生产事件 (POST_MESSAGE 的 ISACMessage / ON_START 的 config dict) 均不带 `event_type`, 实际即以 `unknown` 发出。上列目录事件多数**尚无生产者** —— 当前仅 Webhook 侧的 `message.responded` / `message.sent` 已接线 (§5.1), 其余为目录预留; `agent.status_changed` / `provider.health_changed` / `model.usage_recorded` / `audit.created` 已登记 scope 映射 (`agent:read` / `provider:read` / `usage:read` / `usage:detail`), `channel.status_changed` 为公开事件。目录事件名与 EventBus 原始事件名的归一化待 GA 后补齐。
+
 ### 8.4 SubAgent 任务与日志
 
 | 方法 | 路径 | 说明 |
@@ -486,7 +510,7 @@ GET resource + schema + revision
 | GET | `/subagent-runs/{task_id}` | 查询状态、预算、结果和错误摘要 |
 | GET | `/subagent-runs/{task_id}/events` | 分页读取脱敏工作日志与证据引用 |
 | POST | `/subagent-runs/{task_id}/cancel` | 请求取消运行中任务 |
-| GET | `/subagent-runs/{task_id}/artifacts` | 查询当前调用方有权访问的制品 |
+| GET | `/subagent-runs/{task_id}/artifacts` | 查询当前调用方有权访问的制品 (**未实现**; 待 GA, 制品暂经 ArtifactResource §3.5 访问) |
 
 权限 scope：`subagent:run`、`subagent:read`、`subagent:cancel`、`subagent:log:read`。父 Agent 只能访问自己创建的任务，管理员按 scope 访问；用户级查询还要满足会话/身份 ACL。
 

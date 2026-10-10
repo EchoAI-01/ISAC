@@ -1,7 +1,7 @@
 # ISAC 插件兼容设计
 
 > 面向 AstrBot、MaiBot 与 ISAC Native SDK 的插件兼容范围、加载流程、权限模型与验收规范。
-> 本文档补充 ARCHITECTURE.md 3.8、SPECIFICATION.md 2.6 / 2.7 与 plugins/README.md。
+> 本文档补充 ARCHITECTURE.md 3.8、SPECIFICATION.md 2.7 / 2.8 与 plugins/README.md。
 
 ---
 
@@ -35,9 +35,13 @@ ISAC 插件系统同时满足三类需求：
 
 | 格式 | 识别条件 | 入口 |
 |------|----------|------|
-| ISAC Native | 存在 `manifest.jsonc` | manifest.entry |
-| AstrBot | 存在 `metadata.yaml` / `metadata.yml` 或 Star 子类 | `main.py` / 同名 `.py` |
-| MaiBot | 存在 `config.toml` + Plugin 基类 / MaiBot manifest | `plugin.py` |
+| ISAC Native | 存在 `manifest.jsonc` | manifest.entry (默认 `plugin.py`, 找 `ISACPlugin` 子类) |
+| AstrBot | 存在 `metadata.yaml` | `plugin.py` (找 `Star` 子类) |
+| MaiBot | 存在 `mai_plugin.yaml` | `plugin.py` (找 `MaiBotPlugin` 子类) |
+
+> **实现状态 (2026-10-11)**: 识别优先级为 `manifest.jsonc` > `metadata.yaml` > `mai_plugin.yaml`
+> (`plugin/runtime/loader.py::detect_format`, 三者都不匹配抛 ValueError)。MaiBot 识别**不读
+> `config.toml`**; AstrBot 入口固定 `plugin.py` (不存在 `metadata.yml`/`main.py`/同名 `.py` 分支)。
 
 ```python
 class PluginLoader:
@@ -173,6 +177,12 @@ effective_permission =
 | `process:spawn` | 子进程 | 禁用 |
 | `control:admin` | 控制面扩展 | 禁用 |
 
+> **实现状态 (2026-10-11)**: §5.1 的五级 `effective_permission` 交集与 `PermissionSet` 类型均
+> **未实现 (目标态)** —— 代码中没有按 `message:read`/`memory:read` 等权限位的插件授权与校验;
+> 插件实际生效边界为 `EnableMatrix` 启停 (Agent/Channel 级) + 工具级 `ToolPermission`
+> (allow/deny/restricted) + §5.4 的原生插件 trust 分级与进程隔离。§5.3 manifest 示例中的
+> `permissions`/`network.allowed_domains` 字段当前被解析器忽略 (仅 name/entry/trust/isolated 生效)。
+
 ### 5.3 Manifest 示例
 
 ```jsonc
@@ -268,9 +278,9 @@ AstrBot 兼容层通过 `sys.meta_path` 拦截常见 `astrbot.*` import。
 | Action | ToolSpec / AgentHook |
 | Command | CommandRegistry |
 | on_message hook | EventBus.ON_MESSAGE |
-| proactive task | ConversationRuntime.enqueue_proactive_task |
-| config.toml | Plugin config |
-| capability | Host Capability API |
+| proactive task | ConversationRuntime.enqueue_proactive_task (**未实现目标态**: 该方法不存在, 实际队列入口为 `ProactiveTaskQueue.enqueue(tasks)` / `ProactiveScheduler`) |
+| config.toml | Plugin config (**未实现目标态**: 当前 loader 以空 dict 构造 `MaiBotPlugin`, 不解析 config.toml) |
+| capability | Host Capability API (**未实现目标态**) |
 
 ### 7.2 版本锁定
 
@@ -287,6 +297,10 @@ MaiBot 兼容层必须声明兼容的 MaiBot 插件 SDK 版本范围。
 版本变化只允许修改适配器，不允许把 MaiBot SDK 细节泄露到 ISAC 核心层。
 
 ### 7.3 主动任务映射
+
+> **实现状态 (2026-10-11)**: 以下映射**未实现 (目标态)** —— `ConversationRuntime` 无
+> `enqueue_proactive_task` 方法; 生产主动任务入口为 `ProactiveTaskQueue.enqueue(task)` /
+> `ProactiveScheduler` (`runtime/conversation/`), MaiBot 兼容层当前不产出主动任务。
 
 MaiBot 插件主动任务映射到：
 
@@ -305,29 +319,60 @@ ConversationRuntime.enqueue_proactive_task(
 
 ### 8.1 插件基类
 
+实际基类 (`isac/plugin/native/plugin.py`, Native SDK v2)：
+
 ```python
+class ISACPlugin(ABC):
+    """ISAC 原生插件基类。"""
+
+    @property
+    def name(self) -> str: ...
+
+    async def on_load(self, context: PluginContext) -> None:
+        """插件加载时调用: 在此经 context.register_* 注册能力。"""
+
+    async def on_unload(self) -> None:
+        """插件卸载时调用: 清理资源。"""
+```
+
+能力注册全部发生在 `on_load` 内，经 `PluginContext` 的注册方法完成：
+`register_tool` / `register_command` / `register_injector` / `register_inter_agent_hook` /
+`register_router_hook` (admin route 预留)。
+
+```python
+# 以下为目标态 (未实现), 保留作接口设计对照
 class ISACPlugin:
-    async def on_load(self, ctx: PluginContext) -> None: ...
-    async def on_unload(self, ctx: PluginContext) -> None: ...
     async def on_message(self, ctx: PluginContext, message: ISACMessage) -> None: ...
     async def provide_tools(self, ctx: PluginContext) -> list[ToolSpec]: ...
     async def provide_commands(self, ctx: PluginContext) -> list[Command]: ...
     async def provide_injectors(self, ctx: PluginContext) -> list[PromptInjector]: ...
 ```
 
+> **实现状态 (2026-10-11)**: `provide_tools`/`provide_commands`/`provide_injectors`
+> 三个 hook 式接口 **不存在于代码** (未实现目标态) —— 注册统一走 `on_load` 内的
+> `register_*` 方法。
+
 ### 8.2 PluginContext
 
-插件只能通过 PluginContext 访问 Host 能力。
+插件只能通过 PluginContext 访问 Host 能力。实际契约 (`plugin/native/plugin.py`)：
 
 ```python
 @dataclass
 class PluginContext:
-    plugin_id: str
-    agent_id: str | None
-    platform: str | None
-    permissions: PermissionSet
-    host: HostCapabilityAPI
+    agent_hooks: AgentHooks
+    event_bus: EventBus
+    router: MessageRouter | None = None
+    services: dict[str, Any] = field(default_factory=dict)
+    # 内部注入的 Registry 引用 (register_* 方法使用)
+    _tools: ToolRegistry | None = None
+    _commands: CommandRegistry | None = None
+    _prompt_builder: SystemPromptBuilder | None = None
+    _inter_agent_bus: InterAgentBus | None = None
 ```
+
+> **实现状态 (2026-10-11)**: 旧版的 `plugin_id`/`agent_id`/`platform`/`permissions`/`host`
+> 字段 **不存在** (未实现目标态) —— `PermissionSet` 与 `HostCapabilityAPI` 均无对应类型;
+> 插件经上述 Registry 引用与 `register_*` 方法访问能力，而非 Host 能力 API。
 
 禁止插件直接获取：
 
@@ -372,5 +417,6 @@ class PluginContext:
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-10-11 | Architect | 按代码实况勘误: §2 格式识别表改为 manifest.jsonc/metadata.yaml/mai_plugin.yaml (MaiBot 不读 config.toml, AstrBot 入口固定 plugin.py); §5.2 权限模型与 §7.1/§7.3 config.toml·proactive·capability 映射标注 "未实现目标态"; §8.1/§8.2 SDK 契约改为实际 `on_load` + `register_*` + PluginContext 注册表字段 |
 | 2026-08-17 | Architect | U6 信任分级倒转: 新增 §5.4 (原生插件默认隔离、trust=hosted 需 trust_hosted 确认、隔离宿主参数部署接线、兼容层降级承诺处置决策) |
 | 2026-07-22 | Architect | 新增插件兼容专项设计，补充三格式识别、兼容范围矩阵、权限模型、生命周期与兼容测试标准 |

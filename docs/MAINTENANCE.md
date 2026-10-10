@@ -3,19 +3,27 @@
 > 面向**部署后运维**的操作手册:健康检查、日志排查树、常见故障、备份恢复、升级迁移。
 > 首次部署见 [deployment.md](./deployment.md);配置详解见 [usage.md](./usage.md);日志分级与字段见 [LOGGING.md](./LOGGING.md)。
 >
-> 最近更新: 2026-07-26
+> 最近更新: 2026-10-11
 
 ## 一、日常巡检
 
 | 检查项 | 方法 | 正常表现 |
 |--------|------|---------|
-| 进程存活 | `GET /health` | `{"status":"ok"}` (200,无需认证) |
+| 进程存活 | `GET /health` | `{"status":"ok" 或 "degraded", "subsystems":{...}, "setup_required":false}` (200,无需认证) |
 | 指标快照 | `GET /metrics` (Prometheus 文本) 或 `GET /api/v1/metrics` (JSON,需认证) | 见 §二指标清单 |
 | 优雅关闭 | `kill -TERM <pid>` 或 Ctrl-C | 日志出现关闭序列,无 pending task / resource warning |
 | 审计流水 | `GET /api/v1/audit?limit=100` (需认证) | 控制面写操作有记录 |
 | 磁盘占用 | `du -sh data/` | artifacts/memory 增长可控 (见 §五) |
 
 启动方式与信号: `python -m isac` 常驻,支持 SIGINT/SIGTERM 优雅关闭 (ApplicationRuntime 统一 start/close 所有后台任务)。
+
+**实时观测通道 (鉴权)**: 两个 SSE 端点均需基线认证,是排查时的首选工具:
+
+- `GET /api/v1/logs/tail` —— 实时日志流 (支持 `Last-Event-ID` 断线恢复、`?level=warning` 过滤),
+  日志含聊天原文/错误堆栈, 属最敏感数据面; `control.tokens[]` scope 模型下要求 `"*"` 通配 scope。
+- `GET /api/v1/events/stream` —— 实时事件流 (Agent 状态 / 用量 / 审计等);
+  浏览器 EventSource 无法自定义请求头, 用 `POST /api/v1/auth/session` 换取的会话 Cookie 认证
+  (可见 scope 由 Cookie 内 token 决定)。
 
 ## 二、关键指标 (metrics)
 
@@ -35,7 +43,8 @@
 | `isac_memory_searches_total` / `isac_memory_store_errors_total` | 记忆检索/写入错误 | store_errors >0 → 存储降级 |
 | `isac_memory_acl_rejections_total` | 记忆 ACL 拒绝 | 突增 → 跨用户越权尝试 |
 
-`AlertManager` (`observability/alerting.py`) 会周期比对这些指标触发告警;阈值在配置的 `observability.alerting` 段。
+`AlertManager` (`observability/alerting.py`) 会以内置默认规则周期比对这些指标触发告警,并经 Webhook 推送;
+阈值与检查间隔**当前不可配置** (`config.sample.jsonc` 顶层 `alerting` 节仅为规划位, 生产未消费)。
 
 ## 三、日志排查树
 
@@ -99,6 +108,7 @@ LLM 报错
 | 用量无数据 | J1 未启用 | 设 `observability.usage.enabled=true`(否则不建 usage.db,零计量) |
 | SubAgent 卡住 | 子任务超时 / 取消未传播 | 看 SubAgent Journal;重启后 running/queued 会被标为 cancelled (不续跑) |
 | 控制面 401 | 缺 Bearer Token | 配 `control.api_token` 或用显式开发模式 |
+| 控制面 428 | 首登未设置管理密码且无静态凭证 | `POST /api/v1/setup` 设置管理密码, 或配 `control.api_token` / `control.tokens[]` |
 
 ## 五、备份与恢复
 
@@ -107,12 +117,15 @@ LLM 报错
 | 路径 | 内容 | 何时存在 |
 |------|------|---------|
 | `data/config.jsonc` | 全局配置 | 总是 |
+| `data/config.override.json` | 控制面写入的配置覆盖 (N1e) | 经控制面改过配置时 |
 | `data/agents/*/config.jsonc` | 各 Agent 配置 (含 revision) | 有 Agent 时 |
-| `data/routing*.jsonc` | 路由规则 / InterAgentLink | 配置路由时 |
-| `data/memory/{metadata,vectors,graph}.db` | 记忆 (SQLite) | `memory.enabled` 时 |
+| `data/routing*.jsonc` | 路由规则 | 配置路由时 |
+| `data/links.jsonc` | InterAgentLink 互联关系 | 创建过 Link 时 |
+| `data/memory/metadata.db` + `graph.db` | 记忆元数据 / 图谱 (SQLite) | `memory.enabled` 时 |
+| `data/memory/vectors-<namespace>.db` | 各命名空间向量库 (按 namespace 分库) | `memory.enabled` 且嵌入启用时 |
 | `data/usage/usage.db` | 模型用量 (SQLite) | `observability.usage.enabled` 时 |
-| `data/artifacts/` + `meta.db` | 多模态制品 + 元数据 (有 TTL) | 生成过制品时 |
-| SubAgent Journal (SQLite) | 子任务事件日志 | 用过 delegate_task 时 |
+| `data/artifacts/` (含 `meta.db`) | 多模态制品 + 元数据 (有 TTL) | 生成过制品时 |
+| `data/subagent/journal.db` | SubAgent 事件日志 (SQLite) | `subagent.enabled` 且用过 delegate_task 时 |
 
 **备份建议**:
 
@@ -137,13 +150,16 @@ LLM 报错
 
 - **密钥**: 用 SecretStore (AES-256-GCM);WebUI 密钥只可替换不可回显;日志/审计不落明文密钥。
   - **R5 接入** (2026-08-16): 配置中 `llm.api_key` (含 `llm.multimodal[*].api_key`) 可填 `secret:<key>` 引用 SecretStore 加密存储。
-  - 步骤: ①生成 32 字节密钥 `python -c "import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())"` → ②`export ISAC_SECRET_KEY=<上面输出>` → ③`isac secret set openai_api_key` (getpass 不回显输入明文) → ④配置 `llm.api_key: "secret:openai_api_key"`。
+  - 步骤: ①生成 32 字节密钥 `python -c "import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())"` → ②`export ISAC_SECRET_KEY=<上面输出>` → ③`uv run python -m isac secret set openai_api_key` (无 console script,须经 `python -m isac`; getpass 不回显输入明文) → ④配置 `llm.api_key: "secret:openai_api_key"`。
   - env `ISAC_LLM_API_KEY` 仍最高优先级 (直接覆盖 `llm.api_key`, 非 `secret:` 前缀)。未配 `ISAC_SECRET_KEY` 时 `secret:` 前缀值原样回退 + warning (走原明文路径向后兼容, 不静默降级)。
   - 密钥文件 `data/.secrets.enc` (加密 JSON), 备份时连同 `data/` 一并备份, 但**务必与 `ISAC_SECRET_KEY` env 分离存储** (env 在运维密钥管理, 不入 `data/` 备份)。
 - **控制面**: 空 Token 仅限显式开发模式;生产必须配 Token;审计/JSON 指标端点需认证。
 - **SSRF**: Webhook 与远程媒体下载有 SSRF 防护;新增出站请求务必走既有校验。
 - **资源上限**: Bash/File/MCP 有字节/时间/进程/路径/pending 上限;Session/Lock/队列有 TTL/LRU。改配置时勿无限放大。
-- **插件**: 当前插件是**兼容层,非安全沙箱**(进程内)。不要加载不可信插件;进程级隔离见 [ROADMAP.md](./ROADMAP.md) O2。
+- **插件 (U6 信任分级)**: 带 `manifest.jsonc` 的原生插件**默认子进程隔离**加载 (资源限额 + 崩溃自动重启);
+  仅当 manifest 声明 `trust: "hosted"` **且**目录名在部署方 `control.plugins.trust_hosted` 确认清单内,
+  才在宿主进程内加载 (信任责任在部署方)。AstrBot / MaiBot **兼容层插件无隔离**, 在宿主进程内运行且启动时告警 ——
+  **不要加载不可信的兼容插件**。长期方案见 [ROADMAP.md](./ROADMAP.md) O2。
 
 ## 八、相关文档
 

@@ -327,3 +327,25 @@ def test_subagent_tool_default_policy() -> None:
     # J4-2: delegate_task 从 deny 改 restricted (需显式授权, 但不再是默认禁用)
     assert permission.check("delegate_task") == "restricted"
     assert permission.check("subagent_status") == "restricted"
+
+
+async def test_m10_list_runs_enforces_requester_isolation() -> None:
+    """M10: requester 带 Agent 身份时 list_runs 强制只返回其自己创建的子任务。
+
+    此前任何 Agent 都能 enumerate 出**所有** Agent 的 task_id+status
+    (status/log/cancel 均有 _authorize 边界, 唯独 list 没有)。控制面
+    (requester=None) 不受身份过滤影响。
+    """
+    supervisor = SubAgentSupervisor()
+    await supervisor.submit(SubAgentTask(
+        task_id="a1", parent_agent_id="agent-a", session_id="s1", trace_id="tr1", objective="x",
+    ))
+    await supervisor.submit(SubAgentTask(
+        task_id="b1", parent_agent_id="agent-b", session_id="s1", trace_id="tr1", objective="x",
+    ))
+    # agent-a 只能看到自己的子任务, 看不到 agent-b 的
+    runs_a = await supervisor.list_runs(requester=_requester("agent-a"))
+    assert {r.task_id for r in runs_a} == {"a1"}
+    # 控制面 (requester=None) 仍能看到全部
+    runs_all = await supervisor.list_runs()
+    assert {r.task_id for r in runs_all} == {"a1", "b1"}
