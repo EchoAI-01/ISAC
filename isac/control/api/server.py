@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -162,7 +163,7 @@ def _build_auth_dependency(
     return make_auth_dependency("", session_secret, setup_manager)
 
 
-def _aggregate_health(
+async def _aggregate_health(
     agent_manager: Any,
     provider_manager: Any,
     config: dict[str, Any],
@@ -172,6 +173,9 @@ def _aggregate_health(
 
     各子系统用 getattr 防御: 旧测试替身/未注入的 manager 可能缺方法。任一关键
     子系统异常 → status=degraded; 否则 ok。引用真实配置路径让用户知道去哪修。
+    2026-10-10: AgentManager.list 是协程, 此前按同步调用被宽 except 吞掉,
+    agents 统计恒 0 且产生 "coroutine was never awaited" RuntimeWarning;
+    对 awaitable 结果统一 await (同步替身保持兼容)。
     """
     # agents: running/total
     agents_total = agents_running = 0
@@ -179,6 +183,8 @@ def _aggregate_health(
     if callable(list_agents):
         try:
             instances = list_agents()
+            if inspect.isawaitable(instances):
+                instances = await instances
             agents_total = len(instances)
             agents_running = sum(1 for a in instances if getattr(a, "status", "") == "running")
         except Exception:  # noqa: BLE001
@@ -420,7 +426,7 @@ def create_control_app(
         任一关键子系统异常 → status=degraded。setup_required=true 时控制面处于
         首登待设置态 (T3-backend), 仅 /setup 与 /health 可用。探针用途, 无认证。
         """
-        result = _aggregate_health(agent_manager, provider_manager, config, channel_registry)
+        result = await _aggregate_health(agent_manager, provider_manager, config, channel_registry)
         result["setup_required"] = setup_manager is not None and setup_manager.is_setup_required
         return result
 
