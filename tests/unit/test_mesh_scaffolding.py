@@ -112,7 +112,7 @@ def test_existing_routing_decision_contract_unchanged() -> None:
 
 
 def test_existing_interagent_link_contract_matches_spec() -> None:
-    """P2: InterAgentLink 落地 SPECIFICATION.md 2.10 定义的细粒度策略字段。
+    """P2: InterAgentLink 落地 SPECIFICATION.md 2.11 定义的细粒度策略字段。
 
     前 4 个字段 (from/to/direction/enabled) 顺序不变, 保证既有 **dict 构造与
     links.jsonc 向后兼容; 新增 3 个策略字段均有默认值 (旧 Link 无需迁移)。

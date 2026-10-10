@@ -48,7 +48,7 @@ def _resolve_entry_path(plugin_path: Path, entry: str) -> Path:
 
 
 class PluginFormat(Enum):
-    ISAC_NATIVE = "isac_native"  # manifest.jsonc (SPECIFICATION.md 2.6)
+    ISAC_NATIVE = "isac_native"  # manifest.jsonc (SPECIFICATION.md 2.7)
     ASTRBOT = "astrbot"  # AstrBot Star 插件
     MAIBOT = "maibot"  # MaiBot 插件
 

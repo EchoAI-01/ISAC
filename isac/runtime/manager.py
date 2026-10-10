@@ -1,4 +1,4 @@
-"""AgentManager: Agent 生命周期管理 (ARCHITECTURE.md 3.1 / SPECIFICATION.md 2.8)。
+"""AgentManager: Agent 生命周期管理 (ARCHITECTURE.md 3.1 / SPECIFICATION.md 2.9)。
 
 所有公开方法同时暴露给控制面 (Admin API / MCP Server)，control/ 不复制业务逻辑。
 """
