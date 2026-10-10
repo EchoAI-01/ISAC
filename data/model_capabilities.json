@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-10-10T11:37:23+00:00",
+ "generated_at": "2026-10-10T16:38:20+00:00",
  "source": "https://models.dev/api.json",
  "model_count": 8443,
  "override_count": 0,
@@ -54939,9 +54939,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0182,
+    "input": 0.03,
     "output": 1.28,
-    "cache_read": 0.0182
+    "cache_read": 0.03
    }
   },
   "kilo/deepseek/deepseek-v4-flash-0731": {
@@ -56695,9 +56695,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.465,
+    "input": 0.4375,
     "output": 2.45,
-    "cache_read": 0.0875
+    "cache_read": 0.1087
    }
   },
   "kilo/moonshotai/kimi-k2.7-code": {
@@ -59461,9 +59461,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "kilo/tencent/hy3-preview": {
@@ -59493,9 +59493,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.834,
-    "output": 2.501,
-    "cache_read": 0.042
+    "input": 0.7506,
+    "output": 2.2509,
+    "cache_read": 0.0378
    }
   },
   "kilo/thedrummer/cydonia-24b-v4.1": {
@@ -60302,9 +60302,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 5,
-    "cache_read": 0.219
+    "input": 0.21912,
+    "output": 0.65736,
+    "cache_read": 0.006972
    }
   },
   "kilo/~deepseek/deepseek-v4-flash-latest": {
@@ -60318,9 +60318,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0099,
+    "input": 0.018,
     "output": 1.28,
-    "cache_read": 0.0099
+    "cache_read": 0.018
    }
   },
   "kilo/~google/gemini-flash-latest": {
@@ -60373,7 +60373,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.33,
+    "input": 0.31,
     "output": 14.89,
     "cache_read": 0.3
    }
@@ -103440,9 +103440,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0182,
+    "input": 0.03,
     "output": 1.28,
-    "cache_read": 0.0182
+    "cache_read": 0.03
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-0731": {
@@ -103456,9 +103456,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0099,
+    "input": 0.018,
     "output": 1.28,
-    "cache_read": 0.0099
+    "cache_read": 0.018
    }
   },
   "openrouter/deepseek/deepseek-v4-flash-vision-exp": {
@@ -103489,9 +103489,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.9483,
-    "output": 1.8966,
-    "cache_read": 0.079025
+    "input": 0.2088,
+    "output": 0.4176,
+    "cache_read": 0.0174
    }
   },
   "openrouter/deepseek/deepseek-v4-pro-0813": {
@@ -105201,9 +105201,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.465,
+    "input": 0.4357,
     "output": 2.45,
-    "cache_read": 0.0875
+    "cache_read": 0.1081
    }
   },
   "openrouter/moonshotai/kimi-k2.7-code": {
@@ -105235,7 +105235,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.64,
+    "input": 0.5,
     "output": 13.5,
     "cache_read": 0.28
    }
@@ -108314,9 +108314,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.132,
-    "output": 0.528,
-    "cache_read": 0.033
+    "input": 0.0825,
+    "output": 0.33,
+    "cache_read": 0.020625
    }
   },
   "openrouter/tencent/hy3-preview": {
@@ -108346,9 +108346,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.834,
-    "output": 2.501,
-    "cache_read": 0.042
+    "input": 0.7506,
+    "output": 2.2509,
+    "cache_read": 0.0378
    }
   },
   "openrouter/thedrummer/cydonia-24b-v4.1": {
@@ -109263,9 +109263,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.3,
-    "output": 5,
-    "cache_read": 0.219
+    "input": 0.21912,
+    "output": 0.65736,
+    "cache_read": 0.006972
    }
   },
   "openrouter/~deepseek/deepseek-v4-flash-latest": {
@@ -109279,9 +109279,9 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.0099,
+    "input": 0.018,
     "output": 1.28,
-    "cache_read": 0.0099
+    "cache_read": 0.018
    }
   },
   "openrouter/~google/gemini-flash-latest": {
@@ -109350,7 +109350,7 @@
     "text"
    ],
    "x_cost": {
-    "input": 0.33,
+    "input": 0.31,
     "output": 14.89,
     "cache_read": 0.3
    }
