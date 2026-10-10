@@ -1,4 +1,4 @@
-"""CommandRegistry: 命令注册与执行 (SPECIFICATION.md 2.11)。"""
+"""CommandRegistry: 命令注册与执行 (SPECIFICATION.md 2.12)。"""
 
 from __future__ import annotations
 

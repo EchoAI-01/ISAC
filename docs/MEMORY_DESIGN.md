@@ -279,6 +279,10 @@ class MemoryRelation:
 | MidTermMemoryInjector | 上下文过长时 | 会话压缩摘要 |
 | RelationshipInjector | 每轮或低频 | 熟悉度、称呼偏好 |
 
+> **实现状态 (2026-10-11)**: `RelationshipInjector` 未实现 (目标态) —— 关系信息 (关系深度等)
+> 由 `PersonProfileInjector` 与画像一并注入; 其余注入器均已实现并经装配注册
+> (`runtime/assembly.py`)。
+
 ### 6.2 注入格式
 
 ```text
@@ -320,20 +324,25 @@ Control API 权限 = Token scope ∩ audit policy
 
 ### 7.3 召回解释
 
-每个 `MemoryHit` 应包含：
+`MemoryHit` (`core/types.py`, SPECIFICATION 1.4) 实际契约不含 `reason`/`confidence` 独立字段：
 
 ```python
 @dataclass
 class MemoryHit:
     id: str
     content: str
-    score: float
-    hit_type: str
-    source: str
-    reason: str = ""          # 为什么被召回
-    confidence: float = 0.0
+    source: str      # 来源 (session_id)
+    hit_type: str    # "episode" | "paragraph" | "person_fact"
+    score: float     # RRF 融合分数
     metadata: dict = field(default_factory=dict)
+    embedding: list[float] | None = None
 ```
+
+召回可解释性 (2026-08-19, 阶段3-3 Y1 基础) 走 `metadata["recall_sources"]`：四路召回
+(FTS/BM25/向量/图谱) RRF 融合后，把命中本条记忆的检索路径排序去重写入该键 (取值
+`fts`/`bm25`/`vector`/`graph`)，供上层回答“为什么召回这条记忆”
+(`memory/pipeline.py` 的 `_collect_recall_sources` → RRF 融合落 `metadata`)。旧版文档中的
+`reason`/`confidence` 字段为目标态，未实现。
 
 ---
 
@@ -405,7 +414,7 @@ CREATE TABLE platform_identities (
 | 手动绑定 | 控制面可绑定多个 PlatformIdentity 到同一 PersonIdentity |
 | 写入流水线 | 消息摘要可生成 MemoryItem 并更新画像 |
 | 治理能力 | delete/freeze/protect/correct 有接口与审计 |
-| 召回解释 | MemoryHit 包含 reason/confidence/source |
+| 召回解释 | `MemoryHit.metadata["recall_sources"]` 记录命中检索路径 (fts/bm25/vector/graph) |
 | 作用域隔离 | Agent 默认不能读取其他 Agent 私有记忆 |
 
 ---
@@ -414,5 +423,6 @@ CREATE TABLE platform_identities (
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-10-11 | Architect | 按代码实况勘误: §7.3/§九 召回解释改为 `MemoryHit.metadata["recall_sources"]` (fts/bm25/vector/graph), 删未实现的 `reason`/`confidence` 字段; §6.1 `RelationshipInjector` 标 "未实现 (目标态)" |
 | 2026-08-17 | Architect | U1 事件溯源会话内核: 新增 4.4 Episodes 事件投影 (写入侧以事件流为事实源) |
 | 2026-07-22 | Architect | 新增记忆系统专项设计，补充身份归一、写入流水线、无 embedding 模式、记忆治理与存储 Schema |

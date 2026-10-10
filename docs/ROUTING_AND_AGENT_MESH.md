@@ -34,20 +34,29 @@ ISAC 的路由层必须支持：
 
 ## 二、路由模型
 
-当前 `RoutingDecision.agent_id` 可表达单主 Agent。为支持旁听和候选 Agent，推荐扩展为：
+当前 `RoutingDecision.agent_id` 可表达单主 Agent。为支持旁听和候选 Agent，设计上推荐扩展为 (目标态)：
 
 ```python
 @dataclass
 class RoutingDecision:
-    """路由结果。"""
+    """路由结果 (扩展目标态)。"""
 
     primary_agent_id: str | None
-    matched_by: str                         # binding | trigger_word | command | default | hook | drop
+    matched_by: str                         # handoff | hook | binding | trigger_word | default | drop
     content: str
     observer_agent_ids: list[str] = field(default_factory=list)
     candidate_agent_ids: list[str] = field(default_factory=list)
     reason: str = ""
 ```
+
+> **实现状态 (2026-10-11)**: `router.types.RoutingDecision` 实际仍为
+> `agent_id`/`matched_by`/`content` 三字段, **未**按上述扩为 primary/observer/candidate。
+> 旁听/候选以 sibling 契约落地 —— `runtime/mesh/models.py::MeshRoutingDecision`
+> (含 `observer_agent_ids`/`candidate_agent_ids`), 由 `MeshRouter.to_mesh_decision` 在
+> dispatch 层产出并应用 (P2 已接线: observer 后台旁听入记忆、candidate 经
+> ReplyNecessityJudge 仲裁切换回复者)。实际 `matched_by` 取值:
+> `handoff`/`binding`/`trigger_word`/`default` (+ Router Hook 自定义值);
+> `command` 与 `mention` 并非路由分支 (见 §四标注)。
 
 ### 2.1 Agent 角色
 
@@ -109,34 +118,39 @@ Prompt 注入示例：
 
 ## 四、路由优先级
 
-推荐优先级：
+`MessageRouter.route` (`router/router.py`) 的**实际**优先级 (自上而下):
 
-1. **Router Hook**：Native 插件或控制面注入的最高优先级自定义路由。
-2. **Command Match**：`/agents`、`/focus`、`/use` 等命令。
+1. **Handoff 覆盖 (P2，最高)**：会话已被显式 handoff 后，TTL 内由接手 Agent 处理；接手方不可路由时清除登记并回落常规路由 (自愈)。
+2. **Router Hook**：Native 插件经 `register_router_hook` 注入的自定义路由 (预留接口，插件可返回自定义决策)。
 3. **Explicit Binding**：platform + group_id/user_id → agent_id。
-4. **Trigger Word**：AgentConfig.trigger_words。
-5. **Mention Match**：@ 某个 Agent 或明确称呼。
-6. **Default Agent**：platform 或 channel 默认 Agent。
-7. **Observer Rules**：追加旁听 Agent。
-8. **DROP**：无匹配。
+4. **Trigger Word**：AgentConfig.trigger_words (命中后剥离触发词)。
+5. **Default Agent**：platform 默认 Agent。
+6. **DROP**：无匹配 (返回 None，dispatch 记丢弃指标)。
 
 ```text
 route(message)
   ↓
-custom hooks
+handoff 覆盖 (P2, 最高; 先 GC 过期移交)
   ↓
-command
+custom hooks
   ↓
 binding
   ↓
 trigger_word
   ↓
-mention
-  ↓
 default
   ↓
-observers
+DROP (无匹配)
+  ↓
+(dispatch 层) _apply_mesh_routing: observers 旁听 + candidates 仲裁
 ```
+
+> **实现状态 (2026-10-11)**: **Command Match 不是路由分支** —— 用户命令由
+> `CommandRegistry` 在主链路内短路处理 (`/command` 命中不参与 Agent 选择，见 Fix-101)。
+> **Mention Match 不是路由分支** —— @/称呼是门控信号 (`has_mention` / GatingStrategy) 与
+> 候选仲裁的评分输入，没有“按 @ 选 Agent”的路由。**Observer Rules 不在 `route()` 内**
+> —— 由 §二 的 `MeshRoutingDecision` + dispatch `_apply_mesh_routing` 追加旁听与候选
+> (P2 已接线)。旧文档中 command/mention 两步属目标态，未实现为独立路由优先级。
 
 ### 4.1 触发词剥离
 
@@ -345,5 +359,6 @@ SubAgent 与 Agent Mesh 都能委派工作，但生命周期和信任边界不�
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-10-11 | Architect | 按代码实况勘误: §2 `RoutingDecision` 扩展标 "目标态" (旁听/候选实际以 sibling 契约 `MeshRoutingDecision` 落地); §4 路由优先级改为实际顺序 handoff→hook→binding→trigger_word→default→DROP, command/mention 路由分支标 "未实现" |
 | 2026-07-24 | Architect | 明确 SubAgent 与长期 Agent Mesh 的身份、生命周期、权限、上下文、日志和回传边界 |
 | 2026-07-22 | Architect | 新增路由与 Agent Mesh 专项设计，补充 primary/observer/candidate Agent、路由优先级、handoff 与 ACL 边界 |

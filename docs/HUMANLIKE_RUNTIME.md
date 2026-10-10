@@ -51,26 +51,39 @@ ISAC 的拟人化不是单一 Prompt，而是 **Prompt 表达层 + 会话运行�
 **核心职责**：管理某个 Agent 在某个会话中的短期状态、消息缓存、触发节奏、等待状态和学习任务。
 
 ```python
-@dataclass
 class ConversationRuntime:
-    """某个 Agent 在某个会话中的拟人化运行时。"""
+    """某个 Agent 在某个会话中的拟人化运行时 (runtime/conversation/runtime.py)。"""
 
-    agent_id: str
-    session_id: str
-    state: str = "idle"                  # "idle" | "thinking" | "acting" | "waiting" | "stopped"
+    def __init__(self, agent_id: str, session_id: str, *, max_interrupts_per_turn: int = 1) -> None:
+        # 身份与状态机
+        self.agent_id = agent_id
+        self.session_id = session_id
+        self.state: ConversationState = ConversationState.IDLE   # idle | thinking | acting | waiting | stopped
 
-    message_cache: list[ISACMessage] = field(default_factory=list)
-    last_processed_index: int = 0
-    internal_turn_queue: asyncio.Queue[str] = field(default_factory=asyncio.Queue)
+        # 消息缓存 (软上限 200, 超出丢弃最旧)
+        self.message_cache: list[ISACMessage] = []
+        self.last_processed_index: int = 0
+        self.last_message_received_at: float = 0.0
+        self.last_reply_at: float = 0.0
 
-    last_message_received_at: float = 0.0
-    last_external_message_received_at: float | None = None
-    last_reply_at: float = 0.0
+        # 等待与强制话轮
+        self.pending_wait: WaitState | None = None
+        self.forced_turn: ForcedTurnState | None = None
 
-    pending_wait: WaitState | None = None
-    forced_turn: ForcedTurnState | None = None
-    relationship_state: RelationshipState | None = None
+        # L4 打断: 单轮次数上限 + 单调递增序号 (序号不被 clear_interrupt 复位)
+        self.interrupt_state: InterruptState | None = None
+        self.max_interrupts_per_turn: int = max(1, int(max_interrupts_per_turn))
+        self.interrupt_seq: int = 0
+
+        # 私有: wait future 与超时定时器 (按 tool_call_id)
+        self._wait_futures: dict[str, asyncio.Future[WaitState]] = {}
+        self._timeout_tasks: dict[str, asyncio.Task[None]] = {}
 ```
+
+> **实现状态 (2026-10-11)**: 字段以 `isac/runtime/conversation/runtime.py` 为准。原设计的
+> `internal_turn_queue`、`last_external_message_received_at` 不存在 (未实现);
+> `relationship_state` 字段与独立 `RelationshipState` 契约均未实现 (目标态) —— 关系数据
+> 实际落在 person_profiles 表的 `relationship_depth`/`interaction_count` 列 (见 §6.1 标注)。
 
 ### 3.1 状态机
 
@@ -101,7 +114,7 @@ IDLE
 | 状态 | 归属 | 持久化 |
 |------|------|--------|
 | `message_cache` | ConversationRuntime | 否，重启后从消息库恢复 |
-| `relationship_state` | Memory / Persona | 是 |
+| 关系数据 (`relationship_depth`/`interaction_count`) | Memory (`person_profiles` 表) | 是 (独立 `RelationshipState` 契约未实现, 目标态) |
 | `pending_wait` | ConversationRuntime | 否 |
 | `forced_turn` | ConversationRuntime | 否 |
 | 表达/黑话学习结果 | Memory / Persona | 是 |
@@ -145,17 +158,23 @@ ISACAgentLoop.run
 
 ### 4.2 静默窗口
 
-静默窗口用于避免用户连续发送多条消息时 Bot 过早回复。
+静默窗口用于避免用户连续发送多条消息时 Bot 过早回复。窗口内到达的连续消息合并为一轮处理。
 
 ```jsonc
 {
-    "gating": {
-        "message_debounce_seconds": 1.2,
-        "private_message_debounce_seconds": 0.5,
-        "group_message_debounce_seconds": 1.5
+    "conversation": {
+        "enabled": true,
+        "debounce_seconds": 1.5,
+        "max_interrupts_per_turn": 1
     }
 }
 ```
+
+> **实现状态 (2026-10-11)**: 实际配置为 `conversation.debounce_seconds` **单值** (全局
+> `conversation` 节 ∪ per-Agent `AgentConfig.conversation` 覆盖; 见 config.sample.jsonc 与
+> `runtime/manager.py::_conversation_debounce_seconds`)。`debounce_seconds=0` 表示不合并
+> (每条即时处理, 默认关闭)。私聊/群聊分档静默窗口 (private/group debounce) 未实现 ——
+> 此前文档中的 `gating.message_debounce_seconds` 等键不存在。
 
 ### 4.3 回复频率
 
@@ -336,6 +355,11 @@ class RelationshipState:
 - 调整主动行为边界。
 - 为 PersonProfileInjector 提供关系描述。
 
+> **实现状态 (2026-10-11)**: `RelationshipState` 独立契约与 `RelationshipInjector` 未实现 (目标态)。
+> 当前实际: 关系数据落在 person_profiles 表 (`relationship_depth`/`interaction_count` 列), 由
+> PersonProfileInjector 与画像一并注入 (`memory/model/memory_item.py::from_relationship` 提供
+> 表行 ↔ MemoryItem 适配; `familiarity`/`trust` 等字段仅适配器防御默认, 未落地为表列)。
+
 ### 6.2 MoodState
 
 ```python
@@ -352,14 +376,16 @@ class MoodState:
 
 ### 6.3 学习模块
 
-| 模块 | 输入 | 输出 | 触发时机 |
-|------|------|------|----------|
-| ExpressionLearner | 用户与 Agent 的可见文本 | 表达偏好 | 后台低频 |
-| JargonLearner | 群聊高频词/上下文 | 行话条目 | 后台低频 |
+| 模块 | 输入 | 输出 | 触发时机 | 实现状态 |
+|------|------|------|----------|----------|
+| ExpressionLearner | 用户与 Agent 的可见文本 | 表达偏好 | 后台低频 | 未实现 (目标态) |
+| JargonLearner | 群聊高频词/上下文 | 行话条目 | 后台低频 | 已实现 (由 `MemoryConsolidator._extract_jargon_step` 承接, 非独立类) |
+| BehaviorLearner | Agent 回复与用户反馈 | 行为偏好 | FINAL_RESPONSE 后 | 已实现 (`persona/behavior_learner.py`) |
+| ReplyEffectTracker | 回复后续用户反应 | 回复效果评分 | 回复后观察窗口 | 未实现 (目标态) |
 
-> **实现状态 (2026-08-16, R4-①)**: `JargonLearner` 由 `MemoryConsolidator._extract_jargon_step` 承接 (非独立类): `run_once` 第 4 步按 `group_id` 聚合群聊 episode → `_top_candidate_words` (内置 CJK 2-gram bigram + 停用词/单字/既有 jargon 过滤, 无 jieba) 统计高频词 → `self._llm.chat` 释义 → `metadata.upsert_jargon`; LLM 未注入/无群聊时跳过, 默认零行为变化。`JargonInjector` 读侧注入既有行话表。
-| BehaviorLearner | Agent 回复与用户反馈 | 行为偏好 | FINAL_RESPONSE 后 |
-| ReplyEffectTracker | 回复后续用户反应 | 回复效果评分 | 回复后观察窗口 |
+> **实现状态说明 (2026-10-11)**: 学习模块中当前仅 `BehaviorLearner` 为独立实现 (注册
+> FINAL_RESPONSE hook);`ExpressionLearner`/`ReplyEffectTracker` 未实现 (目标态)。
+> `JargonLearner` (2026-08-16, R4-①) 由 `MemoryConsolidator._extract_jargon_step` 承接 (非独立类): `run_once` 第 4 步按 `group_id` 聚合群聊 episode → `_top_candidate_words` (内置 CJK 2-gram bigram + 停用词/单字/既有 jargon 过滤, 无 jieba) 统计高频词 → `self._llm.chat` 释义 → `metadata.upsert_jargon`; LLM 未注入/无群聊时跳过, 默认零行为变化。`JargonInjector` 读侧注入既有行话表。
 
 ---
 
@@ -417,6 +443,7 @@ class MoodState:
 
 | 日期 | 更新人 | 内容 |
 |------|--------|------|
+| 2026-10-11 | Architect | 按代码实况勘误: §三 ConversationRuntime 字段表按 runtime.py 重写 (删 `internal_turn_queue`/`last_external_message_received_at`/`relationship_state`, 补 `interrupt_state`/`interrupt_seq`/`max_interrupts_per_turn`/私有 wait future 表); §4.2 静默窗口改为 `conversation.debounce_seconds` 单值; §6.1/§6.3 `RelationshipState`/`ExpressionLearner`/`ReplyEffectTracker` 标 "未实现 (目标态)" |
 | 2026-07-24 | Architect | 新增陪伴型 Agent 的 SubAgent 委派与上下文隔离：委派判断、最小 ContextEnvelope、结果回注和按需日志查询 |
 | 2026-07-23 | Architect | 新增任务进度与中间态设计：ProgressEvent、ProgressReporter、Persona 渲染、频控合并、脱敏与平台降级 |
 | 2026-07-22 | Architect | 新增拟人化运行时专项设计，补充 ConversationRuntime、wait、proactive、interrupt、上下文恢复与学习模块 |

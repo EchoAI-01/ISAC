@@ -1,4 +1,4 @@
-"""InterAgentBus: Agent 间通信总线 (ARCHITECTURE.md 3.3 / SPECIFICATION.md 2.10)。
+"""InterAgentBus: Agent 间通信总线 (ARCHITECTURE.md 3.3 / SPECIFICATION.md 2.11)。
 
 默认不互通，必须显式配置 Link (ACL)。总线是天然审计点 (ADR-009)。
 
@@ -46,7 +46,7 @@ _delivery_depth: contextvars.ContextVar[int] = contextvars.ContextVar(
 class InterAgentLink:
     """Agent 互联链路 (data/links.jsonc, ACL)
 
-    P2: 落地 SPECIFICATION.md 2.10 已定义的细粒度策略字段 —— 此前实现只有
+    P2: 落地 SPECIFICATION.md 2.11 已定义的细粒度策略字段 —— 此前实现只有
     方向/开关, MeshLinkPolicy 的 permissions/visible_memory_scopes 无配置来源,
     4 个 A2A 工具即使注入 broker 也因 policy 恒 None 而全部被拒。
     permissions 默认空 = notify/handoff/memory_query 全部拒绝 (deny-by-default);
@@ -93,7 +93,7 @@ class InterAgentMessage:
     type: str  # "request" | "response" | "notify" | "handoff" | "memory_query"
     content: str
     context: dict = field(default_factory=dict)
-    # MVP-Fix: 补齐 SPECIFICATION.md 2.10 已定义但实现缺失的字段 —— 让一次跨
+    # MVP-Fix: 补齐 SPECIFICATION.md 2.11 已定义但实现缺失的字段 —— 让一次跨
     # Agent 协作的日志能与发起方的消息处理串联 (LOGGING.md trace 贯穿)。
     # 默认空串: 未显式传入时由 bus.send 从当前日志上下文自动填充。
     trace_id: str = ""
@@ -211,7 +211,7 @@ class InterAgentBus:
             )
 
         # MVP-Fix: 未显式传 trace_id 时从当前日志上下文继承 —— 一次跨 Agent
-        # 协作的日志因此能与发起方的消息处理串联 (SPECIFICATION 2.10 / LOGGING.md)。
+        # 协作的日志因此能与发起方的消息处理串联 (SPECIFICATION 2.11 / LOGGING.md)。
         if not message.trace_id:
             from isac.utils.logging_context import get_log_context
 

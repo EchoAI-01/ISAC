@@ -272,10 +272,10 @@ class AgentConfig:
     # LLM: None = 使用全局默认 Provider; 否则该 Agent 独立 Provider 配置
     llm: dict | None = None
 
-    # 模型能力授权；Agent 只能感知并调用允许的语义能力
-    model_capabilities_allow: list[str] = field(default_factory=lambda: ["chat"])
-    model_capabilities_deny: list[str] = field(default_factory=list)
-    model_routing: dict = field(default_factory=dict)
+    # 多模态能力白名单 (工具名: generate_image/generate_video/transcribe_audio/
+    # synthesize_speech/understand_image/understand_video)。默认 ["*"] 全部允许;
+    # assembly 按此字段条件注册媒体工具, ModelCapabilitiesInjector 据此注入 Prompt。
+    model_capabilities_allow: list[str] = field(default_factory=lambda: ["*"])
 
     # 路由触发词: 消息以这些词开头时路由到本 Agent
     trigger_words: list[str] = field(default_factory=list)
@@ -295,6 +295,9 @@ class AgentConfig:
     # 可覆盖键: debounce_seconds / max_interrupts_per_turn / proactive.* 等;
     # enabled 总开关仍以全局 conversation.enabled 为准。
     conversation: dict = field(default_factory=dict)
+
+    # J3-2: 配置版本号, 用于乐观锁 (If-Match); 每次 save_agent_config +1
+    revision: int = 1
 
 
 @dataclass
@@ -785,46 +788,40 @@ class SubAgentSupervisor:
 
 ### 2.6 并发控制
 
+同一会话的消息串行由生产主链路承担: dispatch 入口用 `conversation_lock_key` 派生唯一锁键, `acquire` → `async with lock` → `finally` 中 `release` (强制话轮、跨 Agent 投递共用同一键空间)。锁管理器本身只做引用计数与回收, **没有**排队队列或 `agent_running` 状态 —— "Agent 是否在下场回复"由会话状态机 / Gating 判断, 不在此处。
+
 ```python
+def conversation_lock_key(platform: str, user_id: str, group_id: str | None) -> str:
+    """会话级锁键的唯一权威派生 (与 SessionManager.make_session_key 同粒度):
+    群聊按 group 聚合 (忽略 user_id, 一个群=一个会话), 私聊按 user。"""
+    target = f"group:{group_id}" if group_id else f"user:{user_id or 'unknown'}"
+    return f"{platform}:{target}"
+
+
 class SessionLockManager:
-    """会话级锁管理器。同一会话的消息串行处理，避免状态冲突。"""
+    """会话级锁管理器 (K7: 引用计数回收, 防长期运行 _locks 字典无界增长)。"""
 
     def __init__(self) -> None:
-        # 实例级字典，避免多实例共享可变默认值
         self._locks: dict[str, asyncio.Lock] = {}
-        self._agent_running: dict[str, bool] = {}
-        self._queues: dict[str, list[ISACMessage]] = {}
+        self._waiters: dict[str, int] = {}   # session_id -> acquire 尚未 release 的计数
 
     async def acquire(self, session_id: str) -> asyncio.Lock:
-        """获取会话锁"""
+        """获取会话锁 (不存在则创建); waiter 计数 +1。"""
         if session_id not in self._locks:
             self._locks[session_id] = asyncio.Lock()
+        self._waiters[session_id] = self._waiters.get(session_id, 0) + 1
         return self._locks[session_id]
 
-    def is_agent_running(self, session_id: str) -> bool:
-        """检查该会话是否有 Agent 在运行"""
-        return self._agent_running.get(session_id, False)
-
-    def set_agent_running(self, session_id: str, running: bool) -> None:
-        self._agent_running[session_id] = running
-
-    async def handle_message(self, message: ISACMessage, handler: Callable):
-        """统一消息处理入口，保证同一会话串行"""
-        lock = await self.acquire(message.session_id)
-        async with lock:
-            if self.is_agent_running(message.session_id):
-                # 选项 A: 排队等待（推荐，MaiBot 做法）
-                await self._queue_message(message)
-                return
-            self.set_agent_running(message.session_id, True)
-            try:
-                await handler(message)
-            finally:
-                self.set_agent_running(message.session_id, False)
-                await self._process_queued(message.session_id)
+    def release(self, session_id: str) -> None:
+        """释放锁引用; 计数归零时回收锁对象 (持锁者异常未 release 也不会让字典无界增长)。"""
 ```
 
-### 2.6 Plugin Manifest
+约束:
+
+1. 所有需要"同一会话串行"的入口 (dispatch 普通消息、强制话轮、跨 Agent 投递) 必须共用 `conversation_lock_key`, 保证落在同一键空间; 任何入口自拼键都会重新引入"同会话并发"竞态。
+2. `acquire` 与 `release` 必须成对 (生产路径为 `try/finally`); 锁只保证互斥, 不保证公平, 排队语义由调用方自行决定。
+
+### 2.7 Plugin Manifest
 
 ISAC 原生插件的 manifest 格式 (JSONC):
 
@@ -855,7 +852,7 @@ ISAC 原生插件的 manifest 格式 (JSONC):
 }
 ```
 
-### 2.7 AstrBot 兼容接口
+### 2.8 AstrBot 兼容接口
 
 ```python
 # AstrBot Star 兼容
@@ -903,7 +900,7 @@ class EventType:
     OnAfterLLMResponseEvent = "on_after_llm_response"  # → AgentHooks.POST_LLM
 ```
 
-### 2.8 AgentManager — Agent 生命周期
+### 2.9 AgentManager — Agent 生命周期
 
 ```python
 class AgentManager:
@@ -922,7 +919,7 @@ class AgentManager:
     async def reload_config(self, agent_id: str, config: AgentConfig) -> None: ...
 ```
 
-### 2.9 MessageRouter — 消息路由
+### 2.10 MessageRouter — 消息路由
 
 ```python
 class MessageRouter:
@@ -940,7 +937,7 @@ class MessageRouter:
         """预留: 自定义路由函数 (Native SDK)，在显式绑定之前执行"""
 ```
 
-### 2.10 InterAgentBus — Agent 互联
+### 2.11 InterAgentBus — Agent 互联
 
 ```python
 class InterAgentBus:
@@ -955,7 +952,7 @@ class InterAgentBus:
     def list_links(self) -> list[InterAgentLink]: ...
 ```
 
-### 2.11 CommandRegistry — 命令系统
+### 2.12 CommandRegistry — 命令系统
 
 ```python
 class Command(ABC):
@@ -976,8 +973,8 @@ class CommandRegistry:
     """命令注册表。命令可按 Agent / Channel 独立启停。"""
 
     def register(self, command: Command) -> None: ...
-    async def try_execute(self, message: ISACMessage, agent_id: str) -> str | None:
-        """消息以 '/' 开头时尝试执行; 未命中或已禁用返回 None"""
+    async def try_execute(self, message: ISACMessage, context: AgentContext) -> str | None:
+        """消息以 '/' 开头时尝试执行; 未命中返回 None, 已禁用返回提示文本"""
     def is_enabled(self, name: str, agent_id: str, platform: str) -> bool: ...
 
 # 内置命令: /focus /agents /use <agent_id> /mute /unmute
@@ -1056,10 +1053,12 @@ class CommandRegistry:
 
     // 门控配置
     "gating": {
-        "reply_necessity_threshold": 80,     // 回复必要性阈值
-        "trigger_threshold": 3,              // 触发阈值 (消息数)
-        "idle_backoff_base_seconds": 30,     // 空闲退避基础时间
-        "idle_backoff_cap_seconds": 300,     // 空闲退避上限
+        "reply_necessity_threshold": 80,         // 回复必要性阈值
+        "turn_gates": {"trigger_threshold": 3},  // 触发阈值 (消息数)
+        "idle_backoff": {                        // 空闲退避 (指数)
+            "base_seconds": 30,
+            "cap_seconds": 300,
+        },
     },
 
     // 记忆配置
@@ -1124,8 +1123,9 @@ class CommandRegistry:
 
 1. 内置默认值
 2. `data/config.jsonc` (用户配置)
-3. 环境变量覆盖 (`ISAC_LLM_API_KEY`, `ISAC_DEBUG`, ...)
-4. CLI 参数覆盖 (`--debug`, `--model gpt-4o`, ...)
+3. `data/config.override.json` (控制面写入的覆盖层, N1e; 机器所有, 含 `__revision__`)
+4. 环境变量覆盖 (`ISAC_LLM_API_KEY`, `ISAC_DEBUG`, ...)
+5. CLI 参数覆盖 (`--debug`, `--model gpt-4o`, ...)
 
 **环境变量映射**:
 ```
@@ -1141,8 +1141,9 @@ ISAC_MEMORY_ENABLED → memory.enabled
 **配置层次** (后者覆盖前者):
 
 1. 全局 `data/config.jsonc`
-2. Agent 级 `data/agents/<agent_id>/config.jsonc` (只写覆盖项)
-3. 环境变量 / CLI 参数
+2. 全局覆盖层 `data/config.override.json` (控制面写入, N1e)
+3. Agent 级 `data/agents/<agent_id>/config.jsonc` (只写覆盖项)
+4. 环境变量 / CLI 参数
 
 **全局配置新增**:
 
@@ -1202,7 +1203,7 @@ ISAC_MEMORY_ENABLED → memory.enabled
 ```jsonc
 {
     "links": [
-        {"from": "alice", "to": "bob", "direction": "both", "enabled": true},
+        {"from_agent": "alice", "to_agent": "bob", "direction": "both", "enabled": true},
     ],
 }
 ```
@@ -1341,16 +1342,16 @@ class AgentHookPoint(Enum):
 | POST | /agents/{id}/stop | 停止 |
 | GET / PUT | /routing/rules | 路由规则读写 (含默认 Agent) |
 | GET / POST / DELETE | /links | 互联 Link 管理 |
-| GET | /channels | 列出 Channel 连接 |
-| POST / DELETE | /channels/{platform}/agents/{agent_id} | 绑定 / 解绑 |
+| GET | /channels | 列出 Channel 连接 (未实现; Channel 摘要见 /health 聚合) |
+| POST / DELETE | /channels/{platform}/agents/{agent_id} | 绑定 / 解绑 (REST 未实现; 仅 MCP 工具 channel_bind_agent / channel_unbind_agent 提供) |
 | GET / PUT | /agents/{id}/plugins | 插件启用矩阵 |
-| POST | /automation/trigger | 自动化触发器 (预留) |
+| POST | /automation/trigger | 自动化触发器 |
 | GET / POST / DELETE | /webhooks | Webhook 订阅管理 |
 
-统一错误格式:
+统一错误格式 (`HTTPException.detail` 包络, FE0 契约基线):
 
 ```json
-{"error": {"code": "AGENT_NOT_FOUND", "message": "...", "retriable": false}}
+{"detail": {"code": "AGENT_NOT_FOUND", "message": "..."}}
 ```
 
 Webhook 事件推送格式:
@@ -1379,6 +1380,8 @@ ISAC 可作为 MCP 服务端（`control.mcp_server_enabled: true`），让外部
 | link_create / link_delete | 互联 Link 管理 |
 | plugin_set_enabled | 插件启用矩阵 |
 | message_send | 以某 Agent 身份发送消息 (自动化流程入口) |
+
+返回格式: spec 规划的统一包络 `{success, trace_id, data}` **未实现 (待办)**; 当前实现仅标准 MCP `content` 文本包络 (`{"content": [{"type": "text", "text": "<JSON>"}]}`), 见 CONTROL_PLANE_SPEC.md §四。
 
 ---
 

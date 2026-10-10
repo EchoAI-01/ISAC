@@ -1,4 +1,4 @@
-"""Command 基类 (SPECIFICATION.md 2.11)。"""
+"""Command 基类 (SPECIFICATION.md 2.12)。"""
 
 from __future__ import annotations
 

@@ -108,7 +108,7 @@ class ISACPlugin(ABC):
 
     插件目录结构:
         plugins/my_plugin/
-        ├── manifest.jsonc   # Plugin Manifest (SPECIFICATION.md 2.6)
+        ├── manifest.jsonc   # Plugin Manifest (SPECIFICATION.md 2.7)
         └── plugin.py        # 入口, 含一个 ISACPlugin 子类
     """
 
