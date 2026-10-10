@@ -47,7 +47,7 @@
 
 **重大决策**: 项目转入**前后端分离**开发。后端 (本仓库) 演进为纯 API 服务 (REST + SSE 控制面 + 消息数据面), 前端独立成项目围绕 API 契约开发。**先开发后端**, 前端轨道 (F 节点) 在 API 基线冻结后启动。决策记录见 `ARCHITECTURE.md` ADR-012, 节点定义见 §四 FE。
 
-**当前方位**: T 开箱可用轮 **T1/T2/T4 已完成 (2026-08-04)** —— 开箱能对话 (私聊无条件触发 + 未回复可观测 + 占位 key 检测)、零配置启动 (默认配置内置 + 首启建 data 目录)、错误可诊断 (中文可操作提示 + `/health` 聚合 + 实时日志台); **T3 未开始**并按前后端分离重定义 (后端先交付 setup/auth API, WebUI 页面归前端轨道); T5-T7 与 R 节点组未开始。1568 测试通过、ruff/mypy 全绿。**阶段 0 工程纠偏已完成 (2026-08-15)** (CI 分支/venv/aiosqlite/worktree/构建产物, 详见下方推进顺序第 1 项); **FE0 API 契约冻结已完成 (2026-08-16)** (openapi.json 基线归档 + 错误格式统一 + 变更流程文档化); **FE1 分离基建已完成 (2026-08-16)** (CORS 白名单 + Session SameSite 参数化 + WebUI 标 deprecated); **T3-backend 控制面开箱后端支撑已完成 (2026-08-16)** (control 默认开 + setup 首登强制设密码状态机 + CLI password reset + /config/schema JSON Schema 端点 + 真机验收 setup 流程走通), **R3 插件与 MCP 生态激活已完成 (2026-08-16)** (收敛 Q3: 共享注册表 + AstrBot/MaiBot adapt 桥接 + MCPClient 生产接线, 真机冒烟 `MCP server 已接入 server=echo tools=1`), **T6 插件市场与热重载已完成 (2026-08-16)** (PluginInstaller 四源安装 + SSRF/zip slip 防护 + ToolRegistry deregister/来源追踪 + activation 热重载同步运行中 Agent + 控制面端点 + CLI `isac plugin` + 本地/远程市场清单, 真机冒烟 `scripts/smoke_plugin_marketplace.py` 安装→reload→卸载 exit=0), **R5 持久化与密钥安全已完成 (2026-08-16)** (SessionManager SQLite 写穿+重启恢复 + SecretStore `secret:` 前缀接入 + CLI `isac secret`, 真机冒烟重启恢复 session_id exit=0), **R2 控制面与 SubAgent 收尾已完成 (2026-08-16)** (`GET /agents/{id}/config` 真实 revision + SubAgent list-all + routes_webhooks (WebhookManager+EventBus 订阅+AlertManager 注入) + MCP Server 5 工具/生产启动点 + ContextEnvelopeBuilder 真传背景摘要 + evidence_refs 生成), **R6 企业化激活已完成 (2026-08-16)** (routes_tenants + TenantManager SQLite + tenant:read/write scope + ②loader 隔离已满足零工作 + ③workflow agent 入口决策落地选 B), **R1 多模态出入站闭环已完成 (2026-08-16)** (①_send_reply 扫 artifact 经 get_ref+MediaResolver 转 segment + ②入站下载落盘 data/uploads 闭环 + ③6 个 record_* 计量 + ④pricing.jsonc 价目表 + ⑤model_capabilities_allow 工具可见性), **R4 记忆完整性补齐已完成 (2026-08-16)** (①行话学习写入回路 consolidator `_extract_jargon_step` 群聊高频词 LLM 释义落 `upsert_jargon` + ②中期记忆真实 COMPRESS 压缩 方案A: hook 入队+consolidator 后台摘要落 `episodes.summary`+MidTermMemoryInjector 改读 summary 注入 RecallCue + ③语义关系图跳过留架构债: 写边层已就绪待补 LLM 抽取层), **R7 集成测试补齐代码可做部分已完成 (2026-08-16)** (新增 test_p3/p4/p5 三套集成测试 19 例: 向量+图谱+治理过滤召回 / 两平台 bind→记忆聚合 / 跨租户不可见+插件隔离+workflow 声明式执行; 全绿)。环境准入项 (真机/Docker 健康检查/24h soak/browser CI/十二条逐条取证) 按需环境留后。前端轨道 F1-F4 (独立项目, 技术栈待决策) 暂不启动。**P 主链路接线 (历史阶段)** 已全部完成或被 T/R 收敛, 不再是独立工作线。
+**当前方位 (2026-10-11 更新)**: 后端功能、架构演进 (U 轮)、三轮全量审查清偿、2026-08-19 加固轮与最小实例运行修复全部完成 —— 全量 **2346 测试通过**、ruff/mypy/红线全绿、**CI 5/5 全绿 (自 07-24 以来首次)**; 最小实例经源码 (`smoke_webchat`/`smoke_control_setup`) 与 Docker (`docker compose up` + 宿主 `/health` 200) 双向真机验证。剩余: **N2** 24h soak 与 release_checklist 发版段, **N3** 真实 IM 凭据联调, **N4** 前端轨道 F1-F4 (开工前建议先补 API 基线缺口), **N5** 同步 IO/差量热重载与 2026-10-10 审计登记的代码缺陷批次。各轮次演进全过程见 docs/PROGRESS.md。
 
 **后端推进顺序**(定义与验收见 §四对应节点):
 
@@ -244,10 +244,10 @@
 
 > 对应 `docs/RELEASE_AUDIT.md` 第三节。验收铁律适用: 每项附真实输出。
 
-- [ ] **N2-1 Docker 健康检查冒烟**: `docker build` + `docker compose up` + `/health` 循环实测 (T7 验收 + release_checklist 第 3 段)。
-- [ ] **N2-2 browser CI 复核**: 装 Playwright chromium 跑 `tests/browser/` 黄金路径, I 节点 85%→100% (release_checklist 第 4 段)。
-- [ ] **N2-3 release_checklist 七段过一遍** (除真实 IM 凭据段): CI 全绿 + 本地全量 + 文档同步 + 版本号一致 + 发布标签 + 回滚预案 + 发布后监控预案。
-- [ ] **N2-4 24h soak**: 真实 LLM key + 连续对话负载, 验证无内存/连接/任务泄漏 (验收铁律的最后一道)。
+- [x] **N2-1 Docker 健康检查冒烟 ✅ (2026-10-10)**: `docker build` + `docker compose up -d` + 宿主 `/health` 循环实测通过 (容器 healthy, 1s 内 200; 容器内创建+启动 Agent 后 `/health` agents{total:2,running:2}); GitHub CI docker job 同步验证 (`health check passed`, run 38064914621)。
+- [x] **N2-2 browser CI 复核 ✅**: Playwright chromium 黄金路径在 GitHub CI 真跑 `2 passed` (2026-08-19 首次真跑; 2026-10-10 run 38064914621 复验); I 节点 85%→100%。
+- [~] **N2-3 release_checklist 七段过一遍**: 第 1 段 (CI 全绿 ✅ 2026-10-10) 与第 2 段 (本地全量 2346 ✅) 已过; 版本号一致/发布标签/回滚/发布后监控属发版时执行 (清单已同步 pre-GA 版本策略)。
+- [ ] **N2-4 24h soak**: 真实 LLM key + 连续对话负载, 验证无内存/连接/任务泄漏 (验收铁律的最后一道; 采样工具待建)。
 
 ### N3 T5 真实 IM 接入验收 (外部阻塞: 需用户凭据 + 回调公网地址)
 
@@ -267,7 +267,7 @@
 
 ### N5 并行线: 剩余架构债与加固 (见缝插针)
 
-- [~] **Z1** `services` 弱类型 → ServiceContainer 强类型 —— **批 A+B+C 已完成 (2026-08-18)**: 容器属性扩至 36 全局键 + 14 per-Agent 键 + 17 per-turn/工具键, 统一宽容语义 (缺键 None); 全局容器 / per-Agent (`instance.services`) / 热路径 (`AgentContext.services` + `ToolContext.services` 类型化为 ServiceContainer, 裸 dict 经 `__post_init__` 归一) 三面读取全部迁属性访问; loop / 全部内置工具 (utility/social/media/subagent) / commands / supervisor / activation 收口。runtime/services 的 8 个类型导入移入 TYPE_CHECKING 断开运行时依赖, 使 core/types 可模块级引用容器。红线棘轮 205→167→130→35。剩余 35 = 装配写侧灌键 (bootstrap/assembly/manager) + 控制面 mcp_server 回退读 (含未注册键 plugin_manager) + astrbot 兼容层读 (event_bus/tools) + 2 处动态键 (registry restricted 候选 / routes_plugins), 均为有意保留。
+- [x] **Z1** `services` 弱类型 → ServiceContainer 强类型 —— **批 A+B+C 已完成 (2026-08-19)**: 容器属性扩至 36 全局键 + 14 per-Agent 键 + 17 per-turn/工具键, 统一宽容语义 (缺键 None); 全局容器 / per-Agent (`instance.services`) / 热路径 (`AgentContext.services` + `ToolContext.services` 类型化为 ServiceContainer, 裸 dict 经 `__post_init__` 归一) 三面读取全部迁属性访问; loop / 全部内置工具 (utility/social/media/subagent) / commands / supervisor / activation 收口。runtime/services 的 8 个类型导入移入 TYPE_CHECKING 断开运行时依赖, 使 core/types 可模块级引用容器。红线棘轮 205→167→130→35。剩余 35 = 装配写侧灌键 (bootstrap/assembly/manager) + 控制面 mcp_server 回退读 (含未注册键 plugin_manager) + astrbot 兼容层读 (event_bus/tools) + 2 处动态键 (registry restricted 候选 / routes_plugins), 均为有意保留。
 - [x] **Z2** `main.py` 拆分 —— 已由 **U2 收敛 (2026-08-17)**: main.py 82 行薄入口, 装配拆 isac/bootstrap.py + isac/wiring.py + isac/dispatch.py + isac/control/bootstrap.py (各受 ≤500 行红线)。
 - [ ] 同步 IO 异步化 (audit/bus persist/routes_routing 写盘)。
 - [ ] `reload_config` 差量更新 (观察项, 不紧急; N1e 热重载当前走全重建路径)。
@@ -1091,7 +1091,7 @@ v1.0 GA = 以下全部满足:
   - **依赖**：M1、M2、E3(InterAgentBus/Link)。
   - **当前**：已完成 (2026-07-27)。M1/M2 升级为 `[x]`。
     - **M1 observer/candidate**: `AgentConfig.mesh_role` (""/observer/candidate); `process_message._apply_mesh_routing` 用 `MeshRouter` 生成 observer/candidate 分组 → observer 各自 `AgentManager.observe_message` (只 store_episode + 画像, 不回复) → candidate 与 primary 各自 `gating_score` (ReplyNecessityJudge 归一 0~1, 不调 LLM) → `arbitrate` 显著更高 (>SWITCH_MARGIN) 才切换回复者。无 Agent 配 mesh_role 时整段短路 (getattr 防御旧 manager 替身), 零行为变化。
-    - **M2 Link 细粒度 ACL**: `InterAgentLink` 落地 SPECIFICATION 2.10 已定义的 `permissions`/`visible_memory_scopes`/`max_context_messages` (前 4 字段顺序不变, 向后兼容; permissions 默认空 = notify/handoff/memory_query deny-by-default, ask 仍由 can_talk 管); `MeshActionBroker.policy_for` 按 (from,to) 从 Link 解析策略, 取代生产无人注入的单值 `mesh_link_policy`; assembly 注入 `MeshActionBroker(bus)` 到每个 Agent services。
+    - **M2 Link 细粒度 ACL**: `InterAgentLink` 落地 SPECIFICATION 2.11 已定义的 `permissions`/`visible_memory_scopes`/`max_context_messages` (前 4 字段顺序不变, 向后兼容; permissions 默认空 = notify/handoff/memory_query deny-by-default, ask 仍由 can_talk 管); `MeshActionBroker.policy_for` 按 (from,to) 从 Link 解析策略, 取代生产无人注入的单值 `mesh_link_policy`; assembly 注入 `MeshActionBroker(bus)` 到每个 Agent services。
     - **handoff 真实会话所有权转移**: `MessageRouter` 加 handoff 覆盖 (platform:group/user → agent_id, 最高优先级, 内存态); `handoff_conversation` 工具投递摘要成功后经 `services["router"].set_handoff` 登记, 后续该会话消息 `matched_by=handoff` 路由给接手方; deliver 对 HANDOFF 类型标注"[会话交接]"。
     - **memory_query 同步返回 + scope 裁剪**: `broker.memory_query` 返回响应文本 (此前返回 bool 丢弃 response); `main._answer_memory_query` 接收端按 `scopes` (user:/group:) 走 pipeline.search 的 ACL 参数真实裁剪, 结果经 bus response 同步回查询方。
     - **互联消息跳过环境门控**: `INTERAGENT_PLATFORM` 常量 —— 已过 Link ACL 的显式协作动作 (ask/notify/handoff) 目标 Agent 处理时不再走回复必要性门控 (否则 notify/交接摘要可能被静默 WAIT 掉, ask 拿空响应); 互联投递共享单一 SessionManager (此前每次投递新建, 跨 Agent 会话永不复用)。
@@ -1142,7 +1142,7 @@ v1.0 GA = 以下全部满足:
 - [x] **MVP-Fix 低危 (3) 与顺带修正**
   - 会话快照只增不删 → `load_all` 顺带清理过期/损坏文件；快照目录跟随 `control.agents_dir` 配置 (此前硬编码写进真实 `data/agents`，测试互相污染)。
   - `config.sample.jsonc` 的 `embedding.dimension=1024` 与示例模型 `text-embedding-3-small`(1536) 自相矛盾 → 修正并注明常见模型维度。
-  - `InterAgentMessage.trace_id` (SPECIFICATION 2.10 已定义、实现缺失) → 补齐，未显式传入时从日志上下文继承，响应沿用同一 trace。
+  - `InterAgentMessage.trace_id` (SPECIFICATION 2.11 已定义、实现缺失) → 补齐，未显式传入时从日志上下文继承，响应沿用同一 trace。
   - **记忆保真度**(冒烟发现)：合并回合此前只把"触发那条"写进记忆，Agent 实际看到的是整个 burst → 改为写入合并后的完整输入。
 - **被证伪 (4)**：ProactiveScheduler 孤儿循环的严重度描述、UserMapper 每消息连接开销、`_apply_mesh_routing` 的 session_id 副作用、SQLITE_BUSY 静默吞。前三项机制描述属实但后果不成立，第四项前提不成立。
 
