@@ -24,6 +24,10 @@
 | `info` | 关键状态变更与里程碑 | 消息到达、Agent 创建/启停、配置热更新、模型用量事件 |
 | `warning` | 容错降级、可恢复异常 | 记忆检索失败降级、注入器超时、单插件加载失败、取消宽限期超时 |
 | `error` | 需要关注的严重故障 | LLM 调用失败、数据库错误、Hook 执行异常 |
+| `critical` | 需立即人工介入的严重故障 | 进程级不可恢复错误、数据损坏 |
+
+> 实现亦接受 `warn` 作为 `warning` 的别名 (解析等价); `critical` 及以上可通过
+> `/api/v1/logs/tail?level=critical` 单独过滤, 实现见 `isac/utils/logger.py` 的 `_LEVEL_MAP`。
 
 **默认级别 `info`**:生产环境 debug 不输出,零性能开销。排查时临时调到 `debug`。
 
@@ -36,7 +40,7 @@
 ```jsonc
 {
   "logging": {
-    "level": "info",           // debug | info | warning | error
+    "level": "info",           // debug | info | warning | error | critical (warn 为 warning 别名)
     "format": "console",       // console | json
     "per_module": {            // 可选:只放开个别链路的 debug
       "isac.router": "debug",
