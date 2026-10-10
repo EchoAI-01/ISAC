@@ -78,7 +78,7 @@ ISAC_ONEBOT_PORT=8080
 ### 2.3 访问
 
 - 控制面 API: http://127.0.0.1:8765/api/v1/
-- API 文档: http://127.0.0.1:8765/docs
+- API 文档: http://127.0.0.1:8765/docs (Swagger UI, 默认关闭; 需在配置中显式设 `control.docs_enabled=true` 开启)
 - WebUI 管理面板: http://127.0.0.1:8765/ui/
 
 ---
@@ -89,6 +89,7 @@ ISAC_ONEBOT_PORT=8080
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
+| `ISAC_CONTROL_ENABLED` | `true` | 是否启用控制面 (内置默认开启) |
 | `ISAC_CONTROL_HOST` | `127.0.0.1` | 控制面绑定地址; 容器部署须配 `0.0.0.0` 并开启下方放行开关 |
 | `ISAC_CONTROL_ALLOW_EXTERNAL_HOST` | `false` | 显式放行非 loopback 绑定 (容器部署置 `true`; 未放行时强制回退 127.0.0.1; 务必同时配 `ISAC_API_TOKEN`) |
 | `ISAC_CONTROL_PORT` | `8765` | 控制面端口 |
@@ -96,6 +97,9 @@ ISAC_ONEBOT_PORT=8080
 | `ISAC_LLM_PROVIDER` | `stub` | LLM Provider (openai_compat / stub) |
 | `ISAC_LLM_API_KEY` | (空) | LLM API Key |
 | `ISAC_LLM_MODEL` | (空) | 模型名 |
+| `ISAC_MEMORY_ENABLED` | `false` | 启用记忆系统 (内置默认关闭) |
+| `ISAC_LOG_LEVEL` | `info` | 日志级别 (debug/info/warning/error) |
+| `ISAC_DEBUG` | `false` | 等价全局开启 debug 日志, 优先级最高 |
 
 ### 3.2 平台适配器
 
@@ -104,8 +108,10 @@ ISAC_ONEBOT_PORT=8080
 | `ISAC_ONEBOT_ENABLED` | `false` | 启用 OneBot QQ 适配器 |
 | `ISAC_ONEBOT_HOST` | `0.0.0.0` | OneBot 反向 WebSocket 监听地址 |
 | `ISAC_ONEBOT_PORT` | `8080` | OneBot 监听端口 |
-| `ISAC_TELEGRAM_BOT_TOKEN` | (空) | Telegram Bot Token |
-| `ISAC_DISCORD_BOT_TOKEN` | (空) | Discord Bot Token |
+
+> Telegram / Discord **无环境变量映射** (不支持 env 注入 `bot_token`),
+> 仅能在 `data/config.jsonc` 的 `channels.telegram.bot_token` /
+> `channels.discord.bot_token` 配置。飞书 / 企业微信 / QQ 官方同样只走 config.jsonc。
 
 ---
 
@@ -126,19 +132,23 @@ ISAC_ONEBOT_PORT=8080
 │       └── config.jsonc
 └── memory/               # 记忆存储
     ├── metadata.db       # MetadataStore (SQLite + FTS5)
-    ├── vectors.db        # VectorStore (sqlite-vec)
+    ├── vectors-<namespace>.db  # VectorStore 按命名空间分库 (sqlite-vec)
     └── graph.db          # GraphStore
 ```
 
 ### 4.2 备份与恢复
 
 ```bash
+# 卷名 = <compose 项目名>_isac_data (项目名默认取目录名小写, 如 isac_isac_data);
+# 不同目录/项目名下前缀会变, 先确认实际卷名:
+docker volume ls | grep isac_data
+
 # 备份
-docker run --rm -v isac_data:/data -v $(pwd):/backup alpine \
+docker run --rm -v isac_isac_data:/data -v $(pwd):/backup alpine \
     tar czf /backup/isac-data-$(date +%Y%m%d).tar.gz -C /data .
 
 # 恢复
-docker run --rm -v isac_data:/data -v $(pwd):/backup alpine \
+docker run --rm -v isac_isac_data:/data -v $(pwd):/backup alpine \
     tar xzf /backup/isac-data-20260723.tar.gz -C /data
 ```
 
@@ -148,6 +158,10 @@ docker run --rm -v isac_data:/data -v $(pwd):/backup alpine \
 - ISAC 原生插件: `plugins/<name>/manifest.jsonc` + `plugin.py`
 - AstrBot 插件: `plugins/<name>/metadata.yaml` + `plugin.py`
 - MaiBot 插件: `plugins/<name>/mai_plugin.yaml` + `plugin.py`
+
+> 如需在容器内经控制面 (插件市场 / `POST /plugins/install` 或 CLI) 安装、卸载或热重载插件,
+> 必须去掉 `:ro` 后缀 (否则写操作会因只读文件系统失败)。只读挂载适合"宿主机维护插件目录"
+> 的场景。
 
 ---
 
@@ -257,7 +271,7 @@ git pull
 
 ```bash
 ./scripts/docker_deploy.sh shell
-# 容器内:
+# 容器内 (镜像只装了 ca-certificates, 无 sqlite3 CLI, 用 Python 标准库查询):
 python -c "from isac.memory.storage.metadata import MetadataStore; print(...)"
-sqlite3 /app/data/memory/metadata.db ".tables"
+python -c 'import sqlite3; con = sqlite3.connect("/app/data/memory/metadata.db"); print(con.execute("SELECT name FROM sqlite_master").fetchall())'
 ```
