@@ -104,9 +104,11 @@ jobs:
         run: uv build
 
       - name: Install from wheel
+        # 2026-10-10: uv venv 默认不装 pip (此前 `python -m pip` 必失败, build job
+        # 自创建起从未通过); 改用 uv pip install 安装 wheel 并解析依赖。
         run: |
           uv venv /tmp/smoke-venv
-          /tmp/smoke-venv/bin/python -m pip install dist/isac-*.whl
+          uv pip install --python /tmp/smoke-venv/bin/python dist/isac-*.whl
           /tmp/smoke-venv/bin/python -c "import isac; print(f'version={isac.__version__}')"
 
   docker:
@@ -124,6 +126,7 @@ jobs:
           docker run -d --name isac-ci -p 8765:8765 \
             -e ISAC_CONTROL_ENABLED=true \
             -e ISAC_CONTROL_HOST=0.0.0.0 \
+            -e ISAC_CONTROL_ALLOW_EXTERNAL_HOST=true \
             -e ISAC_CONTROL_PORT=8765 \
             isac:ci
           # 等容器启动
