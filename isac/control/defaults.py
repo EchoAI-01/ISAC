@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from isac.runtime.config import AgentConfig
 from isac.utils.logger import get_logger
 
@@ -139,3 +141,27 @@ def enforce_safe_host(host: str, default: str = "127.0.0.1") -> str:
         return host
     logger.warning("控制面绑定非安全地址, 强制回退到 127.0.0.1", requested=host)
     return default
+
+
+def resolve_control_host(control_config: dict[str, Any]) -> str:
+    """从 control 配置解析实际绑定地址 (Docker/容器部署的显式逃生门)。
+
+    默认行为 (与 K7 安全基线一致): 仅接受 loopback, 非 loopback 一律经
+    ``enforce_safe_host`` 回退 127.0.0.1。容器部署必须监听 0.0.0.0 才能被宿主经
+    发布端口访问, 故提供显式开关 ``control.allow_external_host=true`` (环境变量
+    ISAC_CONTROL_ALLOW_EXTERNAL_HOST): 置真时放行为人配置的 host, 同时打醒目
+    告警提醒配置 api_token/tokens 与访问控制。
+    """
+    if not isinstance(control_config, dict):
+        return "127.0.0.1"
+    host = str(control_config.get("host", "127.0.0.1") or "127.0.0.1")
+    # 严格 is True: 只接受真布尔 (JSON true / env 映射产物); 手编配置写字符串
+    # "true"/"false" 时不放行 (fail-closed, 避免 "false" 被当真值)。
+    if control_config.get("allow_external_host") is True and not is_safe_default_host(host):
+        logger.warning(
+            "控制面绑定外部地址 (allow_external_host=true): 请确保已配置 api_token/tokens, "
+            "并以前置反向代理/防火墙限制访问来源",
+            requested=host,
+        )
+        return host
+    return enforce_safe_host(host)

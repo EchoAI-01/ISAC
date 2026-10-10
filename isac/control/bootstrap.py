@@ -59,7 +59,7 @@ async def _register_control_plane(
         import uvicorn
 
         from isac.control.api.server import create_control_app
-        from isac.control.defaults import enforce_safe_host
+        from isac.control.defaults import resolve_control_host
         from isac.plugin.runtime.manager import PluginManager
 
         # 用真实配置初始化 PluginManager, 并加载 plugins/ 目录下的全部插件。
@@ -140,7 +140,7 @@ async def _register_control_plane(
             services=services or {},
             audit_log=shared_audit_log,
         )
-        host = enforce_safe_host(control_config.get("host", "127.0.0.1"))
+        host = resolve_control_host(control_config)
         port = int(control_config.get("port", 8765))
         config = uvicorn.Config(
             app,

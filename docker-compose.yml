@@ -28,6 +28,9 @@ services:
       # 控制面绑定 0.0.0.0 (容器内才能被宿主访问)
       - ISAC_CONTROL_ENABLED=${ISAC_CONTROL_ENABLED:-true}
       - ISAC_CONTROL_HOST=0.0.0.0
+      # K7 安全基线默认只允许 loopback, 容器部署必须显式放行 (否则 uvicorn 实际
+      # 绑 127.0.0.1, 宿主经发布端口访问不到)。请同时设置 ISAC_API_TOKEN。
+      - ISAC_CONTROL_ALLOW_EXTERNAL_HOST=true
       - ISAC_CONTROL_PORT=8765
       # API Token (生产请改用 docker secrets 或 .env)
       - ISAC_API_TOKEN=${ISAC_API_TOKEN:-change-me-in-prod}

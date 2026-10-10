@@ -89,7 +89,8 @@ ISAC_ONEBOT_PORT=8080
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `ISAC_CONTROL_HOST` | `0.0.0.0` (容器内) | 控制面绑定地址; 宿主访问需 0.0.0.0, 但 ISAC 会强制安全检查 |
+| `ISAC_CONTROL_HOST` | `127.0.0.1` | 控制面绑定地址; 容器部署须配 `0.0.0.0` 并开启下方放行开关 |
+| `ISAC_CONTROL_ALLOW_EXTERNAL_HOST` | `false` | 显式放行非 loopback 绑定 (容器部署置 `true`; 未放行时强制回退 127.0.0.1; 务必同时配 `ISAC_API_TOKEN`) |
 | `ISAC_CONTROL_PORT` | `8765` | 控制面端口 |
 | `ISAC_API_TOKEN` | (必填) | Bearer Token, 控制面认证 + MCP tools/call |
 | `ISAC_LLM_PROVIDER` | `stub` | LLM Provider (openai_compat / stub) |
@@ -225,9 +226,12 @@ services:
 
 ### Q1: 控制面无法从宿主访问?
 
-A: 检查 `docker-compose.yml` 端口绑定是否 `127.0.0.1:8765:8765`。
-   容器内 `ISAC_CONTROL_HOST=0.0.0.0` 让 uvicorn 监听所有接口,
-   但 docker 层面限制只能从 127.0.0.1 访问。
+A: 三步核对:
+   1. `docker-compose.yml` 端口发布是否为 `127.0.0.1:8765:8765`;
+   2. 容器内是否同时设置了 `ISAC_CONTROL_HOST=0.0.0.0` **和**
+      `ISAC_CONTROL_ALLOW_EXTERNAL_HOST=true` —— K7 安全基线默认只允许 loopback,
+      未显式放行时实际绑定会被强制回退 127.0.0.1, 宿主必然访问不到;
+   3. 容器日志是否出现 "控制面绑定非安全地址, 强制回退到 127.0.0.1" 告警。
 
 ### Q2: 容器启动后立即退出?
 

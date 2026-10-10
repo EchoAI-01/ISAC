@@ -76,6 +76,11 @@ class TestDockerCompose:
         ]:
             assert var in content, f"缺少环境变量 {var}"
 
+    def test_compose_enables_external_control_host_for_container(self) -> None:
+        """容器内必须显式放行非 loopback 绑定, 否则宿主经发布端口访问不到控制面。"""
+        content = COMPOSE_FILE.read_text(encoding="utf-8")
+        assert "ISAC_CONTROL_ALLOW_EXTERNAL_HOST=true" in content
+
 
 class TestDockerignore:
     def test_dockerignore_exists(self) -> None:
@@ -96,6 +101,17 @@ class TestDockerignore:
         assert "data/*" in content
         # 保留 .gitkeep 占位
         assert "!data/.gitkeep" in content
+
+    def test_dockerignore_keeps_readme_standalone(self) -> None:
+        """回归 (2026-10-10): !README.md 必须独占一行。
+
+        .dockerignore 不支持行内注释 —— 之前的 "!README.md  # 保留 README" 整行
+        被当作字面 pattern, *.md 的排除未豁免 README, docker build 在
+        `COPY README.md ./` 处必失败 (CI docker job 实证)。
+        """
+        lines = DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
+        keep_lines = [ln for ln in lines if ln.startswith("!") and "README" in ln]
+        assert keep_lines == ["!README.md"]
 
 
 class TestDeployScript:

@@ -32,6 +32,7 @@
     "control": {
       "children": [
         "agents_dir",
+        "allow_external_host",
         "api_token",
         "cors",
         "enabled",

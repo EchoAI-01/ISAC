@@ -275,6 +275,11 @@
   "control": {
     "enabled": true,
     "host": "127.0.0.1",
+    // Docker/容器部署: 容器内必须监听 0.0.0.0 才能被宿主经发布端口访问。
+    // 默认 false = 非 loopback 地址一律强制回退 127.0.0.1 (K7 安全基线);
+    // 显式置 true 才放行所配 host, 同时务必配置 api_token/tokens 并限制访问来源
+    // (compose 部署经 ISAC_CONTROL_ALLOW_EXTERNAL_HOST=true 注入)。
+    "allow_external_host": false,
     // 2026-08-19: 与 docker-compose.yml / CI / QUICKSTART 全链路统一为 8765
     // (此前样例误写 8091, 照抄会与部署链路端口矛盾)。
     "port": 8765,
