@@ -65,6 +65,7 @@ class TestDockerComposeEnvMapping:
             "ISAC_CONTROL_HOST",
             "ISAC_CONTROL_PORT",
             "ISAC_CONTROL_ENABLED",
+            "ISAC_CONTROL_ALLOW_EXTERNAL_HOST",
             "ISAC_API_TOKEN",
             "ISAC_LLM_PROVIDER",
             "ISAC_LLM_API_KEY",
@@ -110,6 +111,22 @@ class TestDockerComposeEnvMapping:
         assert config["llm"]["provider"] == "openai_compat"
         assert config["llm"]["api_key"] == "sk-xxx"
         assert config["llm"]["model"] == "deepseek-chat"
+
+    def test_control_allow_external_host_env_is_mapped_bool(self, tmp_path, monkeypatch):
+        """容器部署逃生门 (2026-10-10): compose 注入的放行开关必须映射为真布尔。"""
+        monkeypatch.setenv("ISAC_CONTROL_HOST", "0.0.0.0")
+        monkeypatch.setenv("ISAC_CONTROL_ALLOW_EXTERNAL_HOST", "true")
+        config = load_config(tmp_path / "missing_config.jsonc")
+        assert config["control"]["host"] == "0.0.0.0"
+        assert config["control"]["allow_external_host"] is True
+
+        monkeypatch.setenv("ISAC_CONTROL_ALLOW_EXTERNAL_HOST", "false")
+        config = load_config(tmp_path / "missing_config.jsonc")
+        assert config["control"]["allow_external_host"] is False
+
+    def test_control_allow_external_host_defaults_false(self, tmp_path):
+        config = load_config(tmp_path / "missing_config.jsonc")
+        assert config["control"]["allow_external_host"] is False
 
 
 class TestZeroConfigStartup:

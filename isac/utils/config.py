@@ -52,6 +52,7 @@ ENV_MAPPING: dict[str, tuple[str, Callable[[str], Any]]] = {
     "ISAC_CONTROL_ENABLED": ("control.enabled", _to_bool),
     "ISAC_CONTROL_HOST": ("control.host", str),
     "ISAC_CONTROL_PORT": ("control.port", int),
+    "ISAC_CONTROL_ALLOW_EXTERNAL_HOST": ("control.allow_external_host", _to_bool),
     "ISAC_API_TOKEN": ("control.api_token", str),
     "ISAC_ONEBOT_ENABLED": ("channels.onebot.enabled", _to_bool),
     "ISAC_ONEBOT_HOST": ("channels.onebot.host", str),
@@ -71,6 +72,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "control": {
         "enabled": True,
         "host": "127.0.0.1",
+        # 容器部署 (Docker) 需监听 0.0.0.0 才能被宿主经发布端口访问; 默认 false
+        # 时非 loopback 地址一律被强制回退 127.0.0.1 (K7 安全基线)。显式置 true
+        # 才放行所配 host (务必同时配置 api_token/tokens 并限制访问来源)。
+        "allow_external_host": False,
         "port": 8765,
         "api_token": "",
         "setup_enabled": True,

@@ -35,6 +35,7 @@ class ConfigValidationError(ValueError):
 _CONTROL_FIELD_DEFAULTS: dict[str, Any] = {
     "enabled": True,
     "host": "127.0.0.1",
+    "allow_external_host": False,
     "port": 8765,
     "api_token": "",
     "tokens": [],
@@ -65,13 +66,17 @@ class ControlConfig(BaseModel):
 
     enabled: bool = True
     host: str = "127.0.0.1"
+    allow_external_host: bool = False
     port: int = Field(default=8765, ge=1, le=65535)
     api_token: str = ""
     tokens: list[Any] = Field(default_factory=list)
     cors: CorsConfig = Field(default_factory=CorsConfig)
     setup_enabled: bool = True
 
-    @field_validator("enabled", "host", "port", "api_token", "tokens", "cors", "setup_enabled", mode="before")
+    @field_validator(
+        "enabled", "host", "allow_external_host", "port", "api_token", "tokens", "cors", "setup_enabled",
+        mode="before",
+    )
     @classmethod
     def _none_means_unset(cls, v: Any, info: ValidationInfo) -> Any:
         """显式 null 等价于该字段未配置, 落回默认值; 其余非法值 (类型错/越界)
