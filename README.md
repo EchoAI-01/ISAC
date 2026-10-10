@@ -2,7 +2,7 @@
 
 > 下一代多 Agent AI 社交陪伴 Bot 框架 — 把「AI 社交陪伴」拆成可组合、可替换、可按配置定制的独立子系统。
 
-`v1.0.0-rc.1` · Python 3.12+ · 1568 单元/集成测试通过 · ruff / mypy 全绿 · MIT License
+`v1.0.0-rc.1` · Python 3.12+ · 2346 单元/集成测试通过 (2026-10-10) · ruff / mypy 全绿 · MIT License
 
 ---
 
@@ -28,7 +28,7 @@ ISAC 是一个用 Python 编写的**多 Agent AI 社交陪伴 Bot 框架**。它
 - **记忆系统** — FTS5+BM25 稀疏检索 / 向量稠密召回 / 图谱召回三路融合，配合记忆治理与"越聊越熟"的写入回路。
 - **多 Agent 单进程** — 多个 Agent 共享 Provider 连接池与嵌入模型，单进程运行，资源占用低。
 - **Agent 协作显式化** — Agent 默认互不相通，需显式授权（ACL）才能互相委托任务。
-- **多平台适配** — OneBot v11（QQ）已就绪，飞书 / QQ 官方机器人可配置启用，Telegram / Discord / WebChat 等预留接口。
+- **多平台适配** — OneBot v11（QQ）/ 飞书 / QQ 官方机器人 / 企业微信（wecom）/ Telegram / Discord / WebChat 均已实现并可配置启用（微信公众号 mp 为骨架；Slack 未实现）。
 - **控制面/数据面分离** — Admin REST API、MCP Server、WebUI v2 独立于消息处理链路，控制面异常不影响发消息。
 - **生产化基线** — 结构化日志、指标监控、用量计量、SSRF 防护、Docker 部署、CI 门禁一应俱全。
 
@@ -148,6 +148,7 @@ ISAC 定位为 **"主链路 MVP + 待激活子系统"**：单/多 Agent 基础�
 | 模块 | 状态 |
 |------|------|
 | 核心契约 / 配置与日志 / 原子写 | ✅ 已接线 |
+| 事件溯源会话内核（U1：事件表 / 历史派生 / 压缩 / 迁移） | ✅ 已接线 |
 | 消息路由（Router + Rules + MeshRouter） | ✅ 已接线 |
 | Gateway（事件总线 / 会话 / 用户映射 / 身份归一 / 并发锁） | ✅ 已接线 |
 | 门控系统（Gating / Focus / IdleBackoff） | ✅ 已接线 |
@@ -167,12 +168,12 @@ ISAC 定位为 **"主链路 MVP + 待激活子系统"**：单/多 Agent 基础�
 | Workflow 编排（多入口 + fan-in + 条件/重试 + action_handler） | ⚙ `control.workflow.enabled` |
 | 工具系统（ToolRegistry / ToolPermission + A2A 工具） | ✅ 已接线 |
 | 控制面（Admin API / MCP / Webhooks + 审计 + 持久化恢复） | ✅ 已接线 |
-| WebUI v2（SPA 十域 + 配置编辑事务 + SSE） | ✅ 已接线 |
+| WebUI v2（SPA 十域 + 配置编辑事务 + SSE） | ✅ 已接线（FE1 标 deprecated，F2 迁移后移除） |
 | 监控告警（Metrics / Alerting）+ 模型用量计量 | ✅ 已接线 |
 | 真实 LLM Provider（OpenAICompatProvider） | ✅ 已接线 |
 | 安全基线（SSRF + CGNAT 拦截 / Token 认证 / restricted 创建） | ✅ 已接线 |
-| 微信适配器（公众号 / 企业微信） | 🔨 骨架 |
-| 插件进程级隔离（默认加载路径接管） | 🔨 骨架 |
+| 微信适配器（企业微信 wecom / 公众号 mp） | ⚙ wecom 已实现；mp 🔨 骨架 |
+| 插件隔离（U6：有 manifest 原生插件默认子进程隔离；hosted 需信任确认） | ✅ 已接线 |
 
 > 各节点唯一进度事实源见 [docs/PROGRESS.md](./docs/PROGRESS.md)。
 
@@ -204,15 +205,17 @@ ISAC 采用**节点制**推进（A/B/C… 里程碑 + P 主链路接线 + Q MVP 
 - **R1–R6 功能广度轮** — 多模态出入站闭环与计量、控制面与 SubAgent 收尾、记忆完整性（行话学习 + COMPRESS 压缩）、Session 持久化 + SecretStore、企业化激活（租户控制面）。
 - **前后端分离后端段** — OpenAPI 契约冻结 + CORS/跨源认证 + 控制面开箱（control 默认开 + 首登强制设密码 + 配置 Schema 端点）。
 
-### ✅ 质量清偿（2026-08-18）
+### ✅ 质量清偿与加固 (2026-08-18 ~ 10-10)
 
 - **三轮全量代码审查修复** — N1b/N1c/N1d 同规格 5 路并行全量审查 + 主审逐条回码复核，累计 Fix-37~137：含沙箱逃逸、协议契约、会话内核竞态、注入防护、资源边界卫生等，Critical/Major/Minor 全部代码级清零。
 - **N1e 全局配置持久化 + 热重载** — 控制面 `GET/PATCH /config/global` + reload 端点（override 覆盖层不破坏 config.jsonc 注释 + If-Match 乐观锁 + applied/restart_required 区分），全局 `mcp.servers` 等定义不再"手编 + 重启"。
-- 当前全量 2098 测试通过，ruff/mypy 全绿，红线（U9 只减不增指标）全绿。
+- **加固轮 (2026-08-19)** — 会话锁粒度 Critical 修复、append-only 后门封堵、入站幂等去重、出站重试 + 死信环、U1 会话压缩写侧（保留 GC）、Telegram 入站媒体、429/Retry-After、召回可解释性（recall_sources）、成本闭环（provider 键统一）、MCP 重连、审计 actor 归因、U4 token↔tenant 绑定 + 删除级联、AstrBot import 重定向接线；Z1-C ServiceContainer 热路径迁移（红线棘轮 130→35）。
+- **最小实例运行修复 (2026-10-10)** — CI `build`（uv venv 无 pip）与 `docker`（.dockerignore 行内注释致 README 被排除）两条从未通过的 job 修复，**7/24 以来首次 CI 5/5 全绿**；新增 `control.allow_external_host` 显式放行（默认仍强制 loopback），源码 `smoke_webchat` / `smoke_control_setup` 与 `docker compose` 宿主 `/health` 双向真机验证通过；`/health` 聚合修复（此前 agents 统计恒 0）。
+- 当前全量 2346 测试通过，ruff/mypy 全绿，红线（只减不增指标）全绿。
 
 ### 🔨 规划中
 
-- **环境准入项** — Docker 冒烟、browser CI 复核、release checklist、24h soak（见 DEVELOPMENT_PLAN §三之三 N2）。
+- **环境准入项** — Docker 冒烟 ✅ 与 browser CI 复核 ✅ (2026-10-10); 剩 24h soak 与 release checklist 发版段（见 DEVELOPMENT_PLAN §三之三 N2）。
 - **T5 真实 IM 接入验收** — 需用户凭据；OneBot/飞书/QQ 官方/企业微信逐个真机联调。
 - **前端轨道 F1–F4** — 独立项目，围绕冻结的 API 契约开发（登录/setup 向导 → 十域页面 → 实时日志 → 插件市场 UI）。
 - **O4 平台扩展剩余** — 微信公众号（mp）模式（wecom 企业微信已实现）。
@@ -235,8 +238,9 @@ isac/
 ├── agent/           # Agent 核心：循环、Hooks、Prompt 组装、注入器、工具、SubAgent
 ├── gating/          # 门控系统：回复必要性评分、IdleBackoff、FocusMode
 ├── router/          # 消息路由：绑定匹配、触发词、默认 Agent、MeshRouter
-├── gateway/         # 消息网关：事件总线、会话管理、用户映射、身份归一、并发锁
-├── channel/         # 平台适配器 (OneBot / 飞书 / QQ 官方 / 微信骨架 / 预留 Telegram·Discord)
+├── gateway/         # 消息网关：事件总线、会话管理、用户映射、身份归一、并发锁、入站幂等去重
+├── session/         # 事件溯源会话内核：事件表、历史派生、压缩、迁移
+├── channel/         # 平台适配器 (OneBot / 飞书 / QQ 官方 / 企业微信 / Telegram / Discord / WebChat / 模板)
 ├── commands/        # 用户命令系统 (/mute, /focus, /agents)
 ├── plugin/          # 插件生态：AstrBot/MaiBot 兼容层、原生 SDK、进程级隔离宿主
 ├── runtime/         # 运行时：AgentManager、实例组装、拟人化运行时、租户隔离、Agent 互联总线

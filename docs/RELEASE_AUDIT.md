@@ -56,13 +56,15 @@
 
 > N1 收敛 (2026-08-18): T7 `[~]` 与 R7 `[~]` 的剩余项已逐一映射到本表;
 > 清偿计划见 DEVELOPMENT_PLAN §三之三 N2/N3 (验收铁律: 每项附真实输出)。
+>
+> **2026-10-10 状态更新**: Docker 健康检查冒烟 ✅ 与 browser CI 复核 ✅ 已完成 (证据: 本机 `docker compose up -d` healthy + 宿主 `/health` 200; GitHub CI run 38064914621 docker job `health check passed`、browser job `2 passed`); 其余项待环境/凭据。
 
 | 项 | 对应节点 | 依赖 | 状态 |
 |---|---|---|---|
-| 真实启动冒烟 + Docker 健康检查 | T7 验收①(docker compose 一键) + R7 验收 → N2-1 | docker daemon | 待环境 |
-| 24h soak test (无内存/连接/任务泄漏) | T7 验收⑤ + R7 验收 → N2-4 | 长时运行环境 + 真实 LLM key | 待环境 |
-| I 节点 browser CI 复核 100% | R7 验收 (85%→100%) → N2-2 | 浏览器环境 (本地 2 ERROR 为环境限制非代码缺陷) | 待环境 |
-| `scripts/release_checklist.md` 七段全过 | R7 验收 → N2-3 | 真实部署环境 | 待环境 |
+| 真实启动冒烟 + Docker 健康检查 | T7 验收①(docker compose 一键) + R7 验收 → N2-1 | docker daemon | ✅ 完成 (2026-10-10: compose healthy + 宿主 /health 200; CI docker job 绿) |
+| 24h soak test (无内存/连接/任务泄漏) | T7 验收⑤ + R7 验收 → N2-4 | 长时运行环境 + 真实 LLM key | 待环境 (需先建采样工具) |
+| I 节点 browser CI 复核 100% | R7 验收 (85%→100%) → N2-2 | 浏览器环境 | ✅ 完成 (CI 真跑 2 passed; I 节点 100%) |
+| `scripts/release_checklist.md` 七段全过 | R7 验收 → N2-3 | 真实部署环境 | [~] 第 1/2 段已过 (CI 全绿 + 本地 2346); 发版段待发版时 |
 | 按文档真人复现 (未接触项目的人 5 分钟跑通) | T7 验收⑤(docs 快速开始) | 人工 | 待人工 |
 | T5 真实 IM 凭据联调 | T5 → N3 | 用户凭据 + 回调公网地址 | 待用户 |
 | REQUIREMENTS 十二条逐条取证复核 | R7 验收 | 代码取证 (本次即交付) | ✅ 完成 |

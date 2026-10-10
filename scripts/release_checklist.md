@@ -12,7 +12,7 @@
 ## 二、本地全量验证 (必须)
 
 ```bash
-uv run python -m pytest --ignore=tests/browser -q          # 全量测试通过 (基线 1093+)
+uv run python -m pytest --ignore=tests/browser -q          # 全量测试通过 (基线 2346+, 2026-10-10)
 uv run ruff check .                                          # Lint 全绿
 uv run mypy isac/                                            # 类型全绿
 uv run python -m isac                                        # 冒烟: RESIDENT_AFTER_3S + SIGTERM EXIT_CODE=0
@@ -26,10 +26,11 @@ uv run python -m isac                                        # 冒烟: RESIDENT_
 - [ ] `README.md` / `AGENTS.md` 能力描述与版本号一致
 - [ ] `CHANGELOG.md` (若存在) 记录本次发版变更
 
-## 四、版本号一致 (必须)
+## 四、版本号一致 (必须; pre-GA 按 CHANGELOG「版本号策略」执行)
 
-- [ ] `pyproject.toml` version 与文档描述一致
-- [ ] `isac/__init__.py:__version__` 与 pyproject.toml 一致
+- [ ] 发版时 `pyproject.toml` / `isac/__init__.py:__version__` / Docker 镜像 tag 三者统一
+- [ ] pre-GA 现状允许不同: `pyproject.toml=1.0.0rc1` (候选包版本) 与 `isac.__version__=1.0.0`
+      (GA 目标, `docs/api/openapi.json` 基线与之同源); 打 GA tag 前必须对齐
 - [ ] Docker 镜像 tag 与版本号一致 (若推送 registry)
 
 ## 五、发布标签 (建议)
