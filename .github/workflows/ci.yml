@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload dist artifact
         # 供 PR 页面下载检查; 正式发布产物由 release.yml 重新构建并附到 GitHub Release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
