@@ -183,7 +183,7 @@ jobs:
       - name: Build image (amd64, local)
         # 推送前的发布 smoke: 与 CI docker job 同参数构建单平台镜像并探活,
         # 失败即中止 —— 坏镜像绝不推 registry
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -241,7 +241,7 @@ jobs:
 
       - name: Build and push multi-arch image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64

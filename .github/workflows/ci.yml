@@ -149,7 +149,7 @@ jobs:
 
       - name: Build Docker image
         # buildx + gha 后端缓存: uv sync 依赖层跨 run 复用, 显著提速
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
