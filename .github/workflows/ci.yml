@@ -145,7 +145,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build Docker image
         # buildx + gha 后端缓存: uv sync 依赖层跨 run 复用, 显著提速

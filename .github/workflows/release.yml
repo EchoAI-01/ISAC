@@ -178,7 +178,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build image (amd64, local)
         # 推送前的发布 smoke: 与 CI docker job 同参数构建单平台镜像并探活,
