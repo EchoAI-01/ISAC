@@ -44,6 +44,7 @@ uv run python -m isac                   # 启动 (支持 SIGINT/SIGTERM 优雅�
 5. **编码规范** (DEVELOP 二): 类型注解齐全、async/await、structlog 结构化日志、docstring 中文。
 6. **测试**: 核心模块覆盖率 ≥75% + branch coverage;单测在 `tests/unit/`,集成测试在 `tests/integration/`,fixtures 在 `tests/fixtures/`。
 7. **文档同步**: 改动了文档描述的结构/接口/流程,必须同步更新对应文档;进度只更新 `docs/PROGRESS.md`。
+8. **提交署名固定** (2026-10-11 历史重写后立规): 本仓库全部提交统一署名 `EchoAI-01 <254134517+EchoAI-01@users.noreply.github.com>`。新克隆第一件事执行 `git config user.name "EchoAI-01" && git config user.email "254134517+EchoAI-01@users.noreply.github.com"` (仓库级)。2026-10-11 分支历史已整体重写 (统一 8 笔误署名提交, SHA 全变): 旧克隆必须 `git fetch origin && git reset --hard origin/main` 对齐 (有未推送提交先 `rebase --onto origin/main`), **禁止** 基于旧历史 merge 提交或 force push —— main/dev 均已开启分支保护拒绝 force push。
 
 ## 剩余工作
 
