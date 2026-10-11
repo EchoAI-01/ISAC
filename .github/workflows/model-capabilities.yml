@@ -60,14 +60,16 @@ jobs:
       - name: Commit and push if changed
         # generated_at 每次生成必前移 → 每周约一提交, 属设计使然
         # (时间戳前进即「快照被验证过」的新鲜度证据)
+        # 署名统一 (2026-10-11): 提交身份固定 EchoAI-01 (AGENTS.md 硬性规则 #8),
+        # 不用 github-actions[bot] 默认身份 —— 避免贡献者列表出现 bot。
         run: |
           set -euo pipefail
           if git diff --quiet data/model_capabilities.json; then
             echo "快照无变化, 跳过提交"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "EchoAI-01"
+          git config user.email "254134517+EchoAI-01@users.noreply.github.com"
           git add data/model_capabilities.json
           git commit -m "chore(u7): 每周刷新模型能力快照 (models.dev)"
           git push
