@@ -10,6 +10,11 @@ qq_official Fix-96 同构), 由 dispatch 入口统一接线, 一次覆盖全部�
 
 设计取舍: LRU+TTL 双限保证表不无界增长; 空 msg_id 不去重 (无法判重, 放行避免误丢);
 TTL 窗口外的"古老重投"会再次放行 —— 与 qq_official 一致的有界内存权衡。
+
+D1 (2026-10-11 审计修复): 去重键必须带**会话维度** —— Telegram/Discord 等平台的
+msg_id 是 per-chat 独立递增序列, 跨会话必然撞号; 仅按 ``(platform, msg_id)`` 判重
+会把 B 会话的同号消息误判为 A 会话的重复投递而丢弃 (跨会话误吞真实消息)。
+键升为 ``(platform, session, msg_id)``; session 传 "" 时退化为旧行为 (兼容)。
 """
 
 from __future__ import annotations
@@ -23,7 +28,7 @@ DEFAULT_DEDUP_TTL_SECONDS = 600.0
 
 
 class InboundDeduplicator:
-    """入站消息 ``(platform, msg_id)`` 幂等去重表 (LRU + TTL 双限)。
+    """入站消息 ``(platform, session, msg_id)`` 幂等去重表 (LRU + TTL 双限)。
 
     单一入口 ``is_duplicate()``; 同步、无 IO、O(1) 均摊, 可安全置于消息主链路。
     非线程安全 —— 设计为在 dispatch 单一事件循环内调用 (与 SessionLockManager 同域)。
@@ -38,15 +43,17 @@ class InboundDeduplicator:
         self._max = max(1, int(max_entries))
         self._ttl = max(0.0, float(ttl_seconds))
 
-    def is_duplicate(self, platform: str, msg_id: str) -> bool:
+    def is_duplicate(self, platform: str, msg_id: str, session: str = "") -> bool:
         """已见 (TTL 内) 返回 True; 首见记录并返回 False。
 
-        空 msg_id 不去重 (无法判重, 放行避免误丢)。顺带惰性清理过期条目并按
-        LRU 上限淘汰最旧, 保证表不无界增长。
+        空 msg_id 不去重 (无法判重, 放行避免误丢)。session 为会话维度键
+        (群聊 group_id / 私聊用户维度 / 统一 session_id), 传入以区分各平台
+        per-chat 独立编号的 msg_id (D1); 缺省 "" 时退化为旧行为。
+        顺带惰性清理过期条目并按 LRU 上限淘汰最旧, 保证表不无界增长。
         """
         if not msg_id:
             return False
-        key = f"{platform}:{msg_id}"
+        key = f"{platform}:{session}:{msg_id}"
         now = time.time()
         # 惰性清理过期条目 (从最旧开始, 遇未过期即停)
         while self._seen:

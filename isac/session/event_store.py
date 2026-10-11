@@ -125,13 +125,28 @@ class SessionEventStore:
         await self._db.commit()
         self._pending_commits = 0
 
-    async def count_events(self, session_key: str) -> int:
-        """统计某分区事件数 (压缩触发阈值判定用, 轻量 COUNT)。未 start 返回 0。"""
+    async def count_events(self, session_key: str, event_types: list[str] | None = None) -> int:
+        """统计某分区事件数 (压缩触发阈值判定用, 轻量 COUNT)。未 start 返回 0。
+
+        D6 (2026-10-11 复审修复): event_types 非空时只统计指定类型 —— 压缩触发
+        阈值须按**内容事件** (user/completed/compressed) 计数, 与 compressor
+        _select_prefix 的可压缩判定同口径; 此前按全量事件计数, 工具调用密集的
+        会话 (tool.called/outcome 不参与压缩) 频繁顶过阈值却恒 too_few 空转,
+        且每次空转都全量 fetch 分区。
+        """
         if self._db is None:
             return 0
-        cursor = await self._db.execute(
-            "SELECT COUNT(*) FROM session_events WHERE session_key = ?", (session_key,)
-        )
+        if event_types:
+            placeholders = ",".join("?" for _ in event_types)
+            cursor = await self._db.execute(
+                f"SELECT COUNT(*) FROM session_events WHERE session_key = ? "
+                f"AND event_type IN ({placeholders})",
+                (session_key, *event_types),
+            )
+        else:
+            cursor = await self._db.execute(
+                "SELECT COUNT(*) FROM session_events WHERE session_key = ?", (session_key,)
+            )
         row = await cursor.fetchone()
         await cursor.close()
         return int(row[0]) if row and row[0] is not None else 0

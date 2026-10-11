@@ -1,0 +1,361 @@
+# ISAC CD — 发布流水线 (Release)
+#
+# 触发:
+#   1. push tag `v*`        → 正式发布: 全量复验 → wheel/sdist → 多平台镜像推
+#      ghcr.io → 按 digest 拉回探活 → GitHub Release (CHANGELOG 段落 + 产物附件)。
+#   2. workflow_dispatch     → 演练模式 (dry_run, 默认开): 同样跑全量复验 + 构建 +
+#      容器探活, 但不推镜像、不发 Release。日常用演练保持 CD 链路随时可发布
+#      (release_checklist §一/§四 的机器化)。
+#
+# 版本语义 (CHANGELOG「版本号策略」, 2026-10-11 定调 Alpha):
+#   - 项目未达 MVP, 版本 0.0.1a1 = Alpha-0.0.1; aN/bN/rcN 后缀为 prerelease,
+#     发布自动标 GitHub prerelease、镜像不占 latest tag;
+#   - tag 打在 dev 合并到 main 之后;
+#   - tag 版本 = pyproject.toml version = isac.__init__.py __version__ 三者一致
+#     (verify job 强校验; 演练模式仅提示不阻塞);
+#   - CHANGELOG.md 含对应 `## [X.Y.Z]` 段落 (缺失时回退 Unreleased 段并标注)。
+#
+# 门禁与 CI (ci.yml) 等价但独立执行: 发布不信任「CI 之前跑过」—— tag 必须指向
+# 全量复验通过的快照。两边门禁改动请同步修改。
+#
+# 首次发布后需在 GitHub → Packages 手动将 ghcr.io/echoai-01/isac 可见性改公开
+# (GITHUB_TOKEN 推送的包默认 private)。
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '演练模式: 只构建验证, 不推镜像/不发 GitHub Release'
+        type: boolean
+        default: true
+
+# contents: write 创建 GitHub Release; packages: write 推镜像到 ghcr.io
+permissions:
+  contents: write
+  packages: write
+
+# 发布串行: 同一 ref 的旧发布不取消 (正在推的镜像不能中断), 排队执行
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── ① 全量复验 + 版本一致性 ─────────────────────────────────────────────
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.versions.outputs.version }}
+      image: ${{ steps.versions.outputs.image }}
+      push: ${{ steps.versions.outputs.push }}
+      is_stable: ${{ steps.versions.outputs.is_stable }}
+    env:
+      # inputs.* 只在 workflow_dispatch 时有值; tag 触发时为空串
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy isac/
+
+      - name: Pytest (unit + integration)
+        run: uv run pytest --ignore=tests/browser --cov=isac --cov-branch --cov-report=term-missing --cov-fail-under=75
+
+      - name: Install Playwright chromium
+        run: uv run playwright install chromium --with-deps
+
+      - name: Pytest (browser)
+        run: uv run pytest tests/browser/ -v
+
+      - name: Catalog drift checks (U8)
+        run: |
+          uv run python scripts/gen_tool_catalog.py --check
+          uv run python scripts/gen_config_catalog.py --check
+          uv run python scripts/gen_model_capabilities.py --check
+
+      - name: Redline metrics check (U9)
+        run: uv run python scripts/check_redlines.py
+
+      - name: Version consistency + publish decision
+        id: versions
+        # release_checklist §四 的机器化: tag 正式发布时三处版本必须一致;
+        # 演练模式只报告不阻塞。镜像名必须小写 (ghcr 拒绝大写仓库名)。
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PYPROJECT_VERSION=$(sed -n 's/^version *= *"\(.*\)"$/\1/p' pyproject.toml | head -1)
+          INIT_VERSION=$(sed -n 's/^__version__ *= *"\(.*\)"$/\1/p' isac/__init__.py)
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            if [[ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]]; then
+              echo "::error::tag v${TAG_VERSION} 与 pyproject.toml version=${PYPROJECT_VERSION} 不一致 (release_checklist §四)"
+              exit 1
+            fi
+            if [[ "$TAG_VERSION" != "$INIT_VERSION" ]]; then
+              echo "::error::tag v${TAG_VERSION} 与 isac/__init__.py __version__=${INIT_VERSION} 不一致 (三处同源, 见 CHANGELOG 版本号策略)"
+              exit 1
+            fi
+            VERSION="$TAG_VERSION"
+          else
+            VERSION="$PYPROJECT_VERSION"
+            echo "::warning::演练模式: 跳过版本一致性强校验 (tag=v${TAG_VERSION:-无}, pyproject=${PYPROJECT_VERSION}, __version__=${INIT_VERSION}; 正式打 tag 时三者必须一致)"
+          fi
+
+          # PEP 440 prerelease 后缀 (a1/b2/rc1) 不占 latest / 自动标 prerelease;
+          # Alpha 阶段 (0.0.x aN) 所有版本都是 prerelease
+          STABLE=true
+          if [[ "$VERSION" =~ (a|b|rc)[0-9]+$ ]]; then
+            STABLE=false
+          fi
+
+          # 正式推送条件: tag 触发, 或手动 dispatch 且显式关闭 dry_run
+          PUSH=false
+          if [[ "${GITHUB_EVENT_NAME}" == "push" || "${DRY_RUN}" == "false" ]]; then
+            PUSH=true
+          fi
+
+          # 镜像名小写化用 tr 而非 ${VAR,,}: 后者需 bash 4+, macOS 本地 /bin/bash
+          # 3.2 复用此脚本时会挂 (runner 是 bash 5, 纯粹为本地可复现性)
+          IMAGE="ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "push=${PUSH}" >> "$GITHUB_OUTPUT"
+          echo "is_stable=${STABLE}" >> "$GITHUB_OUTPUT"
+          echo "版本=${VERSION} 镜像=${IMAGE} 推送=${PUSH} 稳定版=${STABLE} 事件=${GITHUB_EVENT_NAME} dry_run=${DRY_RUN:-}"
+
+  # ── ② 构建发行包 (wheel/sdist) + 安装 smoke ─────────────────────────────
+  build-wheel:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Install from wheel (smoke)
+        # uv venv 默认不装 pip, 用 uv pip install 解析依赖 (与 CI build job 同法)
+        run: |
+          uv venv /tmp/smoke-venv
+          uv pip install --python /tmp/smoke-venv/bin/python dist/isac-*.whl
+          /tmp/smoke-venv/bin/python -c "import isac; print(f'version={isac.__version__}')"
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
+  # ── ③ Docker 镜像: 本地探活 → 多平台推送 → 按 digest 拉回探活 ───────────
+  docker:
+    needs: verify
+    runs-on: ubuntu-latest
+    # qemu 模拟 arm64 构建 uv sync 较慢; 如需降级, 删掉 platforms 中的 linux/arm64
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (amd64, local)
+        # 推送前的发布 smoke: 与 CI docker job 同参数构建单平台镜像并探活,
+        # 失败即中止 —— 坏镜像绝不推 registry
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: isac:release-smoke
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke run container and probe health
+        run: |
+          set -euo pipefail
+          docker run -d --name isac-release-smoke -p 8765:8765 \
+            -e ISAC_CONTROL_ENABLED=true \
+            -e ISAC_CONTROL_HOST=0.0.0.0 \
+            -e ISAC_CONTROL_ALLOW_EXTERNAL_HOST=true \
+            -e ISAC_CONTROL_PORT=8765 \
+            isac:release-smoke
+          for i in {1..30}; do
+            if curl -sf http://localhost:8765/health > /dev/null; then
+              echo "health check passed"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "health check failed after 30s"
+          docker logs isac-release-smoke
+          exit 1
+
+      - name: Cleanup smoke container
+        if: always()
+        run: docker rm -f isac-release-smoke || true
+
+      - name: Login to ghcr.io
+        if: needs.verify.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (tags and labels)
+        id: meta
+        # tag 直接用 PEP 440 版本串 (如 0.0.1a1); 不用 type=semver —— node-semver
+        # 的 prerelease 格式是 0.0.1-a1 (带连字符), 与 PEP 440 的 0.0.1a1 不兼容,
+        # semver type 对 aN 后缀 tag 不命中。
+        # 规则: vX.Y.Z → X.Y.Z + sha-<short>; 稳定版 (无 aN/bN/rcN 后缀) 额外打
+        # latest; prerelease (0.0.1a1) 不占 latest。
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.verify.outputs.image }}
+          tags: |
+            type=raw,value=${{ needs.verify.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.verify.outputs.is_stable == 'true' }}
+            type=sha
+
+      - name: Build and push multi-arch image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.verify.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke pull published image by digest and probe
+        # 端到端验证「用户拿到的镜像」而非构建上下文: 按 digest 拉回刚推送的
+        # 镜像再跑一次探活 (digest 锁定, 不受 mutable tag 影响)
+        if: needs.verify.outputs.push == 'true'
+        run: |
+          set -euo pipefail
+          IMAGE="${{ needs.verify.outputs.image }}"
+          DIGEST="${{ steps.build.outputs.digest }}"
+          echo "拉取 ${IMAGE}@${DIGEST}"
+          docker pull "${IMAGE}@${DIGEST}"
+          docker run -d --name isac-published-smoke -p 8766:8765 \
+            -e ISAC_CONTROL_ENABLED=true \
+            -e ISAC_CONTROL_HOST=0.0.0.0 \
+            -e ISAC_CONTROL_ALLOW_EXTERNAL_HOST=true \
+            -e ISAC_CONTROL_PORT=8765 \
+            "${IMAGE}@${DIGEST}"
+          for i in {1..30}; do
+            if curl -sf http://localhost:8766/health > /dev/null; then
+              echo "published image health check passed"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "published image health check failed after 30s"
+          docker logs isac-published-smoke
+          exit 1
+
+      - name: Cleanup published smoke container
+        if: always()
+        run: docker rm -f isac-published-smoke || true
+
+  # ── ④ GitHub Release: CHANGELOG 段落 + wheel/sdist 附件 ─────────────────
+  release:
+    needs: [verify, build-wheel, docker]
+    # 仅 tag 触发时发布 (dispatch 即使 dry_run=false 也只推镜像, 不建 Release)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Extract release notes from CHANGELOG
+        # 优先取 `## [X.Y.Z]` 精确段落; 缺失回退 Unreleased 并标注 (发版应按
+        # release_checklist §三 补段落); 两者皆缺则留空, 由 --generate-notes 兜底
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.verify.outputs.version }}"
+          IMAGE="${{ needs.verify.outputs.image }}"
+
+          extract() {
+            awk -v header="## [$1]" '
+              index($0, header) == 1 { found = 1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md
+          }
+
+          EXACT=$(extract "$VERSION")
+          UNRELEASED=$(extract "Unreleased")
+
+          {
+            echo "ISAC v${VERSION}"
+            echo
+            if [[ -n "$EXACT" ]]; then
+              printf '%s\n' "$EXACT"
+            elif [[ -n "$UNRELEASED" ]]; then
+              echo "> ⚠️ CHANGELOG.md 未找到 \`## [${VERSION}]\` 段落, 以下取自 Unreleased。"
+              echo
+              printf '%s\n' "$UNRELEASED"
+            else
+              echo "_CHANGELOG 无对应段落, 变更明细见下方自动生成部分。_"
+            fi
+            echo
+            echo "## 安装"
+            echo
+            echo '```bash'
+            echo "docker pull ${IMAGE}:${VERSION}"
+            echo '```'
+          } > release_notes.md
+
+          echo "── release notes 预览 ──"
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        # 用官方 gh CLI 而非第三方 action, 减少供应链面
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          TAG_VERSION="${TAG#v}"
+          # PEP 440 prerelease 后缀 (a1/b2/rc1) 标 prerelease 且不占 latest;
+          # Alpha 阶段 (0.0.x aN) 所有版本均如此
+          LATEST_FLAG="--latest"
+          if [[ "$TAG_VERSION" =~ (a|b|rc)[0-9]+$ ]]; then
+            LATEST_FLAG="--latest=false"
+          fi
+          gh release create "$TAG" dist/* \
+            --title "ISAC ${TAG}" \
+            --notes-file release_notes.md \
+            --generate-notes \
+            "$LATEST_FLAG"

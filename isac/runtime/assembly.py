@@ -320,13 +320,12 @@ def _plugin_enabled_for_agent(config: AgentConfig, plugin_name: str) -> bool:
     表达"禁用所有外部插件", 空 allow 必须等于"全禁"而非"全放" (否则形同虚设)。
     规则: deny 优先; allow=["*"] 放行未 deny 者; allow 显式白名单仅放列内者;
     allow=[] 一律拒绝。builtin 来源不经此判定 (内置工具恒可用)。
+    D5 (2026-10-11): 语义收口到 core.policy.plugin_allowed_by_agent_lists 单源
+    (activation 的运行中同步共用同一判定, 此前两处语义分叉且同步侧缺判定)。
     """
-    if plugin_name in config.plugins_deny:
-        return False
-    allow = config.plugins_allow
-    if "*" in allow:
-        return True
-    return plugin_name in allow
+    from isac.core.policy import plugin_allowed_by_agent_lists
+
+    return plugin_allowed_by_agent_lists(config.plugins_allow, config.plugins_deny, plugin_name)
 
 
 def _merge_shared_plugin_tools(
@@ -357,13 +356,50 @@ def _merge_shared_plugin_tools(
             tools.register(_tool, source=_src)
     shared_prompt = services.plugin_prompt_builder
     if shared_prompt is not None:
-        for _inj in shared_prompt._injectors:  # noqa: SLF001
-            prompt_builder.register(_inj)
+        # D5 同构面: 注入器合并同样按 plugins_allow/deny 过滤 (此前仅 tools 过滤,
+        # 受限 Agent 仍会收到全部插件注入器 —— 与工具同款越权面)。
+        for _inj, _inj_src in shared_prompt.items_with_source():  # noqa: SLF001
+            if _inj_src != "builtin" and not _plugin_enabled_for_agent(config, _inj_src):
+                continue
+            prompt_builder.register(_inj, source=_inj_src)
+
+
+async def _reuse_mcp_clients(
+    config: AgentConfig, tools: ToolRegistry, clients: list[Any]
+) -> list[Any] | None:
+    """N5 差量: 复用既有 MCPClient (跳过 connect, 仅重注册 bridge)。
+
+    成功返回复用列表; 任一 client list_tools 失败 → 断开全部复用 client 返回
+    None (调用方回落全量重连, fail-safe)。
+    """
+    reused: list[Any] = []
+    try:
+        for client in clients:
+            bridges = await client.list_tools()
+            for bridge in bridges:
+                tools.register(bridge)
+            reused.append(client)
+        logger.info(
+            "MCP 连接复用 (配置未变, 未重连)",
+            agent_id=config.agent_id, servers=len(reused),
+        )
+        return reused
+    except Exception as exc:  # noqa: BLE001 复用失败回落全量重连
+        logger.warning(
+            "MCP 连接复用失败, 回落全量重连", agent_id=config.agent_id, error=str(exc)
+        )
+        for client in clients:
+            try:
+                await client.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+        return None
 
 
 async def _wire_mcp_clients(
     config: AgentConfig, services: ServiceContainer, tools: ToolRegistry,
     enable_matrix: EnableMatrix | None = None,
+    reuse_clients: list[Any] | None = None,
 ) -> list[Any]:
     """R3: 按 AgentConfig.mcp_servers 构造并连接 MCPClient, MCP 工具注册进 tools。
 
@@ -377,8 +413,17 @@ async def _wire_mcp_clients(
     M4: 接线层经 EnableMatrix.is_mcp_enabled 门控 (Agent 白名单 ∩ Channel 矩阵) ——
     此前该函数零生产调用 (死代码), policy 宣称的 "mcp_servers ∩ Channel 矩阵" 未落实。
     接线阶段无 platform 上下文, Channel 门控在调用层 (effective_policy) 按平台生效。
+
+    N5 差量优化 (2026-10-11): reuse_clients 非空时跳过构造+connect, 直接复用既有
+    client (仅重新 list_tools 注册 bridge 进新 registry) —— reload_config 场景
+    mcp_servers 未变时避免 stdio 子进程重启/HTTP 重连 (秒级)。任一复用 client 的
+    list_tools 失败则整批放弃复用, 回落全量重连 (fail-safe, 见 _reuse_mcp_clients)。
     """
     mcp_clients: list[Any] = []
+    if reuse_clients:
+        reused = await _reuse_mcp_clients(config, tools, reuse_clients)
+        if reused is not None:
+            return reused
     mcp_servers_def = services.mcp_servers or {}
     if not config.mcp_servers or not mcp_servers_def:
         return mcp_clients
@@ -574,7 +619,10 @@ def _as_container(services: dict[str, Any]) -> ServiceContainer:
     return services if isinstance(services, ServiceContainer) else ServiceContainer(services)
 
 
-async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> AgentInstance:
+async def assemble_agent(
+    config: AgentConfig, services: dict[str, Any], *,
+    reuse_mcp_clients: list[Any] | None = None,
+) -> AgentInstance:
     """按配置组装一个 AgentInstance。
 
     Args:
@@ -668,7 +716,9 @@ async def assemble_agent(config: AgentConfig, services: dict[str, Any]) -> Agent
     # AgentConfig.mcp_servers 构造+connect+list_tools 注册 MCP 工具进 tools。client
     # 存 per-Agent 服务的 mcp_clients 键供 stop/destroy disconnect。默认空, 零行为变化。
     _merge_shared_plugin_tools(services, tools, prompt_builder, config)
-    mcp_clients = await _wire_mcp_clients(config, services, tools, enable_matrix)
+    mcp_clients = await _wire_mcp_clients(
+        config, services, tools, enable_matrix, reuse_clients=reuse_mcp_clients
+    )
 
     prompt_builder.register(ToolsAvailableInjector(tools))
 

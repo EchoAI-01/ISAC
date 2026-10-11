@@ -1,0 +1,14 @@
+# .github/dependabot.yml — 依赖自动化升级
+#
+# github-actions 生态: actions/* 与 docker/* 的版本升级 PR (月度批量)。
+# 升级 PR 走正常 CI 门禁, 绿了再合; 避免 workflow 用到已废弃的 action 大版本。
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels:
+      - ci

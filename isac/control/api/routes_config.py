@@ -185,6 +185,17 @@ def _validate_agent_config_fields(payload: dict) -> list[str]:
     if revision is not None and not isinstance(revision, int):
         errors.append("revision must be int")
 
+    # D2 配置期 fail-fast (2026-10-11): tools_policy 值域四档 (运行时已 fail-closed,
+    # 配置期提前报错让笔误在写入前被发现, 而不是运行时静默按 deny 收紧)。
+    tools_policy = payload.get("tools_policy")
+    if tools_policy is not None:
+        if not isinstance(tools_policy, dict):
+            errors.append("tools_policy must be dict")
+        else:
+            from isac.agent.tools.base import validate_tool_policy_values
+
+            errors.extend(validate_tool_policy_values(tools_policy))
+
     return errors
 
 
@@ -349,7 +360,8 @@ async def _do_patch_global_config(
                 status_code=400,
                 detail={"code": "INVALID_CONFIG", "message": str(exc)},
             ) from exc
-        new_revision = save_config_overrides(override_path, patch)
+        # N5 (2026-10-11): 覆盖文件原子写 (tmp+fsync+replace) 迁 to_thread, 不阻塞事件循环。
+        new_revision = await asyncio.to_thread(save_config_overrides, override_path, patch)
         candidate = await _resolve_candidate_secrets(candidate)
         applied = await _hot_apply_global_config(agent_manager, global_config, candidate)
         # 审计只记变更的顶层节名, 绝不记值 (值可能含凭据)。

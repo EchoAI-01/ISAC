@@ -2,7 +2,7 @@
 
 > 下一代多 Agent AI 社交陪伴 Bot 框架 — 把「AI 社交陪伴」拆成可组合、可替换、可按配置定制的独立子系统。
 
-`v1.0.0-rc.1` · Python 3.12+ · 2346 单元/集成测试通过 (2026-10-10) · ruff / mypy 全绿 · MIT License
+`Alpha-0.0.1` · Python 3.12+ · 2378 单元/集成测试通过 (2026-10-11) · ruff / mypy 全绿 · MIT License
 
 ---
 
@@ -211,7 +211,8 @@ ISAC 采用**节点制**推进（A/B/C… 里程碑 + P 主链路接线 + Q MVP 
 - **N1e 全局配置持久化 + 热重载** — 控制面 `GET/PATCH /config/global` + reload 端点（override 覆盖层不破坏 config.jsonc 注释 + If-Match 乐观锁 + applied/restart_required 区分），全局 `mcp.servers` 等定义不再"手编 + 重启"。
 - **加固轮 (2026-08-19)** — 会话锁粒度 Critical 修复、append-only 后门封堵、入站幂等去重、出站重试 + 死信环、U1 会话压缩写侧（保留 GC）、Telegram 入站媒体、429/Retry-After、召回可解释性（recall_sources）、成本闭环（provider 键统一）、MCP 重连、审计 actor 归因、U4 token↔tenant 绑定 + 删除级联、AstrBot import 重定向接线；Z1-C ServiceContainer 热路径迁移（红线棘轮 130→35）。
 - **最小实例运行修复 (2026-10-10)** — CI `build`（uv venv 无 pip）与 `docker`（.dockerignore 行内注释致 README 被排除）两条从未通过的 job 修复，**7/24 以来首次 CI 5/5 全绿**；新增 `control.allow_external_host` 显式放行（默认仍强制 loopback），源码 `smoke_webchat` / `smoke_control_setup` 与 `docker compose` 宿主 `/health` 双向真机验证通过；`/health` 聚合修复（此前 agents 统计恒 0）。
-- 当前全量 2346 测试通过，ruff/mypy 全绿，红线（只减不增指标）全绿。
+- **后端收官轮 (2026-10-11)** — D1-D6 缺陷修复（去重键会话维度 / tools_policy fail-open / 压缩 GC 对齐 / 摘要锚点排序 / 插件启用矩阵 / 阈值口径）+ N4 API 基线补齐（securitySchemes / config schema 22 键）+ N5 清偿（同步 IO 异步化 7 处 / reload_config 差量复用 MCP 连接）+ 富媒体二波（飞书 image 出入站 + Discord 附件双向）+ soak 采样工具 + IM 凭据清单。**后端纯代码工作全部完成**。
+- 当前全量 2378 测试通过，ruff/mypy 全绿，红线（只减不增指标）全绿，API 契约基线 58 路径齐备（前端可直接开工）。
 
 ### 🔨 规划中
 

@@ -307,7 +307,11 @@ class PluginInstaller:
                 validate_plugin_archive(zf)
                 # U0 Fix-86: 接入解压体积上限 (此前 MAX_EXTRACTED_BYTES 全仓零引用) ——
                 # safe_extractall 流式累计实际写盘字节, 超限中止并清半成品 (防 zip bomb)。
-                safe_extractall(zf, extract_tmp, max_extracted_bytes=MAX_EXTRACTED_BYTES)
+                # N5 (2026-10-11): 解压是持续流式写盘 (上限 500MB), async 体内同步执行
+                # 会阻塞事件循环整个解压时长 —— 迁 to_thread。
+                await asyncio.to_thread(
+                    safe_extractall, zf, extract_tmp, max_extracted_bytes=MAX_EXTRACTED_BYTES
+                )
             root = resolve_archive_root_dir(extract_tmp)
             self._plugins_dir.mkdir(parents=True, exist_ok=True)
             if target.exists():

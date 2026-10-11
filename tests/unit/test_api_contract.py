@@ -79,12 +79,50 @@ def test_baseline_has_v1_prefix_and_key_endpoints(baseline: dict) -> None:
 
 
 def test_runtime_paths_match_baseline(baseline: dict) -> None:
-    """运行时 openapi paths 必须与归档基线一致; 漂移则提示重跑导出脚本刷新基线。"""
+    """运行时 openapi paths 必须与归档基线一致; 漂移则提示重跑导出脚本刷新基线。
+
+    N4 (2026-10-11): 基线允许包含运行时 openapi() 之外的**静态挂载补充条目**
+    (/ui/ 等 Starlette Mount, include_in_schema=False 不进 openapi) —— 判定改为
+    运行时 ⊆ 基线 且 基线无未知补充 (补充条目仅限 /ui/, 防误增)。
+    """
     runtime_paths = set(_make_full_app().openapi()["paths"].keys())  # type: ignore[union-attr]
     baseline_paths = set(baseline["paths"].keys())
-    assert runtime_paths == baseline_paths, (
-        "运行时与归档基线 paths 漂移: "
-        f"仅运行时={runtime_paths - baseline_paths}, "
-        f"仅基线={baseline_paths - runtime_paths}; "
+    allowed_extra = {"/ui/"}  # 导出脚本注入的静态挂载描述条目
+    unexpected = baseline_paths - runtime_paths - allowed_extra
+    assert not (runtime_paths - baseline_paths), (
+        "运行时端点未入基线 (跑 scripts/export_openapi.py 刷新): "
+        f"仅运行时={runtime_paths - baseline_paths}"
+    )
+    assert not unexpected, (
+        f"基线含未知补充条目 (仅允许静态挂载 {sorted(allowed_extra)}): {unexpected}; "
         "跑 scripts/export_openapi.py 刷新基线"
     )
+
+
+def test_baseline_has_security_schemes(baseline: dict) -> None:
+    """N4: securitySchemes 必须齐备 (前端生成客户端的认证对接前提)。"""
+    schemes = baseline.get("components", {}).get("securitySchemes", {})
+    assert "bearerAuth" in schemes, "基线缺 bearerAuth securityScheme"
+    assert "sessionAuth" in schemes, "基线缺 sessionAuth securityScheme"
+    assert baseline.get("security"), "基线缺顶层 security 声明"
+
+
+def test_config_schema_covers_all_top_level_keys() -> None:
+    """N4: /api/v1/config/schema 的模型必须覆盖 config.sample.jsonc 全部顶层键。
+
+    此前 ISACConfig 仅 3 键 (debug/log_level/control), 前端表单驱动前提不成立。
+    """
+    import re
+
+    from isac.utils.config_schema import ISACConfig
+
+    sample_raw = (Path(__file__).resolve().parents[2] / "data" / "config.sample.jsonc").read_text(
+        encoding="utf-8"
+    )
+    sample_keys = set(re.findall(r'^  "?([A-Za-z_][A-Za-z0-9_]*)"?\s*:', sample_raw, re.M))
+    schema_keys = set(ISACConfig.model_json_schema().get("properties", {}).keys())
+    missing = sample_keys - schema_keys
+    assert not missing, f"config schema 未覆盖 sample 顶层键: {sorted(missing)}"
+    # 每键必须带 description (前端表单标签/提示的最低要求)。
+    for key, prop in ISACConfig.model_json_schema().get("properties", {}).items():
+        assert prop.get("description"), f"config schema 键 {key} 缺 description"

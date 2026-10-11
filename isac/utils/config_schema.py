@@ -86,20 +86,260 @@ class ControlConfig(BaseModel):
         return v
 
 
-class ISACConfig(BaseModel):
-    """顶层配置的受校验字段。extra="allow" 让未建模的节 (llm/memory/channels/...) 原样放行。"""
+# ── N4 API 基线: 全量顶层节模型 (宽松建模, 仅供 /config/schema 表单驱动) ─────
+# 设计约束: 不新增硬校验 (唯一保留 control.port 的 ge/le 与既有语义), 子字段只给
+# 类型 + 默认 + description; 深层嵌套 (memory.embedding / control.plugins.isolation
+# 等) 用 dict[str, Any] 兜底 —— 前端渲染一级表单, 深节继续 JSON 编辑。
+
+
+class LoggingConfig(BaseModel):
+    """日志与可观测性 (docs/LOGGING.md)。"""
 
     model_config = ConfigDict(extra="allow")
 
-    debug: bool = False
-    log_level: str = "info"
-    control: ControlConfig = Field(default_factory=ControlConfig)
+    level: str = Field(default="info", description="全局级别 debug|info|warning|error")
+    format: str = Field(default="console", description="console (开发彩色) | json (生产采集)")
+    per_module: dict[str, str] = Field(default_factory=dict, description="按模块前缀单独设级")
 
-    @field_validator("control", mode="before")
+
+class LLMConfig(BaseModel):
+    """主 LLM (文生文): 通用 OpenAI 兼容端点。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    provider: str = Field(default="openai", description="Provider 标识")
+    api_key: str = Field(
+        default="", description="API Key; 生产可填 secret:<key> 引用 SecretStore (R5)"
+    )
+    base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI 兼容 base URL")
+    model: str = Field(default="", description="模型名 (如 gpt-4o-mini)")
+    cost_tier: str = Field(default="", description="U7 成本档 free|low|standard|high (缺省按快照)")
+    latency_tier: str = Field(default="", description="U7 延迟档 fast|standard|slow")
+    model_family: str = Field(default="", description="prompt 变体的模型族名 (缺省按模型名前缀推断)")
+
+
+class ModelRoutingConfig(BaseModel):
+    """U7 category 路由: 按任务类型选模型链。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    categories: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="四类画像覆盖 (qa/creative/tool_heavy/chat; operation/cost_ceiling/latency_target/requires_tools)",
+    )
+
+
+class MemoryConfig(BaseModel):
+    """记忆子系统 (Q1 起默认开启, 纯 SQLite 零外部依赖)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=True, description="false 时关闭记忆 (检索/注入/写入回路全停)")
+    embedding: dict[str, Any] = Field(
+        default_factory=dict,
+        description="稠密召回配置 (api_key+model 时启用; dimension 必须与模型输出一致)",
+    )
+    reranker: dict[str, Any] = Field(default_factory=dict, description="重排配置 (Cohere/Jina 协议)")
+    graph_recall: dict[str, Any] = Field(default_factory=dict, description="S3 图谱召回 (默认关闭)")
+    consolidation: dict[str, Any] = Field(
+        default_factory=dict, description="S2 后台整合 (去重/剪枝/画像归纳, 默认关闭)"
+    )
+
+
+class SessionConfig(BaseModel):
+    """U1 事件溯源会话内核。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    history: dict[str, Any] = Field(
+        default_factory=lambda: {"enabled": True, "window_turns": 10, "budget_tokens": None},
+        description="滑动窗口历史 (enabled/window_turns/budget_tokens)",
+    )
+    compression: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "enabled": False, "trigger_events": 60,
+            "keep_recent_messages": 20, "min_compress_messages": 6,
+        },
+        description="会话压缩 (阶段3-2 M2, 默认关闭)",
+    )
+
+
+class GatingConfig(BaseModel):
+    """U3 门控策略化 (Agent 级 AgentConfig.gating 可覆盖)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    strategy: str = Field(default="keywords", description="off | keywords | llm-judge | hybrid")
+    locale: str = Field(default="zh_CN", description="门控词表语言 (zh_CN/en_US)")
+    reply_necessity_threshold: float = Field(default=80, description="回复必要性阈值 (0-100)")
+    weights: dict[str, Any] = Field(default_factory=dict, description="评分权重覆盖")
+    markers: dict[str, Any] = Field(default_factory=dict, description="question/request/consult 词表覆盖")
+    llm_judge_max_per_minute: int = Field(default=10, description="llm-judge 频率上限 (成本防护)")
+    hybrid_escalate_band: float = Field(default=20, description="hybrid 档升级判定带宽")
+
+
+class ConversationConfig(BaseModel):
+    """P1 拟人化会话运行时 (默认关闭 = 零行为变化)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=False, description="总开关 (debounce/打断/主动任务)")
+    debounce_seconds: float = Field(default=1.5, description="静默合并窗口秒数 (0 = 不合并)")
+    max_interrupts_per_turn: int = Field(default=1, description="单轮最多被打断次数")
+    proactive: dict[str, Any] = Field(
+        default_factory=dict, description="主动任务调度 (min_interval/poll_interval/各生产者开关)"
+    )
+
+
+class PersonaConfig(BaseModel):
+    """全局人格 (Q2, Agent 级可覆盖)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    description: str = Field(default="", description="人格描述 (空 = 框架默认身份文案)")
+
+
+class IdentityConfig(BaseModel):
+    """S4 跨平台身份归一 (默认关闭)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=False, description="启用 IdentityResolver 归一")
+    heuristic_enabled: bool = Field(default=False, description="昵称启发式匹配 (低置信, 默认关)")
+
+
+class TenancyConfig(BaseModel):
+    """多租户隔离 (O1/R6, 默认单租户)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=False, description="启用租户隔离 + 租户控制面")
+    organization_id: str = Field(default="default", description="组织 ID (记忆命名空间前缀)")
+    tenant_id: str = Field(default="default", description="租户 ID")
+
+
+class ArtifactsConfig(BaseModel):
+    """制品存储 (本地 FS, sha256 分桶)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    ttl_days: int = Field(default=7, description="制品 TTL 天数 (sweep 周期清理)")
+
+
+class ToolsConfig(BaseModel):
+    """CLI 工具后端 (R3) + ask 档审批 (U5)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    bash_allowlist: list[str] = Field(
+        default_factory=list, description="bash 允许的命令前缀 (默认空 = 禁止所有命令)"
+    )
+    approval: dict[str, Any] = Field(
+        default_factory=lambda: {"timeout_seconds": 300},
+        description="ask 档人工审批 (timeout_seconds 超时 fail-closed)",
+    )
+
+
+class McpConfig(BaseModel):
+    """全局 MCP Server 定义 (R3)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    servers: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="server 名 → 定义 (transport: stdio|http; command/args/env 或 url/token)",
+    )
+
+
+class AlertingConfig(BaseModel):
+    """监控告警 (I5, 规划位: 当前生产未消费本节)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=True, description="告警总开关")
+    check_interval_seconds: int = Field(default=30, description="检查间隔")
+    webhook_url: str = Field(default="", description="告警推送 webhook (SSRF 校验)")
+
+
+class ObservabilityConfig(BaseModel):
+    """J1 计量 (用量与成本)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    usage: dict[str, Any] = Field(
+        default_factory=lambda: {"enabled": False, "flush_interval_seconds": 30},
+        description="用量计量 (enabled/flush_interval_seconds)",
+    )
+
+
+class SubagentConfig(BaseModel):
+    """J4 SubAgent (默认关闭)。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    enabled: bool = Field(default=False, description="SubAgent 总开关")
+
+
+class ISACConfig(BaseModel):
+    """顶层配置的受校验字段 (N4 API 基线缺口修复: 显式覆盖全量 21 个顶层键)。
+
+    extra="allow" 保持宽松; 各节模型只做**类型宽松**建模 (子字段给类型 + 默认 +
+    description 供 /api/v1/config/schema 前端表单驱动), 不新增任何硬校验 —— 现有
+    合法配置零行为变化。此前仅 debug/log_level/control 3 键建模, 前端拿到的
+    schema 覆盖 3/21 键, F2 配置编辑页无法据此渲染。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    debug: bool = Field(default=False, description="调试模式 (等价 logging.level=debug)")
+    bot_id: str = Field(default="", description="Bot 自身平台 ID (适配器自过滤/私聊提及判定)")
+    log_level: str = Field(default="info", description="全局日志级别 (logging.level 的简化写法)")
+    logging: LoggingConfig = Field(default_factory=LoggingConfig, description="日志与可观测性")
+    llm: LLMConfig = Field(default_factory=LLMConfig, description="主 LLM (OpenAI 兼容 chat/completions)")
+    model_routing: ModelRoutingConfig = Field(
+        default_factory=ModelRoutingConfig, description="U7 category 路由 (delegate_task 按类型选模型链)"
+    )
+    multimodal_providers: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="J2 多模态 Provider 数组 (kind: image_gen/stt/tts/embed/vision/rerank/video_gen)",
+    )
+    memory: MemoryConfig = Field(
+        default_factory=MemoryConfig, description="记忆子系统 (SQLite + FTS/BM25 + 可选向量/图谱)"
+    )
+    session: SessionConfig = Field(
+        default_factory=SessionConfig, description="U1 事件溯源会话内核 (滑窗历史/压缩)"
+    )
+    gating: GatingConfig = Field(
+        default_factory=GatingConfig, description="U3 门控策略化 (off/keywords/llm-judge/hybrid)"
+    )
+    conversation: ConversationConfig = Field(
+        default_factory=ConversationConfig, description="P1 拟人化会话运行时 (debounce/打断/主动任务)"
+    )
+    persona: PersonaConfig = Field(default_factory=PersonaConfig, description="全局人格 (Agent 级 persona 可覆盖)")
+    identity: IdentityConfig = Field(default_factory=IdentityConfig, description="S4 跨平台身份归一")
+    tenancy: TenancyConfig = Field(default_factory=TenancyConfig, description="多租户隔离 (O1/R6)")
+    artifacts: ArtifactsConfig = Field(default_factory=ArtifactsConfig, description="制品存储 (本地 FS, sha256 分桶)")
+    control: ControlConfig = Field(default_factory=ControlConfig, description="控制面 (G1 Admin API)")
+    tools: ToolsConfig = Field(default_factory=ToolsConfig, description="CLI 工具后端 (bash 白名单/ask 档审批)")
+    mcp: McpConfig = Field(default_factory=McpConfig, description="全局 MCP Server 定义 (R3)")
+    channels: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Channel 适配器 (onebot/telegram/discord/feishu/qq_official/wechat/webchat)",
+    )
+    alerting: AlertingConfig = Field(default_factory=AlertingConfig, description="监控告警 (I5, 规划位)")
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig, description="J1 计量 (用量与成本)")
+    subagent: SubagentConfig = Field(default_factory=SubagentConfig, description="J4 SubAgent")
+
+    @field_validator(
+        "logging", "llm", "model_routing", "memory", "session", "gating", "conversation", "persona",
+        "identity", "tenancy", "artifacts", "control", "tools", "mcp", "channels", "alerting",
+        "observability", "subagent",
+        mode="before",
+    )
     @classmethod
-    def _none_control_means_unset(cls, v: Any) -> Any:
-        """顶层 "control": null 同样等价于未配置该节 (退化成全默认 ControlConfig),
-        而不是把 None 当 ControlConfig 实例校验失败崩溃。"""
+    def _none_section_means_unset(cls, v: Any) -> Any:
+        """顶层任意节显式 null 等价于未配置该节 (退化成全默认), 与 Fix-30 的
+        "control": null 语义一致 —— 手工维护/工具生成的 JSONC 写 null 不崩溃。"""
         if v is None:
             return {}
         return v

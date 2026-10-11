@@ -71,9 +71,12 @@ def test_resolve_for_telegram_returns_none() -> None:
     assert MediaResolver.resolve_for_channel("telegram", ref) is None
 
 
-def test_resolve_for_discord_returns_none() -> None:
-    ref = _ref("audio")
-    assert MediaResolver.resolve_for_channel("discord", ref) is None
+def test_resolve_for_discord_full_kinds() -> None:
+    """富媒体二波: Discord 全 kind → 对应 segment (multipart 附件发送)。"""
+    assert MediaResolver.resolve_for_channel("discord", _ref("audio")) is not None
+    assert MediaResolver.resolve_for_channel("discord", _ref("image")).type == "image"  # type: ignore[union-attr]
+    # 未知 kind 仍 None
+    assert MediaResolver.resolve_for_channel("discord", _ref("sticker")) is None
 
 
 def test_resolve_unknown_platform_returns_none() -> None:

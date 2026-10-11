@@ -56,7 +56,7 @@ class CompressionResult:
     compressed_events: int = 0
     summary_chars: int = 0
     deleted_events: int = 0
-    skipped: str = ""  # "" | llm_none | too_few | llm_failed | not_smaller
+    skipped: str = ""  # "" | llm_none | too_few | input_overflow | llm_failed | not_smaller | error
 
 
 class SessionCompressor:
@@ -96,14 +96,21 @@ class SessionCompressor:
             prefix = self._select_prefix(events)
             if prefix is None:
                 return CompressionResult(skipped="too_few")
-            original = self._build_original_text(prefix)
+            original, included = self._build_original_text(prefix)
+            if len(included) < self._min_compress:
+                # 单事件即超输入上限等极端场景: 无可完整进摘要素材的批次, 留待
+                # 下轮 (不截断提交 —— 截断 = GC 删了没进摘要的内容, 信息丢失)。
+                return CompressionResult(skipped="input_overflow")
             summary = await self._summarize(original)
             if not summary:
                 return CompressionResult(skipped="llm_failed")
             # 压缩必须真压缩 (摘要更短), 否则拒绝提交 (validate_compression)。
             if not SessionHistoryDeriver.validate_compression(original, summary):
                 return CompressionResult(skipped="not_smaller")
-            source_seqs = [e.seq for e in prefix]
+            # D3 (2026-10-11 审计修复): source_seqs 只含**实际进入摘要素材**的事件。
+            # 此前取全量 prefix —— 输入截断点之后的事件内容未进摘要却被 GC 物理删除,
+            # 历史窗口永久丢失该段内容 (事件溯源"无损"承诺被压缩链路打破)。
+            source_seqs = [e.seq for e in included]
             await self._store.append(
                 SessionEvent(
                     session_key=session_key,
@@ -170,21 +177,31 @@ class SessionCompressor:
             return None
         return prefix
 
-    def _build_original_text(self, prefix: list[SessionEvent]) -> str:
-        """把前缀事件拼成待压缩文本 (含对此前压缩摘要的再归并)。"""
+    def _build_original_text(self, prefix: list[SessionEvent]) -> tuple[str, list[SessionEvent]]:
+        """把前缀事件拼成待压缩文本 (含对此前压缩摘要的再归并)。
+
+        D3: 返回 (文本, 实际纳入素材的事件列表)。逐事件累计, 一旦加入某事件会使
+        文本超过 input_max_chars 即停止 —— **不截断半个事件也不丢整个事件**: 超限
+        起未纳入的事件由调用方保留 (不进本轮 source_seqs, 留待下一轮压缩), 保证
+        "进了 GC 的内容必然进了摘要"。
+        """
         lines: list[str] = []
+        included: list[SessionEvent] = []
         for e in prefix:
             if e.event_type == EVENT_USER_MESSAGE:
-                lines.append(f"用户: {e.payload.get('content', '')}")
+                line = f"用户: {e.payload.get('content', '')}"
             elif e.event_type == EVENT_TURN_COMPLETED:
-                lines.append(f"助手: {e.payload.get('content', '')}")
+                line = f"助手: {e.payload.get('content', '')}"
             elif e.event_type == EVENT_TURN_COMPRESSED:
                 # 增量卷起: 旧压缩摘要作为素材一并再归纳。
-                lines.append(f"此前摘要: {e.payload.get('summary', '')}")
-        text = "\n".join(lines)
-        if len(text) > self._input_max_chars:
-            text = text[: self._input_max_chars]
-        return text
+                line = f"此前摘要: {e.payload.get('summary', '')}"
+            else:
+                continue
+            if lines and len("\n".join([*lines, line])) > self._input_max_chars:
+                break
+            lines.append(line)
+            included.append(e)
+        return "\n".join(lines), included
 
     async def _summarize(self, original: str) -> str:
         """LLM 归纳为简洁中文摘要 (失败返回空串)。"""

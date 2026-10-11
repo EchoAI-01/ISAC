@@ -3,11 +3,42 @@
 本文件记录 ISAC 各版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/),
 版本号遵循 [Semantic Versioning](https://semver.org/)。
 
-> **版本号策略 (U9 定稿)**: 当前 `isac.__version__ = 1.0.0` 为 **GA 目标版本号** ——
-> v1.0 GA 门槛 (DEVELOPMENT_PLAN §三之五: U0-U9 全过 + 环境准入 + 真机证据) 满足前
-> 不打 release tag; GA 后破坏性变更 → major, 新功能 → minor, 修复 → patch。
+> **版本号策略 (2026-10-11 修订, 原 U9「GA 目标」定稿废止)**: 项目未达 MVP, 当前版本
+> `0.0.1a1` = **Alpha-0.0.1**。版本节奏: `0.0.xaN` (Alpha, MVP 前) → `0.x.0` (MVP 后
+> 功能迭代) → `1.0.0` (GA)。`pyproject.toml` / `isac/__init__.py:__version__` /
+> `docs/api/openapi.json:info.version` 三处同源 (test_api_contract 契约测试锁定);
+> 发布 tag `v<version>` 与三处一致 (release.yml verify 强校验), `aN/bN/rcN` 后缀
+> 版本自动标 prerelease、镜像不打 latest。Alpha 期不承诺 API/配置兼容。
 
 ## [Unreleased]
+
+### 后端收尾轮: N5 清偿 + 富媒体二波 + soak 工具 (2026-10-11, 全量 2378 通过)
+
+后端剩余纯代码工作全部完成, 后端轨道收官:
+**N5 同步 IO 异步化** 7 处 (Agent/全局配置/路由/links/插件解压的原子写与流式解压
+全迁 to_thread; links 持久化回调事件循环内 fire-and-forget); **reload_config 差量更新**
+(mcp_servers 未变时复用旧 MCPClient 连接, 避免秒级子进程重启; 复用失败回落全量重连);
+**富媒体二波** —— 飞书入站 image (resources API + Bearer headers, 下载管线 headers 透传,
+token 不落日志/事件流) + 飞书出站图片 (im/v1/images 上传) + Discord 入站附件 (CDN url
+→ media segment) + Discord 出站 multipart + MediaResolver 登记两平台; **N2-4 soak 采样
+工具** scripts/soak_sampler.py (负载发生 + RSS/FD/线程/事件表采样 + 泄漏判定, 等真实
+LLM key 即跑 24h); **N3-1 凭据准备清单** docs/IM_CREDENTIALS_CHECKLIST.md (四平台逐项
++ 联调节奏)。新增回归测试 10 例; ruff/mypy/红线/catalog 全绿。
+
+### D1-D6 缺陷修复轮 + N4 API 基线补齐 (2026-10-11, 全量 2368 通过)
+
+基于 2026-10-11 全量架构评审修复 2026-10-10 审计登记的 5 项缺陷 + 复审新发现 1 项:
+**D1** 入站去重键升 `(platform, session, msg_id)` 三维 (Telegram/Discord 的 msg_id 为
+per-chat 序列, 两维键跨会话撞号误吞消息); **D2** tools_policy 非法档位 fail-open 堵断
+(effective_policy 配置层覆盖值归一校验 + PATCH/validate 双端点配置期 fail-fast);
+**D3** 压缩 GC 只删实际进入摘要的事件 (截断点后内容不再"不在摘要却被删");
+**D4** 压缩摘要按替代区间起始位置插入历史窗口 (不再排在末尾被当最新发言);
+**D5** 插件 reload/install 同步过 plugins_allow/deny 矩阵 (判定收口
+core.policy 单源; 顺带修初始装配 injectors 无过滤与不带 source 注册两处同构面);
+**D6** 压缩触发阈值改按内容事件计数 (工具密集会话不再恒空转全量 fetch)。
+N4 前端开工前置: openapi 基线补 securitySchemes (bearerAuth+sessionAuth) 与 /ui/
+挂载条目; `/config/schema` 模型从 3 键扩至全量 22 顶层键 (宽松建模, 零行为变化)。
+新增回归测试 23 例; ruff/mypy/红线全绿。
 
 ### 加固轮 + 最小实例修复 + 全库文档收敛 (2026-08-19 ~ 10-11)
 
@@ -33,6 +64,42 @@ fail-closed / Medium 批清 10 项 / 记忆 importance 规则显著度接线); �
 plugin_development), 设计规范文档 9 篇 (ARCHITECTURE/SPECIFICATION/CONTROL_PLANE_SPEC/
 HUMANLIKE_RUNTIME/MEMORY_DESIGN/ROUTING_AND_AGENT_MESH/PLUGIN_COMPATIBILITY/MODULE_GUIDE/
 ROADMAP); Docker 冒烟 (N2-1) 与 browser CI 复核 (N2-2) 依据真机/CI 证据标记完成。
+
+### CI/CD 流水线 (2026-10-11)
+
+**CI 更新** (`ci.yml`, 原有 5-job 结构保留): 显式最小权限 `contents: read` + 同分支/PR
+并发取消 (省 runner) + 全 job `timeout-minutes` + checkout v4→v5 + `setup-uv` 合并
+python-version 输入 + `build` job 上传 wheel/sdist artifact (PR 页可下载) + `docker` job
+改 buildx + gha 层缓存 (uv sync 依赖层跨 run 复用); K8/U8/U9 门禁与历史修复注释原样保留。
+actionlint 校验通过。
+
+**CD 新建** (`release.yml`): tag `v*` 驱动正式发布 + `workflow_dispatch` 演练模式
+(GA 前不打 release tag, 演练保持链路随时可发布)。四段流水线: `verify` (CI 全量门禁
+复验 —— 发布不信任历史 + 版本三处一致强校验, release_checklist §四机器化: tag/
+pyproject/`__version__` 不一致即拒绝, 演练仅告警) → `build-wheel` (uv build + 安装
+smoke + artifact) → `docker` (amd64 本地探活 → 多平台推 `ghcr.io/echoai-01/isac` →
+按 digest 拉回再探活, 坏镜像绝不推/推送后端到端复验) → `release` (CHANGELOG `## [X.Y.Z]`
+段落提取, 缺失回退 Unreleased; gh CLI 建 Release 附 wheel/sdist; rc/beta/alpha 自动
+prerelease 不占 latest)。镜像 tag: `vX.Y.Z` → `X.Y.Z`/`X.Y`/`latest`, rc 版不占 latest。
+小写化用 `tr` 而非 `${VAR,,}` (兼容本地 bash 3.2 复现)。
+
+**配套**: `.github/dependabot.yml` (github-actions 生态月度升级 PR, 走 CI 门禁);
+release_checklist 发版段/AGENTS/PROGRESS/deployment.md 同步 (deployment 新增 §1.4
+ghcr 预构建镜像拉取)。
+
+**版本号定调 Alpha-0.0.1 (2026-10-11)**: 项目未达 MVP, 版本从 `pyproject=1.0.0rc1` /
+`isac.__version__=1.0.0` (原 U9「GA 目标」策略) 下调统一为 `0.0.1a1`; README 徽章、
+`docs/api/openapi.json:info.version`、`uv.lock` 同步 (test_api_contract 5 例通过)。
+release.yml 适配 alpha 语义: 镜像 tag 改 raw 直出 PEP 440 版本串 (node-semver 的
+prerelease 格式 `0.0.1-a1` 与 PEP 440 `0.0.1a1` 不兼容, type=semver 对 aN 后缀不命中),
+prerelease 判断改 PEP 440 后缀正则 `(a|b|rc)[0-9]+$` (原 `(rc|beta|alpha)` 字面匹配
+漏 `a1` 形式)。
+
+**模型快照刷新 workflow 恢复 (2026-10-11)**: 恢复 `model-capabilities.yml` (2026-10-10
+删除时未同步处理 test_u7 新鲜度断言 —— 无刷新则约 60 天后 CI check job 恒红)。
+相对原版修正: cron 每 6 小时→每周一 05:17 UTC (60 天窗口 8 周冗余, 不重试); 先
+`--check` (本地零网络) 再在线生成; 补 concurrency/timeout/checkout v5; 生成器仅标准
+库, `uv run --no-project` 直跑不装项目依赖 (本地实测 --check 通过, 8443 模型)。
 
 ### U 架构演进轮 (2026-08-17 ~ 08-18)
 

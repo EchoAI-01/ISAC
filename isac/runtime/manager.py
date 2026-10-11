@@ -321,7 +321,11 @@ class AgentManager:
     async def reload_config(self, agent_id: str, config: AgentConfig) -> None:
         """热更新配置 (重建子系统中受配置影响的部分)。
 
-        TODO: 差量更新 gating/persona/权限, 避免整实例重建。
+        N5 差量优化 (2026-10-11): 其余子系统重建是纯对象构造 (memory pipeline
+        复用进程级共享 store, 毫秒级), 唯一有外部资源代价的是 MCP 重连 (stdio
+        子进程启动/HTTP 握手, 秒级)。mcp_servers 列表未变时复用旧实例的
+        MCPClient (跳过 disconnect, assemble 直接复用连接仅重注册 bridge);
+        变化时维持全量重连路径。
         """
         old_instance = self._require(agent_id)
         was_running = old_instance.status == "running"
@@ -334,11 +338,17 @@ class AgentManager:
             await old_consolidator.stop()
         # Q0: 失效独立 Provider 缓存, PATCH 修改 llm 后 for_agent 才会按新配置重建
         await self._invalidate_agent_provider(agent_id)
-        # N5b 批次D 项1: reload_config 是三个生命周期方法中唯一漏掉 MCP disconnect 的,
-        # 旧实例 stdio 子进程/HTTP 连接被丢弃引用但不显式 disconnect → 孤儿进程/连接泄漏。
-        # 与 stop/destroy 对齐, 在 assemble 新实例前断开旧实例 MCP 连接。
-        await self._disconnect_mcp_clients(old_instance)
-        instance = await assemble_agent(config, self._services)
+        # N5b 批次D 项1 + N5 差量: mcp_servers 未变 → 复用连接 (跳过 disconnect);
+        # 变了 → 断开旧连接 (防孤儿进程/连接泄漏), assemble 全量重连。
+        old_mcp_clients = old_instance.services.mcp_clients or []
+        reuse_clients = (
+            old_mcp_clients
+            if old_mcp_clients and list(config.mcp_servers or []) == list(old_instance.config.mcp_servers or [])
+            else None
+        )
+        if reuse_clients is None:
+            await self._disconnect_mcp_clients(old_instance)
+        instance = await assemble_agent(config, self._services, reuse_mcp_clients=reuse_clients)
         instance.status = "running" if was_running else "stopped"
         self._agents[agent_id] = instance
         if was_running:
@@ -348,7 +358,7 @@ class AgentManager:
             new_consolidator = instance.services.memory_consolidator
             if new_consolidator is not None:
                 await new_consolidator.start()
-        logger.info("Agent 配置已重载", agent_id=agent_id)
+        logger.info("Agent 配置已重载", agent_id=agent_id, mcp_reused=bool(reuse_clients))
 
     # ── 消息处理入口 (由 MessageRouter 经依赖注入调用) ─────
 
@@ -1286,10 +1296,24 @@ class AgentManager:
     async def _run_session_compression(
         self, compressor: Any, store: Any, session_key: str, trigger_events: int
     ) -> None:
-        """后台执行单会话压缩: 先轻量计数判阈值, 再 compress_session (失败隔离)。"""
+        """后台执行单会话压缩: 先轻量计数判阈值, 再 compress_session (失败隔离)。
+
+        D6 (2026-10-11 复审修复): 阈值按**内容事件**计数 (与 compressor
+        _select_prefix 同口径) —— 此前按全量事件计数 (含 tool.*/aborted 等不可
+        压缩事件), 工具密集会话反复触发却恒 too_few 空转 (每次空转全量 fetch)。
+        """
         self._compressing_sessions.add(session_key)
         try:
-            count = await store.count_events(session_key)
+            from isac.session.models import (
+                EVENT_TURN_COMPLETED,
+                EVENT_TURN_COMPRESSED,
+                EVENT_USER_MESSAGE,
+            )
+
+            count = await store.count_events(
+                session_key,
+                event_types=[EVENT_USER_MESSAGE, EVENT_TURN_COMPLETED, EVENT_TURN_COMPRESSED],
+            )
             if count < trigger_events:
                 return  # 未达阈值, 不压缩
             await compressor.compress_session(session_key)

@@ -47,7 +47,7 @@
 
 **重大决策**: 项目转入**前后端分离**开发。后端 (本仓库) 演进为纯 API 服务 (REST + SSE 控制面 + 消息数据面), 前端独立成项目围绕 API 契约开发。**先开发后端**, 前端轨道 (F 节点) 在 API 基线冻结后启动。决策记录见 `ARCHITECTURE.md` ADR-012, 节点定义见 §四 FE。
 
-**当前方位 (2026-10-11 更新)**: 后端功能、架构演进 (U 轮)、三轮全量审查清偿、2026-08-19 加固轮与最小实例运行修复全部完成 —— 全量 **2346 测试通过**、ruff/mypy/红线全绿、**CI 5/5 全绿 (自 07-24 以来首次)**; 最小实例经源码 (`smoke_webchat`/`smoke_control_setup`) 与 Docker (`docker compose up` + 宿主 `/health` 200) 双向真机验证。剩余: **N2** 24h soak 与 release_checklist 发版段, **N3** 真实 IM 凭据联调, **N4** 前端轨道 F1-F4 (开工前建议先补 API 基线缺口), **N5** 同步 IO/差量热重载与 2026-10-10 审计登记的代码缺陷批次。各轮次演进全过程见 docs/PROGRESS.md。
+**当前方位 (2026-10-11 后端收官)**: 后端轨道**纯代码工作全部完成** —— 功能/架构演进 (U 轮)/三轮审查清偿/加固轮/最小实例修复/D1-D6 缺陷轮/N4 API 基线补齐 (securitySchemes + config schema 22 键)/N5 清偿 (同步 IO 异步化 + reload_config 差量)/富媒体二波 (飞书 image 出入站 + Discord 附件双向)/soak 采样工具/凭据清单 全部交付。全量 **2378 测试通过**、ruff/mypy/红线/catalog 全绿、CI 5/5 全绿; 最小实例经源码与 Docker 双向真机验证。**剩余仅两类**: ① **N4 前端轨道 F1-F4** (API 基线缺口已清偿, 可直接开工; 首个决策是 N4-1 技术栈选型); ② 环境/凭据依赖项 (N2-4 soak 执行等 LLM key、N2-3 发版演练、N3 真机联调等凭据, 清单见 docs/IM_CREDENTIALS_CHECKLIST.md)。各轮次演进全过程见 docs/PROGRESS.md。
 
 **后端推进顺序**(定义与验收见 §四对应节点):
 
@@ -246,12 +246,12 @@
 
 - [x] **N2-1 Docker 健康检查冒烟 ✅ (2026-10-10)**: `docker build` + `docker compose up -d` + 宿主 `/health` 循环实测通过 (容器 healthy, 1s 内 200; 容器内创建+启动 Agent 后 `/health` agents{total:2,running:2}); GitHub CI docker job 同步验证 (`health check passed`, run 38064914621)。
 - [x] **N2-2 browser CI 复核 ✅**: Playwright chromium 黄金路径在 GitHub CI 真跑 `2 passed` (2026-08-19 首次真跑; 2026-10-10 run 38064914621 复验); I 节点 85%→100%。
-- [~] **N2-3 release_checklist 七段过一遍**: 第 1 段 (CI 全绿 ✅ 2026-10-10) 与第 2 段 (本地全量 2346 ✅) 已过; 版本号一致/发布标签/回滚/发布后监控属发版时执行 (清单已同步 pre-GA 版本策略)。
+- [~] **N2-3 release_checklist 七段过一遍**: 第 1 段 (CI 全绿 ✅ 2026-10-10) 与第 2 段 (本地全量 ✅ 最新口径 2378, 2026-10-11) 已过; 版本号一致/发布标签/回滚/发布后监控属发版时执行 (清单已同步 pre-GA 版本策略)。
 - [ ] **N2-4 24h soak**: 真实 LLM key + 连续对话负载, 验证无内存/连接/任务泄漏 (验收铁律的最后一道; 采样工具待建)。
 
 ### N3 T5 真实 IM 接入验收 (外部阻塞: 需用户凭据 + 回调公网地址)
 
-- [ ] **N3-1 凭据准备清单** (不依赖开发, 先交付给用户): OneBot/NapCat 测试 QQ 号; 飞书自建应用 (encrypt_key + verification_token); QQ 官方机器人 (app_id + secret); 企业微信 wecom (corpid/secret/agentid + 回调 URL)。
+- [x] **N3-1 凭据准备清单 ✅ (2026-10-11 已交付)**: `docs/IM_CREDENTIALS_CHECKLIST.md` —— OneBot (先行, 门槛最低)/飞书/QQ 官方/wecom 四平台逐项 (申请入口/配置键/验收点) + Telegram/Discord 可选 + 联调节奏。
 - [ ] **N3-2 逐平台真机联调**: OneBot 先行 (私聊 + 群聊 @ + 富媒体降级) → 飞书 → QQ 官方 → wecom; 每平台附收发实证。
 - [ ] **N3-3 控制面连接状态回显** (Channel 实时状态经 `/health` 与 SSE 暴露)。
 

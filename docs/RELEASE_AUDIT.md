@@ -62,11 +62,11 @@
 | 项 | 对应节点 | 依赖 | 状态 |
 |---|---|---|---|
 | 真实启动冒烟 + Docker 健康检查 | T7 验收①(docker compose 一键) + R7 验收 → N2-1 | docker daemon | ✅ 完成 (2026-10-10: compose healthy + 宿主 /health 200; CI docker job 绿) |
-| 24h soak test (无内存/连接/任务泄漏) | T7 验收⑤ + R7 验收 → N2-4 | 长时运行环境 + 真实 LLM key | 待环境 (需先建采样工具) |
+| 24h soak test (无内存/连接/任务泄漏) | T7 验收⑤ + R7 验收 → N2-4 | 长时运行环境 + 真实 LLM key | 采样工具已建 ✅ (scripts/soak_sampler.py, 2026-10-11); soak 执行待环境 |
 | I 节点 browser CI 复核 100% | R7 验收 (85%→100%) → N2-2 | 浏览器环境 | ✅ 完成 (CI 真跑 2 passed; I 节点 100%) |
-| `scripts/release_checklist.md` 七段全过 | R7 验收 → N2-3 | 真实部署环境 | [~] 第 1/2 段已过 (CI 全绿 + 本地 2346); 发版段待发版时 |
+| `scripts/release_checklist.md` 七段全过 | R7 验收 → N2-3 | 真实部署环境 | [~] 第 1/2 段已过 (CI 全绿 + 本地全量, 最新口径 2378); 发版段待发版时 |
 | 按文档真人复现 (未接触项目的人 5 分钟跑通) | T7 验收⑤(docs 快速开始) | 人工 | 待人工 |
-| T5 真实 IM 凭据联调 | T5 → N3 | 用户凭据 + 回调公网地址 | 待用户 |
+| T5 真实 IM 凭据联调 | T5 → N3 | 用户凭据 + 回调公网地址 | 凭据清单已交付 ✅ (docs/IM_CREDENTIALS_CHECKLIST.md); 联调待凭据 |
 | REQUIREMENTS 十二条逐条取证复核 | R7 验收 | 代码取证 (本次即交付) | ✅ 完成 |
 
 ---

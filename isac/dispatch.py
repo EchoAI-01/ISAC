@@ -381,7 +381,14 @@ def make_message_dispatcher(
     async def handle_message(message: ISACMessage) -> None:
         # 阶段3-2 (M4): 入站幂等去重 —— 重复投递 (WS 重连/webhook 重试) 直接丢弃,
         # 不进入处理链 (避免重复落事件 + 重复回复)。空 msg_id 不去重 (放行)。
-        if inbound_dedup.is_duplicate(message.platform, message.msg_id):
+        # D1: 键带会话维度 —— Telegram/Discord 的 msg_id 是 per-chat 独立序列,
+        # 仅按 (platform, msg_id) 判重会跨会话误吞同号消息。会话维度优先取统一
+        # session_id (适配器构造时已分配), 回退 群 id / 私聊用户 id。
+        if inbound_dedup.is_duplicate(
+            message.platform,
+            message.msg_id,
+            message.session_id or message.group_id or f"dm:{message.user_id}",
+        ):
             metrics.counter("isac_messages_deduplicated_total").inc()
             logger.debug(
                 "入站消息重复, 已跳过", platform=message.platform, msg_id=message.msg_id

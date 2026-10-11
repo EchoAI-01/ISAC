@@ -19,7 +19,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from isac.agent.tools.approval import VERDICT_APPROVED, VERDICT_REJECTED
-from isac.agent.tools.base import Tool, ToolContext, ToolPermission
+from isac.agent.tools.base import Tool, ToolContext, ToolPermission, normalize_tool_level
 from isac.agent.tools.decision_reasons import (
     DECIDER_HUMAN,
     DECIDER_POLICY,
@@ -177,15 +177,20 @@ class ToolRegistry:
         且仅在配置层有显式条目 (非空返回) 时覆盖基线 —— 此前 DEFAULT_POLICY 条目
         混在 Agent 层传入, 恒覆盖全局运维 tools_policy; 无配置时兜底 allow 又会误
         覆盖框架默认 deny。
+        D2 (2026-10-11 审计修复): 配置层覆盖值过档位校验 —— 非法档位 (笔误/注入)
+        归一为 deny, 与 ToolPermission.check 同口径 fail-closed。此前配置层返回值
+        非空即直接覆盖, 非法值透传到 execute 瀑布不命中 ask/deny/restricted 任何
+        分支 = 直接放行 (fail-open)。
         """
         policy = self.permission.check(tool_name)
         if self.enable_matrix is not None:
             platform_policy = self.enable_matrix.tool_policy(
                 tool_name, self.permission.agent_policy, agent_id=self.agent_id, platform=platform
             )
-            # 配置层有显式条目才覆盖基线 ("" = 三层均未配置, 保留框架基线)
+            # 配置层有显式条目才覆盖基线 ("" = 三层均未配置, 保留框架基线);
+            # 覆盖值过档位归一 (非法 → deny, fail-closed)。
             if platform_policy:
-                policy = platform_policy
+                policy = normalize_tool_level(platform_policy)
             # M4: mcp:* 工具按平台做 Channel 级 MCP 门控 —— 该平台 mcp 配置禁用此
             # server 时拒绝 (接线层无 platform 上下文, Channel 门控在此生效)。
             if policy != "deny" and tool_name.startswith("mcp:"):
