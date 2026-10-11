@@ -231,7 +231,7 @@ jobs:
         # semver type 对 aN 后缀 tag 不命中。
         # 规则: vX.Y.Z → X.Y.Z + sha-<short>; 稳定版 (无 aN/bN/rcN 后缀) 额外打
         # latest; prerelease (0.0.1a1) 不占 latest。
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ needs.verify.outputs.image }}
           tags: |
