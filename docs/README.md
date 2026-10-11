@@ -44,6 +44,7 @@
 | [使用文档](./usage.md) | 快速开始、配置详解、运行、维护 |
 | [Docker 部署](./deployment.md) | 容器化部署、数据持久化、生产建议 |
 | [维护运维手册](./MAINTENANCE.md) | 部署后运维、日志排查树、常见故障、备份恢复、升级迁移 |
+| [IM 凭据准备清单](./IM_CREDENTIALS_CHECKLIST.md) | 四平台 (OneBot/飞书/QQ 官方/wecom) 真机联调凭据申请与配置指南 |
 | [日志与可观测性](./LOGGING.md) | 日志分级、结构化字段、trace 贯穿、按模块开关、排查树 |
 | [API 文档](./api.md) | Admin REST API 端点与示例（契约基线: [api/openapi.json](./api/openapi.json)） |
 | [插件开发指南](./plugin_development.md) | 三种插件格式开发 (Native/AstrBot/MaiBot) |

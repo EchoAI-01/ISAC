@@ -17,6 +17,41 @@ logger = get_logger(__name__)
 
 # U5: tools_policy 合法档位 (未知值 fail-closed 按 deny, 见 ToolPermission.check)。
 _VALID_LEVELS: frozenset[str] = frozenset({"allow", "restricted", "ask", "deny"})
+# D2 (2026-10-11 审计修复): 公开常量 + 归一函数 —— 配置层 (EnableMatrix 三层) 覆盖
+# 值与策略表同口径 fail-closed; 此前 effective_policy 对配置层返回值不校验, 非法
+# 档位 (如笔误 "alow") 透传到 execute 瀑布后不命中任何拒绝分支 = 直接放行。
+VALID_TOOL_LEVELS: frozenset[str] = _VALID_LEVELS
+
+
+def normalize_tool_level(level: str) -> str:
+    """档位归一: 合法值原样返回; 未知值记警告并归一为 "deny" (fail-closed)。
+
+    ToolPermission.check 与 ToolRegistry.effective_policy 共用同一口径 —— 任何
+    来源 (策略表 / 全局运维 / Agent / Channel 配置) 的档位值非法时都不放行。
+    """
+    if level in _VALID_LEVELS:
+        return level
+    logger.warning("tools_policy 未知档位, fail-closed 按 deny 处理", level=str(level))
+    return "deny"
+
+
+def validate_tool_policy_values(policy: dict | None) -> list[str]:
+    """配置期校验 tools_policy 值域, 返回错误列表 (空 = 通过)。
+
+    D2 配置期 fail-fast (2026-10-11): 运行时已 fail-closed (非法档位归 deny),
+    配置写入前 (Agent PATCH / validate 端点) 提前报错, 让笔误在落盘前被发现,
+    而不是运行时静默按 deny 收紧难排查。控制面两处 (routes_agents/routes_config)
+    共用本函数保持口径单源。
+    """
+    if not policy:
+        return []
+    errors: list[str] = []
+    for tool_name, level in policy.items():
+        if level not in _VALID_LEVELS:
+            errors.append(
+                f"tools_policy[{tool_name!r}] must be one of {sorted(_VALID_LEVELS)}, got: {level!r}"
+            )
+    return errors
 
 
 @dataclass

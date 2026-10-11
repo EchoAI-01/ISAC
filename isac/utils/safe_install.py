@@ -92,6 +92,7 @@ async def safe_download_bytes(
     max_bytes: int = 50 * 1024 * 1024,
     max_redirects: int = 3,
     allow_loopback: bool = False,
+    headers: dict[str, str] | None = None,
 ) -> bytes:
     """SSRF 安全的 HTTP 下载 (Fix-39, 供 incoming_media/installer 等统一复用)。
 
@@ -108,6 +109,10 @@ async def safe_download_bytes(
     Fix-62: is_safe_url 内的 socket.getaddrinfo 是同步阻塞调用, 直接跑会停摆
     事件循环 (入站媒体在主链路逐 segment 串行, 慢 DNS 时放大为全 bot 卡死);
     经 asyncio.to_thread 卸载。
+
+    富媒体二波 (2026-10-11): headers —— 平台资源下载需鉴权 (如飞书 resources
+    API 要 Bearer tenant_access_token); headers 仅用于请求, 绝不进日志/事件流
+    (调用方保证; URL 脱敏见 incoming_media)。
     """
     import asyncio
 
@@ -118,7 +123,7 @@ async def safe_download_bytes(
         if not await asyncio.to_thread(is_safe_url, current, allow_loopback=allow_loopback):
             raise ValueError(f"URL 不安全 (SSRF 拒绝): {current}")
         async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=False) as client:
-            async with client.stream("GET", current) as resp:
+            async with client.stream("GET", current, headers=headers) as resp:
                 if resp.status_code in _REDIRECT_CODES:
                     location = resp.headers.get("location")
                     if not location:

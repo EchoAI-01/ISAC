@@ -46,6 +46,21 @@ docker build -t isac:latest .
 RUN uv sync --no-dev --extra onebot --extra embed-local
 ```
 
+### 1.4 从 ghcr.io 拉取预构建镜像 (CD 产物)
+
+`.github/workflows/release.yml` 在打 `v*` tag 后自动构建并推送多平台 (amd64/arm64) 镜像:
+
+```bash
+docker pull ghcr.io/echoai-01/isac:1.0.0   # 精确版本
+docker pull ghcr.io/echoai-01/isac:latest  # 最新稳定版
+```
+
+- 镜像 tag 规则: `vX.Y.Z` → `X.Y.Z` / `X.Y` / `latest`; rc 版仅打 `X.Y.ZrcN`, 不占 latest
+- 镜像内容与本地 `docker build` 完全一致 (同一 Dockerfile), 但免构建直接可用
+- 首次正式发布前 (GA 前不打 tag) ghcr 上无版本 tag 属正常; 可用 `workflow_dispatch`
+  演练模式验证发布链路 (只构建不推送)
+- 拉取后把 compose 的 `build: .` 换成 `image: ghcr.io/echoai-01/isac:<version>` 即可
+
 ---
 
 ## 2. 快速部署

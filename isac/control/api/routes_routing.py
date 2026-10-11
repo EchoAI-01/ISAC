@@ -5,6 +5,8 @@ Bearer Token 认证 + 规则持久化 (router/rules.py save_rules) + Link 持久
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -59,7 +61,8 @@ def build_router(
             default_agents=dict(body.get("default_agents", {})),
         )
         router.set_rules(rules)
-        save_rules(Path(routing_rules_path), rules)
+        # N5 (2026-10-11): 原子写 (tmp+fsync+replace) 迁 to_thread, 不阻塞事件循环。
+        await asyncio.to_thread(save_rules, Path(routing_rules_path), rules)
         if audit_log is not None:
             await audit_log.record(
                 actor=caller,
@@ -94,7 +97,7 @@ def build_router(
         # _persist_links 路径, 用它把磁盘写入错误回传 500 (in-memory 状态已变更,
         # 调用方需要知道不一致) (CODE_REVIEW_REPORT.md #20)。
         bus.add_link(link)
-        _persist_links_or_raise(bus, Path(links_path))
+        await _persist_links_or_raise(bus, Path(links_path))
         await _audit_link_change(
             audit_log, method="POST", path="/api/v1/links", action="add_link",
             target=f"{link.from_agent}->{link.to_agent}", actor=caller,
@@ -104,7 +107,7 @@ def build_router(
     @api.delete("/links", dependencies=link_write_deps)
     async def remove_link(from_agent: str, to_agent: str, caller: str = caller_dep) -> dict:
         bus.remove_link(from_agent, to_agent)
-        _persist_links_or_raise(bus, Path(links_path))
+        await _persist_links_or_raise(bus, Path(links_path))
         await _audit_link_change(
             audit_log, method="DELETE", path="/api/v1/links", action="remove_link",
             target=f"{from_agent}->{to_agent}", actor=caller,
@@ -114,13 +117,16 @@ def build_router(
     return api
 
 
-def _persist_links_or_raise(bus: InterAgentBus, path: Path) -> None:
+async def _persist_links_or_raise(bus: InterAgentBus, path: Path) -> None:
     """持久化失败抛 HTTPException(500), 让 API 层把磁盘/内存不一致暴露给调用方
-    (CODE_REVIEW_REPORT.md #20)。"""
+    (CODE_REVIEW_REPORT.md #20)。N5 (2026-10-11): 原子写含 fsync, 迁 to_thread。"""
     from fastapi import HTTPException
 
-    try:
+    def _write() -> None:
         _persist_links(bus, path)
+
+    try:
+        await asyncio.to_thread(_write)
     except Exception as exc:
         # R14: 服务端记录完整异常 (含磁盘 IO 错误细节), 客户端只返回通用错误码。
         logger.error("Link 持久化失败", error=str(exc), exc_info=True)
@@ -161,3 +167,29 @@ def _persist_links(bus: InterAgentBus, path: Path) -> None:
     from isac.utils.fs import atomic_write_json
 
     atomic_write_json(path, {"links": links})
+
+
+def make_links_persist_callback(bus: InterAgentBus, path: Path) -> Callable[[], None]:
+    """构造 bus.set_persist 用的持久化回调 (bootstrap 接线用)。
+
+    N5 (2026-10-11): 回调在事件循环内被同步触发, 原子写含 fsync —— 有运行中事件
+    循环时改 executor 后台执行 (fire-and-forget, 失败在包装内记日志), 不阻塞事件
+    循环; 无事件循环 (同步测试直调) 保持原同步行为。
+    """
+    import asyncio
+
+    def _write() -> None:
+        try:
+            _persist_links(bus, path)
+        except Exception as exc:  # noqa: BLE001 与 bus._trigger_persist 口径一致
+            logger.warning("Link 持久化失败, in-memory 状态已变更", error=str(exc))
+
+    def _callback() -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _write()
+            return
+        loop.run_in_executor(None, _write)
+
+    return _callback

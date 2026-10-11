@@ -436,7 +436,12 @@ async def _call_r2_tools(name: str, args: dict[str, Any], server: Any) -> dict[s
                 raise MCPError(-32602, f"agent not found: {agent_id}")
             instance.config.plugins_allow = _as_str_list(args.get("plugins_allow", ["*"]))
             instance.config.plugins_deny = _as_str_list(args.get("plugins_deny", []))
-            save_agent_config(Path(server._agents_dir) / agent_id / "config.jsonc", instance.config)
+            # N5 (2026-10-11): fsync 阻塞迁 to_thread (与 routes_agents 同口径)。
+            await asyncio.to_thread(
+                save_agent_config,
+                Path(server._agents_dir) / agent_id / "config.jsonc",
+                instance.config,
+            )
         return _text_result({"status": "updated", "agent_id": agent_id})
     if name == "message_send" and server._agent_manager is not None:
         import time

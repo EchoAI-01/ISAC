@@ -22,6 +22,25 @@ DECISION_ALLOW = "allow"
 DECISION_DENY = "deny"
 
 
+def plugin_allowed_by_agent_lists(allow: list[str], deny: list[str], plugin_name: str) -> bool:
+    """按 Agent 的 plugins_allow/deny 两个列表判定插件启用 (语义唯一源)。
+
+    语义 (2026-08-19 H2 修正版, assembly/activation 共用): deny 优先;
+    allow 含 "*" 放行未 deny 者; allow 显式白名单仅放列内者; **allow=[] 一律
+    拒绝** —— 受限默认配置用空表表达"禁用所有外部插件", 空 allow 必须等于
+    "全禁"而非"全放" (否则形同虚设)。builtin 来源不经此判定。
+
+    D5 (2026-10-11 审计修复): 此前该语义只在初始装配 (assembly) 生效, 插件
+    reload/install 后的运行中同步 (activation) 完全不查启用矩阵, 绕过矩阵把
+    工具/命令/注入器灌回受限 Agent —— 收口为 core 层单源函数, 两处共用。
+    """
+    if plugin_name in deny:
+        return False
+    if "*" in allow:
+        return True
+    return plugin_name in allow
+
+
 class EnableMatrix:
     """启用矩阵: 计算 Agent ∩ Channel ∩ 全局 的有效决策。
 

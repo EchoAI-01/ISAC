@@ -56,13 +56,25 @@ class SessionHistoryDeriver:
         """按 seq 重放事件 → 消息列表 (应用压缩)。未知事件类型拒绝重建。
 
         压缩处理: turn.compressed 事件的 source_seqs 引用的原始事件被跳过, 由该
-        压缩事件的 summary 在压缩事件自身 seq 位置替代。tool.* 事件不进聊天历史
-        (仅审计/torn-tail 用), ignorable 事件安全跳过。
+        压缩事件的 summary 替代。tool.* 事件不进聊天历史 (仅审计/torn-tail 用),
+        ignorable 事件安全跳过。
         Fix-100: turn.aborted 事件的 aborted_user_seq 指向被作废的孤儿 user 事件
         (回合被打断、回复抑制), 一并跳过, 避免接替回合重复落同一 burst 后历史窗口
         出现重复用户内容。
+        D4 (2026-10-11 审计修复): 压缩摘要按其**替代区间的起始位置** (source_seqs
+        最小值) 输出, 而非 turn.compressed 事件自身的 seq (分区末尾) —— 摘要代表的
+        是最旧的前缀对话, 排在末尾会让 LLM 把"很久以前的总结"当成 bot 最新说的话。
+        GC 已物理删除被替代事件 (锚点 seq 可能无存活事件), 故用 pending 队列: 在
+        第一条 seq > 锚点的存活内容事件前 flush; 遍历结束 flush 剩余 (锚点之后无
+        存活内容的边界)。多条摘要按锚点升序输出 (时序正确)。
         """
         superseded, aborted_user_seqs = self._collect_superseded(events)
+        # 摘要插入队列: (锚点 seq, 摘要文本) 按锚点升序。
+        pending: list[tuple[int, str]] = sorted(
+            (min(int(s) for s in e.payload.get("source_seqs", [])), str(e.payload.get("summary", "")))
+            for e in events
+            if e.event_type == EVENT_TURN_COMPRESSED and e.payload.get("source_seqs")
+        )
         messages: list[dict[str, Any]] = []
         for e in sorted(events, key=lambda ev: ev.seq):
             if e.seq in superseded:
@@ -71,7 +83,11 @@ class SessionHistoryDeriver:
                 continue  # Fix-100: 被打断回合的孤儿 user 事件不进历史
             message = self._event_to_message(e)
             if message is not None:
+                while pending and pending[0][0] < e.seq:
+                    messages.append({"role": "assistant", "content": pending.pop(0)[1]})
                 messages.append(message)
+        while pending:
+            messages.append({"role": "assistant", "content": pending.pop(0)[1]})
         return messages
 
     @staticmethod
@@ -90,15 +106,17 @@ class SessionHistoryDeriver:
 
     @staticmethod
     def _event_to_message(e: SessionEvent) -> dict[str, Any] | None:
-        """单事件 → 聊天消息映射。不进历史窗口返回 None; 未知类型拒绝重建。"""
+        """单事件 → 聊天消息映射。不进历史窗口返回 None; 未知类型拒绝重建。
+
+        D4: turn.compressed 不在自身 seq 位置输出 (统一由 fold 的锚点插入处理),
+        避免"未被新一轮替代的摘要"在末尾与锚点插入双份输出。
+        """
         if e.event_type == EVENT_USER_MESSAGE:
             return {"role": "user", "content": str(e.payload.get("content", ""))}
         if e.event_type == EVENT_TURN_COMPLETED:
             return {"role": "assistant", "content": str(e.payload.get("content", ""))}
-        if e.event_type == EVENT_TURN_COMPRESSED:
-            return {"role": "assistant", "content": str(e.payload.get("summary", ""))}
-        if e.event_type in (EVENT_TOOL_CALLED, EVENT_TOOL_OUTCOME, EVENT_TURN_ABORTED):
-            return None  # 工具事件与 Fix-100 补偿标记不进聊天历史窗口
+        if e.event_type in (EVENT_TURN_COMPRESSED, EVENT_TOOL_CALLED, EVENT_TOOL_OUTCOME, EVENT_TURN_ABORTED):
+            return None  # 压缩摘要走 fold 锚点插入; 工具事件与 Fix-100 补偿标记不进聊天历史窗口
         if e.is_ignorable():
             return None
         raise UnknownSessionEventError(

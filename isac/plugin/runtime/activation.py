@@ -108,23 +108,49 @@ async def activate_plugin(
         return f"failed: {exc}"
 
 
-def _sync_sourced(target: Any, shared: Any, plugin_name: str | None) -> None:
+def _sync_sourced(target: Any, shared: Any, plugin_name: str | None, config: Any = None) -> None:
     """C2 通用按来源同步: 精确模式 deregister_by_source + get_by_source re-register;
     全量模式 deregister_plugin_sourced + 全量 re-register (带 source)。
 
     target/shared 需实现 deregister_by_source / get_by_source / deregister_plugin_sourced /
     register(item, source=) + (全量模式) 迭代 items + _source 映射。commands/injectors 共用。
+    D5: 两模式均按该 Agent 的 plugins_allow/deny 过滤 (与 tools 同口径)。
     """
     if target is None or shared is None:
         return
     if plugin_name is not None:
         target.deregister_by_source(plugin_name)
-        for item in shared.get_by_source(plugin_name):
-            target.register(item, source=plugin_name)
+        if _plugin_enabled_for_instance(config, plugin_name):
+            for item in shared.get_by_source(plugin_name):
+                target.register(item, source=plugin_name)
         return
     target.deregister_plugin_sourced()
     for item, src in shared.items_with_source():  # type: ignore[attr-defined]
+        if src != "builtin" and not _plugin_enabled_for_instance(config, src):
+            continue
         target.register(item, source=src)
+
+
+def _plugin_enabled_for_instance(config: Any, plugin_name: str) -> bool:
+    """运行中 Agent 的插件启用判定 (鸭子类型, 与初始装配 assembly 同语义)。
+
+    D5 (2026-10-11 审计修复): reload/install 后的同步此前**不查启用矩阵**, 把共享
+    表中该插件来源的工具/命令/注入器直接灌回每个 running Agent —— 配置
+    plugins_deny 或受限默认 plugins_allow=[] 的 Agent 被绕过 (权限提升)。
+    语义收口 core.policy.plugin_allowed_by_agent_lists (plugin 层不 import runtime,
+    AgentConfig 用鸭子类型取 plugins_allow/plugins_deny 两字段)。
+
+    config 缺失时放行并记告警: 生产 AgentInstance.config 必填 (assemble_agent
+    构造必传), 缺失仅见于测试替身 —— 放行保持既有行为兼容, 告警保证可观测。
+    """
+    from isac.core.policy import plugin_allowed_by_agent_lists
+
+    if config is None:
+        logger.warning("实例缺少 config, 插件启用矩阵无法判定, 按放行处理", plugin=plugin_name)
+        return True
+    allow = list(getattr(config, "plugins_allow", []) or [])
+    deny = list(getattr(config, "plugins_deny", []) or [])
+    return plugin_allowed_by_agent_lists(allow, deny, plugin_name)
 
 
 def _sync_one_instance(
@@ -134,23 +160,31 @@ def _sync_one_instance(
     shared_prompt: Any,
     plugin_name: str | None,
 ) -> list[str]:
-    """同步单个运行中 Agent 的 registry, 返回被移除的工具名列表。"""
+    """同步单个运行中 Agent 的 registry, 返回被移除的工具名列表。
+
+    D5: 同步前按该 Agent 的 plugins_allow/deny 过滤 (与初始装配同口径) ——
+    未启用的插件只移除旧条目、不灌入新条目; 全量模式同理按来源逐插件判定。
+    """
+    config = getattr(instance, "config", None)
     tools = getattr(instance, "tools", None)
-    if tools is None:
-        return []
-    if plugin_name is not None:
-        removed = tools.deregister_by_source(plugin_name)
-        for tool in shared_tools.get_by_source(plugin_name):
-            tools.register(tool, source=plugin_name)
-    else:
-        removed = tools.deregister_plugin_sourced()
-        for tool_name, tool in shared_tools._tools.items():  # noqa: SLF001
-            source = shared_tools._source.get(tool_name, "builtin")  # noqa: SLF001
-            tools.register(tool, source=source)
+    removed: list[str] = []
+    if tools is not None:
+        if plugin_name is not None:
+            removed = tools.deregister_by_source(plugin_name)
+            if _plugin_enabled_for_instance(config, plugin_name):
+                for tool in shared_tools.get_by_source(plugin_name):
+                    tools.register(tool, source=plugin_name)
+        else:
+            removed = tools.deregister_plugin_sourced()
+            for tool_name, tool in shared_tools._tools.items():  # noqa: SLF001
+                source = shared_tools._source.get(tool_name, "builtin")  # noqa: SLF001
+                if source != "builtin" and not _plugin_enabled_for_instance(config, source):
+                    continue
+                tools.register(tool, source=source)
     # C2: commands/injectors 精确同步 (此前全量 re-register 加法语义, 旧的不同名残留;
-    # 改为按来源 deregister + re-register, 与 tools 同款)。
-    _sync_sourced(getattr(instance, "commands", None), shared_commands, plugin_name)
-    _sync_sourced(getattr(instance, "prompt_builder", None), shared_prompt, plugin_name)
+    # 改为按来源 deregister + re-register, 与 tools 同款)。D5: 同样过启用矩阵。
+    _sync_sourced(getattr(instance, "commands", None), shared_commands, plugin_name, config)
+    _sync_sourced(getattr(instance, "prompt_builder", None), shared_prompt, plugin_name, config)
     return removed
 
 

@@ -51,6 +51,9 @@ logger = get_logger(__name__)
 # token 换取与消息发送端点 (相对 api_base)
 _TENANT_TOKEN_PATH = "/open-apis/auth/v3/tenant_access_token/internal"
 _SEND_MESSAGE_PATH = "/open-apis/im/v1/messages"
+# 富媒体二波 (2026-10-11): 图片上传 (multipart → image_key) 与消息资源下载端点
+_IMAGE_UPLOAD_PATH = "/open-apis/im/v1/images"
+_MESSAGE_RESOURCE_PATH = "/open-apis/im/v1/messages/{message_id}/resources/{file_key}"
 # token 缓存提前刷新窗口 (秒); 飞书默认 expire=7200, 提前 60s 避免临界过期
 _TOKEN_REFRESH_LEAD_SECONDS = 60.0
 # Webhook 默认监听 host/port/path
@@ -180,16 +183,22 @@ class FeishuAdapter(PlatformAdapter):
             if event_type != "im.message.receive_v1":
                 logger.debug("飞书 webhook 忽略非消息事件", event_type=event_type)
                 return {}
-            msg = self._build_isac_message(payload)
-            if msg is not None and self.on_message is not None:
-                # on_message 是主链路入口, 异步派生处理任务, 不阻塞响应
-                try:
-                    await self.on_message(msg)  # type: ignore[misc]
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("飞书 on_message 处理异常", error=str(exc))
+            await self._dispatch_message_event(payload)
         except Exception as exc:  # noqa: BLE001
             logger.warning("飞书 webhook 处理事件异常", error=str(exc), exc_info=True)
         return {}
+
+    async def _dispatch_message_event(self, payload: dict) -> None:
+        """常规消息事件: 规范化 + (富媒体二波) 图片段追加 + on_message 派发。"""
+        msg = self._build_isac_message(payload)
+        if msg is not None:
+            await self._attach_inbound_image(payload, msg)
+        if msg is not None and self.on_message is not None:
+            # on_message 是主链路入口, 异步派生处理任务, 不阻塞响应
+            try:
+                await self.on_message(msg)  # type: ignore[misc]
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("飞书 on_message 处理异常", error=str(exc))
 
     def _decode_payload(self, body: Any) -> dict | None:
         """加密模式 (``encrypt_key`` 已配置): 从 ``{"encrypt": ...}`` 解密得 inner
@@ -301,10 +310,14 @@ class FeishuAdapter(PlatformAdapter):
         )
 
     async def send(self, message: ISACMessage) -> bool:
-        """发送文本消息到飞书 (chat_id 或 open_id)。
+        """发送文本/图片消息到飞书 (chat_id 或 open_id)。
 
         receive_id 取 group_id (群聊) 或 user_id (私聊 open_id), receive_id_type
         相应设置。token 换取/发送失败返回 False (不抛异常)。
+        富媒体二波 (2026-10-11): segments 含 image 段时, 读本地文件 (media_uri/
+        url 指向 ArtifactStore 落盘路径) → POST im/v1/images 上传得 image_key →
+        以 msg_type=image 发送; 文本与图片各发一条 (平台单消息单类型), 图片失败
+        降级为占位文本不阻塞文本。
         """
         if not self._app_id or not self._app_secret:
             logger.warning("飞书 send 缺 app_id/app_secret, 跳过")
@@ -317,6 +330,12 @@ class FeishuAdapter(PlatformAdapter):
         token = await self._get_tenant_access_token()
         if not token:
             return False
+        # 富媒体二波: 先发图片段 (失败降级占位文本), 文本随后
+        image_segments = [s for s in (message.segments or []) if getattr(s, "type", "") == "image"]
+        sent_any = False
+        for seg in image_segments:
+            ok = await self._send_image_message(token, receive_id, receive_id_type, seg)
+            sent_any = sent_any or ok
         content_json = json.dumps({"text": str(message.content or "")}, ensure_ascii=False)
         body = {
             "receive_id": receive_id,
@@ -343,6 +362,83 @@ class FeishuAdapter(PlatformAdapter):
             logger.warning("飞书 send 返回非 0 code", code=code, msg=resp.get("msg", ""))
             return False
         return True
+
+    async def _send_image_message(
+        self, token: str, receive_id: str, receive_id_type: str, seg: MessageSegment
+    ) -> bool:
+        """上传本地图片文件 → image_key → 发送 msg_type=image (失败降级占位文本)。"""
+        import mimetypes
+        from pathlib import Path
+
+        data = getattr(seg, "data", None) or {}
+        local_path = str(data.get("media_uri") or data.get("url") or "")
+        if not local_path.startswith(("data/uploads", "/")):
+            # 非本地路径 (如平台回传 URL) 无法上传, 降级占位
+            logger.warning("飞书出站图片: 非本地制品路径, 降级占位", path=str(local_path)[:120])
+            return await self._send_text_placeholder(token, receive_id, receive_id_type, "[图片]")
+        path = Path(local_path)
+        try:
+            content_bytes = await asyncio.to_thread(path.read_bytes)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("飞书出站图片: 读取本地文件失败, 降级占位", error=str(exc))
+            return await self._send_text_placeholder(token, receive_id, receive_id_type, "[图片]")
+        mime = mimetypes.guess_type(path.name)[0] or "image/png"
+        files = {"image": (path.name, content_bytes, mime)}
+        try:
+            transport = self._http_transport
+            async with httpx.AsyncClient(transport=transport) as client:
+                resp = await client.post(
+                    f"{self._api_base}{_IMAGE_UPLOAD_PATH}",
+                    data={"image_type": "message"},
+                    files=files,
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=30.0,
+                )
+            if resp.status_code >= 400:
+                logger.warning("飞书图片上传 HTTP 错误", status=resp.status_code)
+                return await self._send_text_placeholder(token, receive_id, receive_id_type, "[图片]")
+            body = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("飞书图片上传失败, 降级占位", error=str(exc))
+            return await self._send_text_placeholder(token, receive_id, receive_id_type, "[图片]")
+        if int(body.get("code", -1) or -1) != 0 or not body.get("data", {}).get("image_key"):
+            logger.warning("飞书图片上传返回非 0", code=body.get("code"), msg=body.get("msg", ""))
+            return await self._send_text_placeholder(token, receive_id, receive_id_type, "[图片]")
+        image_key = str(body["data"]["image_key"])
+        content_json = json.dumps({"image_key": image_key}, ensure_ascii=False)
+        try:
+            send_resp = await self._http_post(
+                f"{self._api_base}{_SEND_MESSAGE_PATH}",
+                params={"receive_id_type": receive_id_type},
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
+                json_body={"receive_id": receive_id, "msg_type": "image", "content": content_json},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("飞书图片消息发送失败", error=str(exc))
+            return False
+        if send_resp is None or int(send_resp.get("code", -1) or -1) != 0:
+            return False
+        return True
+
+    async def _send_text_placeholder(
+        self, token: str, receive_id: str, receive_id_type: str, text: str
+    ) -> bool:
+        """媒体降级占位文本发送 (失败仅记日志)。"""
+        try:
+            resp = await self._http_post(
+                f"{self._api_base}{_SEND_MESSAGE_PATH}",
+                params={"receive_id_type": receive_id_type},
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
+                json_body={
+                    "receive_id": receive_id,
+                    "msg_type": "text",
+                    "content": json.dumps({"text": text}, ensure_ascii=False),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("飞书占位文本发送失败", error=str(exc))
+            return False
+        return resp is not None and int(resp.get("code", -1) or -1) == 0
 
     async def _get_tenant_access_token(self) -> str | None:
         """获取 tenant_access_token (缓存 + 提前 60s 刷新)。"""
@@ -375,6 +471,48 @@ class FeishuAdapter(PlatformAdapter):
             return None
         self._cached_token = (token, time.monotonic() + max(60, expire - _TOKEN_REFRESH_LEAD_SECONDS))
         return token
+
+    async def _attach_inbound_image(self, payload: dict, msg: ISACMessage) -> None:
+        """富媒体二波: image 类型消息 → media segment (供入站下载管线落盘)。
+
+        飞书图片须经 ``im/v1/messages/{message_id}/resources/{image_key}?type=image``
+        下载 (需 Bearer tenant_access_token) —— URL 无法内嵌凭据, 故 segment
+        data 带 ``headers`` (download_inbound_media 透传给 safe_download_bytes;
+        segments 不落事件流, token 生命周期止于内存)。token 换取失败仅记日志
+        (消息仍按文本占位处理, 不阻塞)。
+        """
+        event = payload.get("event") or {}
+        message = event.get("message") or {}
+        if str(message.get("message_type", "") or "") != "image":
+            return
+        image_key = self._extract_image_key(str(message.get("content", "") or ""))
+        message_id = str(message.get("message_id", "") or "")
+        if not image_key or not message_id:
+            return
+        token = await self._get_tenant_access_token()
+        if not token:
+            logger.warning("飞书入站图片: token 换取失败, 跳过媒体解析", message_id=message_id)
+            return
+        url = f"{self._api_base}{_MESSAGE_RESOURCE_PATH.format(message_id=message_id, file_key=image_key)}?type=image"
+        msg.segments.append(MessageSegment(
+            type="image",
+            data={
+                "url": url,
+                "headers": {"Authorization": f"Bearer {token}"},
+                "file_id": image_key,
+            },
+        ))
+
+    @staticmethod
+    def _extract_image_key(content_str: str) -> str:
+        """从 image 类型 message.content 提取 image_key (``{"image_key": "..."}``)。"""
+        if not content_str:
+            return ""
+        try:
+            content = json.loads(content_str)
+        except Exception:  # noqa: BLE001
+            return ""
+        return str(content.get("image_key", "") or "") if isinstance(content, dict) else ""
 
     async def _http_post(
         self, url: str, *, json_body: dict, headers: dict, params: dict | None = None

@@ -203,12 +203,11 @@ async def main() -> None:
     # 启动时从 data/links.jsonc 恢复已持久化的互联 Link (CODE_REVIEW_REPORT.md #3)。
     await _load_persisted_links(bus, DATA_DIR / "links.jsonc")
     # Link 持久化回调: add_link/remove_link 改动时落盘 (失败只记日志, 不回滚 in-memory)。
-    def _persist_links_snapshot() -> None:
-        from isac.control.api.routes_routing import _persist_links
+    # N5 (2026-10-11): 回调实现抽 routes_routing.make_links_persist_callback ——
+    # 事件循环内 fire-and-forget 后台写盘 (fsync 不阻塞循环), 无循环时同步。
+    from isac.control.api.routes_routing import make_links_persist_callback
 
-        _persist_links(bus, DATA_DIR / "links.jsonc")
-
-    bus.set_persist(_persist_links_snapshot)
+    bus.set_persist(make_links_persist_callback(bus, DATA_DIR / "links.jsonc"))
     # 把 bus 也加入 services, 让 ask_agent 工具与命令能通过 context.services 访问。
     services["bus"] = bus
 

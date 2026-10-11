@@ -4,8 +4,11 @@
 再由适配器走平台原生 API 发送; 不支持的平台返回 None (由调用方降级为文本占位)。
 
 - OneBot (QQ): image/voice/video/file → CQSegment.image/record/video/file
-- WebChat: 不支持媒体 segment, 返回 None (adapter 自己降级为文本占位)
-- Telegram/Discord: 媒体发送留 J3, 当前返回 None
+- 飞书 (feishu): 富媒体二波 (2026-10-11) —— image 制品 → image segment (适配器
+  读本地文件上传 im/v1/images 得 image_key 后发送); 其余 kind 暂不支持。
+- Discord: 富媒体二波 (2026-10-11) —— image/video/audio/file 全 kind → 对应
+  segment (适配器 multipart 附件发送)。
+- WebChat/Telegram: 不支持媒体 segment, 返回 None (adapter 自己降级为文本占位)
 """
 
 from __future__ import annotations
@@ -27,8 +30,16 @@ _ONEBOT_KIND_TO_TYPE: dict[str, str] = {
     "file": "file",
 }
 
+# Discord kind → segment type (直接同名; 音频 Discord 用 audio)
+_DISCORD_KIND_TO_TYPE: dict[str, str] = {
+    "image": "image",
+    "audio": "audio",
+    "video": "video",
+    "file": "file",
+}
+
 # 不支持媒体 segment 的平台 (返回 None, 由 adapter 自己降级)
-_UNSUPPORTED_PLATFORMS: set[str] = {"webchat", "telegram", "discord"}
+_UNSUPPORTED_PLATFORMS: set[str] = {"webchat", "telegram"}
 
 # Fix-63: OneBot 适配器的 platform_name 是 "qq" (onebot/adapter.py), 入站消息
 # platform="qq"; 此前只匹配 "onebot" (仅配置节名) → QQ 富媒体出站永远命中
@@ -63,6 +74,21 @@ class MediaResolver:
             return MessageSegment(
                 type=seg_type,
                 data={"url": artifact_ref.uri, "artifact_id": artifact_ref.artifact_id},
+            )
+        # 飞书: 富媒体二波 —— image 制品 (适配器上传后以 msg_type=image 发送)。
+        if platform == "feishu" and artifact_ref.kind == "image":
+            return MessageSegment(
+                type="image",
+                data={"media_uri": artifact_ref.uri, "artifact_id": artifact_ref.artifact_id},
+            )
+        # Discord: 富媒体二波 —— 全 kind multipart 附件。
+        if platform == "discord":
+            seg_type = _DISCORD_KIND_TO_TYPE.get(artifact_ref.kind)
+            if seg_type is None:
+                return None
+            return MessageSegment(
+                type=seg_type,
+                data={"media_uri": artifact_ref.uri, "artifact_id": artifact_ref.artifact_id},
             )
         # 其他未明确支持的平台: 返回 None
         return None

@@ -96,28 +96,101 @@ class DiscordAdapter(PlatformAdapter):
             self._http_client = None
 
     async def send(self, message: ISACMessage) -> bool:
-        """发送文本消息到 Discord channel。
+        """发送文本/附件消息到 Discord channel。
 
         Fix-98: Discord 单条上限 2000 字符, 超长整条提交 → 平台 400 → 回复静默
         丢失。按上限分段发送 (优先换行边界); 任一段失败整体记 False 但继续发余下段。
+        富媒体二波 (2026-10-11): segments 含 image/video/audio/file 段时, 读本地
+        制品文件以 multipart 附件发送 (与文本同一条消息, payload_json+files[0]);
+        附件读取失败降级占位文本不阻塞文本段。
         """
         channel_id = message.group_id or message.user_id
         if not channel_id:
             logger.warning("Discord send 缺少 channel_id")
             return False
+        # 富媒体二波: 本地制品附件 (有则与首段文本合并为 multipart 消息)
+        attachments = await self._collect_local_attachments(message)
         chunks = chunk_text(str(message.content or ""), _DISCORD_MAX_TEXT_CHARS)
         if not chunks:
             chunks = [""]
         ok = True
-        for chunk in chunks:
-            result = await self._call_api(
-                "POST",
-                f"/channels/{channel_id}/messages",
-                json_body={"content": chunk},
-            )
+        for i, chunk in enumerate(chunks):
+            if i == 0 and attachments:
+                result = await self._send_multipart(channel_id, chunk, attachments)
+                attachments = []  # 附件只随首条, 余下纯文本
+            else:
+                result = await self._call_api(
+                    "POST",
+                    f"/channels/{channel_id}/messages",
+                    json_body={"content": chunk},
+                )
             if result is None:
                 ok = False
         return ok
+
+    @staticmethod
+    async def _collect_local_attachments(message: ISACMessage) -> list[tuple[str, bytes, str]]:
+        """收集 segments 中可读的本地制品附件 → [(文件名, bytes, mime)]。
+
+        仅接受本地路径 (media_uri/url 指向 ArtifactStore 落盘文件); 平台回传
+        URL (http) 不重传 (无本地字节), 跳过。单附件失败隔离。
+        """
+        import mimetypes
+        from pathlib import Path
+
+        out: list[tuple[str, bytes, str]] = []
+        for seg in message.segments or []:
+            seg_type = getattr(seg, "type", "")
+            if seg_type not in ("image", "video", "audio", "voice", "file"):
+                continue
+            data = getattr(seg, "data", None) or {}
+            local_path = str(data.get("media_uri") or data.get("url") or "")
+            if not local_path or local_path.startswith(("http://", "https://")):
+                continue
+            try:
+                # N5: 附件可能数 MB, 同步读盘会阻塞事件循环 —— 迁 to_thread。
+                content = await asyncio.to_thread(Path(local_path).read_bytes)
+            except Exception as exc:  # noqa: BLE001 单附件失败隔离
+                logger.warning("Discord 附件读取失败, 跳过", path=str(local_path)[:120], error=str(exc))
+                continue
+            name = Path(local_path).name or "attachment"
+            mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+            out.append((name, content, mime))
+        return out
+
+    async def _send_multipart(
+        self, channel_id: str, content: str, attachments: list[tuple[str, bytes, str]]
+    ) -> Any:
+        """multipart 附件消息 (payload_json + files[N]); 失败降级纯文本重发。"""
+        try:
+            import json as _json
+
+            files = [
+                (f"files[{i}]", (name, blob, mime)) for i, (name, blob, mime) in enumerate(attachments)
+            ]
+            if self._http_client is None:
+                await self._call_api("GET", "/users/@me")  # 惰性建 client (含鉴权头)
+            response = await self._http_client.post(
+                f"/channels/{channel_id}/messages",
+                data={"payload_json": _json.dumps({"content": content})},
+                files=files,
+            )
+            if response.status_code >= 400:
+                logger.warning(
+                    "Discord multipart 发送 HTTP 错误",
+                    status=response.status_code, body=response.text[:200],
+                )
+                return await self._call_api(
+                    "POST", f"/channels/{channel_id}/messages", json_body={"content": content}
+                )
+            if response.status_code == 204:
+                return {}
+            return response.json()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Discord multipart 发送异常, 降级纯文本", error=str(exc))
+            return await self._call_api(
+                "POST", f"/channels/{channel_id}/messages", json_body={"content": content}
+            )
 
     async def _poll_loop(self) -> None:
         """轮询 watch_channels 拉新消息。"""
@@ -175,6 +248,12 @@ class DiscordAdapter(PlatformAdapter):
         user_id = str(author.get("id", ""))
         user_name = author.get("username", "")
         content = str(dc_message.get("content", "") or "")
+        # 富媒体二波: 解析 attachments (Discord CDN url 签名公开可下载) → media
+        # segment (供入站下载管线落盘 data/uploads)。kind 按 content_type 前缀。
+        segments: list[MessageSegment] = []
+        if content:
+            segments.append(MessageSegment(type="text", data={"text": content}))
+        segments.extend(self._build_attachment_segments(dc_message.get("attachments")))
         # Discord 没有 group_id 概念, channel_id 作 group_id
         return ISACMessage(
             msg_id=msg_id,
@@ -184,8 +263,40 @@ class DiscordAdapter(PlatformAdapter):
             user_name=user_name,
             group_id=channel_id,
             content=content,
-            segments=[MessageSegment(type="text", data={"text": content})] if content else [],
+            segments=segments,
         )
+
+    @staticmethod
+    def _build_attachment_segments(attachments: Any) -> list[MessageSegment]:
+        """Discord attachments 数组 → media segment 列表。
+
+        CDN url 带签名参数 (公开可下载, 无需鉴权头); content_type 前缀映射
+        image/video/audio → 对应 kind, 其余 file。异常/缺失字段跳过 (单项隔离)。
+        """
+        if not isinstance(attachments, list):
+            return []
+        out: list[MessageSegment] = []
+        for att in attachments:
+            if not isinstance(att, dict):
+                continue
+            url = str(att.get("url", "") or "")
+            if not url.startswith(("http://", "https://")):
+                continue
+            content_type = str(att.get("content_type", "") or "")
+            if content_type.startswith("image/"):
+                kind = "image"
+            elif content_type.startswith("video/"):
+                kind = "video"
+            elif content_type.startswith("audio/"):
+                kind = "audio"
+            else:
+                kind = "file"
+            data: dict[str, Any] = {"url": url}
+            filename = str(att.get("filename", "") or "")
+            if filename:
+                data["file_name"] = filename
+            out.append(MessageSegment(type=kind, data=data))
+        return out
 
     @staticmethod
     def _parse_timestamp(raw: Any) -> int:

@@ -66,6 +66,11 @@ async def download_inbound_media(
     地址 (http://127.0.0.1:<port>/images/...), 默认 SSRF 守卫拒 loopback 会让
     入站媒体在主力平台恒下载失败 (R1-② 闭环断链)。由 global_config
     ``inbound_media.allow_loopback`` 控制 (仍逐跳复校验, 非放行任意内网)。
+
+    富媒体二波 (2026-10-11): segment ``data["headers"]`` —— 鉴权平台 (飞书
+    resources API 需 Bearer tenant_access_token) 的下载头透传。headers 只在
+    请求时使用, 不进日志; segments 不落事件流 (message.user 事件 payload 仅
+    content/user_name), token 生命周期止于内存。
     """
     segments = getattr(message, "segments", None) or []
     if not segments or artifact_store is None:
@@ -79,11 +84,15 @@ async def download_inbound_media(
         url = data.get("url") or data.get("file")
         if not url or not isinstance(url, str) or not url.startswith(("http://", "https://")):
             continue  # 非 HTTP URL (本地路径等) 跳过
+        seg_headers = data.get("headers")
+        headers = dict(seg_headers) if isinstance(seg_headers, dict) else None
         # Fix-62: 首跳 SSRF 校验由 safe_download_bytes 内部完成 (含逐跳复校验),
         # 此处不再重复预校验 —— is_safe_url 的同步 DNS 在消息主链路上是阻塞点,
         # 重复一次 = 每 segment 多一次事件循环停摆窗口。
         try:
-            content = await _download_bytes(url, http_client, allow_loopback=allow_loopback)
+            content = await _download_bytes(
+                url, http_client, allow_loopback=allow_loopback, headers=headers
+            )
             if content is None:
                 continue
             mime_type = _infer_mime(kind, url)
@@ -97,7 +106,8 @@ async def download_inbound_media(
 
 
 async def _download_bytes(
-    url: str, http_client: Any, *, allow_loopback: bool = False
+    url: str, http_client: Any, *, allow_loopback: bool = False,
+    headers: dict[str, str] | None = None,
 ) -> bytes | None:
     """HTTP 下载为 bytes。http_client 注入时直接用; 否则走 safe_download_bytes。
 
@@ -105,11 +115,17 @@ async def _download_bytes(
     (此前 follow_redirects=True 不校验重定向目标 → SSRF 绕过), 且流式累计
     超过 MAX_INBOUND_MEDIA_BYTES 中止 (此前 resp.content 全量缓冲无上限 → OOM)。
     Fix-99: allow_loopback 透传 (OneBot 同机媒体服务白名单)。
+    富媒体二波: headers 透传 (鉴权平台下载头)。
     """
     if http_client is not None:
+        # 注入 client 协议: get_bytes(url, headers=None) (headers 可选, 旧 fake
+        # 仅签名 url 时以位置参数调用不破坏 —— headers=None 走旧形态)。
+        if headers:
+            return await http_client.get_bytes(url, headers=headers)
         return await http_client.get_bytes(url)
     return await safe_download_bytes(
-        url, timeout_seconds=30.0, max_bytes=MAX_INBOUND_MEDIA_BYTES, allow_loopback=allow_loopback
+        url, timeout_seconds=30.0, max_bytes=MAX_INBOUND_MEDIA_BYTES,
+        allow_loopback=allow_loopback, headers=headers,
     )
 
 

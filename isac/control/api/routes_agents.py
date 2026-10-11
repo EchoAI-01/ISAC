@@ -5,6 +5,7 @@ Bearer Token 认证 (依赖注入) + 审计日志 (写操作记录) + AgentConfi
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -105,7 +106,8 @@ def build_router(
         instance = await _do_create_agent(agent_manager, config)
         # Path / 操作符自然处理分隔符; agent_id 已由 AgentConfig 校验只含 [A-Za-z0-9_-]
         config_path = agents_dir_path / instance.agent_id / "config.jsonc"
-        save_agent_config(config_path, instance.config)
+        # N5 (2026-10-11): atomic_write 含 fsync (毫秒级阻塞), async 体内迁 to_thread。
+        await asyncio.to_thread(save_agent_config, config_path, instance.config)
         await _audit(
             audit_log, "POST", "/api/v1/agents", "create_agent", instance.agent_id,
             actor=caller,
@@ -234,6 +236,19 @@ async def _do_patch_agent(
         for k, v in payload.items():
             if k in merged and k not in ("agent_id", "revision"):
                 merged[k] = v
+        # D2 配置期 fail-fast (2026-10-11): 本次 payload 携带的 tools_policy 非法
+        # 档位在落盘前拒绝 (运行时已 fail-closed 归 deny; 此处让笔误在 PATCH 时即
+        # 报 400 可见)。只校验 payload 携带值 —— 存量脏数据不阻塞无关字段更新,
+        # 由运行时 fail-closed + warning 日志兜底)。
+        if "tools_policy" in payload:
+            from isac.agent.tools.base import validate_tool_policy_values as _validate_tools
+
+            policy_errors = _validate_tools(payload.get("tools_policy"))
+            if policy_errors:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "INVALID_CONFIG", "message": "; ".join(policy_errors)},
+                )
         # Fix-91: 还原哨兵 —— GET 已把敏感键脱敏为哨兵, WebUI 编辑回传时若原样
         # 带回哨兵, 不能让它覆盖真实凭据; 仅当客户端真传了新值才更新敏感键。
         merged = _restore_redacted(merged, asdict(instance.config))
@@ -247,9 +262,9 @@ async def _do_patch_agent(
                 status_code=400,
                 detail={"code": "INVALID_CONFIG", "message": "Agent config validation failed"},
             ) from exc
-        # 持久化 (save_agent_config 会 revision+1)
+        # 持久化 (save_agent_config 会 revision+1); N5: fsync 阻塞迁 to_thread。
         config_path = agents_dir_path / agent_id / "config.jsonc"
-        save_agent_config(config_path, new_config)
+        await asyncio.to_thread(save_agent_config, config_path, new_config)
         # 热更新到 runtime
         await agent_manager.reload_config(agent_id, new_config)
         await _audit(

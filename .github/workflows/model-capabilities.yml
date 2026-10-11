@@ -1,0 +1,73 @@
+# U7 模型能力快照周级刷新 (models.dev → data/model_capabilities.json)。
+#
+# 为什么必须存在 (2026-10-11 恢复, 原 2026-10-10 删除):
+# tests/unit/test_u7_data_driven_agent.py:206 断言入库快照 ≤60 天新鲜 ——
+# 无本 workflow 时约 60 天后 main/dev 的 CI check job 恒红 (结构性定时炸弹);
+# 且新上市模型无能力数据 → U7 能力路由 / fallback 链过滤静默退化,
+# Docker 镜像打包的快照也会冻结在构建时。
+#
+# 相对原版的修正:
+# - cron 从 "0 */6 * * *" (每 6 小时, 与注释「每周」不符且过频) 改为每周一 05:17 UTC;
+#   60 天新鲜窗口 ÷ 周级刷新 = 8 周冗余, 单次失败无影响, 不做重试;
+# - 先跑 --check (本地零网络) 再在线生成;
+# - 补 concurrency / timeout / 与 CI 栈一致的 checkout v5;
+# - 不装项目依赖: 生成器仅标准库 (脚本 docstring 设计承诺), uv run --no-project
+#   用受控 3.12 直跑 (datetime.UTC 需 3.11+, 不依赖 runner 预装版本)。
+#
+# 新鲜度 drift 报警由 tests/unit/test_u7_data_driven_agent.py 承担 (快照过期即失败);
+# 解析检查由 ci.yml catalog-drift job 的 --check 承担。
+
+name: 模型能力快照刷新
+
+on:
+  schedule:
+    # 每周一 05:17 UTC (避开整点拥塞)
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# schedule 与手动触发重叠时排队不取消 (避免推一半被杀)
+concurrency:
+  group: model-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # 只刷 dev; main 由人工合并节奏控制
+      - uses: actions/checkout@v5
+        with:
+          ref: dev
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Snapshot sanity check
+        # 本地零网络: 入库快照存在且可解析 (与 ci.yml catalog-drift 同款检查)
+        run: uv run --no-project python scripts/gen_model_capabilities.py --check
+
+      - name: Regenerate snapshot from models.dev
+        # 在线拉取 (60s 超时) + overrides.json 手动补录合并; 失败即红,
+        # 下周 schedule 自动重试 (8 周冗余内不影响新鲜度)
+        run: uv run --no-project python scripts/gen_model_capabilities.py
+
+      - name: Commit and push if changed
+        # generated_at 每次生成必前移 → 每周约一提交, 属设计使然
+        # (时间戳前进即「快照被验证过」的新鲜度证据)
+        run: |
+          set -euo pipefail
+          if git diff --quiet data/model_capabilities.json; then
+            echo "快照无变化, 跳过提交"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/model_capabilities.json
+          git commit -m "chore(u7): 每周刷新模型能力快照 (models.dev)"
+          git push

@@ -61,12 +61,56 @@ def main() -> int:
         services={"global_config": {}},
     )
     schema = app.openapi()
+    # ── N4 API 基线缺口修复 (2026-10-11 审计) ──────────────────────
+    # ① securitySchemes: 认证是自定义依赖 (不挂在 FastAPI Security 上), openapi()
+    #    不会自动产出 —— 前端生成客户端无从得知认证方式。此处显式注入两种 scheme
+    #    (Bearer Token / Session Cookie) 并设全局 security, 语义与
+    #    CONTROL_PLANE_SPEC §6.1 (api_token/tokens[]) 及 §8.2 (会话 Cookie) 一致。
+    components = schema.setdefault("components", {})
+    components["securitySchemes"] = {
+        "bearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "description": "静态 Token: control.api_token 或 control.tokens[] 条目 "
+            "(tokens[] 部署下按 scope 限权; 跨源前端写操作建议用此轨)。",
+        },
+        "sessionAuth": {
+            "type": "apiKey",
+            "in": "cookie",
+            "name": "isac_session",
+            "description": "会话 Cookie: POST /api/v1/auth/session 登录获得 (CSRF 双提交, "
+            "同源部署 / CORS origins 放行时可用)。",
+        },
+    }
+    schema["security"] = [{"bearerAuth": []}, {"sessionAuth": []}]
+    info = schema.setdefault("info", {})
+    info["description"] = (
+        (info.get("description") or "")
+        + "\n\n认证模型: 全部端点默认要求认证 —— Bearer Token (Authorization: Bearer <token>, "
+        "control.api_token 或 control.tokens[], 见 CONTROL_PLANE_SPEC §6.1) 或会话 Cookie "
+        "(POST /api/v1/auth/session, §8.2) 二选一; setup_enabled 首登流程见 POST /api/v1/setup。"
+        "例外: /health 与 /metrics(text/plain) 免认证。"
+    )
+    # ② 生产挂载路径: WebUI 静态托管经 Starlette Mount + include_in_schema=False,
+    #    不会出现在 openapi() 里 —— 前端按基线开发会漏。补描述性条目 (只描述形状,
+    #    不参与代码生成校验)。
+    paths = schema.setdefault("paths", {})
+    paths.setdefault("/ui/", {
+        "get": {
+            "summary": "内置 WebUI 管理面板 (静态托管, deprecated — F2 迁移后移除)",
+            "description": "浏览器打开 /ui/ 进入内置 WebUI (Vanilla JS SPA 十域)。"
+            "FE1 起标 deprecated, 前端轨道 F2 完成后由独立前端项目取代并移除本挂载。",
+            "responses": {"200": {"description": "WebUI HTML"}},
+        }
+    })
     out = Path(__file__).resolve().parents[1] / "docs" / "api" / "openapi.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(schema, ensure_ascii=False, indent=2), encoding="utf-8")
-    paths = schema.get("paths", {})
     print(f"[export] OpenAPI 契约基线已导出: {out}")
-    print(f"[export] {len(paths)} 个路径, version={schema.get('info', {}).get('version')}")
+    print(
+        f"[export] {len(paths)} 个路径, securitySchemes=bearerAuth+sessionAuth, "
+        f"version={schema.get('info', {}).get('version')}"
+    )
     return 0
 
 

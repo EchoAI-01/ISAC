@@ -198,7 +198,8 @@ class _FakeAsyncClient:
         # Fix-39 的实现必须不自动跟随重定向 (逐跳手动校验)
         assert follow_redirects is False
 
-    def stream(self, method: str, url: str) -> _FakeStreamResponse:
+    def stream(self, method: str, url: str, headers: dict | None = None) -> _FakeStreamResponse:
+        # 富媒体二波: 生产签名带 headers (鉴权平台下载头), fake 同步接受
         resp = self.routes.get(url)
         assert resp is not None, f"未预期的请求 URL: {url}"
         return resp
