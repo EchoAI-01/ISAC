@@ -1078,10 +1078,27 @@ class AgentManager:
                     else:
                         instance.gating.get_turn_scheduler(session.session_id).record_reply()
                         # Fix-115: 产出落 U1 事件流 (在推送前, 推送失败不丢事件)。
-                        await self._record_forced_turn_events(
+                        turn_seq = await self._record_forced_turn_events(
                             instance, agent_context.current_message, content, result.content
                         )
-                        await self._send_proactive_reply(instance, session, result.content)
+                        # L3 (2026-10-13 review): 强制话轮也写 episodic 记忆 —— 此前
+                        # 仅普通消息路径写 (08-21 盘点遗留③), 主动说过什么/得到什么
+                        # 永不进记忆库, "越聊越熟"对主动交互失明; 与普通路径同一
+                        # _schedule_memory_write (后台任务, 失败降级不阻塞推送)。
+                        self._schedule_memory_write(
+                            instance,
+                            agent_context.current_message,
+                            session,
+                            None,  # 强制话轮无交互画像, 回退平台 id (既有 None 语义)
+                            result.content,
+                            user_content=content,
+                            turn_seq=turn_seq,
+                        )
+                        # L4 (2026-10-13 review): 主动回复改走 outbound._send_reply ——
+                        # 此前 _send_proactive_reply 直发 adapter.send, 绕过出站有界
+                        # 重试 + 死信环 (08-21 盘点遗留④), 失败静默丢; 现与普通回复
+                        # 同链路 (重试/死信/artifact 引用转媒体段一并生效)。
+                        await self._deliver_proactive_reply(instance, session, result.content)
         except Exception:  # noqa: BLE001
             logger.error("强制话轮执行异常", task_id=task.task_id, exc_info=True)
         finally:
@@ -1097,7 +1114,7 @@ class AgentManager:
         message: ISACMessage,
         proactive_content: str,
         reply_content: str,
-    ) -> None:
+    ) -> int | None:
         """Fix-115: 强制话轮产出落 U1 事件流 (best-effort, 失败仅记日志)。
 
         此前只有消息回合路径写 message.user/turn.completed, 强制话轮 (主动发言)
@@ -1105,10 +1122,12 @@ class AgentManager:
         不存在: 后续回合的历史窗口看不到这段交互, 无法支撑"主动说过什么"的上下文。
         合成 prompt (带 proactive 标记) 与回复成对写入。session_key 经 _history_parts
         复用 SessionManager 口径; 历史未启用/未注入时静默跳过 (零行为变化)。
+        L3 (2026-10-13 review): 返回 turn.completed 事件 seq (落盘失败/未启用返回
+        None) —— 强制话轮记忆写入的 episodes 事件投影定位用 (与普通路径同口径)。
         """
         parts = self._history_parts(instance, message)
         if parts is None:
-            return
+            return None
         store, _, session_key = parts
         from isac.session.models import EVENT_TURN_COMPLETED, EVENT_USER_MESSAGE, SessionEvent
 
@@ -1122,7 +1141,7 @@ class AgentManager:
                     payload={"content": proactive_content, "proactive": True},
                 )
             )
-            await store.append(
+            completed_seq = await store.append(
                 SessionEvent(
                     session_key=session_key,
                     event_type=EVENT_TURN_COMPLETED,
@@ -1131,8 +1150,10 @@ class AgentManager:
                 )
             )
             await store.flush()
+            return completed_seq or None
         except Exception as exc:  # noqa: BLE001 事件落盘失败不阻塞主动回复
             logger.warning("强制话轮事件落盘失败", error=str(exc))
+            return None
 
     @staticmethod
     def _finish_forced_turn(
@@ -1199,27 +1220,43 @@ class AgentManager:
         )
         return content, agent_context
 
-    async def _send_proactive_reply(self, instance: AgentInstance, session: Session, content: str) -> None:
-        """把主动话轮的回复经原 Channel 发送 (platform_session_id 保证 WebChat 可达)。"""
+    async def _deliver_proactive_reply(
+        self, instance: AgentInstance, session: Session, content: str
+    ) -> None:
+        """L4 (2026-10-13 review): 主动回复经 outbound._send_reply 投递。
+
+        与普通回复同链路: 有界重试 (3 次短退避) + 全败死信环 (可观测不静默丢) +
+        artifact 引用转媒体段 (回复文本含 artifact:<hex> 时自动转 segment)。
+        此前 _send_proactive_reply 直发 adapter.send —— 单次尝试, 失败仅记日志
+        静默丢, 且不带 artifact 转段 (08-21 盘点遗留④)。platform_session_id
+        保证 WebChat 等按平台会话键路由的平台可达 (原实现语义保留)。
+        """
         from isac.channel.model import ISACMessage as _ISACMessage
+        from isac.outbound import _send_reply
 
         channel_registry = self._services.channel_registry
-        adapter = channel_registry.get(session.platform) if channel_registry is not None else None
-        if adapter is None:
-            logger.warning("主动消息无可用适配器, 丢弃", platform=session.platform)
+        if channel_registry is None:
+            logger.warning("主动消息无 channel_registry, 丢弃", platform=session.platform)
             return
-        reply = _ISACMessage(
+        platform_session_id = session.platform_session_id or session.session_id
+        incoming = _ISACMessage(
             msg_id="",
             platform=session.platform,
             timestamp=0,
             user_id=session.user_id,
             user_name="",
             group_id=session.group_id,
-            session_id=session.platform_session_id or session.session_id,
-            content=content,
+            session_id=platform_session_id,
+            content="",
         )
-        sent = await adapter.send(reply)
-        logger.info("主动消息已发送" if sent else "主动消息发送失败", platform=session.platform)
+        await _send_reply(
+            channel_registry,
+            incoming,
+            content,
+            instance.agent_id,
+            platform_session_id,
+            artifact_store=self._services.artifact_store,
+        )
 
     # ── 记忆写入回路 (Q1) ───────────────────────────────────
 

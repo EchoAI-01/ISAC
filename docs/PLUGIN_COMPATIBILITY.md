@@ -270,6 +270,29 @@ AstrBot 兼容层通过 `sys.meta_path` 拦截常见 `astrbot.*` import。
 
 ## 七、MaiBot 兼容层
 
+### 7.0 import 重定向 (L2, 2026-10-13)
+
+真实 MaiBot 插件 (SDK v2, pip 包 `maibot-plugin-sdk`, manifest_version 2) 的
+`from maibot_sdk import MaiBotPlugin, Tool, Command` / `from maibot_sdk.types
+import ToolParameterInfo, ToolParamType` 在加载时经 `sys.meta_path` 沙箱
+(`isac/plugin/compatibility/maibot/sandbox.py`) 重定向到 ISAC shim —— 真实插件
+不改一行即可加载 (与 AstrBot M12 同构; 修复前 MaiBot 兼容层零重定向, 只能加载
+直接 import ISAC 路径的自写插件)。映射面:
+
+| maibot_sdk | ISAC shim | 说明 |
+|------------|-----------|------|
+| `MaiBotPlugin` | 兼容层基类真身 | 构造签名兼容 (config 可缺省) |
+| `@Tool(name, brief_description, parameters=[...])` | `_maibot_action` 标记 + 参数 schema | ToolParameterInfo → LLM function-calling schema |
+| `@Action(name, ...)` (旧名) | 与 @Tool 同义 | 官方语义 "内部自动转换为 @Tool" |
+| `@Command(name, pattern=...)` | `_maibot_command` 标记 | pattern 由 ISAC Command 路由体系另行约定 |
+| `maibot_sdk.types` | sdk_types shim | ToolParameterInfo / ToolParamType |
+
+**边界 (诚实声明)**: SDK 的 `self.ctx` 17 种能力代理 (send/db/logger/...,
+经 Runner 子进程 RPC) 在 ISAC 兼容层**无对等物** —— 插件方法内访问 `self.ctx`
+会得到明确 RuntimeError (加载/注册不受影响); 旧版 `src.plugin_system.*` 体系
+(manifest_version 1, register_component 架构) 不在映射面。`create_plugin()`
+工厂函数无需参与 (loader 走"找 MaiBotPlugin 子类"路径)。
+
 ### 7.1 组件映射
 
 | MaiBot | ISAC |

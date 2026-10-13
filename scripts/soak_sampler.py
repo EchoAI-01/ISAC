@@ -247,7 +247,10 @@ def _take_sample(args: argparse.Namespace, pid: int | None, data_dir: Path, sent
     hs, health = _http_json("GET", f"{args.control_url}/health")
     sample["health_status"] = hs
     if isinstance(health, dict):
-        sample["agents_total"] = (health.get("agents") or {}).get("total")
+        # Issue #8 (2026-10-13): 字段路径对齐 /health 实际载荷 —— agents 计数在
+        # subsystems.agents 下 (此前读顶层 agents 恒 null); uptime_seconds 为
+        # 2026-10-13 起 /health 新增字段 (此前载荷无此键, 采样恒 null)。
+        sample["agents_total"] = ((health.get("subsystems") or {}).get("agents") or {}).get("total")
         sample["uptime_seconds"] = health.get("uptime_seconds")
     sample["session_events"] = _session_event_count(data_dir)
     sample["sent"] = sent

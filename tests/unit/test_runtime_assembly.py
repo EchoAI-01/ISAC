@@ -36,6 +36,51 @@ async def test_assemble_agent_registers_safe_tools_and_memory_injectors() -> Non
 
 
 @pytest.mark.asyncio
+async def test_assemble_agent_wires_channel_tool_services() -> None:
+    """L1 (2026-10-13 review): Channel 交互工具服务 per-Agent 注入 —— 此前
+    channel_send/channel_history/channel_forward 三键全仓零注入, 4 个默认 allow
+    的工具 LLM 可见但调用恒失败 (死工具)。键缺失的服务 (无 Channel 场景) 仍为
+    None (闭包构建器对 None registry/store 返回 None), 工具走友好错误分支。"""
+    provider_manager = ProviderManager({})
+    provider_manager.register(StubProvider())
+    agent = await assemble_agent(
+        AgentConfig(agent_id="agent_a"),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+        },
+    )
+    # services 未带 channel_registry / session_event_store → 注入 None (诚实缺失,
+    # 工具返回"未启用 Channel 发送能力"而非 AttributeError)。
+    assert "channel_send" in agent.services
+    assert "channel_history" in agent.services
+    assert "channel_forward" in agent.services
+    assert agent.services["channel_send"] is None
+    assert agent.services["channel_history"] is None
+    assert agent.services["channel_forward"] is None
+
+    # 带 registry/store 的完整 services → 三键为真实可调用闭包。
+    from isac.session.event_store import SessionEventStore
+    from tests.unit.test_channel_tool_services_l1 import _FakeAdapter, _FakeRegistry
+
+    store = SessionEventStore("data/test-l1-events.db")  # 不会真正落盘 (未 start, 闭包惰性调用)
+    agent2 = await assemble_agent(
+        AgentConfig(agent_id="agent_a"),
+        {
+            "provider_manager": provider_manager,
+            "memory_factory": lambda namespace: NoOpMemoryPipeline(namespace),
+            "global_config": {},
+            "channel_registry": _FakeRegistry([_FakeAdapter("qq")]),
+            "session_event_store": store,
+        },
+    )
+    assert callable(agent2.services["channel_send"])
+    assert callable(agent2.services["channel_history"])
+    assert callable(agent2.services["channel_forward"])
+
+
+@pytest.mark.asyncio
 async def test_assembled_services_agent_id_matches_instance_agent_id() -> None:
     """CR2-Fix-1: agent_services["agent_id"] 必须与 AgentInstance.agent_id 一致,
     否则 wait 工具 (从 services 取 agent_id) 和 manager._dispatch_message (从

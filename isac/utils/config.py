@@ -57,6 +57,13 @@ ENV_MAPPING: dict[str, tuple[str, Callable[[str], Any]]] = {
     "ISAC_ONEBOT_ENABLED": ("channels.onebot.enabled", _to_bool),
     "ISAC_ONEBOT_HOST": ("channels.onebot.host", str),
     "ISAC_ONEBOT_PORT": ("channels.onebot.port", int),
+    # Issue #6 (2026-10-13): WebChat 容器部署 env 映射缺失 —— 默认 bind_host=
+    # 127.0.0.1 是宿主本机安全默认, 但容器内该绑定使宿主经发布端口不可达且无
+    # env 可改 (控制面/OneBot 均有映射, WebChat 唯独缺失)。补三键后容器用户
+    # 可经 ISAC_WEBCHAT_HOST=0.0.0.0 暴露, 无需挂载 config.jsonc。
+    "ISAC_WEBCHAT_ENABLED": ("channels.webchat.enabled", _to_bool),
+    "ISAC_WEBCHAT_HOST": ("channels.webchat.bind_host", str),
+    "ISAC_WEBCHAT_PORT": ("channels.webchat.bind_port", int),
 }
 
 DEFAULT_CONFIG: dict[str, Any] = {

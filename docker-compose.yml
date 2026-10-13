@@ -17,8 +17,9 @@ services:
       # OneBot 反向 WebSocket (ISAC_ONEBOT_ENABLED=true 时取消注释, 否则 NapCat
       # 等客户端无法从容器外连入 8080; 仅本机 NapCat 时建议保持 127.0.0.1 前缀)
       # - "127.0.0.1:8080:8080"
-      # WebChat 内置聊天通道 (channels.webchat.enabled=true 且需从宿主访问时取消注释)
-      # - "127.0.0.1:8090:8090"
+      # WebChat 内置聊天通道 (Issue #6: 容器内经 ISAC_WEBCHAT_HOST=0.0.0.0 绑定,
+      # 宿主侧仍只发布到 loopback; 需对外暴露时自行改宿主侧绑定并加防护)
+      - "127.0.0.1:8090:8090"
     volumes:
       # 持久化数据 (Agent 配置 / 记忆 / 审计 / Link)
       - isac_data:/app/data
@@ -42,6 +43,11 @@ services:
       - ISAC_ONEBOT_ENABLED=${ISAC_ONEBOT_ENABLED:-false}
       - ISAC_ONEBOT_HOST=${ISAC_ONEBOT_HOST:-0.0.0.0}
       - ISAC_ONEBOT_PORT=${ISAC_ONEBOT_PORT:-8080}
+      # WebChat 配置 (Issue #6: 容器内必须绑 0.0.0.0 宿主发布端口才可达;
+      # 宿主侧仍仅发布到 127.0.0.1, 见上方 ports 段)
+      - ISAC_WEBCHAT_ENABLED=${ISAC_WEBCHAT_ENABLED:-true}
+      - ISAC_WEBCHAT_HOST=${ISAC_WEBCHAT_HOST:-0.0.0.0}
+      - ISAC_WEBCHAT_PORT=${ISAC_WEBCHAT_PORT:-8090}
     # 健康检查在 Dockerfile 已定义, 这里再次声明以便 docker compose ps 显示状态
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health')"]

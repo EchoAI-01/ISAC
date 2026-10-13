@@ -123,7 +123,13 @@ ISAC_ONEBOT_PORT=8080
 | `ISAC_ONEBOT_ENABLED` | `false` | 启用 OneBot QQ 适配器 |
 | `ISAC_ONEBOT_HOST` | `0.0.0.0` | OneBot 反向 WebSocket 监听地址 |
 | `ISAC_ONEBOT_PORT` | `8080` | OneBot 监听端口 |
+| `ISAC_WEBCHAT_ENABLED` | `true` | 启用 WebChat 内置聊天通道 |
+| `ISAC_WEBCHAT_HOST` | `127.0.0.1` | WebChat 绑定地址; **容器部署须配 `0.0.0.0`** (否则宿主经发布端口不可达, Issue #6) |
+| `ISAC_WEBCHAT_PORT` | `8090` | WebChat 绑定端口 |
 
+> WebChat 无认证保护 (按 loopback 部署假设设计): 宿主侧端口发布建议保持
+> `127.0.0.1` 前缀; 需对外暴露时请前置 nginx + HTTPS + 访问控制。
+>
 > Telegram / Discord **无环境变量映射** (不支持 env 注入 `bot_token`),
 > 仅能在 `data/config.jsonc` 的 `channels.telegram.bot_token` /
 > `channels.discord.bot_token` 配置。飞书 / 企业微信 / QQ 官方同样只走 config.jsonc。
@@ -290,3 +296,46 @@ git pull
 python -c "from isac.memory.storage.metadata import MetadataStore; print(...)"
 python -c 'import sqlite3; con = sqlite3.connect("/app/data/memory/metadata.db"); print(con.execute("SELECT name FROM sqlite_master").fetchall())'
 ```
+
+### Q6: 国内网络 / 代理环境下无法构建镜像? (Issue #10)
+
+A: 构建期三处外网依赖 (Docker Hub 基础镜像 / pypi.org / deb.debian.org) 在
+国内家用网络常超时。2026-10-11 实测的两条可用路径 (均无需改动仓库文件):
+
+**路径一: 走 HTTP 代理构建 (推荐, Docker 预置代理 build-arg 全程生效)**
+
+Docker 对 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` 有预置 build-arg 支持,
+`pip install uv` / `uv sync` / `apt-get` 全部自动继承, 无需修改 Dockerfile:
+
+```bash
+docker build --build-arg HTTP_PROXY=http://<proxy>:<port> \
+             --build-arg HTTPS_PROXY=http://<proxy>:<port> \
+             --build-arg NO_PROXY="127.0.0.1,localhost" \
+             -t isac:latest .
+```
+
+基础镜像拉不动时, 先经镜像站拉取并打本地 tag (Dockerfile 不用改):
+
+```bash
+docker pull docker.m.daocloud.io/library/python:3.12-slim
+docker tag  docker.m.daocloud.io/library/python:3.12-slim python:3.12-slim
+```
+
+**路径二: 无代理时全链走国内镜像源 (经 build-arg 注入索引, 同样免改文件)**
+
+```bash
+docker build \
+  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+  --build-arg UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple \
+  -t isac:latest .
+```
+
+- `PIP_INDEX_URL` 供 builder 阶段 `pip install uv`; `UV_DEFAULT_INDEX` 供
+  `uv sync --frozen` 拉取 wheel (镜像站文件与官方逐字节一致, `--frozen` 的
+  lock 哈希校验不受影响; 旧版 uv 变量名为 `UV_INDEX_URL`);
+- runtime 阶段 `apt-get install ca-certificates` 若也超时, 可加
+  `--build-arg http_proxy=...` (apt 走小写变量) 或改用路径一的代理;
+- `docker compose build` 场景在 `docker-compose.yml` 的 `build.args` 段同款注入。
+
+> 镜像站可用性随时间变化, 上述 `docker.m.daocloud.io` / `pypi.tuna.tsinghua.edu.cn`
+> 为 2026-10-11 实测可用项, 失效时替换为当时可用的镜像站即可。

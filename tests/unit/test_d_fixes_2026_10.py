@@ -154,23 +154,64 @@ async def test_d3_gc_only_deletes_summarized_events(store: SessionEventStore) ->
 
 
 @pytest.mark.asyncio
-async def test_d3_single_oversize_event_skips_not_truncates(store: SessionEventStore) -> None:
-    """首事件即超输入上限: 不截断提交 (半个事件都不截), 整轮跳过留待下轮。"""
+async def test_d3_single_oversize_event_compressed_whole_not_truncated(store: SessionEventStore) -> None:
+    """首事件即超输入上限 (R1, 2026-10-13): 整事件进摘要素材 (不截断半点),
+    压缩并 GC —— 修复前该场景永久 input_overflow 死锁 (前缀头部事件进不了摘要
+    也不会被 GC, 前缀永久固定, 每轮触发都空转)。"""
     ts = 1_700_000_000
     for i in range(4):
         await store.append(SessionEvent(
             session_key=SESSION_KEY, event_type=EVENT_USER_MESSAGE, timestamp=ts + i,
             payload={"content": "超长" * 2000},
         ))
+    llm = _FixedLLM()
     comp = SessionCompressor(
-        store, llm=_FixedLLM(), keep_recent_messages=2, min_compress_messages=2,
+        store, llm=llm, keep_recent_messages=2, min_compress_messages=2,
         input_max_chars=500,
     )
     result = await comp.compress_session(SESSION_KEY)
-    # 纳入数 0 < min_compress → input_overflow 跳过, 事件一个不删。
-    assert result.skipped == "input_overflow"
+    # 纳入首事件 (1 条) 即压缩 —— 不再因 < min_compress 永久跳过。
+    assert result.skipped == ""
+    assert result.compressed_events == 1
     events = await store.fetch(SESSION_KEY, after_seq=0, limit=100)
-    assert len([e for e in events if e.event_type == EVENT_USER_MESSAGE]) == 4
+    assert len([e for e in events if e.event_type == EVENT_USER_MESSAGE]) == 3
+    # 摘要素材含首事件**完整**内容 (4000 字符全量, 未截断到 input_max_chars)。
+    assert "超长" * 2000 in llm.prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_r1_overflow_before_min_compress_makes_progress(store: SessionEventStore) -> None:
+    """R1 死锁回归 (2026-10-13 review): 前缀头部事件累计超输入上限且不足
+    min_compress 时, 必须压缩已纳入部分并推进前缀 —— 修复前该会话压缩永久
+    失效 (每轮 input_overflow, 且 D6 触发使每条新消息都全量 fetch 空转)。"""
+    ts = 1_700_000_000
+    # 8 条内容事件 (keep_recent=2, min_compress=6 → prefix=6 条);
+    # input_max_chars 只容得下前 5 条 → 旧代码 5 < 6 恒 input_overflow。
+    for i in range(8):
+        await store.append(SessionEvent(
+            session_key=SESSION_KEY, event_type=EVENT_USER_MESSAGE, timestamp=ts + i,
+            payload={"content": f"第{i}条 " + "细节" * 50},  # ~103 字符/条
+        ))
+    llm = _FixedLLM()
+    comp = SessionCompressor(
+        store, llm=llm, keep_recent_messages=2, min_compress_messages=6,
+        input_max_chars=550,  # 5 条 ≈ 515+4 换行; 第 6 条将超限。
+    )
+    result = await comp.compress_session(SESSION_KEY)
+    assert result.skipped == ""
+    assert result.compressed_events == 5
+    # 素材 = 前 5 条 (第 5 条未纳入 → 不进摘要也不许删)。
+    for i in range(5):
+        assert f"第{i}条" in llm.prompts[0]
+    assert "第5条" not in llm.prompts[0]
+    # 剩余: 第 5/6/7 条 (1 条未压缩前缀 + 2 条活跃窗口)。
+    events = await store.fetch(SESSION_KEY, after_seq=0, limit=100)
+    remaining = [e for e in events if e.event_type == EVENT_USER_MESSAGE]
+    assert len(remaining) == 3
+    # 第二轮: 内容事件 3 < keep_recent+min_compress=8 → too_few (正常收敛,
+    # 不再是 input_overflow 死锁; 新消息到达后会从第 5 条继续推进)。
+    result2 = await comp.compress_session(SESSION_KEY)
+    assert result2.skipped == "too_few"
 
 
 # ── D4: 压缩摘要排序 ────────────────────────────────────────

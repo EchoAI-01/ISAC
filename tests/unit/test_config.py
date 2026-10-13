@@ -73,6 +73,9 @@ class TestDockerComposeEnvMapping:
             "ISAC_ONEBOT_ENABLED",
             "ISAC_ONEBOT_HOST",
             "ISAC_ONEBOT_PORT",
+            "ISAC_WEBCHAT_ENABLED",
+            "ISAC_WEBCHAT_HOST",
+            "ISAC_WEBCHAT_PORT",
         ):
             monkeypatch.delenv(key, raising=False)
 
@@ -100,6 +103,28 @@ class TestDockerComposeEnvMapping:
         assert config["channels"]["onebot"]["enabled"] is False
         assert config["channels"]["onebot"]["port"] == 8080
         assert isinstance(config["channels"]["onebot"]["port"], int)
+
+    def test_webchat_env_vars_are_mapped(self, tmp_path, monkeypatch):
+        """Issue #6 (2026-10-13): WebChat 容器部署 env 映射 —— 此前控制面/OneBot
+        均有映射而 WebChat 缺失, 容器内默认仅绑 127.0.0.1 且无 env 可改, 宿主
+        发布端口不可达 (必须挂载 config.jsonc 才能暴露)。"""
+        monkeypatch.setenv("ISAC_WEBCHAT_ENABLED", "true")
+        monkeypatch.setenv("ISAC_WEBCHAT_HOST", "0.0.0.0")
+        monkeypatch.setenv("ISAC_WEBCHAT_PORT", "8090")
+
+        config = load_config(tmp_path / "missing_config.jsonc")
+
+        assert config["channels"]["webchat"]["enabled"] is True
+        assert config["channels"]["webchat"]["bind_host"] == "0.0.0.0"
+        assert config["channels"]["webchat"]["bind_port"] == 8090
+        assert isinstance(config["channels"]["webchat"]["bind_port"], int)
+        assert isinstance(config["channels"]["webchat"]["enabled"], bool)
+
+    def test_webchat_bind_defaults_stay_loopback(self, tmp_path):
+        """Issue #6 安全面: 不设 env 时默认绑定仍为 loopback (容器逃生门是显式
+        opt-in, 不因补映射改变本机默认)。"""
+        config = load_config(tmp_path / "missing_config.jsonc")
+        assert config["channels"]["webchat"]["bind_host"] == "127.0.0.1"
 
     def test_llm_model_env_var_is_mapped(self, tmp_path, monkeypatch):
         monkeypatch.setenv("ISAC_LLM_PROVIDER", "openai_compat")
@@ -138,6 +163,7 @@ class TestZeroConfigStartup:
             "ISAC_CONTROL_ENABLED", "ISAC_CONTROL_HOST", "ISAC_CONTROL_PORT",
             "ISAC_API_TOKEN", "ISAC_LLM_PROVIDER", "ISAC_LLM_API_KEY", "ISAC_LLM_MODEL",
             "ISAC_ONEBOT_ENABLED", "ISAC_ONEBOT_HOST", "ISAC_ONEBOT_PORT",
+            "ISAC_WEBCHAT_ENABLED", "ISAC_WEBCHAT_HOST", "ISAC_WEBCHAT_PORT",
         ):
             monkeypatch.delenv(key, raising=False)
 

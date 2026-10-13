@@ -26,6 +26,20 @@ class MaiBotPlugin:
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
 
+    @property
+    def ctx(self) -> Any:
+        """L2 (2026-10-13 review): SDK 能力代理边界 —— 明确报错而非 AttributeError。
+
+        真实 MaiBot SDK 的 self.ctx 是 17 种能力代理 (send/db/logger/...), 经
+        Runner 子进程 RPC 到 MaiBot Host; ISAC 兼容层是宿主进程内桥接, 无对等物。
+        插件方法内调用 self.ctx.* 得到本错误 (加载/注册不受影响 —— 只有点到
+        ctx 的代码路径才越界), 提示改用 ISAC 侧等价能力或保持 MaiBot 宿主部署。
+        """
+        raise RuntimeError(
+            "MaiBot ctx 能力代理在 ISAC 兼容层不可用 (无 Runner RPC 对等物); "
+            "请改用 ISAC 侧工具/命令能力, 或在 MaiBot 宿主部署本插件。"
+        )
+
     async def on_load(self) -> None:
         """插件加载时调用 (子类覆盖)。"""
 

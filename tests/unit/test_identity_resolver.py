@@ -54,7 +54,10 @@ async def test_resolve_verified_returns_person_id(resolver: IdentityResolver) ->
 
 @pytest.mark.asyncio
 async def test_resolve_unverified_heuristic_matches_nickname(resolver: IdentityResolver) -> None:
-    """未 bind 的 (platform, user_id) 走启发式: nickname 与已有 person 匹配 → confidence<1.0."""
+    """未 bind 的 (platform, user_id) 走启发式: nickname 撞名**不自动归属** (L5/P0-2,
+    2026-10-13 语义修订 —— 旧断言"合并到 p1"即冒充向量: 攻击者改昵称即可让其消息
+    写进对方记忆/画像)。撞名候选入冲突队列, 本人按新 person 处理 (fail-safe);
+    人工裁决 (resolve_conflict 回写) 后才归属。"""
     identity = PlatformIdentity(
         platform="qq",
         connection_id="c1",
@@ -62,9 +65,18 @@ async def test_resolve_unverified_heuristic_matches_nickname(resolver: IdentityR
         display_name="李四",
     )
     await resolver.bind("p1", identity)
-    # 不同平台、相同 nickname → 启发式匹配为同一人 (confidence<1.0)
+    # 不同平台、相同 nickname → 不归属 p1, 创建新 person (UserMapper 兜底)
     result = await resolver.resolve("telegram", "u2", "李四")
-    assert result == "p1"  # 启发式合并到 p1
+    assert result != "p1"
+    assert result is not None and result.startswith("user_")
+    # 撞名候选已入冲突队列 (带触发坐标, 供人工裁决)。
+    conflicts = resolver.list_conflicts()
+    assert len(conflicts) == 1
+    assert conflicts[0]["platform"] == "telegram"
+    assert conflicts[0]["platform_user_id"] == "u2"
+    # 人工裁决"确实是 p1" → 回写 verified 绑定, 后续归属。
+    assert await resolver.resolve_conflict(conflicts[0]["conflict_id"], "p1") is True
+    assert await resolver.resolve("telegram", "u2", "李四") == "p1"
 
 
 @pytest.mark.asyncio

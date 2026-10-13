@@ -84,7 +84,7 @@
     },
     "send_image": {
       "module": "isac.agent.tools.social.send_image",
-      "description": "生成并发送一张图片",
+      "description": "生成一张图片并直接发送到当前会话",
       "default_policy": "allow"
     },
     "subagent_log": {
@@ -100,7 +100,7 @@
     "switch_chat": {
       "module": "isac.agent.tools.social.switch_chat",
       "description": "主动切换当前聊天话题",
-      "default_policy": "allow"
+      "default_policy": "deny"
     },
     "synthesize_speech": {
       "module": "isac.agent.tools.media",

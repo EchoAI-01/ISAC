@@ -368,21 +368,27 @@ class FeishuAdapter(PlatformAdapter):
     ) -> bool:
         """上传本地图片文件 → image_key → 发送 msg_type=image (失败降级占位文本)。"""
         import mimetypes
-        from pathlib import Path
 
         data = getattr(seg, "data", None) or {}
         local_path = str(data.get("media_uri") or data.get("url") or "")
-        if not local_path.startswith(("data/uploads", "/")):
-            # 非本地路径 (如平台回传 URL) 无法上传, 降级占位
-            logger.warning("飞书出站图片: 非本地制品路径, 降级占位", path=str(local_path)[:120])
+        # R2 (2026-10-13 review 修复): 出站本地路径统一过 media_resolver 防线 ——
+        # 修复前 startswith(("data/uploads", "/")) 把**所有绝对路径**放行
+        # (/etc/passwd 也符合) 而 data/artifacts 制品反被拒; 现只允许 ArtifactStore
+        # 根内文件 (拒 .. / symlink 逃逸 / 超大), 越界一律降级占位。
+        from isac.channel.media_resolver import validate_outbound_media_path
+
+        path = validate_outbound_media_path(local_path)
+        if path is None:
+            # 非本地制品路径 (平台回传 URL / 白名单外 / 超限) 无法上传, 降级占位
+            logger.warning("飞书出站图片: 非本地制品路径或越界, 降级占位", path=str(local_path)[:120])
             return await self._send_text_placeholder(token, receive_id, receive_id_type, "[图片]")
-        path = Path(local_path)
         try:
             content_bytes = await asyncio.to_thread(path.read_bytes)
         except Exception as exc:  # noqa: BLE001
             logger.warning("飞书出站图片: 读取本地文件失败, 降级占位", error=str(exc))
             return await self._send_text_placeholder(token, receive_id, receive_id_type, "[图片]")
-        mime = mimetypes.guess_type(path.name)[0] or "image/png"
+        # R2: 制品随 ref 透传的 MIME 优先 (sha256.bin 无扩展名可猜), 兜底 png。
+        mime = str(data.get("mime_type") or "") or mimetypes.guess_type(path.name)[0] or "image/png"
         files = {"image": (path.name, content_bytes, mime)}
         try:
             transport = self._http_transport

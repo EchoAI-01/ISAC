@@ -140,14 +140,17 @@ def _plugin_enabled_for_instance(config: Any, plugin_name: str) -> bool:
     语义收口 core.policy.plugin_allowed_by_agent_lists (plugin 层不 import runtime,
     AgentConfig 用鸭子类型取 plugins_allow/plugins_deny 两字段)。
 
-    config 缺失时放行并记告警: 生产 AgentInstance.config 必填 (assemble_agent
-    构造必传), 缺失仅见于测试替身 —— 放行保持既有行为兼容, 告警保证可观测。
+    R3 (2026-10-13 review 修复): config 缺失时**拒绝** (fail-closed) —— 生产
+    AgentInstance.config 必填 (assemble_agent 构造必传, dataclass 字段非 Optional),
+    缺失只可能是测试替身或未来字段改可选; 此前按放行处理, 一旦 config 真变
+    可选即成绕过启用矩阵的权限提升面 (与 D5 所修病灶同构)。测试替身须显式
+    携带 config 表达自己的启用矩阵。
     """
     from isac.core.policy import plugin_allowed_by_agent_lists
 
     if config is None:
-        logger.warning("实例缺少 config, 插件启用矩阵无法判定, 按放行处理", plugin=plugin_name)
-        return True
+        logger.warning("实例缺少 config, 插件启用矩阵无法判定, fail-closed 拒绝", plugin=plugin_name)
+        return False
     allow = list(getattr(config, "plugins_allow", []) or [])
     deny = list(getattr(config, "plugins_deny", []) or [])
     return plugin_allowed_by_agent_lists(allow, deny, plugin_name)

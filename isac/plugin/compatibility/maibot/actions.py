@@ -24,6 +24,7 @@ class MaiBotActionAdapter(Tool):
     def __init__(
         self, name: str, description: str, func: Any,
         timeout_seconds: float = DEFAULT_HOST_TOOL_TIMEOUT_SECONDS,
+        parameters_schema: dict | None = None,
     ):
         self._name = name
         self._description = description
@@ -31,6 +32,9 @@ class MaiBotActionAdapter(Tool):
         self._is_async = inspect.iscoroutinefunction(func)
         # Fix-129: 执行超时可注入 (非正值回落默认)。
         self._timeout = max(0.01, float(timeout_seconds))
+        # L2 (2026-10-13 review): @Tool(parameters=[ToolParameterInfo...]) 的参数
+        # 声明映射为 JSON Schema —— 此前恒空 schema, LLM 只能瞎猜参数名。
+        self._parameters_schema = parameters_schema or {"type": "object", "properties": {}}
 
     @property
     def name(self) -> str:
@@ -42,7 +46,7 @@ class MaiBotActionAdapter(Tool):
 
     @property
     def parameters(self) -> dict:
-        return {"type": "object", "properties": {}}
+        return self._parameters_schema
 
     async def execute(self, context: ToolContext) -> ToolResult:
         """调用原 Action (bound method 时自动传 self)。
@@ -93,4 +97,11 @@ def bridge_action(action: Any, description: str = "", func: Any = None) -> Tool:
         desc = description
         if func is None:
             raise ValueError("bridge_action 需要 func 参数")
-    return MaiBotActionAdapter(name, desc, func)
+    # L2: @Tool(parameters=[...]) 声明随函数标记携带 → 映射为 JSON Schema。
+    declared = getattr(func, "_maibot_tool_parameters", None)
+    schema = None
+    if declared:
+        from isac.plugin.compatibility.maibot.sdk_types import tool_parameters_to_schema
+
+        schema = tool_parameters_to_schema(declared)
+    return MaiBotActionAdapter(name, desc, func, parameters_schema=schema)

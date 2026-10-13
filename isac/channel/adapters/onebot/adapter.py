@@ -31,6 +31,14 @@ from isac.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# L1: 转发消息段的占位标注 (非文本段以可读占位进历史文本)。
+_FORWARD_SEGMENT_PLACEHOLDERS: dict[str, str] = {
+    "image": "[图片]",
+    "video": "[视频]",
+    "record": "[语音]",
+}
+
+
 class OneBotAdapter(PlatformAdapter):
     """OneBot v11 适配器。
 
@@ -133,6 +141,72 @@ class OneBotAdapter(PlatformAdapter):
         except Exception as exc:  # pragma: no cover
             logger.error("OneBot 发送异常", error=str(exc), exc_info=True)
             return False
+
+    async def fetch_forward(self, forward_id: str) -> list:
+        """L1 (2026-10-13 review): 读取合并转发消息内容 (OneBot 11 get_forward_msg)。
+
+        view_forward_message 工具的真实后端 (channel_forward 服务经 registry 能力
+        发现本方法)。QQ 合并转发是该工具的存在动机; 其余平台无此概念。
+        返回轻量消息视图列表 (user_id/user_name/content —— 文本段拼接, 图片/视频
+        等以占位标注), 与 channel/services.py ChannelHistoryMessage 同形 (鸭子类型,
+        channel 层不反向 import agent 工具类型)。
+        """
+        if not forward_id:
+            return []
+        if self._bot is None:
+            raise RuntimeError("OneBot 未连接 (反向 WS 未建立), 无法读取转发消息")
+        from isac.channel.services import ChannelHistoryMessage
+
+        # OneBot 11 官方参数名是 message_id (go-cqhttp 遗留别名为 id); NapCat/
+        # Lagrange 等实现对二者接受度不一, 双传让实现各取所需 (未知参数被忽略)。
+        raw = await self._bot.call_action(
+            "get_forward_msg", message_id=forward_id, id=forward_id
+        )
+        nodes = raw.get("messages") if isinstance(raw, dict) else raw
+        if not isinstance(nodes, list):
+            return []
+        out: list[ChannelHistoryMessage] = []
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            sender = node.get("sender") or {}
+            content = self._flatten_forward_content(node.get("content"))
+            if not content:
+                continue
+            out.append(
+                ChannelHistoryMessage(
+                    user_id=str(sender.get("user_id", "") or ""),
+                    user_name=str(sender.get("nickname", "") or sender.get("card", "") or ""),
+                    content=content,
+                )
+            )
+        return out
+
+    @staticmethod
+    def _flatten_forward_content(content: Any) -> str:
+        """把转发节点的消息段数组拼为可读文本 (非文本段以占位标注)。"""
+        if isinstance(content, str):
+            return content.strip()
+        if not isinstance(content, list):
+            return ""
+        parts: list[str] = []
+        for seg in content:
+            if isinstance(seg, dict):
+                piece = OneBotAdapter._forward_segment_text(seg)
+                if piece:
+                    parts.append(piece)
+        return " ".join(parts).strip()
+
+    @staticmethod
+    def _forward_segment_text(seg: dict) -> str:
+        """单个转发消息段 → 可读文本 (text 取正文, 其余类型占位标注)。"""
+        seg_type = str(seg.get("type", ""))
+        data = seg.get("data") or {}
+        if seg_type == "text":
+            return str(data.get("text", "") or "").strip()
+        if seg_type == "at":
+            return f"@{data.get('qq', '')}"
+        return _FORWARD_SEGMENT_PLACEHOLDERS.get(seg_type, "")
 
     # ── 内部：服务端启动与重试 ─────────────────────────────────
 

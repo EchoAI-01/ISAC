@@ -22,6 +22,8 @@ data/*
 !data/model_capabilities.overrides.json
 # 默认模型价目表 (成本计量开箱可用, 2026-08-19 入仓)
 !data/pricing.jsonc
+# 插件市场本地清单 (Issue #7: 新克隆开箱市场非空 + T6 冒烟可复现, 2026-10-13 入仓)
+!data/plugin_marketplace.jsonc
 # U8 治理门禁 catalog (生成物入库, CI --check 漂移检测)
 !data/catalogs
 

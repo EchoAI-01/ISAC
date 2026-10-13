@@ -42,6 +42,11 @@ class _FakeAgent:
         self.tools = ToolRegistry()
         self.commands: Any = None
         self.prompt_builder: Any = None
+        # R3: 同步侧启用矩阵 fail-closed 后, 替身须显式携带 config 表达矩阵
+        # (本组测试验证同步机制本身, 用全放行; 矩阵语义由 D5 测试覆盖)。
+        from isac.runtime.config import AgentConfig
+
+        self.config = AgentConfig(agent_id=agent_id, plugins_allow=["*"])
 
 
 class _FakeAgentManager:

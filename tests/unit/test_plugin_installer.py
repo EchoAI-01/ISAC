@@ -250,3 +250,33 @@ class TestPluginNameValidation:
         with pytest.raises(Exception):
             await installer.update("myplug", source=None)  # market 清单无 myplug
         assert (plugins_dir / "myplug").exists(), "update 失败应回滚保留旧插件目录"
+
+
+class TestShippedMarketplace:
+    """Issue #7 (2026-10-13): 市场清单发货面 —— data/plugin_marketplace.jsonc
+    必须随仓库/镜像分发, 否则新克隆市场清单为空且 smoke_plugin_marketplace.py
+    (T6 验收铁律) 必然 FileNotFoundError。与 2026-08-19 pricing.jsonc 同类缺陷,
+    用测试钉死 ignore 例外不再回退。"""
+
+    _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+    def test_shipped_marketplace_parses_and_contains_echo_tool(self) -> None:
+        mp = self._REPO_ROOT / "data" / "plugin_marketplace.jsonc"
+        assert mp.exists(), "data/plugin_marketplace.jsonc 未随仓库分发 (检查 .gitignore)"
+        try:
+            import json5
+
+            data = json5.loads(mp.read_text(encoding="utf-8"))
+        except ImportError:  # pragma: no cover - CI 全依赖环境必有 json5
+            import json
+
+            data = json.loads(mp.read_text(encoding="utf-8"))
+        plugins = data.get("plugins", [])
+        assert isinstance(plugins, list) and plugins, "随包市场清单不能为空"
+        names = [e.get("name") for e in plugins]
+        assert "echo_tool" in names, f"清单缺 smoke 断言的 echo_tool: {names}"
+
+    def test_gitignore_and_dockerignore_ship_the_marketplace(self) -> None:
+        for ignore in (".gitignore", ".dockerignore"):
+            text = (self._REPO_ROOT / ignore).read_text(encoding="utf-8")
+            assert "!data/plugin_marketplace.jsonc" in text, f"{ignore} 缺随包例外行"

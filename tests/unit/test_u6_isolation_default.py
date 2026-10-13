@@ -188,6 +188,11 @@ async def test_uninstall_clears_running_agent_hooks() -> None:
             self.tools = ToolRegistry()
             self.commands = CommandRegistry()
             self.prompt_builder = None
+            # R3: 同步侧 fail-closed 后替身须显式携带 config (本测试验证卸载
+            # 清除, 全放行矩阵)。
+            from isac.runtime.config import AgentConfig
+
+            self.config = AgentConfig(agent_id="a1", plugins_allow=["*"])
 
     class _AgentManager:
         def __init__(self, instances: list) -> None:

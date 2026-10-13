@@ -53,6 +53,17 @@ _SCHEMA_MIGRATIONS: tuple[str, ...] = (
 )
 
 
+def session_key_for(agent_id: str, platform: str, user_id: str, group_id: str | None) -> str:
+    """会话键 (模块级单源): agent + 平台 + (群 或 用户)。
+
+    L1 (2026-10-13 review): 从 SessionManager.make_session_key 抽出 —— 事件流分区
+    键的派生逻辑有多方需要 (manager 写侧 / channel 历史工具读侧), 两处复制必漂移;
+    make_session_key 委托本函数保持单一事实源。
+    """
+    target = f"group:{group_id}" if group_id else f"user:{user_id}"
+    return f"{agent_id}:{platform}:{target}"
+
+
 class SessionManager:
     """会话管理器。
 
@@ -111,9 +122,8 @@ class SessionManager:
                         self._key_locks[key] = (lock, entry[1] - 1)
 
     def make_session_key(self, agent_id: str, platform: str, user_id: str, group_id: str | None) -> str:
-        """生成会话键: agent + 平台 + (群 或 用户)。"""
-        target = f"group:{group_id}" if group_id else f"user:{user_id}"
-        return f"{agent_id}:{platform}:{target}"
+        """生成会话键: agent + 平台 + (群 或 用户)。(L1: 委托模块级 session_key_for 单源)"""
+        return session_key_for(agent_id, platform, user_id, group_id)
 
     async def get_or_create(self, message: ISACMessage, agent_id: str) -> Session:
         """查找或创建会话。

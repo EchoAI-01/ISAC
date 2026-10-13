@@ -111,6 +111,11 @@ class ToolPermission:
         "query_memory": "allow",
         "query_person_profile": "allow",
         "ask_agent": "allow",
+        # L1 (2026-10-13 review): switch_chat 默认 deny —— 话题机制当前无任何
+        # 存储与消费方 (session_topic 键全仓无真实后端), allow 会让工具出现在
+        # LLM schema 里却恒失败 (LLM 反复调用死工具); 待话题消费方落地后在配置
+        # 中显式开启 (Q0 对 web_search 的同款口径)。
+        "switch_chat": "deny",
         # M2 Agent Mesh 协作动作: 已接入 MeshActionBroker; restricted 需注入
         # mesh_action_broker + mesh_link_policy 后方可调用 (deny-by-default 仍生效)。
         "notify_agent": "restricted",

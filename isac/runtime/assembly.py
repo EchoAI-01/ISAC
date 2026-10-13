@@ -750,8 +750,30 @@ async def assemble_agent(
     # 阶段3-2 (M2): U1 会话压缩器 (默认关闭 → None)。与 memory 同经 dict 字面量注入
     # per-Agent 容器, manager 侧走 ServiceContainer 类型化属性 (不新增字符串键, U9 红线)。
     session_compressor = _build_session_compressor(config, global_config, llm, services)
+    # L1 (2026-10-13 review): Channel 交互工具服务接线 —— send_emoji / send_image /
+    # fetch_history / view_forward_message 此前依赖的 channel_send / channel_history /
+    # channel_forward 三键全仓零注入, 工具 LLM 可见但调用恒失败 (死工具)。在
+    # per-Agent 层注入 (不入全局袋: 全局键数已顶 36 红线, 且 channel_history 需要
+    # agent 维度会话键, 本就是 per-Agent 语义)。session_topic 不接 —— 话题机制
+    # 无存储/消费方, switch_chat 默认档位已降 deny (Q0 口径, 见 tools/base.py)。
+    # 同 memory/压缩器口径: 经 dict 字面量注入 (不新增字符串键访问, U9 棘轮只减不增)。
+    from isac.channel.services import (
+        build_channel_forward,
+        build_channel_send,
+        build_session_history_fetcher,
+    )
+
     agent_services = ServiceContainer(
-        {**services, "memory": memory, "session_compressor": session_compressor}
+        {
+            **services,
+            "memory": memory,
+            "session_compressor": session_compressor,
+            "channel_send": build_channel_send(services.channel_registry),
+            "channel_history": build_session_history_fetcher(
+                services.session_event_store, config.agent_id
+            ),
+            "channel_forward": build_channel_forward(services.channel_registry),
+        }
     )
     # R3: MCPClient 引用 (上方构造) 存入 services, 供 AgentManager.stop/destroy
     # 与 _shutdown_message_pipeline 调 disconnect (避免子进程/HTTP 连接泄漏)。

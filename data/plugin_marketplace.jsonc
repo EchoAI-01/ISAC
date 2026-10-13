@@ -1,0 +1,26 @@
+// ISAC 插件市场本地清单 (Issue #7, 2026-10-13 入仓随包)
+//
+// - 本文件随仓库与镜像分发: 新克隆/新容器开箱 `GET /api/v1/plugins/marketplace`
+//   清单非空, `scripts/smoke_plugin_marketplace.py` (T6 验收铁律的真机载体)
+//   可在任何环境复现 (修复前 data/* 排除导致该文件从未入仓, 冒烟必失败 ——
+//   与 2026-08-19 pricing.jsonc 同类"发货面"缺陷)。
+// - 条目 schema: name / version / description / tags / (download_url | repo_url)。
+//   download_url 指向 zip 直链, repo_url 指向 git 仓库 (二选一); 两者皆缺的
+//   条目仅作展示, 不可经市场安装。
+// - 配置 control.plugins.marketplace_url 后, 远程清单覆盖同名本地条目 ——
+//   本文件同时是自建市场的模板起点。
+{
+  "plugins": [
+    {
+      // T6 市场验收冒烟的内置演示条目 (smoke_plugin_marketplace.py 断言清单
+      // 含此名; 实际安装冒烟走 upload zip, 不经此条目下载)。
+      "name": "echo_tool",
+      "version": "1.0.0",
+      "description": "演示条目: 注册 echo 工具原样回显输入 (T6 市场验收冒烟内置, 不可经市场安装)",
+      "tags": ["demo", "builtin"],
+      // 示例: 接入真实插件源时按此形态添加条目
+      // "download_url": "https://example.com/my_plugin.zip",
+      // "repo_url": "https://github.com/user/my_plugin",
+    },
+  ],
+}

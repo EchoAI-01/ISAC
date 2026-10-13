@@ -132,11 +132,13 @@ class DiscordAdapter(PlatformAdapter):
     async def _collect_local_attachments(message: ISACMessage) -> list[tuple[str, bytes, str]]:
         """收集 segments 中可读的本地制品附件 → [(文件名, bytes, mime)]。
 
-        仅接受本地路径 (media_uri/url 指向 ArtifactStore 落盘文件); 平台回传
+        仅接受 ArtifactStore 根内的本地路径 (R2: 经 media_resolver 统一防线,
+        拒 .. 穿越 / symlink 逃逸 / 白名单外绝对路径 / 超大文件); 平台回传
         URL (http) 不重传 (无本地字节), 跳过。单附件失败隔离。
         """
         import mimetypes
-        from pathlib import Path
+
+        from isac.channel.media_resolver import validate_outbound_media_path
 
         out: list[tuple[str, bytes, str]] = []
         for seg in message.segments or []:
@@ -145,16 +147,18 @@ class DiscordAdapter(PlatformAdapter):
                 continue
             data = getattr(seg, "data", None) or {}
             local_path = str(data.get("media_uri") or data.get("url") or "")
-            if not local_path or local_path.startswith(("http://", "https://")):
-                continue
+            path = validate_outbound_media_path(local_path)
+            if path is None:
+                continue  # http URL / 越界 / 超限 —— 跳过 (防线内已记日志)
             try:
                 # N5: 附件可能数 MB, 同步读盘会阻塞事件循环 —— 迁 to_thread。
-                content = await asyncio.to_thread(Path(local_path).read_bytes)
+                content = await asyncio.to_thread(path.read_bytes)
             except Exception as exc:  # noqa: BLE001 单附件失败隔离
                 logger.warning("Discord 附件读取失败, 跳过", path=str(local_path)[:120], error=str(exc))
                 continue
-            name = Path(local_path).name or "attachment"
-            mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+            name = path.name or "attachment"
+            # R2: 制品随 ref 透传的 MIME 优先 (sha256.bin 无扩展名可猜)。
+            mime = str(data.get("mime_type") or "") or mimetypes.guess_type(name)[0] or "application/octet-stream"
             out.append((name, content, mime))
         return out
 

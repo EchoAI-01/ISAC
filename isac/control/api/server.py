@@ -7,7 +7,13 @@
 from __future__ import annotations
 
 import inspect
+import time
 from typing import TYPE_CHECKING, Any
+
+# Issue #8 (2026-10-13): 进程启动时刻 —— /health 的 uptime_seconds 数据源。
+# server 模块随控制面在进程启动期导入, 模块级时间戳即进程级近似 (秒级精度
+# 足够 soak/RSS 相关性分析; 不引 psutil 依赖)。
+_PROCESS_START_TIME = time.time()
 
 if TYPE_CHECKING:
     from isac.observability.metrics import MetricsCollector
@@ -18,18 +24,31 @@ if TYPE_CHECKING:
     from isac.runtime.manager import AgentManager
 
 
-def _warn_if_no_auth(api_token: str, parsed_tokens: Any) -> bool:
-    """R4: 控制面已启用但无认证时 CRITICAL 警告 (不阻止启动, 保 dev 模式兼容)。
+def _warn_if_no_auth(api_token: str, parsed_tokens: Any, setup_enabled: bool = False) -> bool:
+    """R4: 控制面已启用但无认证时告警 (不阻止启动, 保 dev 模式兼容)。
 
     create_control_app 被调用即意味着 control.enabled=true, 若 api_token 与
-    tokens[] 均空, 所有 admin 端点 (config edit / plugin load / memory admin /
-    agent create) 全部无认证暴露。生产部署应配 token 或加网络层防护。
+    tokens[] 均空 → 无静态凭证。Issue #9 (2026-10-13): 告警按 setup 状态分级 ——
+    此前恒打 CRITICAL 称"admin 端点全部无认证", 与运行事实不符:
+    - setup_enabled=true (开箱默认): admin 端点实际被 T3-backend 首登闸门封锁
+      (未设密码前一律 428 SETUP_REQUIRED, 仅 /setup /health 可用; 设密码后密码
+      即 Bearer 凭证) —— 并非无认证暴露, 降为 warning 提示仍建议配静态凭证;
+    - setup_enabled=false 且无凭证: 才是真正的无认证暴露, 保持 CRITICAL。
 
-    返回 True 表示触发了 CRITICAL 警告, False 表示有认证 (early return)。
+    返回 True 表示触发了 CRITICAL 警告, False 表示有认证或已按 setup 分级降为
+    warning (便于测试断言)。
     """
     if api_token or parsed_tokens:
         return False
     from isac.utils.logger import get_logger as _get_logger
+    if setup_enabled:
+        _get_logger(__name__).warning(
+            "control plane has no api_token/tokens[]; admin endpoints are gated by "
+            "first-run setup (428 SETUP_REQUIRED) and the setup password becomes the "
+            "bearer credential — not unauthenticated, but still configure "
+            "control.api_token or control.tokens[] for production."
+        )
+        return False
     _get_logger(__name__).critical(
         "control plane enabled but api_token and tokens[] both empty; "
         "all admin endpoints are unauthenticated (config edit / plugin load / "
@@ -314,8 +333,11 @@ def create_control_app(
     # Fix-12: control.tokens[] 未配置时 scope_dependency 为 None, 各路由端点的
     # scope 校验整体跳过, 行为与引入本模型之前完全一致 (只有扁平 api_token 认证)。
     parsed_tokens = parse_token_scopes(config)
-    # R4: 控制面已启用但 api_token 与 tokens[] 均空时输出 CRITICAL 警告 (不阻止启动)。
-    _warn_if_no_auth(api_token, parsed_tokens)
+    # R4: 控制面已启用但 api_token 与 tokens[] 均空时告警 (不阻止启动)。
+    # Issue #9: 传入 setup_enabled 分级 —— setup 闸门生效时并非无认证暴露。
+    _warn_if_no_auth(
+        api_token, parsed_tokens, setup_enabled=bool(config.get("setup_enabled", False))
+    )
     # T3-backend: 首登强制设密码状态机 (对标 AstrBot password_change_required)。
     # setup_enabled 默认 False (向后兼容); config.sample.jsonc 的 control.setup_enabled=true
     # 让开箱首登强制设密码。启用后: 无 api_token/tokens 且 setup_state 无密码 → admin
@@ -422,12 +444,17 @@ def create_control_app(
     async def health() -> dict:
         """T4: 聚合各子系统状态, 让用户/运维一眼看到"哪儿有问题"。
 
-        返回 {"status": "ok"|"degraded", "subsystems": {...}, "setup_required": bool};
-        任一关键子系统异常 → status=degraded。setup_required=true 时控制面处于
-        首登待设置态 (T3-backend), 仅 /setup 与 /health 可用。探针用途, 无认证。
+        返回 {"status": "ok"|"degraded", "subsystems": {...}, "setup_required": bool,
+        "uptime_seconds": float}; 任一关键子系统异常 → status=degraded。
+        setup_required=true 时控制面处于首登待设置态 (T3-backend), 仅 /setup 与
+        /health 可用。探针用途, 无认证。
+        Issue #8 (2026-10-13): 补 uptime_seconds —— soak_sampler 等外部采样器
+        需要以运行时长为轴做 RSS/句柄增长相关性分析, 此前 /health 无该字段,
+        采样侧只能落 null。
         """
         result = await _aggregate_health(agent_manager, provider_manager, config, channel_registry)
         result["setup_required"] = setup_manager is not None and setup_manager.is_setup_required
+        result["uptime_seconds"] = round(time.time() - _PROCESS_START_TIME, 1)
         return result
 
     @app.get("/api/v1/audit", dependencies=audit_read_deps)

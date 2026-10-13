@@ -54,13 +54,12 @@ def test_validate_valid_config() -> None:
 
 
 def test_empty_api_token_warns_critically() -> None:
-    """R4: 控制面启用但 api_token 和 tokens[] 均为空时触发 CRITICAL 警告分支。
+    """R4: 控制面启用但 api_token 和 tokens[] 均为空时的告警分级 (Issue #9)。
 
-    create_control_app 被调用即意味着 control.enabled=true, 但若 token 缺失,
-    所有 admin 端点 (config edit / plugin load / memory admin / agent create)
-    全部无认证暴露。CRITICAL 警告不阻止启动 (保持 dev 模式兼容)。
-
-    _warn_if_no_auth 返回 bool 表示是否触发了 critical 分支, 便于测试断言。
+    - 有任一静态凭证: early return, 不告警;
+    - 无凭证 + setup_enabled=true (开箱默认): admin 端点实际被 428 首登闸门
+      封锁 (非无认证暴露), 降为 warning 分支, 返回 False;
+    - 无凭证 + setup_enabled=false: 真正的无认证暴露, 保持 CRITICAL, 返回 True。
     """
     from isac.control.api.server import _warn_if_no_auth
 
@@ -73,8 +72,11 @@ def test_empty_api_token_warns_critically() -> None:
         parsed_tokens=[{"token": "t", "scopes": ["read"]}],
     ) is False
 
-    # 两者皆空: 触发 critical 路径
+    # 两者皆空 + setup 未启用 (旧行为, 真正的无认证暴露): 触发 critical 路径
     assert _warn_if_no_auth(api_token="", parsed_tokens=None) is True
+
+    # Issue #9: 两者皆空 + setup_enabled=true → 降为 warning 分支 (非 critical)
+    assert _warn_if_no_auth(api_token="", parsed_tokens=None, setup_enabled=True) is False
 
 
 def test_docs_disabled_by_default() -> None:

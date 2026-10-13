@@ -1,11 +1,22 @@
 """IdentityResolver: 跨平台身份归一 (N3, MEMORY_DESIGN.md §3.1)。
 
 N3 实现: 在 UserMapper.master_id 之上做跨平台归一 —— person_identities 持久化
-(verified/confidence/source); resolve 命中 verified 直接返回, 未命中且
-heuristic_enabled=True 时按 nickname 启发式匹配 (confidence<1.0); bind 写表
+(verified/confidence/source); resolve 命中 verified 直接返回; bind 写表
 +verified=1; merge 合并 aliases/platform_accounts, confidence 取较低, verified
 取 AND; arbitrate_conflict 按 confidence 排序, <0.7 写 identity_conflicts 表
 供人工裁决。组合 UserMapper, 不改动它; heuristic 默认 False 防误合并。
+
+L5 (2026-10-13 review, 08-19/08-21 遗留⑤修复):
+- P1-1 生产接线: resolve() 启发式路径的候选集现在经 arbitrate_conflict 单一
+  裁决入口 (此前该入口零生产调用, identity_conflicts 表恒空);
+- P0-2 防冒充: 昵称匹配的**证据置信度**封顶 NICKNAME_MATCH_CONFIDENCE_CAP
+  (0.5) —— 恒低于 CONFLICT_THRESHOLD (0.7), 昵称撞名**永不自动归属**既有
+  person (此前撞名直接返回匹配者: 攻击者改昵称即可让其消息写进对方记忆/画像);
+  低置信度候选一律写冲突队列等人工裁决, 陌生人按新 person 处理 (fail-safe);
+- P1-2 裁决回写: 冲突记录携带触发身份坐标 (platform/platform_user_id/
+  display_name), 人工裁决后把所选 person 以 verified=1 落 person_identities
+  (此后 resolve 走 verified 命中, 裁决结果真正生效 —— 此前只改 conflicts 行,
+  归一行为不变)。
 """
 
 from __future__ import annotations
@@ -27,8 +38,20 @@ logger = get_logger(__name__)
 
 # 启发式合并的 confidence 阈值: 低于此值不自动合并, 写 identity_conflicts
 CONFLICT_THRESHOLD: float = 0.7
+# L5/P0-2: 昵称匹配作为**证据**的置信度封顶 —— 候选行自身的 confidence 表达的是
+# "该身份的验证程度", 不是"这个昵称属于这个人"的匹配强度; 昵称撞名是弱证据,
+# 封顶后恒低于 CONFLICT_THRESHOLD, 永不自动归属, 一律进人工裁决队列。
+NICKNAME_MATCH_CONFIDENCE_CAP: float = 0.5
 
 DEFAULT_DB_PATH = "data/identity.db"
+
+# identity_conflicts 的 L5 增列 (触发身份坐标, 供裁决回写)。既有库经
+# _ensure_conflict_columns 惰性补列; 新库由 CREATE TABLE 直接带列。
+_CONFLICT_EXTRA_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("platform", "TEXT"),
+    ("platform_user_id", "TEXT"),
+    ("display_name", "TEXT"),
+)
 
 
 class IdentityResolver:
@@ -78,10 +101,19 @@ class IdentityResolver:
                     candidates_json TEXT,
                     highest_confidence REAL,
                     created_at INTEGER NOT NULL,
-                    resolved INTEGER DEFAULT 0
+                    resolved INTEGER DEFAULT 0,
+                    platform TEXT,
+                    platform_user_id TEXT,
+                    display_name TEXT
                 );
                 """
             )
+            # L5: 既有库补列 (CREATE TABLE IF NOT EXISTS 不改已存在的表)。
+            for col, col_type in _CONFLICT_EXTRA_COLUMNS:
+                try:
+                    await db.execute(f"ALTER TABLE identity_conflicts ADD COLUMN {col} {col_type}")
+                except Exception:  # noqa: BLE001 列已存在
+                    pass
             await db.commit()
 
     async def resolve(self, platform: str, user_id: str, nickname: str = "") -> str | None:
@@ -107,36 +139,62 @@ class IdentityResolver:
             row = await cursor.fetchone()
         if row and row["person_id"]:
             return row["person_id"]
-        # 2. 启发式: nickname 匹配
+        # 2. 启发式: nickname 匹配 (L5: 候选集过裁决入口, 弱证据不自动归属)
         if self.heuristic_enabled and nickname:
             async with aiosqlite.connect(self._db_path) as db:
                 db.row_factory = aiosqlite.Row
                 cursor = await db.execute(
-                    "SELECT person_id, confidence FROM person_identities "
-                    "WHERE display_name = ? ORDER BY confidence DESC LIMIT 1",
+                    "SELECT person_id, confidence, verified FROM person_identities "
+                    "WHERE display_name = ? ORDER BY confidence DESC",
                     (nickname,),
                 )
-                row = await cursor.fetchone()
-            if row and row["person_id"]:
-                person_id = row["person_id"]
-                confidence = float(row["confidence"] or 0.0)
-                await self._write_identity_row(
-                    person_id=person_id,
-                    platform=platform,
-                    platform_user_id=user_id,
+                rows = await cursor.fetchall()
+            if rows:
+                trigger = PlatformIdentity(
+                    platform=platform, connection_id="", platform_user_id=user_id,
                     display_name=nickname,
-                    verified=0,
-                    confidence=min(confidence, 0.5),
-                    source="heuristic",
                 )
+                # P0-2: 候选携带的是"昵称撞名"这一弱证据 —— 置信度封顶, 与候选行
+                # 自身的验证程度无关 (verified 行的 confidence=1.0 说的是"那个人
+                # 被验证过", 不是"这个撞名者就是那个人")。
+                candidates = [
+                    PersonIdentity(
+                        person_id=str(r["person_id"]),
+                        aliases=[nickname],
+                        verified=bool(r["verified"]),
+                        confidence=min(float(r["confidence"] or 0.0), NICKNAME_MATCH_CONFIDENCE_CAP),
+                    )
+                    for r in rows
+                ]
+                # P1-1: 生产接线 —— 裁决入口唯一, 低置信度写冲突队列 (带触发坐标)。
+                winner = await asyncio.to_thread(self.arbitrate_conflict, candidates, trigger)
+                if winner is not None and winner.confidence >= CONFLICT_THRESHOLD:
+                    # 高置信度证据才自动归属 (昵称路径因封顶恒不可达; 留给未来
+                    # 更强证据信号 —— 同 connection_id/群昵称交叉验证等)。
+                    await self._write_identity_row(
+                        person_id=winner.person_id,
+                        platform=platform,
+                        platform_user_id=user_id,
+                        display_name=nickname,
+                        verified=0,
+                        confidence=winner.confidence,
+                        source="heuristic",
+                    )
+                    logger.info(
+                        "启发式归一匹配",
+                        person_id=winner.person_id,
+                        platform=platform,
+                        user_id=user_id,
+                        confidence=winner.confidence,
+                    )
+                    return winner.person_id
+                # 弱证据: 冲突已记录 (供人工裁决), 本轮不归属 —— 走下方"新人"
+                # 路径 fail-safe (陌生人按新 person 处理, 不冒充既有 person)。
                 logger.info(
-                    "启发式归一匹配",
-                    person_id=person_id,
-                    platform=platform,
-                    user_id=user_id,
-                    confidence=min(confidence, 0.5),
+                    "昵称撞名置信度不足, 已入冲突队列待人工裁决",
+                    platform=platform, user_id=user_id, nickname=nickname,
+                    candidates=len(candidates),
                 )
-                return person_id
         # 3. 委托 UserMapper 创建新 person (兜底); 无 mapper 返回 None
         if self._user_mapper is None:
             return None
@@ -262,25 +320,38 @@ class IdentityResolver:
             updated_at=int(time.time()),
         )
 
-    def arbitrate_conflict(self, candidates: list[PersonIdentity]) -> PersonIdentity | None:
-        """多个候选身份冲突时的裁决入口。
+    def arbitrate_conflict(
+        self,
+        candidates: list[PersonIdentity],
+        trigger: PlatformIdentity | None = None,
+    ) -> PersonIdentity | None:
+        """多个候选身份冲突时的裁决入口 (L5/P1-1: resolve 启发式路径生产接线)。
 
         N3: 按 confidence 降序取最高者; 最高 confidence < CONFLICT_THRESHOLD (0.7)
-        时写 identity_conflicts 表供人工裁决 (用 asyncio.to_thread 包装 async 写,
-        避免"no current event loop"与同步调用方冲突)。仍返回最高者。
+        时写 identity_conflicts 表供人工裁决。仍返回最高者。
+        L5: trigger 携带触发裁决的身份坐标 (platform/platform_user_id/display_name)
+        —— 冲突记录带上它, 人工裁决后才能把结果回写为该身份的 verified 绑定
+        (P1-2); 缺省 None 保持旧签名行为 (既有调用方/测试)。
         """
         if not candidates:
             return None
         sorted_candidates = sorted(candidates, key=lambda c: c.confidence, reverse=True)
         winner = sorted_candidates[0]
         if winner.confidence < CONFLICT_THRESHOLD:
-            self._write_conflict_record_sync(winner, candidates)
+            self._write_conflict_record_sync(winner, candidates, trigger)
         return winner
 
     def _write_conflict_record_sync(
-        self, winner: PersonIdentity, candidates: list[PersonIdentity]
+        self,
+        winner: PersonIdentity,
+        candidates: list[PersonIdentity],
+        trigger: PlatformIdentity | None = None,
     ) -> None:
-        """同步写 identity_conflicts 记录 (sqlite3 同步连接, 避免 event loop 依赖)."""
+        """同步写 identity_conflicts 记录 (sqlite3 同步连接, 避免 event loop 依赖).
+
+        L5: 带 trigger 坐标列 + 同触发身份去重 —— 同一 (platform, platform_user_id)
+        的未裁决冲突只留一条 (每条消息都会过 resolve, 不去重会刷爆冲突队列)。
+        """
         import json
         import sqlite3
 
@@ -298,14 +369,29 @@ class IdentityResolver:
             ensure_ascii=False,
         )
         now = int(time.time())
+        trigger_platform = trigger.platform if trigger is not None else None
+        trigger_user_id = trigger.platform_user_id if trigger is not None else None
+        trigger_display = trigger.display_name if trigger is not None else None
         try:
             self._ensure_schema_sync()
             with sqlite3.connect(self._db_path) as db:
+                if trigger is not None:
+                    cursor = db.execute(
+                        "SELECT conflict_id FROM identity_conflicts "
+                        "WHERE resolved = 0 AND platform = ? AND platform_user_id = ?",
+                        (trigger_platform, trigger_user_id),
+                    )
+                    if cursor.fetchone() is not None:
+                        return  # 同触发身份已有未裁决冲突, 不重复记录
                 db.execute(
                     "INSERT INTO identity_conflicts "
-                    "(conflict_id, person_id, candidates_json, highest_confidence, created_at, resolved) "
-                    "VALUES (?, ?, ?, ?, ?, 0)",
-                    (conflict_id, winner.person_id, candidates_json, winner.confidence, now),
+                    "(conflict_id, person_id, candidates_json, highest_confidence, created_at, "
+                    "resolved, platform, platform_user_id, display_name) "
+                    "VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
+                    (
+                        conflict_id, winner.person_id, candidates_json, winner.confidence, now,
+                        trigger_platform, trigger_user_id, trigger_display,
+                    ),
                 )
                 db.commit()
         except Exception as exc:  # noqa: BLE001
@@ -339,10 +425,19 @@ class IdentityResolver:
                     candidates_json TEXT,
                     highest_confidence REAL,
                     created_at INTEGER NOT NULL,
-                    resolved INTEGER DEFAULT 0
+                    resolved INTEGER DEFAULT 0,
+                    platform TEXT,
+                    platform_user_id TEXT,
+                    display_name TEXT
                 );
                 """
             )
+            # L5: 既有库补列。
+            for col, col_type in _CONFLICT_EXTRA_COLUMNS:
+                try:
+                    db.execute(f"ALTER TABLE identity_conflicts ADD COLUMN {col} {col_type}")
+                except Exception:  # noqa: BLE001 列已存在
+                    pass
             db.commit()
 
     def list_conflicts(self) -> list[dict[str, Any]]:
@@ -358,7 +453,8 @@ class IdentityResolver:
         with sqlite3.connect(self._db_path) as db:
             db.row_factory = sqlite3.Row
             cursor = db.execute(
-                "SELECT conflict_id, person_id, candidates_json, highest_confidence, created_at, resolved "
+                "SELECT conflict_id, person_id, candidates_json, highest_confidence, created_at, "
+                "resolved, platform, platform_user_id, display_name "
                 "FROM identity_conflicts WHERE resolved = 0 ORDER BY created_at ASC"
             )
             rows = cursor.fetchall()
@@ -370,15 +466,23 @@ class IdentityResolver:
                 "highest_confidence": r["highest_confidence"],
                 "created_at": r["created_at"],
                 "resolved": r["resolved"],
+                # L5: 触发身份坐标 (裁决界面展示 "谁撞了名", 也是回写定位键)。
+                "platform": r["platform"] if "platform" in r.keys() else None,
+                "platform_user_id": r["platform_user_id"] if "platform_user_id" in r.keys() else None,
+                "display_name": r["display_name"] if "display_name" in r.keys() else None,
             }
             for r in rows
         ]
 
     async def resolve_conflict(self, conflict_id: str, person_id: str) -> bool:
-        """S4: 人工裁决冲突 —— 标记 resolved=1, 并把 person_id 更新为人工选择结果。
+        """S4: 人工裁决冲突 —— 标记 resolved=1 + 把所选 person 回写为触发身份的
+        verified 绑定 (L5/P1-2)。
 
         不存在的 conflict_id 返回 False; 存在但已 resolved 仍幂等返回 True。
-        人工选择的 person_id 与自动 winner 不同时, 更新该行的 person_id 字段。
+        回写: 冲突记录带触发坐标 (platform/platform_user_id/display_name) 时,
+        把 (触发身份 → 人工所选 person_id) 以 verified=1/confidence=1.0/
+        source=manual 落 person_identities —— 此后 resolve 第一步 verified 命中
+        直接返回, 裁决结果真正生效 (此前只改 conflicts 行, 归一行为不变)。
 
         Fix-29: 之前声明 async def 但内部全程用同步 sqlite3, 零 await, 实际是
         阻塞整个事件循环的"伪 async"——控制面这个端点被调用时, 所有平台的消息
@@ -393,20 +497,42 @@ class IdentityResolver:
         return resolved
 
     def _resolve_conflict_sync(self, conflict_id: str, person_id: str) -> bool:
-        """Fix-29: resolve_conflict 的同步实现, 供 asyncio.to_thread 调用。"""
+        """Fix-29: resolve_conflict 的同步实现, 供 asyncio.to_thread 调用。
+
+        L5/P1-2: resolved 标记 + 人工所选 person 回写 person_identities (verified)。
+        """
         import sqlite3
 
         self._ensure_schema_sync()
         with sqlite3.connect(self._db_path) as db:
+            db.row_factory = sqlite3.Row
             cursor = db.execute(
-                "SELECT conflict_id FROM identity_conflicts WHERE conflict_id = ?",
+                "SELECT conflict_id, platform, platform_user_id, display_name "
+                "FROM identity_conflicts WHERE conflict_id = ?",
                 (conflict_id,),
             )
-            if cursor.fetchone() is None:
+            row = cursor.fetchone()
+            if row is None:
                 return False
             db.execute(
                 "UPDATE identity_conflicts SET resolved = 1, person_id = ? WHERE conflict_id = ?",
                 (person_id, conflict_id),
             )
+            # P1-2 回写: 触发身份 → 人工所选 person 的 verified 绑定。
+            platform = row["platform"] if "platform" in row.keys() else None
+            platform_user_id = row["platform_user_id"] if "platform_user_id" in row.keys() else None
+            if platform and platform_user_id:
+                now = int(time.time())
+                db.execute(
+                    "INSERT OR REPLACE INTO person_identities "
+                    "(person_id, platform, connection_id, platform_user_id, display_name, "
+                    "verified, confidence, source, first_seen, last_seen) "
+                    "VALUES (?, ?, '', ?, ?, 1, 1.0, 'manual_arbitration', ?, ?)",
+                    (
+                        person_id, platform, platform_user_id,
+                        row["display_name"] if "display_name" in row.keys() else "",
+                        now, now,
+                    ),
+                )
             db.commit()
         return True

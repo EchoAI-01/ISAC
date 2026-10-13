@@ -56,6 +56,7 @@ class CompressionResult:
     compressed_events: int = 0
     summary_chars: int = 0
     deleted_events: int = 0
+    # input_overflow 仅剩防御语义 (前缀为空, 正常不可达, 见 compress_session R1 注释)。
     skipped: str = ""  # "" | llm_none | too_few | input_overflow | llm_failed | not_smaller | error
 
 
@@ -97,9 +98,18 @@ class SessionCompressor:
             if prefix is None:
                 return CompressionResult(skipped="too_few")
             original, included = self._build_original_text(prefix)
-            if len(included) < self._min_compress:
-                # 单事件即超输入上限等极端场景: 无可完整进摘要素材的批次, 留待
-                # 下轮 (不截断提交 —— 截断 = GC 删了没进摘要的内容, 信息丢失)。
+            if not included:
+                # R1 (2026-10-13 review 修复): 防御分支 —— _build_original_text 对非空
+                # 前缀恒纳入首事件, 正常不可达; 真到达说明前缀整体异常, 跳过且不删
+                # 任何事件。此前的 ``len(included) < min_compress → input_overflow``
+                # 分支是 D3 修复引入的死锁回归: 前缀头部事件超限且不足 min_compress
+                # 时, 头部事件既进不了摘要也不会被 GC, **前缀永久固定** —— 每轮
+                # 触发都得到同样的 included → 永久 input_overflow, 该会话压缩彻底
+                # 失效, 且内容事件只增不减, D6 的按内容计数触发使每条新消息都全量
+                # fetch 分区再空转一次。修复语义: 纳入数 ≥1 即压缩 (超限恰恰说明
+                # 头部事件巨大, 正是最值得压缩的批次); 未纳入的事件保留, 下轮前缀
+                # 从未压缩处推进, 保证收敛。"进了 GC 的内容必然进了摘要"不破坏
+                # (单事件超限时整事件进摘要素材, 不截断)。
                 return CompressionResult(skipped="input_overflow")
             summary = await self._summarize(original)
             if not summary:

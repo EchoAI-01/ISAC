@@ -154,7 +154,18 @@ class PluginLoader:
         )
 
     async def _load_maibot(self, plugin_path: Path) -> LoadedPlugin:
-        """MaiBot: 加载 plugin.py 找 MaiBotPlugin 子类。"""
+        """MaiBot: 加载 plugin.py 找 MaiBotPlugin 子类。
+
+        L2 (2026-10-13 review): 加载前安装 import 重定向沙箱 —— 真实 MaiBot 插件
+        (SDK v2, pip 包 maibot-plugin-sdk) 的 ``from maibot_sdk import MaiBotPlugin,
+        Tool, Command`` 在 exec_module 时经 sys.meta_path 重定向到 ISAC shim。
+        此前 MaiBot 兼容层零重定向 (与 M12 修复前的 AstrBot 同构), 真实插件
+        import 即 ModuleNotFoundError, 兼容层只能加载"直接 import ISAC 路径"的
+        自写插件。
+        """
+        from isac.plugin.compatibility.maibot.sandbox import install_maibot_sandbox
+
+        install_maibot_sandbox()
         entry_path = plugin_path / "plugin.py"
         if not entry_path.exists():
             raise FileNotFoundError(f"插件入口不存在: {entry_path}")

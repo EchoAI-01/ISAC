@@ -43,6 +43,7 @@ data/*
 !data/model_capabilities.overrides.json
 !data/pricing.jsonc
 !data/catalogs
+!data/plugin_marketplace.jsonc
 
 # 系统文件
 .DS_Store

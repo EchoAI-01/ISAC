@@ -175,3 +175,84 @@ async def test_restore_interrupted_indexes_runs_only_after_cancel_marked() -> No
     assert marked == 1
     assert journal.indexed_before_upsert == [False]  # 落库时未入索引
     assert supervisor._runs["t-old"].status == "cancelled"  # noqa: SLF001
+
+
+# ── L3/L4 (2026-10-13 review): 强制话轮记忆写入 + 主动回复出站保障 ──
+
+
+@pytest.mark.asyncio
+async def test_forced_turn_normal_completion_schedules_memory_write() -> None:
+    """L3: 强制话轮正常完成也走 _schedule_memory_write —— 此前仅普通消息路径写
+    episodic 记忆 (08-21 盘点遗留③), 主动说过什么/得到什么永不进记忆库。"""
+    mgr = _make_manager()
+    runtime = ConversationRuntime("a1", "s1")
+    loop = _FakeLoop(AgentResult(content="主动问候"))
+    calls: list[dict[str, Any]] = []
+
+    def _spy(instance, message, session, user_profile, reply, user_content=None, turn_seq=None):
+        calls.append(
+            {"reply": reply, "user_content": user_content,
+             "profile": user_profile, "turn_seq": turn_seq}
+        )
+
+    mgr._schedule_memory_write = _spy  # type: ignore[method-assign]
+    await mgr._run_forced_turn(_make_instance(loop), _session(), runtime, _proactive_task())  # noqa: SLF001
+    assert len(calls) == 1
+    assert calls[0]["reply"] == "主动问候"
+    assert calls[0]["user_content"]  # 合成的主动 prompt (含 proactive 标记)
+    assert calls[0]["profile"] is None  # 强制话轮无交互画像
+
+
+@pytest.mark.asyncio
+async def test_proactive_reply_retries_then_dead_letters(monkeypatch: pytest.MonkeyPatch) -> None:
+    """L4: 主动回复经 outbound._send_reply 投递 —— 失败有界重试 (默认 3 次),
+    全败落死信环 (此前 _send_proactive_reply 直发 adapter.send 单次尝试,
+    失败仅记日志静默丢, 08-21 盘点遗留④)。"""
+    import isac.outbound as outbound_mod
+
+    monkeypatch.setattr(outbound_mod, "_SEND_RETRY_BACKOFF_SECONDS", 0.0)
+    dead = outbound_mod.OutboundDeadLetter()
+    monkeypatch.setattr(outbound_mod, "_DEFAULT_DEAD_LETTER", dead)
+
+    attempts: list[int] = []
+
+    class _FailAdapter:
+        platform_name = "fake"
+
+        async def send(self, message: Any) -> bool:
+            attempts.append(1)
+            return False
+
+    class _Registry:
+        def get(self, platform: str) -> Any:
+            return _FailAdapter()
+
+    mgr = AgentManager({"channel_registry": _Registry(), "artifact_store": None})
+    instance = SimpleNamespace(agent_id="a1")
+    await mgr._deliver_proactive_reply(instance, _session(), "主动内容")  # noqa: SLF001
+    assert len(attempts) == outbound_mod._SEND_MAX_ATTEMPTS  # noqa: SLF001
+    assert len(dead) == 1  # 全败落死信 (可观测, 不静默丢)
+
+    # 成功路径: 一次即停, 不空转重试。
+    attempts.clear()
+
+    class _OkAdapter(_FailAdapter):
+        async def send(self, message: Any) -> bool:
+            attempts.append(1)
+            return True
+
+    class _OkRegistry(_Registry):
+        def get(self, platform: str) -> Any:
+            return _OkAdapter()
+
+    mgr2 = AgentManager({"channel_registry": _OkRegistry(), "artifact_store": None})
+    await mgr2._deliver_proactive_reply(instance, _session(), "主动内容")  # noqa: SLF001
+    assert len(attempts) == 1
+    assert len(dead) == 1  # 无新增死信
+
+
+@pytest.mark.asyncio
+async def test_proactive_reply_without_registry_logs_and_drops() -> None:
+    """无 channel_registry (无 Channel 场景) → 明确告警丢弃, 不抛异常。"""
+    mgr = AgentManager({})
+    await mgr._deliver_proactive_reply(SimpleNamespace(agent_id="a1"), _session(), "x")  # noqa: SLF001

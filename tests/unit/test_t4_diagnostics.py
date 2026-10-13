@@ -160,6 +160,10 @@ class TestHealthEndpoint:
         assert "llm" in body["subsystems"]
         assert "channels" in body["subsystems"]
         assert "control" in body["subsystems"]
+        # Issue #8 (2026-10-13): uptime_seconds 是 soak 采样轴, 必须存在且非负。
+        assert "uptime_seconds" in body
+        assert isinstance(body["uptime_seconds"], (int, float))
+        assert body["uptime_seconds"] >= 0
         # 无 Agent 无 Channel → degraded
         assert body["status"] == "degraded"
 

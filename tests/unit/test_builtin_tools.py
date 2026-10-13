@@ -196,36 +196,63 @@ async def test_send_emoji_without_channel_send_returns_friendly_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_image_requires_image_gen_provider() -> None:
+async def test_send_image_requires_image_capability() -> None:
+    """L1 重写: 无多模态路由/能力配置 → 友好错误 (旧 image_gen 服务键口径已废)。"""
     from isac.agent.tools.social.send_image import SendImageTool
 
     async def channel_send(message) -> bool:
         return True
 
-    context = make_context({"channel_send": channel_send})  # 无 image_gen
+    context = make_context({"channel_send": channel_send})  # 无 model_router
     context.args = {"prompt": "一只猫"}
 
     result = await SendImageTool().execute(context)
 
     assert result.is_error is True
-    assert "image_gen" in result.content
+    assert "多模态模型路由" in result.content
 
 
 @pytest.mark.asyncio
 async def test_send_image_full_flow() -> None:
+    """L1 重写: J2 管线 —— router 选路 → provider.generate → ArtifactRef →
+    MediaResolver 按 qq 平台转 image segment → channel_send 发送。"""
     from isac.agent.tools.social.send_image import SendImageTool
+    from isac.artifacts.models import ArtifactRef
 
     sent: list = []
 
-    class FakeImageGen:
-        async def generate(self, prompt: str) -> str:
-            return f"https://img.example/{prompt}.png"
+    class _Sel:
+        class descriptor:  # 简桩 (工具只读 provider_id/model_id)
+            provider_id = "openai"
+            model_id = "dall-e-3"
+
+    class FakeRouter:
+        def select(self, **_kw):
+            return _Sel()
+
+    class FakeProvider:
+        async def generate(self, prompt: str, n: int = 1) -> list[ArtifactRef]:
+            return [ArtifactRef(
+                artifact_id="a" * 64, kind="image", mime_type="image/png",
+                uri="data/artifacts/aa/" + "a" * 64 + ".bin", size_bytes=8,
+            )]
+
+    class FakePM:
+        def multimodal_provider(self, _pid: str, _mid: str):
+            return FakeProvider()
 
     async def channel_send(message) -> bool:
         sent.append(message)
         return True
 
-    context = make_context({"channel_send": channel_send, "image_gen": FakeImageGen()})
+    # current_message 须带 platform (MediaResolver 按平台转段); qq 支持 image。
+    incoming = Message()
+    incoming.platform = "qq"
+
+    context = make_context(
+        {"model_router": FakeRouter(), "provider_manager": FakePM(), "channel_send": channel_send}
+    )
+    context.agent_context.current_message = incoming  # type: ignore[assignment]
     context.args = {"prompt": "一只猫"}
 
     result = await SendImageTool().execute(context)
@@ -233,6 +260,49 @@ async def test_send_image_full_flow() -> None:
     assert result.is_error is False
     assert "已发送图片" in result.content
     assert sent and sent[0].segments[0].type == "image"
+
+
+@pytest.mark.asyncio
+async def test_send_image_unsupported_platform_falls_back_to_artifact_ref() -> None:
+    """平台不支持媒体段 (webchat) → 不硬发, artifact 引用交还 LLM (走回复文本
+    引用 + dispatch 出站转段的标准路径)。"""
+    from isac.agent.tools.social.send_image import SendImageTool
+    from isac.artifacts.models import ArtifactRef
+
+    class _Sel:
+        class descriptor:
+            provider_id = "openai"
+            model_id = "dall-e-3"
+
+    class FakeRouter:
+        def select(self, **_kw):
+            return _Sel()
+
+    class FakeProvider:
+        async def generate(self, prompt: str, n: int = 1) -> list[ArtifactRef]:
+            return [ArtifactRef(artifact_id="b" * 64, kind="image", mime_type="image/png")]
+
+    class FakePM:
+        def multimodal_provider(self, _pid: str, _mid: str):
+            return FakeProvider()
+
+    async def channel_send(message) -> bool:  # pragma: no cover - 不应被调
+        raise AssertionError("不支持媒体段的平台不应直发")
+
+    incoming = Message()
+    incoming.platform = "webchat"
+
+    context = make_context(
+        {"model_router": FakeRouter(), "provider_manager": FakePM(), "channel_send": channel_send}
+    )
+    context.agent_context.current_message = incoming  # type: ignore[assignment]
+    context.args = {"prompt": "一只猫"}
+
+    result = await SendImageTool().execute(context)
+
+    assert result.is_error is False
+    assert "artifact:" in result.content
+    assert "不支持直接发送" in result.content
 
 
 @pytest.mark.asyncio
