@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>ISAC 控制台</title>
+    <script>
+      // 首帧前解析主题, 避免深色系统下闪白 (只读 UI 偏好, 不涉及任何凭据)。
+      (function () {
+        try {
+          var stored = localStorage.getItem("isac.console.theme");
+          var pref = stored === "light" || stored === "dark" ? stored : "auto";
+          var dark =
+            pref === "dark" ||
+            (pref === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>ISAC 控制台需要启用 JavaScript。管理 API 可直接用 curl / MCP 客户端访问。</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

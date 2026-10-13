@@ -21,8 +21,13 @@ BASELINE_PATH = Path(__file__).resolve().parents[2] / "docs" / "api" / "openapi.
 
 
 def _make_full_app() -> object:
-    """构造挂载全部可选路由的 control app (与 scripts/export_openapi.py 同逻辑)。"""
+    """构造挂载全部可选路由的 control app (与 scripts/export_openapi.py 同逻辑)。
+
+    F1 (2026-10-11): 与导出脚本同步补齐 webhook/tenant/approval/logs 四处注入 ——
+    两侧不一致会让 "运行时 ⊆ 基线" 自检误报漂移。
+    """
     from isac.control.api.server import create_control_app
+    from isac.utils.log_buffer import enable_log_buffer, reset_log_buffer
 
     mock = MagicMock()
     config = {
@@ -34,29 +39,41 @@ def _make_full_app() -> object:
         "setup_enabled": True,
         "setup_state_path": "/tmp/isac_openapi_export_setup_state.json",
     }
-    return create_control_app(
-        agent_manager=mock,
-        router=mock,
-        bus=mock,
-        plugin_manager=mock,
-        config=config,
-        metrics=mock,
-        usage_store=mock,
-        subagent_supervisor=mock,
-        provider_manager=mock,
-        model_catalog=mock,
-        artifact_store=mock,
-        session_manager=mock,
-        metadata_store=mock,
-        event_bus=mock,
-        sparse_resolver=mock,
-        workflow_engine=mock,
-        identity_resolver=mock,
-        vector_resolver=mock,
-        channel_registry=mock,
-        # N1e: 注入 global_config 使 /config/global 系列端点进契约 (与导出脚本一致)。
-        services={"global_config": {}},
-    )
+    # /logs/tail 仅在 LogBuffer 启用时挂载; 构造后 reset 免污染其它用例。
+    enable_log_buffer()
+    try:
+        return create_control_app(
+            agent_manager=mock,
+            router=mock,
+            bus=mock,
+            plugin_manager=mock,
+            config=config,
+            metrics=mock,
+            usage_store=mock,
+            subagent_supervisor=mock,
+            provider_manager=mock,
+            model_catalog=mock,
+            artifact_store=mock,
+            session_manager=mock,
+            metadata_store=mock,
+            event_bus=mock,
+            sparse_resolver=mock,
+            workflow_engine=mock,
+            identity_resolver=mock,
+            vector_resolver=mock,
+            channel_registry=mock,
+            webhook_manager=mock,
+            tenant_manager=mock,
+            # N1e: 注入 global_config 使 /config/global 系列端点进契约 (与导出脚本一致)。
+            # F1: approval_gate / session_event_store 使 /approvals* 进契约。
+            services={
+                "global_config": {},
+                "approval_gate": mock,
+                "session_event_store": mock,
+            },
+        )
+    finally:
+        reset_log_buffer()
 
 
 @pytest.fixture(scope="module")

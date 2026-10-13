@@ -2,13 +2,23 @@
 """FE0: 导出控制面 OpenAPI 契约基线到 docs/api/openapi.json。
 
 用最小 mock 注入 create_control_app, 让全部按 manager 是否 None 决定挂载的
-可选路由 (usage/subagent/providers/sessions/memory/events/workflows/identity/logs)
-全部挂载, dump OpenAPI schema 作为前后端分离的 API 契约基线。
+可选路由 (usage/subagent/providers/sessions/memory/events/workflows/identity/
+logs/approvals/webhooks/tenants) 全部挂载, dump OpenAPI schema 作为前后端分离的
+API 契约基线。
 
 契约冻结策略 (见 docs/api.md):
 - 运行时 /openapi.json 按 R15 默认关闭 (docs_enabled=False), 防误暴露完整端点列表。
 - 契约基线以本脚本导出的 docs/api/openapi.json 文件为准 (归档进版本库)。
 - 任何 API 变更后须重跑本脚本刷新基线, 否则前后端契约漂移。
+
+F1 (2026-10-11 前端轨道开工): 补齐四处"文档已描述但未进基线"的缺口 ——
+`/logs/tail` (需先 enable_log_buffer, 否则 build_router 返回 None 不挂载)、
+`/approvals*` (需 services.approval_gate)、`/webhooks` + `/automation/trigger`
+(需 webhook_manager)、`/tenants*` (需 tenant_manager)。这些端点在
+docs/api.md "端点覆盖总览" 与 CONTROL_PLANE_SPEC §5/§6/§8.4 中均已定义,
+本次只是让导出与既有文档一致 (不是新增/修改契约)。
+tests/unit/test_api_contract.py::_make_full_app 必须与本脚本同步, 否则
+"运行时 ⊆ 基线" 自检会误报漂移。
 
 用法:
     uv run python scripts/export_openapi.py
@@ -37,30 +47,47 @@ def main() -> int:
         "setup_enabled": True,
         "setup_state_path": "/tmp/isac_openapi_export_setup_state.json",
     }
-    app = create_control_app(
-        agent_manager=mock,
-        router=mock,
-        bus=mock,
-        plugin_manager=mock,
-        config=config,
-        metrics=mock,
-        usage_store=mock,
-        subagent_supervisor=mock,
-        provider_manager=mock,
-        model_catalog=mock,
-        artifact_store=mock,
-        session_manager=mock,
-        metadata_store=mock,
-        event_bus=mock,
-        sparse_resolver=mock,
-        workflow_engine=mock,
-        identity_resolver=mock,
-        vector_resolver=mock,
-        channel_registry=mock,
-        # N1e: 注入 global_config 使 /config/global 系列端点进入契约基线。
-        services={"global_config": {}},
-    )
-    schema = app.openapi()
+    # F1: /logs/tail 仅在 LogBuffer 单例启用时挂载 (routes_logs.build_router 返回
+    # None 即不挂载)。导出期间临时启用, 导出后 reset 免污染同进程后续调用方。
+    from isac.utils.log_buffer import enable_log_buffer, reset_log_buffer
+
+    enable_log_buffer()
+    try:
+        app = create_control_app(
+            agent_manager=mock,
+            router=mock,
+            bus=mock,
+            plugin_manager=mock,
+            config=config,
+            metrics=mock,
+            usage_store=mock,
+            subagent_supervisor=mock,
+            provider_manager=mock,
+            model_catalog=mock,
+            artifact_store=mock,
+            session_manager=mock,
+            metadata_store=mock,
+            event_bus=mock,
+            sparse_resolver=mock,
+            workflow_engine=mock,
+            identity_resolver=mock,
+            vector_resolver=mock,
+            channel_registry=mock,
+            # F1: webhook / 租户路由按 manager 是否注入决定挂载 (api.md 已描述)。
+            webhook_manager=mock,
+            tenant_manager=mock,
+            # N1e: 注入 global_config 使 /config/global 系列端点进入契约基线。
+            # F1: 追加 approval_gate / session_event_store 使 /approvals* 进基线
+            # (U5 HITL 运维侧回流, CONTROL_PLANE_SPEC §8.4 / api.md 已描述)。
+            services={
+                "global_config": {},
+                "approval_gate": mock,
+                "session_event_store": mock,
+            },
+        )
+        schema = app.openapi()
+    finally:
+        reset_log_buffer()
     # ── N4 API 基线缺口修复 (2026-10-11 审计) ──────────────────────
     # ① securitySchemes: 认证是自定义依赖 (不挂在 FastAPI Security 上), openapi()
     #    不会自动产出 —— 前端生成客户端无从得知认证方式。此处显式注入两种 scheme
