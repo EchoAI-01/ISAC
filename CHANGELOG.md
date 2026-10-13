@@ -12,6 +12,24 @@
 
 ## [Unreleased]
 
+### 后端综合修复轮: issues #6-#10 + R1-R3 + L1-L5 死路径接线 (2026-10-13, 全量 2416 通过)
+
+**GitHub issues 清偿**: #6 WebChat 容器 env 映射 (ISAC_WEBCHAT_* 三键 + compose
+端口); #7 插件市场清单随包 (data/plugin_marketplace.jsonc 入仓 + 双 ignore 例外);
+#8 /health 补 uptime_seconds + soak_sampler 字段路径对齐; #9 零配置告警按 setup
+状态分级; #10 deployment.md 国内网络部署双路径 (代理/镜像源 build-arg)。
+**review 缺陷**: R1 压缩 input_overflow 永久死锁 (收官轮 D3 引入的回归, 改"纳入≥1
+即压缩"); R2 富媒体出站本地路径防线 (validate_outbound_media_path 单源: 仅
+data/artifacts|uploads 根 + 25MB 上限; 修复飞书白名单写反 + Discord 零白名单) +
+MIME 透传; R3 插件同步启用矩阵 fail-closed。**08-21 死路径遗留**: L1 Channel 工具
+服务接线 (channel/services.py 三构建器 per-Agent 注入 + OneBot fetch_forward +
+send_image 重写 J2 管线 + switch_chat 默认 deny); L2 MaiBot maibot_sdk import
+重定向沙箱 (SDK v2 真实插件可加载, 参数 schema 映射); L3 强制话轮写 episodic 记忆;
+L4 主动回复走 outbound 重试+死信; L5 身份归一 (昵称撞名防冒充置信度封顶 0.5 +
+冲突裁决生产接线 + 人工裁决回写 verified 绑定)。**提交人纯净性**: 移除 dependabot
+配置 (防止 bot PR 进入贡献者图谱; 依赖升级改为手动)。新增/更新回归测试 38 例;
+ruff/mypy/红线/catalog 全绿。
+
 ### 后端收尾轮: N5 清偿 + 富媒体二波 + soak 工具 (2026-10-11, 全量 2378 通过)
 
 后端剩余纯代码工作全部完成, 后端轨道收官:
